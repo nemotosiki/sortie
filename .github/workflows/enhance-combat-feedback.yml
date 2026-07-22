@@ -40,6 +40,8 @@ jobs:
 
           static_status=99
           node_status=99
+          browser_test_hash_status=99
+          browser_test_node_status=99
           npm_status=99
           browser_status=99
 
@@ -95,10 +97,31 @@ jobs:
           fi
           echo "node_status=$node_status" >> "$diagnostic"
 
+          cat .sortie-feedback/browser_test.b64.* | tr -d '\n\r' | base64 -d > /tmp/browser-feedback-test.mjs 2>> "$diagnostic"
+          assembled_test_status=$?
+          echo "assembled_test_status=$assembled_test_status" >> "$diagnostic"
+
+          if [ "$assembled_test_status" -eq 0 ]; then
+            browser_test_hash="$(git hash-object /tmp/browser-feedback-test.mjs)"
+            echo "browser_test_hash=$browser_test_hash" >> "$diagnostic"
+            if [ "$browser_test_hash" = "242287d82c3a20e833292033ac5c478f79e9b6f7" ]; then
+              browser_test_hash_status=0
+            else
+              browser_test_hash_status=1
+            fi
+          fi
+          echo "browser_test_hash_status=$browser_test_hash_status" >> "$diagnostic"
+
+          if [ "$browser_test_hash_status" -eq 0 ]; then
+            node --check /tmp/browser-feedback-test.mjs >> "$diagnostic" 2>&1
+            browser_test_node_status=$?
+          fi
+          echo "browser_test_node_status=$browser_test_node_status" >> "$diagnostic"
+
           chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
           echo "chrome_bin=$chrome_bin" >> "$diagnostic"
 
-          if [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
+          if [ "$node_status" -eq 0 ] && [ "$browser_test_node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
             npm install --prefix .sortie-feedback --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
             npm_status=$?
           fi
@@ -108,7 +131,7 @@ jobs:
             python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-feedback-server.log 2>&1 &
             server_pid=$!
             sleep 1
-            CHROME_BIN="$chrome_bin" node .sortie-feedback/browser_test.mjs >> "$diagnostic" 2>&1
+            CHROME_BIN="$chrome_bin" node /tmp/browser-feedback-test.mjs >> "$diagnostic" 2>&1
             browser_status=$?
             kill "$server_pid" 2>/dev/null || true
             wait "$server_pid" 2>/dev/null || true
@@ -122,7 +145,8 @@ jobs:
           git config user.email "noreply@openai.com"
 
           if [ "$patch_status" -eq 0 ] && [ "$static_status" -eq 0 ] &&
-             [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] &&
+             [ "$node_status" -eq 0 ] && [ "$browser_test_hash_status" -eq 0 ] &&
+             [ "$browser_test_node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] &&
              [ "$browser_status" -eq 0 ]; then
             rm -rf .sortie-feedback
             rm -f .github/workflows/enhance-combat-feedback.yml
