@@ -54,11 +54,11 @@ const setButton = async (index, pressed) => page.evaluate(({ index, pressed }) =
   window.__testPad.timestamp += 1;
 }, { index, pressed });
 
-const tapButton = async (index, hold = 100) => {
+const tapButton = async (index, hold = 650) => {
   await setButton(index, true);
   await page.waitForTimeout(hold);
   await setButton(index, false);
-  await page.waitForTimeout(130);
+  await page.waitForTimeout(260);
 };
 
 await page.goto("http://127.0.0.1:4173/index.html", { waitUntil: "networkidle" });
