@@ -24,11 +24,21 @@ jobs:
       - name: Apply feedback upgrade and run regressions
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
+          diagnostic=.sortie-feedback/diagnostic.txt
+          : > "$diagnostic"
 
-          python3 .sortie-feedback/apply_update.py
+          python3 .sortie-feedback/apply_update.py >> "$diagnostic" 2>&1
+          patch_status=$?
+          echo "patch_status=$patch_status" >> "$diagnostic"
 
-          python3 - <<'PY'
+          static_status=99
+          node_status=99
+          npm_status=99
+          browser_status=99
+
+          if [ "$patch_status" -eq 0 ]; then
+            python3 - <<'PY' >> "$diagnostic" 2>&1
           from pathlib import Path
           import re
 
@@ -69,41 +79,57 @@ jobs:
           if "console.warn(" in text or "console.error(" in text:
               raise SystemExit("console warning/error call added")
           PY
+            static_status=$?
+          fi
+          echo "static_status=$static_status" >> "$diagnostic"
 
-          node --check /tmp/sortie-game.mjs
+          if [ "$static_status" -eq 0 ]; then
+            node --check /tmp/sortie-game.mjs >> "$diagnostic" 2>&1
+            node_status=$?
+          fi
+          echo "node_status=$node_status" >> "$diagnostic"
 
           chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          if [ -z "$chrome_bin" ]; then
-            echo "Chrome/Chromium is required for the regression" >&2
-            exit 1
+          echo "chrome_bin=$chrome_bin" >> "$diagnostic"
+
+          if [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
+            npm install --prefix .sortie-feedback --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
+            npm_status=$?
           fi
+          echo "npm_status=$npm_status" >> "$diagnostic"
 
-          npm install --prefix .sortie-feedback --no-package-lock --no-save playwright-core@1.54.1
-
-          server_pid=""
-          cleanup_server() {
-            if [ -n "$server_pid" ]; then
-              kill "$server_pid" 2>/dev/null || true
-              wait "$server_pid" 2>/dev/null || true
-            fi
-          }
-          trap cleanup_server EXIT
-
-          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-feedback-server.log 2>&1 &
-          server_pid=$!
-          sleep 1
-          CHROME_BIN="$chrome_bin" node .sortie-feedback/browser_test.mjs
-          cleanup_server
-          server_pid=""
-          trap - EXIT
+          if [ "$npm_status" -eq 0 ]; then
+            python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-feedback-server.log 2>&1 &
+            server_pid=$!
+            sleep 1
+            CHROME_BIN="$chrome_bin" node .sortie-feedback/browser_test.mjs >> "$diagnostic" 2>&1
+            browser_status=$?
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+            echo "--- server log ---" >> "$diagnostic"
+            cat /tmp/sortie-feedback-server.log >> "$diagnostic" 2>&1
+          fi
+          echo "browser_status=$browser_status" >> "$diagnostic"
 
           rm -rf .sortie-feedback/node_modules
-          rm -rf .sortie-feedback
-          rm -f .github/workflows/enhance-combat-feedback.yml
-
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Enhance combat feedback and speed presentation"
+
+          if [ "$patch_status" -eq 0 ] && [ "$static_status" -eq 0 ] &&
+             [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] &&
+             [ "$browser_status" -eq 0 ]; then
+            rm -rf .sortie-feedback
+            rm -f .github/workflows/enhance-combat-feedback.yml
+            git add -A
+            git diff --cached --check
+            git commit -m "Enhance combat feedback and speed presentation"
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          git checkout -- index.html 2>/dev/null || true
+          git add "$diagnostic"
+          git commit -m "Record combat feedback regression diagnostics"
           git push origin HEAD:main
+          cat "$diagnostic"
+          exit 1
