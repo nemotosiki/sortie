@@ -788,7 +788,7 @@
 
     <div id="missionBanner"></div>
     <div id="boostIndicator">AFTERBURNER</div>
-    <div id="controlModeStatus">FLIGHT CONTROL · NORMAL · M / Y TOGGLE</div>
+    <div id="controlModeStatus">FLIGHT CONTROL · NORMAL · M / SHARE TOGGLE</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
   </div>
 
@@ -803,11 +803,11 @@
         <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ピッチ。NORMAL / EXPERTの両モードで機首を上下。</span></div>
         <div class="controlItem"><strong>A / D · ← / →</strong><span>NORMALは目標バンク、EXPERTは直接ロール。</span></div>
         <div class="controlItem"><strong>Q / E</strong><span>EXPERT時のみ、機体ローカル軸で左 / 右ヨー。</span></div>
-        <div class="controlItem"><strong>M / GAMEPAD Y</strong><span>NORMALとEXPERTをいつでも切替。</span></div>
+        <div class="controlItem"><strong>M / SHARE</strong><span>NORMALとEXPERTをいつでも切替。</span></div>
         <div class="controlItem"><strong>SHIFT / CTRL</strong><span>ブースト / 減速。機体は常に前進。</span></div>
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
         <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全6発。</span></div>
-        <div class="controlItem"><strong>GAMEPAD</strong><span>左スティックでロール/ピッチ。EXPERTは右スティック左右でヨー。</span></div>
+        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△ ターゲット、□ カメラ。R2/L2で加減速。</span></div>
         <div class="controlItem"><strong>OBJECTIVE</strong><span>HPを保ち、全ターゲットを撃墜せよ。</span></div>
       </div>
       <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
@@ -863,6 +863,12 @@
     const MISSION_GRACE_TIME = 3.0;
     const PLAYER_HIT_COOLDOWN = 0.55;
     const GAMEPAD_DEADZONE = 0.18;
+    const CAMERA_MODES = ["chase", "close", "cockpit"];
+    const CAMERA_PROFILES = Object.freeze({
+      chase: Object.freeze({ back: 38, height: 13.5, look: 76, lookHeight: 3.2, rollFollow: 0.38 }),
+      close: Object.freeze({ back: 22, height: 8.4, look: 70, lookHeight: 2.4, rollFollow: 0.5 }),
+      cockpit: Object.freeze({ back: -4.8, height: 1.9, look: 96, lookHeight: 0.9, rollFollow: 0.9 })
+    });
 
     const ui = {
       gameRoot: document.getElementById("gameRoot"),
@@ -950,6 +956,8 @@
     let playerHitCooldown = 0;
     let playerBank = 0;
     let controlMode = CONTROL_NORMAL;
+    let cameraMode = CAMERA_MODES[0];
+    let preferredTargetId = null;
 
     const gamepadInput = {
       connected: false,
@@ -964,7 +972,9 @@
       missile: false,
       previousMissile: false,
       previousStart: false,
-      previousModeToggle: false
+      previousModeToggle: false,
+      previousTarget: false,
+      previousCamera: false
     };
 
     const lock = {
@@ -981,6 +991,8 @@
       missiles: missileCount,
       kills,
       controlMode,
+      cameraMode,
+      selectedTargetId: null,
       player: {
         position: { x: 0, y: 0, z: 0 },
         forward: { x: 0, y: 0, z: -1 },
@@ -1025,6 +1037,16 @@
 
       if (event.code === "KeyM" && !event.repeat) {
         toggleControlMode();
+        return;
+      }
+
+      if (event.code === "Tab" && !event.repeat) {
+        if (gameState === STATE_PLAYING) cycleTarget();
+        return;
+      }
+
+      if (event.code === "KeyC" && !event.repeat) {
+        cycleCamera();
         return;
       }
 
@@ -1087,7 +1109,7 @@
       return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD" ||
         code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight" ||
         code === "ShiftLeft" || code === "ShiftRight" || code === "ControlLeft" || code === "ControlRight" ||
-        code === "KeyQ" || code === "KeyE" || code === "KeyM" ||
+        code === "KeyQ" || code === "KeyE" || code === "KeyM" || code === "KeyC" || code === "Tab" ||
         code === "Space" || code === "Enter";
     }
 
@@ -1135,6 +1157,8 @@
       gamepadInput.previousMissile = false;
       gamepadInput.previousStart = false;
       gamepadInput.previousModeToggle = false;
+      gamepadInput.previousTarget = false;
+      gamepadInput.previousCamera = false;
       setGamepadStatus(false, "");
     }
 
@@ -1183,21 +1207,30 @@
       gamepadInput.yaw = -rightAxisX;
       gamepadInput.boost = gamepadButtonValue(selected, 7) > 0.22;
       gamepadInput.brake = gamepadButtonValue(selected, 6) > 0.22;
-      gamepadInput.gun = gamepadButtonPressed(selected, 5);
+      // Standard Gamepad mapping / Ace Combat 7 Type A:
+      // 0 = Cross/A (gun), 1 = Circle/B (missile), 2 = Square/X (camera),
+      // 3 = Triangle/Y (target), 6/7 = L2/R2, 8 = Share/View.
+      gamepadInput.gun = gamepadButtonPressed(selected, 0);
 
-      const missilePressed = gamepadButtonPressed(selected, 0) || gamepadButtonPressed(selected, 4);
+      const missilePressed = gamepadButtonPressed(selected, 1);
+      const cameraPressed = gamepadButtonPressed(selected, 2);
+      const targetPressed = gamepadButtonPressed(selected, 3);
       const startPressed = gamepadButtonPressed(selected, 9) || missilePressed;
-      const modePressed = gamepadButtonPressed(selected, 3);
+      const modePressed = gamepadButtonPressed(selected, 8);
       const wasPlaying = gameState === STATE_PLAYING;
 
       if (modePressed && !gamepadInput.previousModeToggle) toggleControlMode();
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
+      if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
+      if (wasPlaying && targetPressed && !gamepadInput.previousTarget) cycleTarget();
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
 
       gamepadInput.missile = missilePressed;
       gamepadInput.previousMissile = missilePressed;
       gamepadInput.previousStart = startPressed;
       gamepadInput.previousModeToggle = modePressed;
+      gamepadInput.previousTarget = targetPressed;
+      gamepadInput.previousCamera = cameraPressed;
     }
 
     function adoptNormalFlightFrame() {
@@ -1248,6 +1281,27 @@
       setControlMode(controlMode === CONTROL_NORMAL ? CONTROL_EXPERT : CONTROL_NORMAL);
     }
 
+    function cycleTarget() {
+      if (gameState !== STATE_PLAYING) return;
+      const living = enemies.filter((enemy) => enemy.alive).sort((a, b) => a.id - b.id);
+      if (living.length === 0) return;
+
+      const currentId = preferredTargetId ?? lock.targetId;
+      const currentIndex = living.findIndex((enemy) => enemy.id === currentId);
+      const next = living[(currentIndex + 1 + living.length) % living.length];
+      preferredTargetId = next.id;
+      lock.targetId = next.id;
+      lock.progress = 0;
+      lock.locked = false;
+      showBanner(`TARGET SELECT · ${next.id}`, 0.75);
+    }
+
+    function cycleCamera() {
+      const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
+      cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
+      showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
+    }
+
     function damping(k, dt) {
       return 1 - Math.pow(k, dt);
     }
@@ -1290,6 +1344,7 @@
       missileSide = 1;
       missionElapsed = 0;
       playerHitCooldown = 0;
+      preferredTargetId = null;
       setState(STATE_PLAYING);
       spawnWave(1);
       showBanner("WAVE 1 · ENGAGE", 2.1);
@@ -1513,8 +1568,12 @@
       let candidate = null;
       let bestScore = -Infinity;
 
+      const preferred = enemies.find((enemy) => enemy.id === preferredTargetId && enemy.alive);
+      if (preferredTargetId !== null && !preferred) preferredTargetId = null;
+
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
+        if (preferred && enemy.id !== preferred.id) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
         if (distance > LOCK_RANGE || distance < 1) continue;
@@ -1810,11 +1869,15 @@
     function updateCamera(dt) {
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
+      const profile = CAMERA_PROFILES[cameraMode] || CAMERA_PROFILES.chase;
 
-      tmpV3.copy(WORLD_UP).multiplyScalar(0.62).addScaledVector(tmpV2, 0.38).normalize();
+      tmpV3.copy(WORLD_UP)
+        .multiplyScalar(1 - profile.rollFollow)
+        .addScaledVector(tmpV2, profile.rollFollow)
+        .normalize();
       const desiredPosition = tmpV4.copy(player.position)
-        .addScaledVector(tmpV1, -38)
-        .addScaledVector(tmpV3, 13.5);
+        .addScaledVector(tmpV1, -profile.back)
+        .addScaledVector(tmpV3, profile.height);
 
       cameraShake = Math.max(0, cameraShake - dt * 1.9);
       if (cameraShake > 0) {
@@ -1824,8 +1887,8 @@
       }
 
       const desiredLook = tmpV5.copy(player.position)
-        .addScaledVector(tmpV1, 76)
-        .addScaledVector(tmpV3, 3.2);
+        .addScaledVector(tmpV1, profile.look)
+        .addScaledVector(tmpV3, profile.lookHeight);
 
       camera.position.lerp(desiredPosition, damping(0.0017, dt));
       cameraLook.lerp(desiredLook, damping(0.0005, dt));
@@ -1841,9 +1904,17 @@
     function snapCamera() {
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
-      cameraUp.copy(WORLD_UP).multiplyScalar(0.62).addScaledVector(tmpV2, 0.38).normalize();
-      camera.position.copy(player.position).addScaledVector(tmpV1, -38).addScaledVector(cameraUp, 13.5);
-      cameraLook.copy(player.position).addScaledVector(tmpV1, 76).addScaledVector(cameraUp, 3.2);
+      const profile = CAMERA_PROFILES[cameraMode] || CAMERA_PROFILES.chase;
+      cameraUp.copy(WORLD_UP)
+        .multiplyScalar(1 - profile.rollFollow)
+        .addScaledVector(tmpV2, profile.rollFollow)
+        .normalize();
+      camera.position.copy(player.position)
+        .addScaledVector(tmpV1, -profile.back)
+        .addScaledVector(cameraUp, profile.height);
+      cameraLook.copy(player.position)
+        .addScaledVector(tmpV1, profile.look)
+        .addScaledVector(cameraUp, profile.lookHeight);
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       camera.quaternion.setFromRotationMatrix(tmpM1);
       world.skyGroup.position.copy(camera.position);
@@ -1911,8 +1982,8 @@
       ui.wave.textContent = `WAVE ${waveNumber} / 2`;
       const expertMode = controlMode === CONTROL_EXPERT;
       ui.controlModeStatus.textContent = expertMode
-        ? "FLIGHT CONTROL · EXPERT · Q/E + R-STICK YAW · M/Y TOGGLE"
-        : "FLIGHT CONTROL · NORMAL · COORDINATED TURN · M/Y TOGGLE";
+        ? "FLIGHT CONTROL · EXPERT · Q/E + R-STICK YAW · M/SHARE TOGGLE"
+        : "FLIGHT CONTROL · NORMAL · COORDINATED TURN · M/SHARE TOGGLE";
       ui.controlModeStatus.classList.toggle("expert", expertMode);
       ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / 100, 0, 1)})`;
       ui.statusPanel.classList.toggle("healthLow", health <= 30);
@@ -1946,6 +2017,8 @@
       hook.missiles = Math.round(missileCount);
       hook.kills = Math.round(kills);
       hook.controlMode = controlMode;
+      hook.cameraMode = cameraMode;
+      hook.selectedTargetId = preferredTargetId ?? lock.targetId;
       hook.player.position.x = player.position.x;
       hook.player.position.y = player.position.y;
       hook.player.position.z = player.position.z;
