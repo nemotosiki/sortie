@@ -28,6 +28,10 @@ jobs:
 
           python3 .sortie-update6/apply_update.py >> "$diagnostic" 2>&1
           patch_status=$?
+          if [ "$patch_status" -eq 0 ]; then
+            python3 .sortie-update6/tune_enemy_missiles.py >> "$diagnostic" 2>&1
+            patch_status=$?
+          fi
           echo "patch_status=$patch_status" >> "$diagnostic"
 
           if [ "$patch_status" -eq 0 ]; then
