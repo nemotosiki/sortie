@@ -489,6 +489,71 @@
       text-shadow: 0 0 9px rgba(255, 205, 75, 0.95);
     }
 
+    #stallWarning,
+    #missileWarning,
+    #cameraFocusStatus {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 7px 15px;
+      border: 1px solid transparent;
+      background: rgba(5, 11, 18, 0.66);
+      opacity: 0;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      white-space: nowrap;
+      transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease;
+    }
+
+    #stallWarning {
+      bottom: 19%;
+      color: #ff4d58;
+      text-shadow: 0 0 11px rgba(255, 38, 54, 0.95);
+    }
+
+    #stallWarning.active {
+      opacity: 1;
+      transform: translateX(-50%) scale(1.03);
+      border-color: rgba(255, 72, 82, 0.7);
+      animation: alertPulse 0.42s ease-in-out infinite alternate;
+    }
+
+    #stallWarning.caution {
+      color: #ffd45a;
+      border-color: rgba(255, 212, 90, 0.55);
+      text-shadow: 0 0 10px rgba(255, 190, 56, 0.85);
+      animation-duration: 0.85s;
+    }
+
+    #missileWarning {
+      top: 18%;
+      color: #ff4a55;
+      text-shadow: 0 0 12px rgba(255, 42, 58, 0.95);
+    }
+
+    #missileWarning.active {
+      opacity: 1;
+      border-color: rgba(255, 69, 82, 0.75);
+      animation: alertPulse 0.34s ease-in-out infinite alternate;
+    }
+
+    #cameraFocusStatus {
+      top: 91px;
+      color: #ffe97b;
+      text-shadow: 0 0 9px rgba(255, 218, 71, 0.85);
+    }
+
+    #cameraFocusStatus.active {
+      opacity: 0.92;
+      border-color: rgba(255, 226, 105, 0.55);
+    }
+
+    @keyframes alertPulse {
+      from { transform: translateX(-50%) scale(0.98); }
+      to { transform: translateX(-50%) scale(1.04); }
+    }
+
     #damageFlash {
       position: fixed;
       inset: 0;
@@ -754,7 +819,7 @@
       <div class="statusLine">
         <span>MISSILES</span>
         <span id="missilePips"></span>
-        <strong id="missiles">6</strong>
+        <strong id="missiles">10</strong>
       </div>
     </section>
 
@@ -788,6 +853,9 @@
 
     <div id="missionBanner"></div>
     <div id="boostIndicator">AFTERBURNER</div>
+    <div id="stallWarning">STALL · ACCELERATE / LOWER NOSE</div>
+    <div id="missileWarning">MISSILE ALERT</div>
+    <div id="cameraFocusStatus">TARGET VIEW</div>
     <div id="controlModeStatus">FLIGHT CONTROL · NORMAL · M / SHARE TOGGLE</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
   </div>
@@ -804,11 +872,11 @@
         <div class="controlItem"><strong>A / D · ← / →</strong><span>NORMALは目標バンク、EXPERTは直接ロール。</span></div>
         <div class="controlItem"><strong>Q / E</strong><span>EXPERT時のみ、機体ローカル軸で左 / 右ヨー。</span></div>
         <div class="controlItem"><strong>M / SHARE</strong><span>NORMALとEXPERTをいつでも切替。</span></div>
-        <div class="controlItem"><strong>SHIFT / CTRL</strong><span>ブースト / 減速。機体は常に前進。</span></div>
+        <div class="controlItem"><strong>SHIFT / CTRL</strong><span>広い速度域で加速 / 減速。低速は小回りが利くが、落としすぎると失速。</span></div>
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
-        <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全6発。</span></div>
-        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△ ターゲット、□ カメラ。R2/L2で加減速。</span></div>
-        <div class="controlItem"><strong>OBJECTIVE</strong><span>HPを保ち、全ターゲットを撃墜せよ。</span></div>
+        <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全10発。</span></div>
+        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。R2/L2で加減速。</span></div>
+        <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>
       </div>
       <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
     </div>
@@ -843,15 +911,26 @@
     const LOCAL_RIGHT = new THREE.Vector3(1, 0, 0);
     const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
-    const CRUISE_SPEED = 168;
-    const BOOST_SPEED = 266;
-    const BRAKE_SPEED = 92;
+    const PLAYER_MISSILE_CAPACITY = 10;
+    const CRUISE_SPEED = 170;
+    const BOOST_SPEED = 340;
+    const BRAKE_SPEED = 52;
+    const STALL_WARNING_SPEED = 94;
+    const STALL_ENTRY_SPEED = 82;
+    const STALL_DEEP_SPEED = 58;
+    const STALL_RECOVERY_SPEED = 112;
+    const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
+    const STALL_SINK_RATE = 44;
     const PITCH_RATE = THREE.MathUtils.degToRad(58);
-    const EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(98);
+    const EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
     const EXPERT_YAW_RATE = THREE.MathUtils.degToRad(48);
+    const EXPERT_ROLL_RESPONSE_K = 0.055;
     const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
+    const NORMAL_ROLL_SPRING = 22;
+    const NORMAL_ROLL_DAMPING = 6.2;
+    const NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);
     const COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
-    const BANK_RESPONSE_K = 0.006;
+    const TARGET_FOCUS_HOLD_MS = 360;
     const GUN_RANGE = 750;
     const GUN_RATE = 12;
     const LOCK_RANGE = 1200;
@@ -1008,6 +1087,45 @@
       })
     });
 
+    const ENEMY_MISSILE_PROFILES = Object.freeze({
+      viper: Object.freeze({
+        cooldownMin: 8.2,
+        cooldownSpread: 4.6,
+        range: 1280,
+        minRange: 190,
+        speed: 235,
+        maxSpeed: 285,
+        turnRate: THREE.MathUtils.degToRad(72),
+        damage: 16,
+        life: 7.5,
+        launchDot: 0.22
+      }),
+      bison: Object.freeze({
+        cooldownMin: 10.8,
+        cooldownSpread: 5.2,
+        range: 1380,
+        minRange: 220,
+        speed: 205,
+        maxSpeed: 250,
+        turnRate: THREE.MathUtils.degToRad(46),
+        damage: 24,
+        life: 8.6,
+        launchDot: 0.16
+      }),
+      lancer: Object.freeze({
+        cooldownMin: 9.1,
+        cooldownSpread: 4.8,
+        range: 1320,
+        minRange: 200,
+        speed: 220,
+        maxSpeed: 270,
+        turnRate: THREE.MathUtils.degToRad(58),
+        damage: 19,
+        life: 8.0,
+        launchDot: 0.2
+      })
+    });
+
     const ui = {
       gameRoot: document.getElementById("gameRoot"),
       startScreen: document.getElementById("startScreen"),
@@ -1033,6 +1151,9 @@
       pitchLadder: document.getElementById("pitchLadder"),
       missionBanner: document.getElementById("missionBanner"),
       boostIndicator: document.getElementById("boostIndicator"),
+      stallWarning: document.getElementById("stallWarning"),
+      missileWarning: document.getElementById("missileWarning"),
+      cameraFocusStatus: document.getElementById("cameraFocusStatus"),
       gamepadStatus: document.getElementById("gamepadStatus"),
       controlModeStatus: document.getElementById("controlModeStatus"),
       damageFlash: document.getElementById("damageFlash"),
@@ -1067,25 +1188,30 @@
     const tmpV6 = new THREE.Vector3();
     const tmpV7 = new THREE.Vector3();
     const tmpV8 = new THREE.Vector3();
+    const tmpV9 = new THREE.Vector3();
+    const tmpV10 = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
     const keys = new Set();
     const enemies = [];
     const missilesInFlight = [];
+    const enemyMissiles = [];
     const effects = [];
 
     let gameState = STATE_READY;
     let score = 0;
     let highscore = readHighscore();
     let health = 100;
-    let missileCount = 6;
+    let missileCount = PLAYER_MISSILE_CAPACITY;
     let kills = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     let gunCooldown = 0;
     let gunShots = 0;
     let missilesLaunched = 0;
+    let enemyMissilesLaunched = 0;
+    let enemyMissileSerial = 0;
     let enemySerial = 0;
     let waveClearTimer = -1;
     let missileSide = 1;
@@ -1098,9 +1224,20 @@
     let missionElapsed = 0;
     let playerHitCooldown = 0;
     let playerBank = 0;
+    let rollRate = 0;
+    let expertRollRate = 0;
+    let stallTimer = 0;
+    let stallSeverity = 0;
+    let stalling = false;
+    let playerTurnFactor = 1;
+    let playerControlAuthority = 1;
     let controlMode = CONTROL_NORMAL;
     let cameraMode = CAMERA_MODES[0];
     let preferredTargetId = null;
+    let cameraFocusActive = false;
+    let cameraFocusTargetId = null;
+    let cameraFocusSource = null;
+    let nearestMissileThreat = null;
 
     const gamepadInput = {
       connected: false,
@@ -1117,7 +1254,27 @@
       previousStart: false,
       previousModeToggle: false,
       previousTarget: false,
-      previousCamera: false
+      previousCamera: false,
+      targetPressedAt: 0,
+      targetLong: false,
+      targetFocus: false
+    };
+
+    const cameraKeyHold = {
+      pressed: false,
+      pressedAt: 0,
+      focus: false
+    };
+
+    const audioSystem = {
+      context: null,
+      master: null,
+      lockTimer: 0,
+      threatTimer: 0,
+      lastLocked: false,
+      lockBeeps: 0,
+      lockCompleteCues: 0,
+      threatBeeps: 0
     };
 
     const lock = {
@@ -1136,7 +1293,21 @@
       controlMode,
       cameraMode,
       selectedTargetId: null,
-      weapons: { gunShots: 0, missilesLaunched: 0 },
+      weapons: {
+        gunShots: 0,
+        missilesLaunched: 0,
+        enemyMissilesLaunched: 0
+      },
+      flight: {
+        stalling: false,
+        stallSeverity: 0,
+        rollRate: 0,
+        turnFactor: 1,
+        controlAuthority: 1
+      },
+      cameraFocus: { active: false, targetId: null, source: null },
+      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0 },
+      threats: { incomingMissiles: [], nearest: null },
       enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
         position: { x: 0, y: 0, z: 0 },
@@ -1174,11 +1345,19 @@
     updateHud();
     syncGameHook();
 
-    ui.startBtn.addEventListener("click", startMission);
-    ui.retryBtn.addEventListener("click", startMission);
+    ui.startBtn.addEventListener("click", () => {
+      ensureAudio();
+      startMission();
+    });
+    ui.retryBtn.addEventListener("click", () => {
+      ensureAudio();
+      startMission();
+    });
+    window.addEventListener("pointerdown", ensureAudio, { passive: true });
 
     window.addEventListener("keydown", (event) => {
       if (isControlKey(event.code)) event.preventDefault();
+      ensureAudio();
 
       if (event.code === "KeyM" && !event.repeat) {
         toggleControlMode();
@@ -1190,8 +1369,12 @@
         return;
       }
 
-      if (event.code === "KeyC" && !event.repeat) {
-        cycleCamera();
+      if (event.code === "KeyC") {
+        if (!event.repeat && !cameraKeyHold.pressed) {
+          cameraKeyHold.pressed = true;
+          cameraKeyHold.pressedAt = performance.now();
+          cameraKeyHold.focus = false;
+        }
         return;
       }
 
@@ -1208,12 +1391,37 @@
 
     window.addEventListener("keyup", (event) => {
       if (isControlKey(event.code)) event.preventDefault();
+
+      if (event.code === "KeyC") {
+        if (cameraKeyHold.pressed) {
+          const heldLong = cameraKeyHold.focus ||
+            performance.now() - cameraKeyHold.pressedAt >= TARGET_FOCUS_HOLD_MS;
+          cameraKeyHold.pressed = false;
+          cameraKeyHold.focus = false;
+          cameraKeyHold.pressedAt = 0;
+          if (!heldLong) cycleCamera();
+        }
+        return;
+      }
+
       keys.delete(event.code);
     });
 
-    window.addEventListener("blur", () => keys.clear());
+    const clearTransientInputs = () => {
+      keys.clear();
+      cameraKeyHold.pressed = false;
+      cameraKeyHold.focus = false;
+      cameraKeyHold.pressedAt = 0;
+      gamepadInput.targetFocus = false;
+      gamepadInput.targetLong = false;
+      cameraFocusActive = false;
+      cameraFocusTargetId = null;
+      cameraFocusSource = null;
+    };
+
+    window.addEventListener("blur", clearTransientInputs);
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) keys.clear();
+      if (document.hidden) clearTransientInputs();
     });
     window.addEventListener("resize", resize);
     window.addEventListener("gamepadconnected", updateGamepadInput);
@@ -1227,6 +1435,7 @@
 
       updateEffects(dt);
       updateGamepadInput();
+      updateHoldInputs();
 
       if (gameState === STATE_PLAYING) {
         missionElapsed += dt;
@@ -1236,12 +1445,14 @@
         if (gameState === STATE_PLAYING) {
           updateLock(dt);
           updateMissiles(dt);
+          updateEnemyMissiles(dt);
           updateMission(dt);
         }
       } else {
         animateIdle(dt);
       }
 
+      updateAudioCues(dt);
       updateCamera(dt);
       updateVisualStatus(dt);
       updateHud();
@@ -1304,6 +1515,9 @@
       gamepadInput.previousModeToggle = false;
       gamepadInput.previousTarget = false;
       gamepadInput.previousCamera = false;
+      gamepadInput.targetPressedAt = 0;
+      gamepadInput.targetLong = false;
+      gamepadInput.targetFocus = false;
       setGamepadStatus(false, "");
     }
 
@@ -1352,9 +1566,11 @@
       gamepadInput.yaw = -rightAxisX;
       gamepadInput.boost = gamepadButtonValue(selected, 7) > 0.22;
       gamepadInput.brake = gamepadButtonValue(selected, 6) > 0.22;
+
       // Standard Gamepad mapping / Ace Combat 7 Type A:
       // 0 = Cross/A (gun), 1 = Circle/B (missile), 2 = Square/X (camera),
-      // 3 = Triangle/Y (target), 6/7 = L2/R2, 8 = Share/View.
+      // 3 = Triangle/Y (short target cycle, long target view), 6/7 = L2/R2,
+      // 8 = Share/View (NORMAL/EXPERT).
       gamepadInput.gun = gamepadButtonPressed(selected, 0);
 
       const missilePressed = gamepadButtonPressed(selected, 1);
@@ -1363,12 +1579,29 @@
       const startPressed = gamepadButtonPressed(selected, 9) || missilePressed;
       const modePressed = gamepadButtonPressed(selected, 8);
       const wasPlaying = gameState === STATE_PLAYING;
+      const now = performance.now();
 
       if (modePressed && !gamepadInput.previousModeToggle) toggleControlMode();
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
       if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
-      if (wasPlaying && targetPressed && !gamepadInput.previousTarget) cycleTarget();
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
+
+      if (targetPressed && !gamepadInput.previousTarget) {
+        gamepadInput.targetPressedAt = now;
+        gamepadInput.targetLong = false;
+        gamepadInput.targetFocus = false;
+      }
+      if (targetPressed && !gamepadInput.targetLong &&
+          now - gamepadInput.targetPressedAt >= TARGET_FOCUS_HOLD_MS) {
+        gamepadInput.targetLong = true;
+        gamepadInput.targetFocus = true;
+      }
+      if (!targetPressed && gamepadInput.previousTarget) {
+        if (!gamepadInput.targetLong && wasPlaying) cycleTarget();
+        gamepadInput.targetPressedAt = 0;
+        gamepadInput.targetLong = false;
+        gamepadInput.targetFocus = false;
+      }
 
       gamepadInput.missile = missilePressed;
       gamepadInput.previousMissile = missilePressed;
@@ -1408,8 +1641,10 @@
       if (nextMode === CONTROL_EXPERT) {
         playerFlightFrame.copy(player.quaternion).normalize();
         playerBank = 0;
+        expertRollRate = rollRate;
       } else {
         adoptNormalFlightFrame();
+        rollRate = expertRollRate * 0.35;
       }
 
       controlMode = nextMode;
@@ -1447,6 +1682,122 @@
       showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
     }
 
+    function updateHoldInputs() {
+      if (cameraKeyHold.pressed && !cameraKeyHold.focus &&
+          performance.now() - cameraKeyHold.pressedAt >= TARGET_FOCUS_HOLD_MS) {
+        cameraKeyHold.focus = true;
+      }
+    }
+
+    function resolveCameraFocusTarget() {
+      const source = gamepadInput.targetFocus ? "gamepad" : (cameraKeyHold.focus ? "keyboard" : null);
+      if (!source || gameState !== STATE_PLAYING) {
+        cameraFocusActive = false;
+        cameraFocusTargetId = null;
+        cameraFocusSource = null;
+        return null;
+      }
+
+      const requestedId = lock.targetId ?? preferredTargetId ?? cameraFocusTargetId;
+      const target = enemies.find((enemy) => enemy.alive && enemy.id === requestedId);
+      if (!target) {
+        cameraFocusActive = false;
+        cameraFocusTargetId = null;
+        cameraFocusSource = source;
+        return null;
+      }
+
+      cameraFocusActive = true;
+      cameraFocusTargetId = target.id;
+      cameraFocusSource = source;
+      return target;
+    }
+
+    function ensureAudio() {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) return;
+      if (!audioSystem.context) {
+        try {
+          audioSystem.context = new AudioCtor();
+          audioSystem.master = audioSystem.context.createGain();
+          audioSystem.master.gain.value = 0.2;
+          audioSystem.master.connect(audioSystem.context.destination);
+        } catch {
+          audioSystem.context = null;
+          audioSystem.master = null;
+          return;
+        }
+      }
+      if (audioSystem.context.state === "suspended") {
+        void audioSystem.context.resume().catch(() => {});
+      }
+    }
+
+    function playTone(frequency, duration, volume = 0.12, type = "sine", delay = 0) {
+      const context = audioSystem.context;
+      const master = audioSystem.master;
+      if (!context || !master || context.state !== "running") return;
+
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const start = context.currentTime + Math.max(0, delay);
+      const end = start + Math.max(0.02, duration);
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), start + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+      oscillator.connect(gain);
+      gain.connect(master);
+      oscillator.start(start);
+      oscillator.stop(end + 0.02);
+      oscillator.addEventListener("ended", () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      }, { once: true });
+    }
+
+    function updateAudioCues(dt) {
+      nearestMissileThreat = gameState === STATE_PLAYING ? getNearestEnemyMissileThreat() : null;
+
+      if (gameState !== STATE_PLAYING) {
+        audioSystem.lockTimer = 0;
+        audioSystem.threatTimer = 0;
+        audioSystem.lastLocked = false;
+        return;
+      }
+
+      if (lock.locked && !audioSystem.lastLocked) {
+        audioSystem.lockCompleteCues += 1;
+        playTone(880, 0.11, 0.12, "square");
+        playTone(1180, 0.16, 0.09, "sine", 0.08);
+      }
+
+      if (!lock.locked && lock.progress > 0) {
+        audioSystem.lockTimer -= dt;
+        if (audioSystem.lockTimer <= 0) {
+          audioSystem.lockBeeps += 1;
+          playTone(470 + lock.progress * 420, 0.065, 0.075, "square");
+          audioSystem.lockTimer = THREE.MathUtils.lerp(0.34, 0.11, lock.progress);
+        }
+      } else {
+        audioSystem.lockTimer = 0;
+      }
+      audioSystem.lastLocked = lock.locked;
+
+      if (nearestMissileThreat) {
+        audioSystem.threatTimer -= dt;
+        if (audioSystem.threatTimer <= 0) {
+          audioSystem.threatBeeps += 1;
+          const urgency = THREE.MathUtils.clamp(1 - nearestMissileThreat.distance / 900, 0, 1);
+          playTone(250 + urgency * 220, 0.085, 0.09, "sawtooth");
+          audioSystem.threatTimer = THREE.MathUtils.lerp(0.5, 0.14, urgency);
+        }
+      } else {
+        audioSystem.threatTimer = 0;
+      }
+    }
+
     function damping(k, dt) {
       return 1 - Math.pow(k, dt);
     }
@@ -1475,13 +1826,14 @@
       playerModel.group.visible = true;
       score = 0;
       health = 100;
-      missileCount = 6;
+      missileCount = PLAYER_MISSILE_CAPACITY;
       kills = 0;
       waveNumber = 0;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
       gunShots = 0;
       missilesLaunched = 0;
+      enemyMissilesLaunched = 0;
       waveClearTimer = -1;
       lock.targetId = null;
       lock.progress = 0;
@@ -1492,6 +1844,24 @@
       missionElapsed = 0;
       playerHitCooldown = 0;
       preferredTargetId = null;
+      rollRate = 0;
+      expertRollRate = 0;
+      stallTimer = 0;
+      stallSeverity = 0;
+      stalling = false;
+      playerTurnFactor = 1;
+      playerControlAuthority = 1;
+      cameraFocusActive = false;
+      cameraFocusTargetId = null;
+      cameraFocusSource = null;
+      nearestMissileThreat = null;
+      cameraKeyHold.pressed = false;
+      cameraKeyHold.focus = false;
+      gamepadInput.targetFocus = false;
+      gamepadInput.targetLong = false;
+      audioSystem.lockTimer = 0;
+      audioSystem.threatTimer = 0;
+      audioSystem.lastLocked = false;
       setState(STATE_PLAYING);
       spawnWave(1);
       showBanner("WAVE 1 · ENGAGE", 2.1);
@@ -1523,6 +1893,11 @@
       player.position.set(0, 260, 620);
       playerFlightFrame.identity();
       playerBank = 0;
+      rollRate = 0;
+      expertRollRate = 0;
+      stallTimer = 0;
+      stallSeverity = 0;
+      stalling = false;
       syncPlayerOrientation();
     }
 
@@ -1541,42 +1916,105 @@
       const rollInput = THREE.MathUtils.clamp(keyboardRoll + gamepadInput.roll, -1, 1);
       const yawInput = THREE.MathUtils.clamp(keyboardYaw + gamepadInput.yaw, -1, 1);
 
+      const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") || gamepadInput.boost;
+      const brake = keys.has("ControlLeft") || keys.has("ControlRight") || gamepadInput.brake;
+      const targetSpeed = boost ? BOOST_SPEED : (brake ? BRAKE_SPEED : CRUISE_SPEED);
+      const speedResponse = boost ? 0.004 : (brake ? 0.008 : 0.012);
+      playerSpeed = THREE.MathUtils.lerp(playerSpeed, targetSpeed, damping(speedResponse, dt));
+
+      forwardOf(player, tmpV9);
+      const lowSpeedRatio = THREE.MathUtils.clamp(
+        (STALL_ENTRY_SPEED - playerSpeed) / Math.max(1, STALL_ENTRY_SPEED - STALL_DEEP_SPEED),
+        0,
+        1
+      );
+      const pitchDemand = Math.abs(pitchInput);
+      const noseHighDemand = Math.max(0, tmpV9.y - 0.18);
+      if (playerSpeed < STALL_ENTRY_SPEED) {
+        const buildRate = 0.28 + lowSpeedRatio * 1.35 + pitchDemand * 0.42 + noseHighDemand * 0.32;
+        stallTimer += dt * buildRate;
+      } else {
+        const recoveryRate = playerSpeed > STALL_RECOVERY_SPEED ? 1.9 : 0.78;
+        stallTimer -= dt * recoveryRate;
+      }
+      stallTimer = THREE.MathUtils.clamp(stallTimer, 0, 1);
+      const targetSeverity = THREE.MathUtils.smoothstep(stallTimer, 0.18, 0.88);
+      stallSeverity = THREE.MathUtils.lerp(stallSeverity, targetSeverity, damping(0.025, dt));
+      if (playerSpeed > STALL_RECOVERY_SPEED && stallTimer <= 0.02) stallSeverity = Math.max(0, stallSeverity - dt * 1.4);
+      stallSeverity = THREE.MathUtils.clamp(stallSeverity, 0, 1);
+      stalling = stallSeverity > 0.24;
+
+      playerControlAuthority = THREE.MathUtils.clamp(1 - stallSeverity * 0.82, 0.18, 1);
+      const rawTurnFactor = THREE.MathUtils.clamp(
+        Math.pow(CRUISE_SPEED / Math.max(playerSpeed, STALL_DEEP_SPEED), 1.18),
+        0.58,
+        1.92
+      );
+      playerTurnFactor = rawTurnFactor * (1 - stallSeverity * 0.78);
+      const pitchManeuverFactor = THREE.MathUtils.clamp(
+        Math.pow(CRUISE_SPEED / Math.max(playerSpeed, STALL_ENTRY_SPEED * 0.9), 0.62),
+        0.72,
+        1.46
+      );
+
       if (controlMode === CONTROL_NORMAL) {
         const targetBank = rollInput * MAX_BANK_ANGLE;
-        playerBank = THREE.MathUtils.lerp(playerBank, targetBank, damping(BANK_RESPONSE_K, dt));
-
-        const turnSpeedFactor = THREE.MathUtils.clamp(
-          CRUISE_SPEED / Math.max(playerSpeed, 1),
-          0.72,
-          1.28
+        const bankError = targetBank - playerBank;
+        const rollAcceleration = bankError * NORMAL_ROLL_SPRING * playerControlAuthority -
+          rollRate * NORMAL_ROLL_DAMPING;
+        rollRate += rollAcceleration * dt;
+        rollRate = THREE.MathUtils.clamp(
+          rollRate,
+          -NORMAL_ROLL_RATE_LIMIT * playerControlAuthority,
+          NORMAL_ROLL_RATE_LIMIT * playerControlAuthority
         );
-        const turnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * turnSpeedFactor;
+        playerBank += rollRate * dt;
+        playerBank = THREE.MathUtils.clamp(playerBank, -MAX_BANK_ANGLE * 1.12, MAX_BANK_ANGLE * 1.12);
+
+        const turnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * playerTurnFactor;
         if (Math.abs(turnRate) > 0.00001) {
           tmpQ1.setFromAxisAngle(WORLD_UP, turnRate * dt);
           playerFlightFrame.premultiply(tmpQ1).normalize();
         }
 
         if (Math.abs(pitchInput) > 0.00001) {
-          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, pitchInput * PITCH_RATE * dt);
+          tmpQ1.setFromAxisAngle(
+            LOCAL_RIGHT,
+            pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority * dt
+          );
+          playerFlightFrame.multiply(tmpQ1).normalize();
+        }
+
+        if (stallSeverity > 0.005) {
+          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, -STALL_NOSE_DROP_RATE * stallSeverity * dt);
           playerFlightFrame.multiply(tmpQ1).normalize();
         }
         syncPlayerOrientation();
       } else {
-        if (Math.abs(pitchInput) > 0.00001) player.rotateX(pitchInput * PITCH_RATE * dt);
-        if (Math.abs(yawInput) > 0.00001) player.rotateY(yawInput * EXPERT_YAW_RATE * dt);
-        if (Math.abs(rollInput) > 0.00001) player.rotateZ(rollInput * EXPERT_ROLL_RATE * dt);
+        const targetRollRate = rollInput * EXPERT_ROLL_RATE * playerControlAuthority;
+        expertRollRate = THREE.MathUtils.lerp(
+          expertRollRate,
+          targetRollRate,
+          damping(EXPERT_ROLL_RESPONSE_K, dt)
+        );
+        rollRate = expertRollRate;
+
+        if (Math.abs(pitchInput) > 0.00001) {
+          player.rotateX(pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority * dt);
+        }
+        if (Math.abs(yawInput) > 0.00001) {
+          player.rotateY(yawInput * EXPERT_YAW_RATE * playerTurnFactor * playerControlAuthority * dt);
+        }
+        if (Math.abs(expertRollRate) > 0.00001) player.rotateZ(expertRollRate * dt);
+        if (stallSeverity > 0.005) player.rotateX(-STALL_NOSE_DROP_RATE * stallSeverity * dt);
         player.quaternion.normalize();
         playerFlightFrame.copy(player.quaternion);
         playerBank = 0;
       }
 
-      const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") || gamepadInput.boost;
-      const brake = keys.has("ControlLeft") || keys.has("ControlRight") || gamepadInput.brake;
-      const targetSpeed = boost ? BOOST_SPEED : (brake ? BRAKE_SPEED : CRUISE_SPEED);
-      playerSpeed = THREE.MathUtils.lerp(playerSpeed, targetSpeed, damping(0.006, dt));
-
       forwardOf(player, tmpV1);
       player.position.addScaledVector(tmpV1, playerSpeed * dt);
+      if (stallSeverity > 0.005) player.position.y -= STALL_SINK_RATE * stallSeverity * dt;
 
       if (player.position.y <= 4) {
         player.position.y = 4;
@@ -1589,9 +2027,14 @@
         gunCooldown += 1 / GUN_RATE;
       }
 
-      const flameScale = boost ? 2.15 : (brake ? 0.62 : 1.15);
+      const flameScale = boost ? 2.4 : (brake ? 0.48 : 1.15);
+      const stallFlameFactor = 1 - stallSeverity * 0.42;
       for (const flame of playerModel.flames) {
-        flame.scale.z = THREE.MathUtils.lerp(flame.scale.z, flameScale, damping(0.001, dt));
+        flame.scale.z = THREE.MathUtils.lerp(
+          flame.scale.z,
+          flameScale * stallFlameFactor,
+          damping(0.001, dt)
+        );
       }
       ui.boostIndicator.classList.toggle("active", boost);
     }
@@ -1710,6 +2153,131 @@
       const missile = missilesInFlight[index];
       scene.remove(missile.mesh);
       missilesInFlight.splice(index, 1);
+    }
+
+    function attemptEnemyMissile(enemy) {
+      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
+      const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+      if (!profile) return false;
+
+      tmpV1.copy(player.position).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range) return false;
+      tmpV1.multiplyScalar(1 / distance);
+      forwardOf(enemy.group, tmpV2);
+      if (tmpV2.dot(tmpV1) < profile.launchDot) return false;
+
+      rightOf(enemy.group, tmpV3);
+      upOf(enemy.group, tmpV4);
+      const root = createMissileModel(true);
+      root.position.copy(enemy.group.position)
+        .addScaledVector(tmpV2, 7.2)
+        .addScaledVector(tmpV3, enemy.id % 2 === 0 ? 2.6 : -2.6)
+        .addScaledVector(tmpV4, -0.7);
+      root.quaternion.copy(enemy.group.quaternion);
+      scene.add(root);
+
+      enemyMissileSerial += 1;
+      enemyMissilesLaunched += 1;
+      enemyMissiles.push({
+        id: enemyMissileSerial,
+        mesh: root,
+        ownerId: enemy.id,
+        ownerType: enemy.type,
+        speed: profile.speed,
+        maxSpeed: profile.maxSpeed,
+        turnRate: profile.turnRate,
+        damage: profile.damage,
+        lifeLimit: profile.life,
+        life: 0,
+        trailTimer: 0
+      });
+      createMuzzleFlash(root.position, enemy.spec.tracerColor);
+      return true;
+    }
+
+    function updateEnemyMissiles(dt) {
+      for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) {
+        const missile = enemyMissiles[i];
+        missile.life += dt;
+        missile.trailTimer -= dt;
+
+        tmpV1.copy(player.position).sub(missile.mesh.position);
+        const distance = tmpV1.length();
+        if (distance < 13) {
+          createExplosion(missile.mesh.position, 0xff4d45, 0.72);
+          applyPlayerDamage(missile.damage);
+          removeEnemyMissile(i);
+          continue;
+        }
+
+        if (distance > 0.001) {
+          tmpV1.multiplyScalar(1 / distance);
+          tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+          missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+          missile.mesh.quaternion.normalize();
+        }
+
+        missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed, damping(0.022, dt));
+        forwardOf(missile.mesh, tmpV2);
+        missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
+
+        if (missile.trailTimer <= 0) {
+          tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.1);
+          createSmokePuff(tmpV3, 0.27);
+          missile.trailTimer += 0.075;
+        }
+
+        if (missile.life > missile.lifeLimit || missile.mesh.position.y < 0 ||
+            missile.mesh.position.distanceToSquared(player.position) > 1800 * 1800 ||
+            gameState !== STATE_PLAYING) {
+          createImpactBurst(missile.mesh.position, 0xff684e, 0.48);
+          removeEnemyMissile(i);
+        }
+      }
+    }
+
+    function removeEnemyMissile(index) {
+      const missile = enemyMissiles[index];
+      if (!missile) return;
+      scene.remove(missile.mesh);
+      enemyMissiles.splice(index, 1);
+    }
+
+    function describeMissileDirection(relative) {
+      const distance = relative.length();
+      if (distance < 0.001) return "IMPACT";
+      relative.multiplyScalar(1 / distance);
+      forwardOf(player, tmpV6);
+      rightOf(player, tmpV7);
+      upOf(player, tmpV8);
+      const forwardDot = relative.dot(tmpV6);
+      const rightDot = relative.dot(tmpV7);
+      const upDot = relative.dot(tmpV8);
+      const horizontalMagnitude = Math.max(Math.abs(forwardDot), Math.abs(rightDot));
+      if (Math.abs(upDot) > horizontalMagnitude * 1.15) return upDot > 0 ? "ABOVE" : "BELOW";
+      if (Math.abs(rightDot) > Math.abs(forwardDot)) return rightDot > 0 ? "RIGHT" : "LEFT";
+      return forwardDot > 0 ? "FRONT" : "REAR";
+    }
+
+    function getNearestEnemyMissileThreat() {
+      let nearest = null;
+      let bestDistance = Infinity;
+      for (const missile of enemyMissiles) {
+        tmpV10.copy(missile.mesh.position).sub(player.position);
+        const distance = tmpV10.length();
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          nearest = {
+            id: missile.id,
+            ownerId: missile.ownerId,
+            ownerType: missile.ownerType,
+            distance,
+            direction: describeMissileDirection(tmpV10.clone())
+          };
+        }
+      }
+      return nearest;
     }
 
     function updateLock(dt) {
@@ -1833,6 +2401,7 @@
         waypoints,
         waypointIndex: 0,
         fireCooldown: spec.fireMin + Math.random() * spec.fireSpread,
+        missileCooldown: 1.4 + slot * 0.9 + Math.random() * 0.4,
         deadTimer: 0,
         hitFlash: 0,
         seed: Math.random() * Math.PI * 2,
@@ -1946,6 +2515,15 @@
         if (enemy.fireCooldown <= 0) {
           attemptEnemyAttack(enemy);
           enemy.fireCooldown = spec.fireMin + Math.random() * spec.fireSpread;
+        }
+
+        enemy.missileCooldown -= dt;
+        if (enemy.missileCooldown <= 0) {
+          const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+          const launched = attemptEnemyMissile(enemy);
+          enemy.missileCooldown = launched && profile
+            ? profile.cooldownMin + Math.random() * profile.cooldownSpread
+            : 1.15 + Math.random() * 0.85;
         }
       }
     }
@@ -2069,6 +2647,11 @@
       if (gameState !== STATE_PLAYING) return;
       keys.clear();
       resetLock();
+      cameraFocusActive = false;
+      cameraFocusTargetId = null;
+      cameraFocusSource = null;
+      nearestMissileThreat = null;
+      for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) removeEnemyMissile(i);
       ui.boostIndicator.classList.remove("active");
       if (score > highscore) {
         highscore = score;
@@ -2081,6 +2664,7 @@
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
       const profile = CAMERA_PROFILES[cameraMode] || CAMERA_PROFILES.chase;
+      const focusTarget = resolveCameraFocusTarget();
 
       tmpV3.copy(WORLD_UP)
         .multiplyScalar(1 - profile.rollFollow)
@@ -2100,13 +2684,16 @@
       const desiredLook = tmpV5.copy(player.position)
         .addScaledVector(tmpV1, profile.look)
         .addScaledVector(tmpV3, profile.lookHeight);
+      if (focusTarget) {
+        desiredLook.copy(focusTarget.group.position).addScaledVector(WORLD_UP, 1.8);
+      }
 
       camera.position.lerp(desiredPosition, damping(0.0017, dt));
-      cameraLook.lerp(desiredLook, damping(0.0005, dt));
+      cameraLook.lerp(desiredLook, damping(focusTarget ? 0.00008 : 0.0005, dt));
       cameraUp.lerp(tmpV3, damping(0.003, dt)).normalize();
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       tmpQ1.setFromRotationMatrix(tmpM1);
-      camera.quaternion.slerp(tmpQ1, damping(0.0007, dt));
+      camera.quaternion.slerp(tmpQ1, damping(focusTarget ? 0.00012 : 0.0007, dt));
       camera.quaternion.normalize();
 
       world.skyGroup.position.copy(camera.position);
@@ -2199,8 +2786,26 @@
       ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / 100, 0, 1)})`;
       ui.statusPanel.classList.toggle("healthLow", health <= 30);
 
-      if (ui.missilePips.childElementCount !== 6) {
-        ui.missilePips.replaceChildren(...Array.from({ length: 6 }, () => {
+      const lowSpeed = gameState === STATE_PLAYING && playerSpeed < STALL_WARNING_SPEED;
+      ui.stallWarning.classList.toggle("active", lowSpeed || stalling);
+      ui.stallWarning.classList.toggle("caution", lowSpeed && !stalling);
+      ui.stallWarning.textContent = stalling
+        ? "STALL · ACCELERATE / LOWER NOSE"
+        : "LOW SPEED · STALL RISK";
+
+      ui.cameraFocusStatus.classList.toggle("active", cameraFocusActive);
+      ui.cameraFocusStatus.textContent = cameraFocusActive
+        ? `TARGET VIEW · ${cameraFocusTargetId}`
+        : "TARGET VIEW";
+
+      const threat = nearestMissileThreat;
+      ui.missileWarning.classList.toggle("active", Boolean(threat));
+      ui.missileWarning.textContent = threat
+        ? `MISSILE ALERT · ${threat.direction} · ${Math.round(threat.distance)}M`
+        : "MISSILE ALERT";
+
+      if (ui.missilePips.childElementCount !== PLAYER_MISSILE_CAPACITY) {
+        ui.missilePips.replaceChildren(...Array.from({ length: PLAYER_MISSILE_CAPACITY }, () => {
           const pip = document.createElement("span");
           pip.className = "missilePip";
           return pip;
@@ -2232,6 +2837,18 @@
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
       hook.weapons.gunShots = gunShots;
       hook.weapons.missilesLaunched = missilesLaunched;
+      hook.weapons.enemyMissilesLaunched = enemyMissilesLaunched;
+      hook.flight.stalling = stalling;
+      hook.flight.stallSeverity = stallSeverity;
+      hook.flight.rollRate = rollRate;
+      hook.flight.turnFactor = playerTurnFactor;
+      hook.flight.controlAuthority = playerControlAuthority;
+      hook.cameraFocus.active = cameraFocusActive;
+      hook.cameraFocus.targetId = cameraFocusTargetId;
+      hook.cameraFocus.source = cameraFocusSource;
+      hook.audio.lockBeeps = audioSystem.lockBeeps;
+      hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
+      hook.audio.threatBeeps = audioSystem.threatBeeps;
       hook.player.position.x = player.position.x;
       hook.player.position.y = player.position.y;
       hook.player.position.z = player.position.z;
@@ -2257,8 +2874,21 @@
         speed: enemy.speed,
         mode: enemy.mode,
         formationLeaderId: enemy.formationLeaderId,
-        formationActive: enemy.formationActive
+        formationActive: enemy.formationActive,
+        missileReadyIn: Math.max(0, enemy.missileCooldown)
       }));
+      hook.threats.incomingMissiles = enemyMissiles.map((missile) => ({
+        id: missile.id,
+        ownerId: missile.ownerId,
+        ownerType: missile.ownerType,
+        position: {
+          x: missile.mesh.position.x,
+          y: missile.mesh.position.y,
+          z: missile.mesh.position.z
+        },
+        distance: missile.mesh.position.distanceTo(player.position)
+      }));
+      hook.threats.nearest = nearestMissileThreat ? { ...nearestMissileThreat } : null;
       hook.lock.targetId = lock.targetId;
       hook.lock.progress = lock.progress;
       hook.lock.locked = lock.locked;
@@ -2322,6 +2952,27 @@
         ctx.shadowBlur = 0;
       }
 
+      for (const missile of enemyMissiles) {
+        tmpV3.copy(missile.mesh.position).sub(player.position);
+        const rightDistance = tmpV3.dot(tmpV2);
+        const forwardDistance = tmpV3.dot(lastRadarForward);
+        const planarDistance = Math.hypot(rightDistance, forwardDistance);
+        const scale = Math.min(1, planarDistance / RADAR_RANGE);
+        const angle = Math.atan2(rightDistance, forwardDistance);
+        const px = center + Math.sin(angle) * radius * scale;
+        const py = center - Math.cos(angle) * radius * scale;
+        ctx.fillStyle = "#ffd84f";
+        ctx.shadowColor = "#ff7b32";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(px, py - 4);
+        ctx.lineTo(px - 3.5, py + 3);
+        ctx.lineTo(px + 3.5, py + 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
       ctx.fillStyle = "#aaf8ff";
       ctx.shadowColor = "#72eaff";
       ctx.shadowBlur = 7;
@@ -2371,6 +3022,10 @@
 
       for (const missile of missilesInFlight) scene.remove(missile.mesh);
       missilesInFlight.length = 0;
+
+      for (const missile of enemyMissiles) scene.remove(missile.mesh);
+      enemyMissiles.length = 0;
+      nearestMissileThreat = null;
 
       for (const effect of effects) {
         scene.remove(effect.node);
@@ -2570,15 +3225,28 @@
       return new THREE.Vector3(radius * Math.cos(angle), z, radius * Math.sin(angle));
     }
 
-    function createMissileModel() {
+    function createMissileModel(enemyOwned = false) {
       const root = new THREE.Group();
-      const body = new THREE.Mesh(geometry.missileBody, shared.missileBody);
-      const nose = new THREE.Mesh(geometry.missileNose, shared.missileNose);
-      const fins = new THREE.Mesh(geometry.missileFins, shared.missileFin);
-      const glow = new THREE.Mesh(geometry.missileGlow, shared.missileGlow);
+      const body = new THREE.Mesh(
+        geometry.missileBody,
+        enemyOwned ? shared.enemyMissileBody : shared.missileBody
+      );
+      const nose = new THREE.Mesh(
+        geometry.missileNose,
+        enemyOwned ? shared.enemyMissileNose : shared.missileNose
+      );
+      const fins = new THREE.Mesh(
+        geometry.missileFins,
+        enemyOwned ? shared.enemyMissileFin : shared.missileFin
+      );
+      const glow = new THREE.Mesh(
+        geometry.missileGlow,
+        enemyOwned ? shared.enemyMissileGlow : shared.missileGlow
+      );
       nose.position.z = -2.35;
       fins.position.z = 1.25;
       glow.position.z = 2.45;
+      if (enemyOwned) root.scale.setScalar(0.88);
       root.add(body, nose, fins, glow);
       return root;
     }
@@ -2664,6 +3332,16 @@
           color: 0xffcf69,
           transparent: true,
           opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        }),
+        enemyMissileBody: new THREE.MeshStandardMaterial({ color: 0x692025, metalness: 0.5, roughness: 0.42 }),
+        enemyMissileNose: new THREE.MeshStandardMaterial({ color: 0xff4c42, emissive: 0x64110d, emissiveIntensity: 1.2, roughness: 0.34 }),
+        enemyMissileFin: new THREE.MeshStandardMaterial({ color: 0x241518, metalness: 0.4, roughness: 0.48 }),
+        enemyMissileGlow: new THREE.MeshBasicMaterial({
+          color: 0xff3b25,
+          transparent: true,
+          opacity: 0.95,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         })
