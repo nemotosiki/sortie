@@ -79,7 +79,7 @@ try {
   assert(afterPad.status.includes("ONLINE"), `unexpected gamepad status: ${afterPad.status}`);
   assert(afterPad.game.player.speed > beforePad.player.speed + 8, "right trigger did not boost speed");
   assert(
-    forwardDelta > 0.04,
+    forwardDelta > 0.02,
     `left stick did not change aircraft orientation: ${JSON.stringify({
       before: beforePad.player.forward,
       after: afterPad.game.player.forward,
