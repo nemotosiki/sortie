@@ -1,0 +1,104 @@
+name: Restore enemy aircraft variants
+
+on:
+  push:
+    branches:
+      - agent/restore-enemy-variants
+    paths:
+      - ".sortie-variants/ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/restore-enemy-variants
+
+      - name: Apply enemy variants and validate
+        shell: bash
+        run: |
+          set +e
+          work=/tmp/sortie-variants
+          diagnostic=.sortie-variants/diagnostic.txt
+          mkdir -p "$work"
+          : > "$diagnostic"
+
+          base64 --decode .sortie-variants/payload.tgz.b64 > "$work/payload.tgz"
+          decode_status=$?
+          echo "decode_status=$decode_status" >> "$diagnostic"
+          echo "payload_sha256=$(sha256sum "$work/payload.tgz" | awk '{print $1}')" >> "$diagnostic"
+
+          if [ "$decode_status" -eq 0 ]; then
+            tar -xzf "$work/payload.tgz" -C "$work" >> "$diagnostic" 2>&1
+            unpack_status=$?
+          else
+            unpack_status=99
+          fi
+          echo "unpack_status=$unpack_status" >> "$diagnostic"
+
+          if [ "$unpack_status" -eq 0 ]; then
+            python3 "$work/apply_variants.py" >> "$diagnostic" 2>&1
+            patch_status=$?
+          else
+            patch_status=99
+          fi
+          echo "patch_status=$patch_status" >> "$diagnostic"
+
+          if [ "$patch_status" -eq 0 ]; then
+            node --check /tmp/sortie-game.mjs >> "$diagnostic" 2>&1
+            node_status=$?
+          else
+            node_status=99
+          fi
+          echo "node_status=$node_status" >> "$diagnostic"
+
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          echo "chrome_bin=$chrome_bin" >> "$diagnostic"
+
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
+            npm install --prefix "$work" --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
+            npm_status=$?
+          else
+            npm_status=99
+          fi
+          echo "npm_status=$npm_status" >> "$diagnostic"
+
+          browser_status=99
+          if [ "$npm_status" -eq 0 ]; then
+            python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-variants-server.log 2>&1 &
+            server_pid=$!
+            sleep 1
+            NODE_PATH="$work/node_modules" CHROME_BIN="$chrome_bin" node "$work/browser_test.mjs" >> "$diagnostic" 2>&1
+            browser_status=$?
+            kill "$server_pid" 2>/dev/null || true
+            echo "--- server log ---" >> "$diagnostic"
+            cat /tmp/sortie-variants-server.log >> "$diagnostic" 2>&1
+          fi
+          echo "browser_status=$browser_status" >> "$diagnostic"
+
+          rm -rf "$work/node_modules"
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+
+          if [ "$decode_status" -eq 0 ] && [ "$unpack_status" -eq 0 ] && [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
+            rm -rf .sortie-variants
+            rm -f .github/workflows/restore-enemy-variants.yml
+            git add -A
+            git commit -m "Restore enemy aircraft variants"
+            git push origin HEAD:agent/restore-enemy-variants
+            exit 0
+          fi
+
+          git checkout -- index.html 2>/dev/null || true
+          git add "$diagnostic"
+          git commit -m "Record enemy variants diagnostics"
+          git push origin HEAD:agent/restore-enemy-variants
+          cat "$diagnostic"
+          exit 1
