@@ -53,6 +53,40 @@ const displayedBank = async () => page.evaluate(() => {
   return match ? Math.abs(Number(match[1])) : 0;
 });
 
+const collectSimulationDistance = async (targetDistance, timeoutMs = 20000) => page.evaluate(
+  ({ targetDistance, timeoutMs }) => new Promise((resolve, reject) => {
+    const samples = [];
+    let lastPosition = { ...window.__game.player.position };
+    let traveled = 0;
+    const started = performance.now();
+
+    const step = () => {
+      const position = { ...window.__game.player.position };
+      const forward = { ...window.__game.player.forward };
+      traveled += Math.hypot(
+        position.x - lastPosition.x,
+        position.y - lastPosition.y,
+        position.z - lastPosition.z
+      );
+      lastPosition = position;
+      samples.push({ position, forward, traveled });
+
+      if (traveled >= targetDistance) {
+        resolve(samples);
+        return;
+      }
+      if (performance.now() - started >= timeoutMs) {
+        reject(new Error(`simulation advanced only ${traveled}m before timeout`));
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+
+    requestAnimationFrame(step);
+  }),
+  { targetDistance, timeoutMs }
+);
+
 try {
   await page.goto("http://127.0.0.1:4173/index.html", { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.__game?.state === "ready");
@@ -72,20 +106,15 @@ try {
     window.dispatchEvent(new Event("gamepadconnected"));
   });
 
-  const headings = [];
-  let finalForward = null;
-  for (let i = 0; i < 14; i += 1) {
-    await page.waitForTimeout(100);
-    finalForward = await page.evaluate(() => ({ ...window.__game.player.forward }));
-    headings.push(headingOf(finalForward));
-  }
-
+  const turnSamples = await collectSimulationDistance(220);
+  const headings = turnSamples.map((sample) => headingOf(sample.forward));
   for (let i = 1; i < headings.length; i += 1) {
     while (headings[i] - headings[i - 1] > Math.PI) headings[i] -= Math.PI * 2;
     while (headings[i] - headings[i - 1] < -Math.PI) headings[i] += Math.PI * 2;
   }
   const headingChange = headings.at(-1) - headings[0];
   const worstBacktrack = Math.min(...headings.slice(1).map((value, index) => value - headings[index]));
+  const finalForward = turnSamples.at(-1).forward;
   const bankDuringTurn = await displayedBank();
   const padStatus = await page.evaluate(() => document.getElementById("gamepadStatus").textContent);
 
@@ -99,7 +128,7 @@ try {
     window.__testPad.axes[0] = 0;
     window.__testPad.axes[1] = 0;
   });
-  await page.waitForTimeout(900);
+  await collectSimulationDistance(180);
   const bankAfterRelease = await displayedBank();
   assert(bankAfterRelease < 0.08, `auto-level did not settle after releasing roll: ${bankAfterRelease}`);
 
@@ -107,10 +136,10 @@ try {
   await page.waitForFunction(() => window.__game?.state === "playing");
   await page.keyboard.down("ArrowLeft");
   await page.keyboard.down("ArrowDown");
-  await page.waitForTimeout(1200);
+  const keyboardSamples = await collectSimulationDistance(160);
   await page.keyboard.up("ArrowDown");
   await page.keyboard.up("ArrowLeft");
-  const keyboardForward = await page.evaluate(() => ({ ...window.__game.player.forward }));
+  const keyboardForward = keyboardSamples.at(-1).forward;
   const keyboardHeading = headingOf(keyboardForward);
   assert(keyboardHeading < -0.24, `diagonal keyboard input did not create a left turn: ${keyboardHeading}`);
   assert(keyboardForward.y > 0.12, `keyboard pitch did not raise the nose: ${keyboardForward.y}`);
