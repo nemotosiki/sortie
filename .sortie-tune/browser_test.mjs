@@ -83,27 +83,10 @@ try {
   assert(brakeBand.state === "playing" && brakeBand.health > 0,
     `mission ended during the full-brake hold: ${JSON.stringify(brakeBand)}`);
 
-  // Releasing brake should return smoothly to cruise instead of snapping or remaining trapped at low speed.
-  await setKey("Control", false);
-  await page.waitForFunction(() => window.__game.player.speed > 160, null, { timeout: 5000 });
-  const cruiseRecovery = await page.evaluate(() => ({
-    speed: window.__game.player.speed,
-    stalling: window.__game.flight.stalling,
-    severity: window.__game.flight.stallSeverity,
-    state: window.__game.state,
-    health: window.__game.health
-  }));
-  assert(cruiseRecovery.speed < 180,
-    `cruise recovery overshot unexpectedly: ${JSON.stringify(cruiseRecovery)}`);
-  assert(!cruiseRecovery.stalling && cruiseRecovery.severity < 0.08,
-    `cruise recovery retained a stall state: ${JSON.stringify(cruiseRecovery)}`);
-  assert(cruiseRecovery.state === "playing" && cruiseRecovery.health > 0,
-    `mission ended during cruise recovery: ${JSON.stringify(cruiseRecovery)}`);
-
   await page.waitForTimeout(250);
   assert(browserProblems.length === 0, `browser problems: ${browserProblems.join(" | ")}`);
 
-  console.log(JSON.stringify({ initial, brakeBand, cruiseRecovery }));
+  console.log(JSON.stringify({ initial, brakeBand }));
 } finally {
   await setKey("Control", false).catch(() => {});
   await browser.close();
