@@ -66,8 +66,10 @@ path.write_text(text, encoding="utf-8")
 
 # Guard the intended envelope. Straight full-brake flight must be recoverable and stall-free,
 # while a full high-G pull must still be capable of driving the aircraft below stall entry speed.
+CRUISE_SPEED = 170
 BRAKE_SPEED = 128
 BRAKE_HIGH_G_SPEED_DROP = 52
+CRUISE_SPEED_RESPONSE_K = 0.055
 STALL_WARNING_SPEED = 96
 STALL_ENTRY_SPEED = 84
 STALL_DEEP_SPEED = 62
@@ -75,4 +77,13 @@ STALL_RECOVERY_SPEED = 114
 
 assert BRAKE_SPEED > STALL_RECOVERY_SPEED > STALL_WARNING_SPEED > STALL_ENTRY_SPEED > STALL_DEEP_SPEED
 assert BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP < STALL_ENTRY_SPEED
-print("patched index.html with safe brake band and high-G induced-drag stall")
+
+# damping(k, dt) makes the remaining speed error scale by k ** elapsed_seconds.
+# Starting from the brake band, one second without brake should already be near cruise.
+cruise_after_one_second = CRUISE_SPEED + (BRAKE_SPEED - CRUISE_SPEED) * CRUISE_SPEED_RESPONSE_K
+assert 160 < cruise_after_one_second < CRUISE_SPEED
+
+print(
+    "patched index.html with safe brake band, high-G induced-drag stall, "
+    f"and one-second cruise recovery to {cruise_after_one_second:.2f}"
+)
