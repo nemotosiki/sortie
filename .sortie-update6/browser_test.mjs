@@ -53,6 +53,7 @@ const setButton = async (index, pressed) => page.evaluate(({ index, pressed }) =
   button.touched = pressed;
   button.value = pressed ? 1 : 0;
   window.__testPad.timestamp += 1;
+  window.dispatchEvent(new Event("gamepadconnected"));
 }, { index, pressed });
 
 const tapButton = async (index, hold = 520, settle = 360) => {
