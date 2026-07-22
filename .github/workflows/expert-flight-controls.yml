@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - ".sortie-expert/payload.tgz.b64"
+      - ".sortie-expert/ready"
 
 permissions:
   contents: write
@@ -23,20 +23,11 @@ jobs:
         shell: bash
         run: |
           set +e
-          work=/tmp/sortie-expert
           diagnostic=.sortie-expert/diagnostic.txt
-          mkdir -p "$work"
           : > "$diagnostic"
-          base64 --decode .sortie-expert/payload.tgz.b64 | tar -xz -C "$work" >> "$diagnostic" 2>&1
-          unpack_status=$?
-          echo "unpack_status=$unpack_status" >> "$diagnostic"
 
-          if [ "$unpack_status" -eq 0 ]; then
-            python3 "$work/apply_expert.py" >> "$diagnostic" 2>&1
-            patch_status=$?
-          else
-            patch_status=99
-          fi
+          python3 .sortie-expert/apply_expert.py >> "$diagnostic" 2>&1
+          patch_status=$?
           echo "patch_status=$patch_status" >> "$diagnostic"
 
           if [ "$patch_status" -eq 0 ]; then
@@ -51,7 +42,7 @@ jobs:
           echo "chrome_bin=$chrome_bin" >> "$diagnostic"
 
           if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
-            npm install --prefix "$work" --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
+            npm install --prefix .sortie-expert --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
             npm_status=$?
           else
             npm_status=99
@@ -63,7 +54,7 @@ jobs:
             python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-expert-server.log 2>&1 &
             server_pid=$!
             sleep 1
-            CHROME_BIN="$chrome_bin" node "$work/browser_test.mjs" >> "$diagnostic" 2>&1
+            CHROME_BIN="$chrome_bin" node .sortie-expert/browser_test.mjs >> "$diagnostic" 2>&1
             browser_status=$?
             kill "$server_pid" 2>/dev/null || true
             echo "--- server log ---" >> "$diagnostic"
@@ -71,11 +62,11 @@ jobs:
           fi
           echo "browser_status=$browser_status" >> "$diagnostic"
 
-          rm -rf "$work"
+          rm -rf .sortie-expert/node_modules
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
 
-          if [ "$unpack_status" -eq 0 ] && [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
             rm -rf .sortie-expert
             rm -f .github/workflows/expert-flight-controls.yml
             git add -A
