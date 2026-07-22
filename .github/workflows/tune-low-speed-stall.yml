@@ -1,0 +1,93 @@
+name: Tune low-speed handling and stall envelope
+
+on:
+  push:
+    branches:
+      - agent/tune-low-speed-stall-envelope
+    paths:
+      - ".sortie-tune/ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out tuning branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply tuning and run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .sortie-tune/apply_tuning.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+
+          required = [
+              "const BRAKE_SPEED = 128;",
+              "const BRAKE_HIGH_G_SPEED_DROP = 52;",
+              "const STALL_WARNING_SPEED = 96;",
+              "const STALL_ENTRY_SPEED = 84;",
+              "const STALL_DEEP_SPEED = 62;",
+              "const STALL_RECOVERY_SPEED = 114;",
+              "const brakeTargetSpeed = BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP * highGBrakeLoad;",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing tuning marker: {marker}")
+          if "const BRAKE_SPEED = 52;" in text:
+              raise SystemExit("old unsafe brake target remains")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          if [ -z "$chrome_bin" ]; then
+            echo "Chrome/Chromium is required for the regression" >&2
+            exit 1
+          fi
+
+          npm install --prefix .sortie-tune --no-package-lock --no-save playwright-core@1.54.1
+
+          server_pid=""
+          cleanup_server() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_server EXIT
+
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-tune-server.log 2>&1 &
+          server_pid=$!
+          sleep 1
+          CHROME_BIN="$chrome_bin" node .sortie-tune/browser_test.mjs
+          cleanup_server
+          server_pid=""
+          trap - EXIT
+
+          rm -rf .sortie-tune/node_modules
+          rm -rf .sortie-tune
+          rm -f .github/workflows/tune-low-speed-stall.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Tune low-speed handling and stall envelope"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
