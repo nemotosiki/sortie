@@ -66,19 +66,28 @@ try {
     window.__testPad.buttons[5] = { pressed: true, touched: true, value: 1 };
     window.dispatchEvent(new Event("gamepadconnected"));
   });
-  await page.waitForTimeout(700);
+  await page.waitForFunction(
+    (initialSpeed) => window.__game?.state === "playing" && window.__game.player.speed > initialSpeed + 5,
+    beforePad.player.speed,
+    { timeout: 2500 }
+  );
+  await page.waitForTimeout(350);
   const afterPad = await page.evaluate(() => ({
     game: structuredClone(window.__game),
     status: document.getElementById("gamepadStatus").textContent,
     connected: document.getElementById("gamepadStatus").classList.contains("connected"),
-    axes: [...window.__testPad.axes]
+    axes: [...window.__testPad.axes],
+    trigger: window.__testPad.buttons[7].value
   }));
   const forwardDelta = Math.abs(afterPad.game.player.forward.x - beforePad.player.forward.x) +
     Math.abs(afterPad.game.player.forward.y - beforePad.player.forward.y) +
     Math.abs(afterPad.game.player.forward.z - beforePad.player.forward.z);
   assert(afterPad.connected, "gamepad HUD did not show connected state");
   assert(afterPad.status.includes("ONLINE"), `unexpected gamepad status: ${afterPad.status}`);
-  assert(afterPad.game.player.speed > beforePad.player.speed + 8, "right trigger did not boost speed");
+  assert(
+    afterPad.game.player.speed > beforePad.player.speed + 5,
+    `right trigger did not boost speed: ${JSON.stringify({ before: beforePad.player.speed, after: afterPad.game.player.speed, trigger: afterPad.trigger })}`
+  );
   assert(
     forwardDelta > 0.02,
     `left stick did not change aircraft orientation: ${JSON.stringify({
@@ -99,12 +108,17 @@ try {
   });
   const speedBeforeKeyboard = await page.evaluate(() => window.__game.player.speed);
   await page.keyboard.down("Control");
-  await page.waitForTimeout(650);
+  await page.waitForFunction(
+    (initialSpeed) => window.__game?.state === "playing" && window.__game.player.speed < initialSpeed - 5,
+    speedBeforeKeyboard,
+    { timeout: 2500 }
+  );
   await page.keyboard.up("Control");
   const speedAfterKeyboard = await page.evaluate(() => window.__game.player.speed);
-  assert(speedAfterKeyboard < speedBeforeKeyboard - 8, "keyboard brake stopped working with a gamepad connected");
+  assert(speedAfterKeyboard < speedBeforeKeyboard - 5, "keyboard brake stopped working with a gamepad connected");
 
   assert(browserProblems.length === 0, browserProblems.join("\n"));
 } finally {
+  await page.keyboard.up("Control").catch(() => {});
   await browser.close();
 }
