@@ -1,0 +1,109 @@
+name: Enhance combat feedback and speed presentation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".sortie-feedback/ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply feedback upgrade and run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .sortie-feedback/apply_update.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+
+          required = [
+              "const BOOST_SPEED_RESPONSE_K = 0.22;",
+              "const BRAKE_SPEED_RESPONSE_K = 0.16;",
+              "const CRUISE_SPEED_RESPONSE_K = 0.32;",
+              "const HIGH_SPEED_FOV_BONUS = 8;",
+              "const directionHeld = cameraKeyHold.pressed || cameraKeyHold.focus ||",
+              'targetArrowState.mode = "onscreen";',
+              "function createParticlePool(capacity, options)",
+              "new THREE.Points(bufferGeometry, material)",
+              "function createDestroyedPopup(position, label, points)",
+              "function updatePlayerDamageSmoke(dt)",
+              "hook.debug.activeParticles",
+              "hook.debug.activeAudioSources",
+              'title.textContent = "DESTROYED";',
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing feedback marker: {marker}")
+
+          forbidden = [
+              "const BOOST_SPEED_RESPONSE_K = 0.006;",
+              "const BRAKE_SPEED_RESPONSE_K = 0.018;",
+              "const directionHeld = cameraKeyHold.pressed || gamepadInput.previousTarget;",
+          ]
+          for marker in forbidden:
+              if marker in text:
+                  raise SystemExit(f"obsolete implementation remains: {marker}")
+
+          if "console.warn(" in text or "console.error(" in text:
+              raise SystemExit("console warning/error call added")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          if [ -z "$chrome_bin" ]; then
+            echo "Chrome/Chromium is required for the regression" >&2
+            exit 1
+          fi
+
+          npm install --prefix .sortie-feedback --no-package-lock --no-save playwright-core@1.54.1
+
+          server_pid=""
+          cleanup_server() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_server EXIT
+
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-feedback-server.log 2>&1 &
+          server_pid=$!
+          sleep 1
+          CHROME_BIN="$chrome_bin" node .sortie-feedback/browser_test.mjs
+          cleanup_server
+          server_pid=""
+          trap - EXIT
+
+          rm -rf .sortie-feedback/node_modules
+          rm -rf .sortie-feedback
+          rm -f .github/workflows/enhance-combat-feedback.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Enhance combat feedback and speed presentation"
+          git push origin HEAD:main
