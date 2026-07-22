@@ -870,6 +870,144 @@
       cockpit: Object.freeze({ back: -4.8, height: 1.9, look: 96, lookHeight: 0.9, rollFollow: 0.9 })
     });
 
+    const ENEMY_TYPE_ORDER = Object.freeze([
+      Object.freeze(["viper", "lancer", "bison"]),
+      Object.freeze(["bison", "viper", "lancer"])
+    ]);
+
+    const ENEMY_TYPES = Object.freeze({
+      viper: Object.freeze({
+        key: "viper",
+        label: "VIPER",
+        role: "Interceptor",
+        behavior: "evasive",
+        hp: 80,
+        hitboxScale: 0.86,
+        patrolSpeed: 151,
+        pursuitBonus: 38,
+        maxSpeed: 258,
+        patrolTurn: THREE.MathUtils.degToRad(56),
+        pursuitTurn: THREE.MathUtils.degToRad(88),
+        engageRange: 990,
+        disengageRange: 1580,
+        pursuitBack: 92,
+        verticalBias: 18,
+        verticalAmplitude: 34,
+        verticalFrequency: 1.45,
+        evadeLateral: 74,
+        evadeVertical: 28,
+        evadeFrequency: 2.25,
+        speedResponse: 0.018,
+        fireMin: 1.85,
+        fireSpread: 1.45,
+        attackRange: 500,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.42,
+        maxHitChance: 0.31,
+        damageMin: 7,
+        damageMax: 10,
+        radarColor: "#ff4f71",
+        tracerColor: 0xff4967,
+        explosionColor: 0xff5475,
+        theme: Object.freeze({
+          primary: 0xe93655,
+          secondary: 0x741328,
+          accent: 0x20d7e7,
+          canopy: 0xffcc7b,
+          exhaust: 0x62edff,
+          scale: 0.72,
+          variant: "viper"
+        })
+      }),
+      bison: Object.freeze({
+        key: "bison",
+        label: "BISON",
+        role: "Heavy Fighter",
+        behavior: "armored",
+        hp: 125,
+        hitboxScale: 1.12,
+        patrolSpeed: 108,
+        pursuitBonus: 8,
+        maxSpeed: 205,
+        patrolTurn: THREE.MathUtils.degToRad(30),
+        pursuitTurn: THREE.MathUtils.degToRad(46),
+        engageRange: 870,
+        disengageRange: 1400,
+        pursuitBack: 66,
+        verticalBias: 8,
+        verticalAmplitude: 14,
+        verticalFrequency: 0.72,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.045,
+        fireMin: 2.15,
+        fireSpread: 1.45,
+        attackRange: 560,
+        aimThreshold: 0.90,
+        hitChanceScale: 0.54,
+        maxHitChance: 0.38,
+        damageMin: 12,
+        damageMax: 16,
+        radarColor: "#ff9a42",
+        tracerColor: 0xff8248,
+        explosionColor: 0xffa348,
+        theme: Object.freeze({
+          primary: 0xd96a2d,
+          secondary: 0x6b2915,
+          accent: 0x30201d,
+          canopy: 0xffd06b,
+          exhaust: 0xff8a4d,
+          scale: 0.88,
+          variant: "bison"
+        })
+      }),
+      lancer: Object.freeze({
+        key: "lancer",
+        label: "LANCER",
+        role: "Formation Fighter",
+        behavior: "formation",
+        hp: 95,
+        hitboxScale: 0.96,
+        patrolSpeed: 132,
+        pursuitBonus: 19,
+        maxSpeed: 230,
+        patrolTurn: THREE.MathUtils.degToRad(43),
+        pursuitTurn: THREE.MathUtils.degToRad(65),
+        engageRange: 940,
+        disengageRange: 1510,
+        pursuitBack: 80,
+        verticalBias: 16,
+        verticalAmplitude: 22,
+        verticalFrequency: 1.0,
+        evadeLateral: 18,
+        evadeVertical: 10,
+        evadeFrequency: 1.35,
+        speedResponse: 0.028,
+        fireMin: 1.65,
+        fireSpread: 1.45,
+        attackRange: 530,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.47,
+        maxHitChance: 0.35,
+        damageMin: 9,
+        damageMax: 12,
+        formationWeight: 0.58,
+        radarColor: "#d877ff",
+        tracerColor: 0xd76cff,
+        explosionColor: 0xd679ff,
+        theme: Object.freeze({
+          primary: 0x8d45c7,
+          secondary: 0x43225f,
+          accent: 0xf05cce,
+          canopy: 0x9ce9ff,
+          exhaust: 0xd978ff,
+          scale: 0.78,
+          variant: "lancer"
+        })
+      })
+    });
+
     const ui = {
       gameRoot: document.getElementById("gameRoot"),
       startScreen: document.getElementById("startScreen"),
@@ -926,6 +1064,9 @@
     const tmpV3 = new THREE.Vector3();
     const tmpV4 = new THREE.Vector3();
     const tmpV5 = new THREE.Vector3();
+    const tmpV6 = new THREE.Vector3();
+    const tmpV7 = new THREE.Vector3();
+    const tmpV8 = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
@@ -943,6 +1084,8 @@
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     let gunCooldown = 0;
+    let gunShots = 0;
+    let missilesLaunched = 0;
     let enemySerial = 0;
     let waveClearTimer = -1;
     let missileSide = 1;
@@ -993,6 +1136,8 @@
       controlMode,
       cameraMode,
       selectedTargetId: null,
+      weapons: { gunShots: 0, missilesLaunched: 0 },
+      enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
         position: { x: 0, y: 0, z: 0 },
         forward: { x: 0, y: 0, z: -1 },
@@ -1335,6 +1480,8 @@
       waveNumber = 0;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
+      gunShots = 0;
+      missilesLaunched = 0;
       waveClearTimer = -1;
       lock.targetId = null;
       lock.progress = 0;
@@ -1455,6 +1602,7 @@
     }
 
     function fireGun() {
+      gunShots += 1;
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
       rightOf(player, tmpV3);
@@ -1514,7 +1662,8 @@
 
       missileSide *= -1;
       missileCount -= 1;
-      showBanner(`FOX TWO · TARGET ${target.id}`, 1.15);
+      missilesLaunched += 1;
+      showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
       resetLock();
     }
 
@@ -1615,6 +1764,7 @@
       const spawnForward = forwardOf(player, new THREE.Vector3());
       const spawnRight = rightOf(player, new THREE.Vector3());
       const spawnUp = upOf(player, new THREE.Vector3());
+      const waveTypes = ENEMY_TYPE_ORDER[number - 1] || ENEMY_TYPE_ORDER[0];
 
       const baseDistance = number === 1 ? 820 : 1030;
       const altitudeOffsets = number === 1 ? [35, -20, 80] : [90, 20, -55];
@@ -1626,64 +1776,80 @@
           .addScaledVector(spawnRight, lateralOffsets[i])
           .addScaledVector(spawnUp, altitudeOffsets[i]);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, number, i);
+        spawnEnemy(position, number, i, waveTypes[i]);
       }
     }
 
-    function spawnEnemy(position, wave, slot) {
+    function spawnEnemy(position, wave, slot, typeKey) {
       enemySerial += 1;
       const id = (wave - 1) * 3 + slot + 1;
+      const spec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
       const root = new THREE.Group();
       root.position.copy(position);
+      root.userData.enemyType = spec.key;
 
       tmpV1.copy(player.position).sub(position).normalize();
       root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
 
-      const model = createAircraftModel({
-        primary: wave === 1 ? 0xe44d5d : 0xf07735,
-        secondary: wave === 1 ? 0x6f1626 : 0x641f12,
-        accent: 0x201c27,
-        canopy: 0xffb86a,
-        exhaust: 0xff7a55,
-        scale: 0.78
-      });
+      const model = createAircraftModel(spec.theme);
+      model.group.userData.enemyType = spec.key;
       root.add(model.group);
 
       const hitbox = new THREE.Mesh(geometry.enemyHitbox, shared.hitbox);
       hitbox.userData.enemyId = id;
+      hitbox.scale.setScalar(spec.hitboxScale);
       root.add(hitbox);
       scene.add(root);
 
       const patrolOrigin = position.clone();
+      const patrolScale = spec.key === "viper" ? 1.18 : (spec.key === "bison" ? 0.78 : 1);
       const waypoints = [
-        patrolOrigin.clone().add(new THREE.Vector3((slot - 1) * 170, 35, -240)),
-        patrolOrigin.clone().add(new THREE.Vector3(220 - slot * 90, -30, 160)),
-        patrolOrigin.clone().add(new THREE.Vector3(-210 + slot * 130, 65, 310))
+        patrolOrigin.clone().add(new THREE.Vector3((slot - 1) * 170 * patrolScale, 35, -240 * patrolScale)),
+        patrolOrigin.clone().add(new THREE.Vector3((220 - slot * 90) * patrolScale, -30, 160 * patrolScale)),
+        patrolOrigin.clone().add(new THREE.Vector3((-210 + slot * 130) * patrolScale, 65, 310 * patrolScale))
       ];
       for (const waypoint of waypoints) waypoint.y = Math.max(90, waypoint.y);
 
+      const formationLeaderId = (wave - 1) * 3 + 1;
       enemies.push({
         id,
         serial: enemySerial,
+        wave,
+        slot,
+        type: spec.key,
+        label: spec.label,
+        role: spec.role,
+        behavior: spec.behavior,
+        spec,
         group: root,
         model,
         hitbox,
         alive: true,
-        hp: 100,
-        speed: 118 + wave * 8 + slot * 5,
-        targetSpeed: 128 + wave * 10,
+        maxHp: spec.hp,
+        hp: spec.hp,
+        speed: spec.patrolSpeed * 0.92,
+        targetSpeed: spec.patrolSpeed,
         mode: "patrol",
         waypoints,
         waypointIndex: 0,
-        fireCooldown: 1.1 + Math.random() * 1.5,
+        fireCooldown: spec.fireMin + Math.random() * spec.fireSpread,
         deadTimer: 0,
         hitFlash: 0,
-        seed: Math.random() * Math.PI * 2
+        seed: Math.random() * Math.PI * 2,
+        formationLeaderId,
+        formationSide: slot === 0 ? -1 : 1,
+        formationActive: false,
+        targetPoint: new THREE.Vector3(),
+        formationPoint: new THREE.Vector3(),
+        safeTarget: new THREE.Vector3()
       });
     }
 
     function updateEnemies(dt) {
+      const time = performance.now() * 0.001;
       forwardOf(player, tmpV5);
+      rightOf(player, tmpV6);
+      upOf(player, tmpV7);
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
@@ -1697,49 +1863,89 @@
           continue;
         }
 
+        const spec = enemy.spec;
         enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
         updateAircraftFlash(enemy.model, enemy.hitFlash);
+        enemy.formationActive = false;
 
         tmpV1.copy(player.position).sub(enemy.group.position);
         const distanceToPlayer = tmpV1.length();
 
-        if (enemy.mode === "patrol" && distanceToPlayer < 900) enemy.mode = "pursuit";
-        if (enemy.mode === "pursuit" && distanceToPlayer > 1450) enemy.mode = "patrol";
+        if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) enemy.mode = "pursuit";
+        if (enemy.mode === "pursuit" && distanceToPlayer > spec.disengageRange) enemy.mode = "patrol";
+
+        const leader = spec.behavior === "formation"
+          ? enemies.find((candidate) => candidate.alive && candidate.wave === enemy.wave && candidate.id !== enemy.id && candidate.id === enemy.formationLeaderId)
+            || enemies.find((candidate) => candidate.alive && candidate.wave === enemy.wave && candidate.id !== enemy.id)
+          : null;
 
         let targetPoint;
         if (enemy.mode === "pursuit") {
-          targetPoint = tmpV2.copy(player.position)
-            .addScaledVector(tmpV5, -78)
-            .addScaledVector(WORLD_UP, 12 + Math.sin(performance.now() * 0.0008 + enemy.seed) * 24);
-          enemy.targetSpeed = Math.min(238, playerSpeed + 20 + (enemy.id % 3) * 7);
+          targetPoint = enemy.targetPoint.copy(player.position)
+            .addScaledVector(tmpV5, -spec.pursuitBack)
+            .addScaledVector(WORLD_UP, spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude);
+
+          if (spec.behavior === "evasive") {
+            const phase = time * spec.evadeFrequency + enemy.seed;
+            targetPoint
+              .addScaledVector(tmpV6, Math.sin(phase) * spec.evadeLateral)
+              .addScaledVector(tmpV7, Math.cos(phase * 0.77) * spec.evadeVertical);
+          } else if (spec.behavior === "formation" && leader) {
+            forwardOf(leader.group, tmpV8);
+            rightOf(leader.group, tmpV3);
+            enemy.formationPoint.copy(leader.group.position)
+              .addScaledVector(tmpV8, -44)
+              .addScaledVector(tmpV3, enemy.formationSide * 82)
+              .addScaledVector(WORLD_UP, 18);
+            targetPoint.lerp(enemy.formationPoint, spec.formationWeight);
+            enemy.formationActive = true;
+          }
+
+          enemy.targetSpeed = Math.min(spec.maxSpeed + (enemy.wave - 1) * 4, playerSpeed + spec.pursuitBonus);
+        } else if (spec.behavior === "formation" && leader) {
+          forwardOf(leader.group, tmpV8);
+          rightOf(leader.group, tmpV3);
+          targetPoint = enemy.formationPoint.copy(leader.group.position)
+            .addScaledVector(tmpV8, -38)
+            .addScaledVector(tmpV3, enemy.formationSide * 88)
+            .addScaledVector(WORLD_UP, 14);
+          enemy.targetSpeed = Math.min(spec.maxSpeed, leader.speed + 3);
+          enemy.formationActive = true;
         } else {
           targetPoint = enemy.waypoints[enemy.waypointIndex];
           if (enemy.group.position.distanceToSquared(targetPoint) < 85 * 85) {
             enemy.waypointIndex = (enemy.waypointIndex + 1) % enemy.waypoints.length;
             targetPoint = enemy.waypoints[enemy.waypointIndex];
           }
-          enemy.targetSpeed = 126 + (enemy.id % 3) * 7;
+          enemy.targetSpeed = spec.patrolSpeed + (enemy.wave - 1) * 7;
         }
 
-        if (enemy.group.position.y < 70) targetPoint = tmpV3.copy(targetPoint).setY(150);
+        if (enemy.group.position.y < 70) {
+          targetPoint = enemy.safeTarget.copy(targetPoint);
+          targetPoint.y = 150;
+        }
 
-        tmpV4.copy(targetPoint).sub(enemy.group.position).normalize();
-        tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
-        const turnRate = enemy.mode === "pursuit" ? THREE.MathUtils.degToRad(62) : THREE.MathUtils.degToRad(38);
-        enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
-        enemy.group.quaternion.normalize();
+        tmpV4.copy(targetPoint).sub(enemy.group.position);
+        if (tmpV4.lengthSq() > 0.00001) {
+          tmpV4.normalize();
+          tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
+          const turnRate = enemy.mode === "pursuit" ? spec.pursuitTurn : spec.patrolTurn;
+          enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
+          enemy.group.quaternion.normalize();
+        }
 
-        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(0.025, dt));
+        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
         forwardOf(enemy.group, tmpV4);
         enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
 
-        const flamePulse = 0.9 + Math.sin(performance.now() * 0.012 + enemy.seed) * 0.18;
+        const baseFlame = spec.behavior === "evasive" ? 1.18 : (spec.behavior === "armored" ? 0.82 : 1.0);
+        const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
         for (const flame of enemy.model.flames) flame.scale.z = flamePulse;
 
         enemy.fireCooldown -= dt;
         if (enemy.fireCooldown <= 0) {
           attemptEnemyAttack(enemy);
-          enemy.fireCooldown = 1.55 + Math.random() * 1.4;
+          enemy.fireCooldown = spec.fireMin + Math.random() * spec.fireSpread;
         }
       }
     }
@@ -1747,21 +1953,22 @@
     function attemptEnemyAttack(enemy) {
       if (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0) return;
 
+      const spec = enemy.spec;
       const enemyForward = forwardOf(enemy.group, new THREE.Vector3());
       const playerForward = forwardOf(player, new THREE.Vector3());
       const playerToEnemy = enemy.group.position.clone().sub(player.position);
       const distanceToPlayer = playerToEnemy.length();
-      if (!Number.isFinite(distanceToPlayer) || distanceToPlayer > 520 || distanceToPlayer < 25) return;
+      if (!Number.isFinite(distanceToPlayer) || distanceToPlayer > spec.attackRange || distanceToPlayer < 25) return;
 
       const behindPlayer = playerToEnemy.multiplyScalar(1 / distanceToPlayer).dot(playerForward) < -0.28;
       const enemyToPlayer = player.position.clone().sub(enemy.group.position).normalize();
       const aimAlignment = enemyForward.dot(enemyToPlayer);
-      if (!behindPlayer || aimAlignment < 0.92) return;
+      if (!behindPlayer || aimAlignment < spec.aimThreshold) return;
 
       const hitChance = THREE.MathUtils.clamp(
-        (1 - distanceToPlayer / 620) * 0.52 * aimAlignment,
-        0.04,
-        0.38
+        (1 - distanceToPlayer / (spec.attackRange + 120)) * spec.hitChanceScale * aimAlignment,
+        0.025,
+        spec.maxHitChance
       );
       const hit = Math.random() < hitChance;
       const start = enemy.group.position.clone().addScaledVector(enemyForward, 7);
@@ -1775,9 +1982,12 @@
         ));
       }
 
-      createTracer(start, end, 0xff694f, 0.18, 0.72);
-      createMuzzleFlash(start, 0xff794d);
-      if (hit) applyPlayerDamage(9 + Math.floor(Math.random() * 5));
+      createTracer(start, end, spec.tracerColor, 0.18, 0.72);
+      createMuzzleFlash(start, spec.tracerColor);
+      if (hit) {
+        const damage = spec.damageMin + Math.floor(Math.random() * (spec.damageMax - spec.damageMin + 1));
+        applyPlayerDamage(damage);
+      }
     }
 
     function damageEnemy(enemy, amount, missileHit) {
@@ -1790,7 +2000,7 @@
       enemy.deadTimer = 2.4;
       enemy.hitbox.visible = false;
       enemy.model.group.visible = false;
-      createExplosion(enemy.group.position, missileHit ? 0xffd35f : 0xff8c45, missileHit ? 1.15 : 0.95);
+      createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, missileHit ? 1.15 : 0.95);
       kills += 1;
       score = kills * KILL_SCORE;
       if (score > highscore) {
@@ -1798,7 +2008,8 @@
         saveHighscore();
       }
       if (lock.targetId === enemy.id) resetLock();
-      showBanner(`TARGET ${enemy.id} DESTROYED`, 1.1, "success");
+      if (preferredTargetId === enemy.id) preferredTargetId = null;
+      showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
     }
 
     function applyPlayerDamage(amount, bypassCooldown = false) {
@@ -1967,7 +2178,7 @@
       ui.lockLabel.textContent = lock.locked ? "LOCKED" : `LOCK ${Math.round(lock.progress * 100)}%`;
       ui.lockMeterFill.style.width = `${Math.round(lock.progress * 100)}%`;
       const distance = Math.round(player.position.distanceTo(target.group.position));
-      ui.targetRange.textContent = `TGT ${target.id} · ${distance}M`;
+      ui.targetRange.textContent = `TGT ${target.id} · ${target.label} · ${distance}M`;
     }
 
     function updateHud() {
@@ -2019,6 +2230,8 @@
       hook.controlMode = controlMode;
       hook.cameraMode = cameraMode;
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
+      hook.weapons.gunShots = gunShots;
+      hook.weapons.missilesLaunched = missilesLaunched;
       hook.player.position.x = player.position.x;
       hook.player.position.y = player.position.y;
       hook.player.position.z = player.position.z;
@@ -2034,7 +2247,17 @@
           z: enemy.group.position.z
         },
         alive: enemy.alive,
-        isLocked: enemy.alive && lock.locked && lock.targetId === enemy.id
+        isLocked: enemy.alive && lock.locked && lock.targetId === enemy.id,
+        type: enemy.type,
+        label: enemy.label,
+        role: enemy.role,
+        behavior: enemy.behavior,
+        hp: Math.max(0, Math.round(enemy.hp)),
+        maxHp: enemy.maxHp,
+        speed: enemy.speed,
+        mode: enemy.mode,
+        formationLeaderId: enemy.formationLeaderId,
+        formationActive: enemy.formationActive
       }));
       hook.lock.targetId = lock.targetId;
       hook.lock.progress = lock.progress;
@@ -2090,8 +2313,8 @@
         const py = center - Math.cos(angle) * radius * scale;
         const locked = lock.locked && lock.targetId === enemy.id;
 
-        ctx.fillStyle = locked ? "#fff06a" : "#ff5869";
-        ctx.shadowColor = locked ? "#fff06a" : "#ff384f";
+        ctx.fillStyle = locked ? "#fff06a" : enemy.spec.radarColor;
+        ctx.shadowColor = locked ? "#fff06a" : enemy.spec.radarColor;
         ctx.shadowBlur = locked ? 10 : 6;
         ctx.beginPath();
         ctx.arc(px, py, locked ? 4 : 3, 0, Math.PI * 2);
@@ -2504,7 +2727,66 @@
       const flameRight = new THREE.Mesh(geometry.flame, flameMaterial);
       flameRight.position.set(0.68, 0, 9.1);
 
-      root.add(body, rear, nose, wing, tailWing, fin, cockpit, intakeLeft, intakeRight, nozzleLeft, nozzleRight, flameLeft, flameRight);
+      const variantParts = [];
+      if (theme.variant === "viper") {
+        body.scale.set(0.82, 0.82, 1.16);
+        rear.scale.set(0.78, 0.78, 1.08);
+        nose.scale.set(0.78, 0.78, 1.2);
+        wing.scale.set(1.08, 0.72, 0.92);
+        tailWing.scale.set(0.8, 0.72, 0.86);
+        fin.scale.set(0.72, 0.9, 0.72);
+
+        const canards = new THREE.Mesh(geometry.tailWing, accent);
+        canards.position.set(0, 0.08, -4.75);
+        canards.scale.set(0.48, 0.5, 0.42);
+        const dorsalSpine = new THREE.Mesh(geometry.intake, accent);
+        dorsalSpine.position.set(0, 0.84, 1.25);
+        dorsalSpine.scale.set(0.34, 0.32, 0.92);
+        variantParts.push(canards, dorsalSpine);
+      } else if (theme.variant === "bison") {
+        body.scale.set(1.24, 1.18, 0.95);
+        rear.scale.set(1.18, 1.16, 1.02);
+        nose.scale.set(1.12, 1.12, 0.9);
+        wing.scale.set(1.1, 1.55, 1.18);
+        tailWing.scale.set(1.15, 1.35, 1.12);
+        fin.scale.set(1.18, 1.1, 1.12);
+        cockpit.scale.set(0.96, 0.72, 1.62);
+
+        for (const side of [-1, 1]) {
+          const podBody = new THREE.Mesh(geometry.rearBody, secondary);
+          podBody.position.set(side * 4.35, -0.28, 2.45);
+          podBody.scale.set(0.58, 0.72, 1.14);
+          const podIntake = new THREE.Mesh(geometry.intake, accent);
+          podIntake.position.set(side * 4.35, -0.22, -0.15);
+          podIntake.scale.set(0.84, 1.05, 1.35);
+          variantParts.push(podBody, podIntake);
+        }
+      } else if (theme.variant === "lancer") {
+        fin.visible = false;
+        wing.scale.set(1.04, 0.92, 1.04);
+        tailWing.scale.set(0.96, 0.88, 1.02);
+
+        const finLeft = new THREE.Mesh(geometry.fin, secondary);
+        finLeft.position.set(-1.25, 0.62, 4.45);
+        finLeft.scale.set(0.72, 0.88, 0.72);
+        finLeft.rotateZ(-0.14);
+        const finRight = new THREE.Mesh(geometry.fin, secondary);
+        finRight.position.set(1.25, 0.62, 4.45);
+        finRight.scale.set(0.72, 0.88, 0.72);
+        finRight.rotateZ(0.14);
+        const railLeft = new THREE.Mesh(geometry.intake, accent);
+        railLeft.position.set(-8.35, -0.05, 1.1);
+        railLeft.scale.set(0.34, 0.38, 1.02);
+        const railRight = railLeft.clone();
+        railRight.position.x = 8.35;
+        variantParts.push(finLeft, finRight, railLeft, railRight);
+      }
+
+      root.add(
+        body, rear, nose, wing, tailWing, fin, cockpit,
+        intakeLeft, intakeRight, nozzleLeft, nozzleRight,
+        flameLeft, flameRight, ...variantParts
+      );
 
       return {
         group: root,
