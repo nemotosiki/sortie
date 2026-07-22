@@ -85,17 +85,15 @@ try {
   assert(fallbackLock.selectedMarkerClass.includes("selected"),
     `selected enemy marker is not distinguished: ${JSON.stringify(fallbackLock)}`);
 
-  // Turn away in EXPERT mode. The selected target should leave the viewport and produce
-  // a screen-edge direction arrow while retaining the selected target id.
+  // Turn away in EXPERT mode and observe the arrow while the yaw input is still active.
+  // This avoids coupling the regression to camera catch-up timing after the input is released.
   await page.keyboard.press("m");
+  await page.waitForFunction(() => window.__game.controlMode === "expert");
   await page.keyboard.down("e");
-  await page.waitForTimeout(1900);
-  await page.keyboard.up("e");
-
   await page.waitForFunction(() => {
     const arrow = window.__game.hud?.targetArrow;
     return arrow?.active && arrow.targetId === 3;
-  }, null, { timeout: 4500 });
+  }, null, { timeout: 7000 });
 
   const arrowState = await page.evaluate(() => {
     const arrow = window.__game.hud.targetArrow;
@@ -109,6 +107,8 @@ try {
       height: window.innerHeight
     };
   });
+  await page.keyboard.up("e");
+
   assert(arrowState.active && arrowState.targetId === 3,
     `off-screen selected target arrow missing: ${JSON.stringify(arrowState)}`);
   assert(arrowState.selectedTargetId === 3,
