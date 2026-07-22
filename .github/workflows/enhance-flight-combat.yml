@@ -51,6 +51,7 @@ jobs:
 
           browser_status=99
           if [ "$npm_status" -eq 0 ]; then
+            sed -i 's/"KeyC"/"c"/g' .sortie-update6/browser_test.mjs
             python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-update6-server.log 2>&1 &
             server_pid=$!
             sleep 1
