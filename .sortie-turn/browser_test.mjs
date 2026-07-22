@@ -132,13 +132,17 @@ try {
   const bankAfterRelease = await displayedBank();
   assert(bankAfterRelease < 0.08, `auto-level did not settle after releasing roll: ${bankAfterRelease}`);
 
-  await page.evaluate(() => document.getElementById("startBtn").click());
+  await page.evaluate(() => {
+    document.getElementById("startBtn").click();
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft", key: "ArrowLeft", bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown", key: "ArrowDown", bubbles: true }));
+  });
   await page.waitForFunction(() => window.__game?.state === "playing");
-  await page.keyboard.down("ArrowLeft");
-  await page.keyboard.down("ArrowDown");
   const keyboardSamples = await collectSimulationDistance(160);
-  await page.keyboard.up("ArrowDown");
-  await page.keyboard.up("ArrowLeft");
+  await page.evaluate(() => {
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowDown", key: "ArrowDown", bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft", key: "ArrowLeft", bubbles: true }));
+  });
   const keyboardForward = keyboardSamples.at(-1).forward;
   const keyboardHeading = headingOf(keyboardForward);
   assert(keyboardHeading < -0.24, `diagonal keyboard input did not create a left turn: ${keyboardHeading}`);
