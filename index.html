@@ -2934,6 +2934,15 @@
     }
 
     function updateTargetDirectionArrow() {
+      // The off-screen cue is a momentary situational-awareness aid, matching
+      // the existing Triangle/Y and C hold controls. A short press can show it
+      // briefly; a long press keeps it available while target-view engages.
+      const directionHeld = cameraKeyHold.pressed || gamepadInput.previousTarget;
+      if (!directionHeld) {
+        clearTargetDirectionArrow();
+        return;
+      }
+
       const targetId = preferredTargetId ?? lock.targetId;
       const target = enemies.find((enemy) => enemy.alive && enemy.id === targetId);
       if (!target || gameState !== STATE_PLAYING) {
