@@ -3,7 +3,7 @@ name: Tune low-speed handling and stall envelope
 on:
   push:
     branches:
-      - agent/tune-low-speed-stall-envelope
+      - main
     paths:
       - ".sortie-tune/ready"
 
@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Check out tuning branch
+      - name: Check out main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -90,4 +90,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Tune low-speed handling and stall envelope"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin HEAD:main
