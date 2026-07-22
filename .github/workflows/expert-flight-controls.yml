@@ -26,6 +26,8 @@ jobs:
           diagnostic=.sortie-expert/diagnostic.txt
           : > "$diagnostic"
           sed -i 's/> 0.06,/> 0.015,/' .sortie-expert/browser_test.mjs
+          sed -i 's/await key("KeyQ", true);/await page.keyboard.down("q");/g' .sortie-expert/browser_test.mjs
+          sed -i 's/await key("KeyQ", false);/await page.keyboard.up("q");/g' .sortie-expert/browser_test.mjs
 
           python3 .sortie-expert/apply_expert.py >> "$diagnostic" 2>&1
           patch_status=$?
