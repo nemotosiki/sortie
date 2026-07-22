@@ -1,0 +1,26 @@
+name: Sortie Actions connectivity check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".sortie-turn/ping"
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record successful workflow launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'ok\n' > .sortie-turn/pong
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .sortie-turn/pong
+          git commit -m "Record Actions connectivity check"
+          git push origin HEAD:main
