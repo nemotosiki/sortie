@@ -1,4 +1,4 @@
-name: Apply Sortie gameplay fixes
+name: Diagnose Sortie maintenance trigger
 
 on:
   push:
@@ -10,41 +10,14 @@ permissions:
   contents: write
 
 jobs:
-  patch-test-publish:
+  marker:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Check out main
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply gameplay patch and static validation
-        run: |
-          python3 .sortie-maintenance/apply_fix.py
-          node --check /tmp/sortie-game.mjs
-
-      - name: Run browser regression test
-        shell: bash
-        run: |
-          set -euo pipefail
-          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          test -n "$chrome_bin"
-          npm install --prefix .sortie-maintenance --no-package-lock --no-save playwright-core@1.54.1 >/dev/null
-          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-server.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          sleep 1
-          CHROME_BIN="$chrome_bin" node .sortie-maintenance/browser_test.mjs
-
-      - name: Commit tested changes to main
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf .sortie-maintenance
-          rm -f .github/workflows/sortie-maintenance.yml
-          git config user.name "OpenAI"
-          git config user.email "noreply@openai.com"
-          git add -A
-          git commit -m "Fix damage handling and add gamepad controls"
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +%FT%TZ > .sortie-maintenance/workflow-ran.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .sortie-maintenance/workflow-ran.txt
+          git commit -m "Record Sortie maintenance workflow run"
           git push origin HEAD:main
