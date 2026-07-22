@@ -134,19 +134,24 @@ try {
 
   await page.evaluate(() => {
     document.getElementById("startBtn").click();
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowLeft", key: "ArrowLeft", bubbles: true }));
-    window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown", key: "ArrowDown", bubbles: true }));
+    document.body.tabIndex = -1;
+    document.body.focus();
   });
-  await page.waitForFunction(() => window.__game?.state === "playing");
+  await page.waitForTimeout(100);
+  await page.keyboard.down("a");
+  await page.keyboard.down("s");
   const keyboardSamples = await collectSimulationDistance(160);
-  await page.evaluate(() => {
-    window.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowDown", key: "ArrowDown", bubbles: true }));
-    window.dispatchEvent(new KeyboardEvent("keyup", { code: "ArrowLeft", key: "ArrowLeft", bubbles: true }));
-  });
+  const keyboardBank = await displayedBank();
+  await page.keyboard.up("s");
+  await page.keyboard.up("a");
   const keyboardForward = keyboardSamples.at(-1).forward;
   const keyboardHeading = headingOf(keyboardForward);
-  assert(keyboardHeading < -0.24, `diagonal keyboard input did not create a left turn: ${keyboardHeading}`);
+  assert(
+    keyboardHeading < -0.24,
+    `diagonal keyboard input did not create a left turn: ${JSON.stringify({ keyboardHeading, keyboardForward, keyboardBank })}`
+  );
   assert(keyboardForward.y > 0.12, `keyboard pitch did not raise the nose: ${keyboardForward.y}`);
+  assert(keyboardBank > 0.24, `keyboard roll did not create a visible bank: ${keyboardBank}`);
 
   assert(browserProblems.length === 0, browserProblems.join("\n"));
 } finally {
