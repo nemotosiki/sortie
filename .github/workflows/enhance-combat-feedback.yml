@@ -38,6 +38,7 @@ jobs:
           patch_status=$?
           echo "patch_status=$patch_status" >> "$diagnostic"
 
+          instrument_status=99
           static_status=99
           node_status=99
           browser_test_hash_status=99
@@ -46,6 +47,12 @@ jobs:
           browser_status=99
 
           if [ "$patch_status" -eq 0 ]; then
+            python3 .sortie-feedback/instrument_inputs.py >> "$diagnostic" 2>&1
+            instrument_status=$?
+          fi
+          echo "instrument_status=$instrument_status" >> "$diagnostic"
+
+          if [ "$instrument_status" -eq 0 ]; then
             python3 - <<'PY' >> "$diagnostic" 2>&1
           from pathlib import Path
           import re
@@ -69,6 +76,8 @@ jobs:
               "function updatePlayerDamageSmoke(dt)",
               "hook.debug.activeParticles",
               "hook.debug.activeAudioSources",
+              "hook.debug.keyboardTargetHeld",
+              "hook.debug.gamepadTargetHeld",
               'title.textContent = "DESTROYED";',
           ]
           for marker in required:
@@ -146,10 +155,10 @@ jobs:
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
 
-          if [ "$patch_status" -eq 0 ] && [ "$static_status" -eq 0 ] &&
-             [ "$node_status" -eq 0 ] && [ "$browser_test_hash_status" -eq 0 ] &&
-             [ "$browser_test_node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] &&
-             [ "$browser_status" -eq 0 ]; then
+          if [ "$patch_status" -eq 0 ] && [ "$instrument_status" -eq 0 ] &&
+             [ "$static_status" -eq 0 ] && [ "$node_status" -eq 0 ] &&
+             [ "$browser_test_hash_status" -eq 0 ] && [ "$browser_test_node_status" -eq 0 ] &&
+             [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
             rm -rf .sortie-feedback
             rm -f .github/workflows/enhance-combat-feedback.yml
             git add -A
