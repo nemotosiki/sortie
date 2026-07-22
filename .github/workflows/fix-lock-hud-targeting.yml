@@ -1,0 +1,93 @@
+name: Fix lock targeting and enemy HUD markers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".sortie-lock-hud/ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply targeting fix and run regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 .sortie-lock-hud/apply_update.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+
+          required = [
+              "candidate = preferredCandidate || candidate;",
+              "function updateEnemyHudMarkers()",
+              "function updateTargetDirectionArrow()",
+              'id="enemyMarkers"',
+              'id="targetDirectionArrow"',
+              "hook.hud.visibleEnemyMarkers",
+              "hook.hud.targetArrow.active",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing targeting/HUD marker: {marker}")
+          if "if (preferred && enemy.id !== preferred.id) continue;" in text:
+              raise SystemExit("exclusive preferred-target filter remains")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          if [ -z "$chrome_bin" ]; then
+            echo "Chrome/Chromium is required for the regression" >&2
+            exit 1
+          fi
+
+          npm install --prefix .sortie-lock-hud --no-package-lock --no-save playwright-core@1.54.1
+
+          server_pid=""
+          cleanup_server() {
+            if [ -n "$server_pid" ]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_server EXIT
+
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-lock-hud-server.log 2>&1 &
+          server_pid=$!
+          sleep 1
+          CHROME_BIN="$chrome_bin" node .sortie-lock-hud/browser_test.mjs
+          cleanup_server
+          server_pid=""
+          trap - EXIT
+
+          rm -rf .sortie-lock-hud/node_modules
+          rm -rf .sortie-lock-hud
+          rm -f .github/workflows/fix-lock-hud-targeting.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix lock targeting and add enemy HUD markers"
+          git push origin "HEAD:main"
