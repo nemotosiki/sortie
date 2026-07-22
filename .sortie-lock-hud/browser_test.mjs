@@ -28,7 +28,6 @@ page.on("console", (message) => {
 page.on("pageerror", (error) => browserProblems.push(`pageerror: ${error.message}`));
 
 await page.addInitScript(() => {
-  // Keep enemy gun hit rolls deterministic and unsuccessful during the HUD regression.
   Math.random = () => 0.99;
 });
 
@@ -40,7 +39,6 @@ try {
     () => window.__game?.state === "playing" && window.__game.enemies.length === 3
   );
 
-  // The center aircraft starts inside the reticle; the two flankers receive green HUD boxes.
   await page.waitForFunction(() => window.__game.lock.targetId === 2, null, { timeout: 5000 });
   await page.waitForFunction(() => {
     const hud = window.__game.hud;
@@ -59,8 +57,6 @@ try {
   assert(initialHud.activeMarkerCount >= 2, `missing non-lock enemy markers: ${JSON.stringify(initialHud)}`);
   assert(initialHud.targetBoxVisible, `lock target box is not visible: ${JSON.stringify(initialHud)}`);
 
-  // Select the right-side BISON. It is outside the narrow lock cone, so the center LANCER
-  // must remain available as the active lock candidate instead of the lock being cleared.
   await page.keyboard.press("Tab");
   await page.waitForFunction(() => window.__game.selectedTargetId === 3);
   await page.waitForFunction(
@@ -85,28 +81,57 @@ try {
   assert(fallbackLock.selectedMarkerClass.includes("selected"),
     `selected enemy marker is not distinguished: ${JSON.stringify(fallbackLock)}`);
 
-  // Boost through the opposing formation. The selected slow BISON passes behind the player,
-  // providing a deterministic off-screen target without depending on camera-turn timing.
-  await page.keyboard.down("Shift");
-  await page.waitForFunction(() => {
-    const arrow = window.__game.hud?.targetArrow;
-    return arrow?.active && arrow.targetId === 3;
-  }, null, { timeout: 8000 });
+  await page.keyboard.press("m");
+  await page.waitForFunction(() => window.__game.controlMode === "expert");
+  await page.keyboard.down("e");
 
-  const arrowState = await page.evaluate(() => {
-    const arrow = window.__game.hud.targetArrow;
-    const element = document.getElementById("targetDirectionArrow");
-    return {
-      ...arrow,
-      selectedTargetId: window.__game.selectedTargetId,
-      className: element.className,
-      label: document.getElementById("targetDirectionLabel").textContent,
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-  });
-  await page.keyboard.up("Shift");
+  const snapshots = [];
+  let arrowState = null;
+  for (let i = 0; i < 28; i += 1) {
+    await page.waitForTimeout(250);
+    const snapshot = await page.evaluate(() => {
+      const game = window.__game;
+      const enemy = game.enemies.find((candidate) => candidate.id === 3);
+      const marker = document.querySelector('.enemyMarker[data-enemy-id="3"]');
+      return {
+        t: performance.now(),
+        state: game.state,
+        health: game.health,
+        selectedTargetId: game.selectedTargetId,
+        lockTargetId: game.lock.targetId,
+        cameraMode: game.cameraMode,
+        controlMode: game.controlMode,
+        player: {
+          position: { ...game.player.position },
+          forward: { ...game.player.forward },
+          speed: game.player.speed
+        },
+        enemy: enemy ? { position: { ...enemy.position }, alive: enemy.alive } : null,
+        arrow: { ...game.hud.targetArrow },
+        markerClass: marker?.className || ""
+      };
+    });
+    snapshots.push(snapshot);
+    if (snapshot.arrow.active && snapshot.arrow.targetId === 3) {
+      arrowState = await page.evaluate(() => {
+        const arrow = window.__game.hud.targetArrow;
+        const element = document.getElementById("targetDirectionArrow");
+        return {
+          ...arrow,
+          selectedTargetId: window.__game.selectedTargetId,
+          className: element.className,
+          label: document.getElementById("targetDirectionLabel").textContent,
+          width: window.innerWidth,
+          height: window.innerHeight
+        };
+      });
+      break;
+    }
+  }
+  await page.keyboard.up("e");
+  console.log(`TARGET_ARROW_SNAPSHOTS=${JSON.stringify(snapshots)}`);
 
+  assert(arrowState, `off-screen selected target arrow missing; snapshots=${JSON.stringify(snapshots)}`);
   assert(arrowState.active && arrowState.targetId === 3,
     `off-screen selected target arrow missing: ${JSON.stringify(arrowState)}`);
   assert(arrowState.selectedTargetId === 3,
@@ -129,6 +154,6 @@ try {
 
   console.log(JSON.stringify({ initialHud, fallbackLock, arrowState }));
 } finally {
-  await page.keyboard.up("Shift").catch(() => {});
+  await page.keyboard.up("e").catch(() => {});
   await browser.close();
 }
