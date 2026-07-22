@@ -69,7 +69,8 @@ try {
   const afterPad = await page.evaluate(() => ({
     game: structuredClone(window.__game),
     status: document.getElementById("gamepadStatus").textContent,
-    connected: document.getElementById("gamepadStatus").classList.contains("connected")
+    connected: document.getElementById("gamepadStatus").classList.contains("connected"),
+    axes: [...window.__testPad.axes]
   }));
   const forwardDelta = Math.abs(afterPad.game.player.forward.x - beforePad.player.forward.x) +
     Math.abs(afterPad.game.player.forward.y - beforePad.player.forward.y) +
@@ -77,7 +78,17 @@ try {
   assert(afterPad.connected, "gamepad HUD did not show connected state");
   assert(afterPad.status.includes("ONLINE"), `unexpected gamepad status: ${afterPad.status}`);
   assert(afterPad.game.player.speed > beforePad.player.speed + 8, "right trigger did not boost speed");
-  assert(forwardDelta > 0.04, "left stick did not change aircraft orientation");
+  assert(
+    forwardDelta > 0.04,
+    `left stick did not change aircraft orientation: ${JSON.stringify({
+      before: beforePad.player.forward,
+      after: afterPad.game.player.forward,
+      axes: afterPad.axes,
+      state: afterPad.game.state,
+      health: afterPad.game.health,
+      forwardDelta
+    })}`
+  );
 
   await page.evaluate(() => {
     window.__testPad.axes[0] = 0;
