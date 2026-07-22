@@ -62,6 +62,38 @@ const tapKey = async (code) => {
   await key(code, false);
 };
 
+const travel = async (targetDistance, timeoutMs = 30000) => page.evaluate(
+  ({ targetDistance, timeoutMs }) => new Promise((resolve, reject) => {
+    let previous = { ...window.__game.player.position };
+    let distance = 0;
+    const started = performance.now();
+    const step = () => {
+      if (window.__game.state !== "playing") {
+        reject(new Error(`game left playing state: ${window.__game.state}`));
+        return;
+      }
+      const current = { ...window.__game.player.position };
+      distance += Math.hypot(
+        current.x - previous.x,
+        current.y - previous.y,
+        current.z - previous.z
+      );
+      previous = current;
+      if (distance >= targetDistance) {
+        resolve(structuredClone(window.__game));
+        return;
+      }
+      if (performance.now() - started > timeoutMs) {
+        reject(new Error(`simulation travel timed out at ${distance}`));
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }),
+  { targetDistance, timeoutMs }
+);
+
 const bankDisplay = async () => page.evaluate(() => {
   const transform = document.getElementById("pitchLadder").style.transform;
   const match = transform.match(/rotate\(([-+0-9.eE]+)rad\)/);
@@ -92,31 +124,28 @@ try {
   await start();
   const normalYawBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await key("KeyQ", true);
-  await page.waitForTimeout(650);
+  const normalYawState = await travel(90);
   await key("KeyQ", false);
-  const normalYawAfter = await page.evaluate(() => structuredClone(window.__game.player.forward));
   assert(
-    Math.abs(headingOf(normalYawAfter) - headingOf(normalYawBefore)) < 0.025,
+    Math.abs(headingOf(normalYawState.player.forward) - headingOf(normalYawBefore)) < 0.01,
     "normal mode accepted direct Q/E yaw"
   );
 
   const normalTurnBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await key("KeyA", true);
   await key("KeyS", true);
-  await page.waitForTimeout(1050);
+  const normalTurnState = await travel(180);
   await key("KeyA", false);
   await key("KeyS", false);
-  const normalTurnAfter = await page.evaluate(() => structuredClone(window.__game.player.forward));
   assert(
-    Math.abs(headingOf(normalTurnAfter) - headingOf(normalTurnBefore)) > 0.06,
-    `normal coordinated turn did not change heading: ${JSON.stringify({ normalTurnBefore, normalTurnAfter })}`
+    Math.abs(headingOf(normalTurnState.player.forward) - headingOf(normalTurnBefore)) > 0.05,
+    `normal coordinated turn did not change heading: ${JSON.stringify({ normalTurnBefore, after: normalTurnState.player.forward })}`
   );
-  assert(Math.abs(normalTurnAfter.y - normalTurnBefore.y) > 0.04, "normal pitch input was lost");
+  assert(Math.abs(normalTurnState.player.forward.y - normalTurnBefore.y) > 0.08, "normal pitch input was lost");
 
   const transitionBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await tapKey("KeyM");
   await page.waitForFunction(() => window.__game?.controlMode === "expert");
-  await page.waitForTimeout(50);
   const transitionAfter = await page.evaluate(() => ({
     forward: structuredClone(window.__game.player.forward),
     text: document.getElementById("controlModeStatus").textContent,
@@ -131,14 +160,13 @@ try {
   await start();
   const keyboardYawBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await key("KeyQ", true);
-  await page.waitForTimeout(700);
+  const keyboardYawState = await travel(150);
   await key("KeyQ", false);
-  const keyboardYawAfter = await page.evaluate(() => structuredClone(window.__game.player.forward));
   assert(
-    headingOf(keyboardYawAfter) < headingOf(keyboardYawBefore) - 0.15,
-    `expert Q yaw did not turn left: ${JSON.stringify({ keyboardYawBefore, keyboardYawAfter })}`
+    headingOf(keyboardYawState.player.forward) < headingOf(keyboardYawBefore) - 0.18,
+    `expert Q yaw did not turn left: ${JSON.stringify({ keyboardYawBefore, after: keyboardYawState.player.forward })}`
   );
-  assert(Math.abs(keyboardYawAfter.y) < 0.04, "level expert yaw unexpectedly added pitch");
+  assert(Math.abs(keyboardYawState.player.forward.y) < 0.04, "level expert yaw unexpectedly added pitch");
 
   await loadReady();
   await tapKey("KeyM");
@@ -146,29 +174,27 @@ try {
   await start();
   const rollBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await key("KeyA", true);
-  await page.waitForTimeout(900);
+  const rollState = await travel(130);
   await key("KeyA", false);
-  const rollAfter = await page.evaluate(() => structuredClone(window.__game.player.forward));
   const bankAfterRoll = await bankDisplay();
   assert(
-    Math.abs(headingOf(rollAfter) - headingOf(rollBefore)) < 0.025,
-    `expert roll caused automatic yaw: ${JSON.stringify({ rollBefore, rollAfter })}`
+    Math.abs(headingOf(rollState.player.forward) - headingOf(rollBefore)) < 0.015,
+    `expert roll caused automatic yaw: ${JSON.stringify({ rollBefore, after: rollState.player.forward })}`
   );
-  assert(Math.abs(rollAfter.y - rollBefore.y) < 0.025, "expert roll caused automatic pitch");
-  assert(bankAfterRoll > 0.55, `expert roll was not accumulated: ${bankAfterRoll}`);
-  await page.waitForTimeout(650);
+  assert(Math.abs(rollState.player.forward.y - rollBefore.y) < 0.015, "expert roll caused automatic pitch");
+  assert(bankAfterRoll > 0.45, `expert roll was not accumulated: ${bankAfterRoll}`);
+  await travel(100);
   const bankAfterRelease = await bankDisplay();
-  assert(Math.abs(bankAfterRelease - bankAfterRoll) < 0.1, "expert roll auto-leveled after input release");
+  assert(Math.abs(bankAfterRelease - bankAfterRoll) < 0.08, "expert roll auto-leveled after input release");
 
   const beforeReturnToNormal = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await tapKey("KeyM");
   await page.waitForFunction(() => window.__game?.controlMode === "normal");
-  await page.waitForTimeout(50);
   const afterReturnToNormal = await page.evaluate(() => structuredClone(window.__game.player.forward));
   assert(forwardDelta(beforeReturnToNormal, afterReturnToNormal) < 0.035, "expert-to-normal switch snapped flight direction");
-  await page.waitForTimeout(900);
+  await travel(170);
   const bankAfterAutoLevel = await bankDisplay();
-  assert(bankAfterAutoLevel < bankAfterRelease - 0.15, "normal mode did not resume auto-leveling");
+  assert(bankAfterAutoLevel < bankAfterRelease - 0.12, "normal mode did not resume auto-leveling");
 
   await loadReady();
   await page.evaluate(() => {
@@ -179,23 +205,31 @@ try {
   await page.evaluate(() => {
     window.__testPad.buttons[3] = { pressed: false, touched: false, value: 0 };
   });
-  await page.waitForTimeout(80);
   await start();
   const padYawBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
   await page.evaluate(() => { window.__testPad.axes[2] = -0.85; });
-  await page.waitForTimeout(750);
+  const padYawState = await travel(150);
   await page.evaluate(() => { window.__testPad.axes[2] = 0; });
-  const padYawAfter = await page.evaluate(() => ({
-    forward: structuredClone(window.__game.player.forward),
-    gamepadOnline: document.getElementById("gamepadStatus").classList.contains("connected")
-  }));
   assert(
-    headingOf(padYawAfter.forward) < headingOf(padYawBefore) - 0.15,
-    `expert right-stick yaw did not turn left: ${JSON.stringify({ padYawBefore, padYawAfter })}`
+    headingOf(padYawState.player.forward) < headingOf(padYawBefore) - 0.18,
+    `expert right-stick yaw did not turn left: ${JSON.stringify({ padYawBefore, after: padYawState.player.forward })}`
   );
-  assert(padYawAfter.gamepadOnline, "gamepad HUD lost connected state");
+  const padHud = await page.evaluate(() => document.getElementById("gamepadStatus").classList.contains("connected"));
+  assert(padHud, "gamepad HUD lost connected state");
 
-  await page.waitForTimeout(2500);
+  await loadReady();
+  await tapKey("KeyM");
+  await page.waitForFunction(() => window.__game?.controlMode === "expert");
+  await start();
+  const diagonalBefore = await page.evaluate(() => structuredClone(window.__game.player.forward));
+  await page.evaluate(() => { window.__testPad.axes = [-0.62, 0.5, -0.58, 0]; });
+  const diagonalState = await travel(140);
+  await page.evaluate(() => { window.__testPad.axes = [0, 0, 0, 0]; });
+  const diagonalBank = await bankDisplay();
+  assert(Math.abs(headingOf(diagonalState.player.forward) - headingOf(diagonalBefore)) > 0.08, "expert diagonal input lacked yaw");
+  assert(Math.abs(diagonalState.player.forward.y - diagonalBefore.y) > 0.08, "expert diagonal input lacked pitch");
+  assert(diagonalBank > 0.18, "expert diagonal input lacked roll");
+
   const finalState = await page.evaluate(() => structuredClone(window.__game));
   assert(finalState.state === "playing", `test mission ended unexpectedly: ${finalState.state}`);
   assert(finalState.health === 100, `health regressed during expert controls test: ${finalState.health}`);
