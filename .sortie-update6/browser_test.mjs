@@ -55,7 +55,7 @@ const setButton = async (index, pressed) => page.evaluate(({ index, pressed }) =
   window.__testPad.timestamp += 1;
 }, { index, pressed });
 
-const tapButton = async (index, hold = 160, settle = 220) => {
+const tapButton = async (index, hold = 520, settle = 360) => {
   await setButton(index, true);
   await page.waitForTimeout(hold);
   await setButton(index, false);
@@ -87,14 +87,23 @@ assert(initial.pips === 10, `expected 10 missile pips, got ${initial.pips}`);
 assert(JSON.stringify(initial.types) === JSON.stringify(["bison", "lancer", "viper"]), `mixed enemy types missing: ${initial.types}`);
 assert(initial.health === 100, `initial health changed: ${initial.health}`);
 
-// Square/X remains the camera-cycle button.
-await tapButton(2);
+// Square/X remains the camera-cycle button. Keep it pressed until at least one render frame consumes it.
+await setButton(2, true);
+await page.waitForFunction((before) => window.__game.cameraMode !== before, initial.cameraMode, { timeout: 3000 });
+await setButton(2, false);
+await page.waitForTimeout(360);
 const squareCamera = await page.evaluate(() => window.__game.cameraMode);
 assert(squareCamera !== initial.cameraMode, "Square/X did not cycle camera");
 
 // Triangle/Y short press cycles target on release.
 const beforeTarget = await page.evaluate(() => window.__game.selectedTargetId);
-await tapButton(3, 150, 250);
+await setButton(3, true);
+await page.waitForTimeout(180);
+await setButton(3, false);
+await page.waitForFunction((before) => {
+  const current = window.__game.selectedTargetId;
+  return current !== null && (before === null || current !== before);
+}, beforeTarget, { timeout: 3000 });
 const afterTarget = await page.evaluate(() => window.__game.selectedTargetId);
 assert(afterTarget !== null, "Triangle/Y short press did not select a target");
 assert(afterTarget !== beforeTarget || beforeTarget === null, "Triangle/Y short press did not cycle target");
