@@ -97,12 +97,13 @@ jobs:
           fi
           echo "node_status=$node_status" >> "$diagnostic"
 
-          cat .sortie-feedback/browser_test.b64.* | tr -d '\n\r' | base64 -d > /tmp/browser-feedback-test.mjs 2>> "$diagnostic"
+          assembled_test=.sortie-feedback/browser-feedback-test-exact.mjs
+          cat .sortie-feedback/browser_test.b64.* | tr -d '\n\r' | base64 -d > "$assembled_test" 2>> "$diagnostic"
           assembled_test_status=$?
           echo "assembled_test_status=$assembled_test_status" >> "$diagnostic"
 
           if [ "$assembled_test_status" -eq 0 ]; then
-            browser_test_hash="$(git hash-object /tmp/browser-feedback-test.mjs)"
+            browser_test_hash="$(git hash-object "$assembled_test")"
             echo "browser_test_hash=$browser_test_hash" >> "$diagnostic"
             if [ "$browser_test_hash" = "242287d82c3a20e833292033ac5c478f79e9b6f7" ]; then
               browser_test_hash_status=0
@@ -113,7 +114,7 @@ jobs:
           echo "browser_test_hash_status=$browser_test_hash_status" >> "$diagnostic"
 
           if [ "$browser_test_hash_status" -eq 0 ]; then
-            node --check /tmp/browser-feedback-test.mjs >> "$diagnostic" 2>&1
+            node --check "$assembled_test" >> "$diagnostic" 2>&1
             browser_test_node_status=$?
           fi
           echo "browser_test_node_status=$browser_test_node_status" >> "$diagnostic"
@@ -131,7 +132,7 @@ jobs:
             python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-feedback-server.log 2>&1 &
             server_pid=$!
             sleep 1
-            CHROME_BIN="$chrome_bin" node /tmp/browser-feedback-test.mjs >> "$diagnostic" 2>&1
+            CHROME_BIN="$chrome_bin" node "$assembled_test" >> "$diagnostic" 2>&1
             browser_status=$?
             kill "$server_pid" 2>/dev/null || true
             wait "$server_pid" 2>/dev/null || true
@@ -141,6 +142,7 @@ jobs:
           echo "browser_status=$browser_status" >> "$diagnostic"
 
           rm -rf .sortie-feedback/node_modules
+          rm -f "$assembled_test"
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
 
