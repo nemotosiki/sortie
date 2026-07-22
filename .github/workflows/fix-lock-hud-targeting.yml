@@ -1,9 +1,8 @@
 name: Fix lock targeting and enemy HUD markers
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
       - ".sortie-lock-hud/ready"
 
@@ -19,6 +18,7 @@ jobs:
       - name: Check out main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Apply targeting fix and run regressions
