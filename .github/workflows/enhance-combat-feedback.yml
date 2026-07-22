@@ -21,6 +21,12 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Synchronize latest main
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
       - name: Apply feedback upgrade and run regressions
         shell: bash
         run: |
