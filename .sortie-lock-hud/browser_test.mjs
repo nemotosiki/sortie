@@ -85,15 +85,13 @@ try {
   assert(fallbackLock.selectedMarkerClass.includes("selected"),
     `selected enemy marker is not distinguished: ${JSON.stringify(fallbackLock)}`);
 
-  // Turn away in EXPERT mode and observe the arrow while the yaw input is still active.
-  // This avoids coupling the regression to camera catch-up timing after the input is released.
-  await page.keyboard.press("m");
-  await page.waitForFunction(() => window.__game.controlMode === "expert");
-  await page.keyboard.down("e");
+  // Boost through the opposing formation. The selected slow BISON passes behind the player,
+  // providing a deterministic off-screen target without depending on camera-turn timing.
+  await page.keyboard.down("Shift");
   await page.waitForFunction(() => {
     const arrow = window.__game.hud?.targetArrow;
     return arrow?.active && arrow.targetId === 3;
-  }, null, { timeout: 7000 });
+  }, null, { timeout: 8000 });
 
   const arrowState = await page.evaluate(() => {
     const arrow = window.__game.hud.targetArrow;
@@ -107,7 +105,7 @@ try {
       height: window.innerHeight
     };
   });
-  await page.keyboard.up("e");
+  await page.keyboard.up("Shift");
 
   assert(arrowState.active && arrowState.targetId === 3,
     `off-screen selected target arrow missing: ${JSON.stringify(arrowState)}`);
@@ -131,6 +129,6 @@ try {
 
   console.log(JSON.stringify({ initialHud, fallbackLock, arrowState }));
 } finally {
-  await page.keyboard.up("e").catch(() => {});
+  await page.keyboard.up("Shift").catch(() => {});
   await browser.close();
 }
