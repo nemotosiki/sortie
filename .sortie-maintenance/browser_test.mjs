@@ -12,7 +12,8 @@ const browser = await chromium.launch({
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
-    "--use-angle=swiftshader"
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader"
   ]
 });
 
