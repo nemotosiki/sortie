@@ -775,12 +775,12 @@
       <h1>Sortie</h1>
       <p class="subtitle">敵戦闘機6機を2波に分けて迎撃せよ。照準を重ねてミサイルをロックし、短距離では機銃で仕留める。</p>
       <div class="controls">
-        <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ダイブ / プル。ロール中にプルすると旋回。</span></div>
-        <div class="controlItem"><strong>A / D · ← / →</strong><span>左ロール / 右ロール。</span></div>
+        <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ダイブ / プル。バンク中も機首の上下を維持。</span></div>
+        <div class="controlItem"><strong>A / D · ← / →</strong><span>左バンク / 右バンク。入力を離すと自動水平復帰。</span></div>
         <div class="controlItem"><strong>SHIFT / CTRL</strong><span>ブースト / 減速。機体は常に前進。</span></div>
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
         <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全6発。</span></div>
-        <div class="controlItem"><strong>GAMEPAD</strong><span>左スティック/D-Padで操縦、RT/LTで加減速、RBで機銃、A/LBでミサイル。</span></div>
+        <div class="controlItem"><strong>GAMEPAD</strong><span>左スティック/D-Padでバンクとピッチ、RT/LTで加減速、RBで機銃、A/LBでミサイル。</span></div>
         <div class="controlItem"><strong>OBJECTIVE</strong><span>HPを保ち、全ターゲットを撃墜せよ。</span></div>
       </div>
       <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
@@ -818,7 +818,9 @@
     const BOOST_SPEED = 266;
     const BRAKE_SPEED = 92;
     const PITCH_RATE = THREE.MathUtils.degToRad(58);
-    const ROLL_RATE = THREE.MathUtils.degToRad(98);
+    const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
+    const COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
+    const BANK_RESPONSE_K = 0.006;
     const GUN_RANGE = 750;
     const GUN_RATE = 12;
     const LOCK_RANGE = 1200;
@@ -914,6 +916,7 @@
     let lastRadarForward = new THREE.Vector3(0, 0, -1);
     let missionElapsed = 0;
     let playerHitCooldown = 0;
+    let playerBank = 0;
 
     const gamepadInput = {
       connected: false,
@@ -966,6 +969,7 @@
     });
     player.add(playerModel.group);
     scene.add(player);
+    const playerFlightFrame = new THREE.Quaternion();
 
     const cameraLook = new THREE.Vector3();
     const cameraUp = new THREE.Vector3(0, 1, 0);
@@ -1218,8 +1222,14 @@
 
     function resetPlayerTransform() {
       player.position.set(0, 260, 620);
-      player.quaternion.identity();
-      player.quaternion.normalize();
+      playerFlightFrame.identity();
+      playerBank = 0;
+      syncPlayerOrientation();
+    }
+
+    function syncPlayerOrientation() {
+      tmpQ1.setFromAxisAngle(LOCAL_FORWARD, -playerBank);
+      player.quaternion.copy(playerFlightFrame).multiply(tmpQ1).normalize();
     }
 
     function updatePlayer(dt) {
@@ -1230,9 +1240,25 @@
       const pitchInput = THREE.MathUtils.clamp(keyboardPitch + gamepadInput.pitch, -1, 1);
       const rollInput = THREE.MathUtils.clamp(keyboardRoll + gamepadInput.roll, -1, 1);
 
-      if (pitchInput !== 0) player.rotateX(pitchInput * PITCH_RATE * dt);
-      if (rollInput !== 0) player.rotateZ(rollInput * ROLL_RATE * dt);
-      player.quaternion.normalize();
+      const targetBank = rollInput * MAX_BANK_ANGLE;
+      playerBank = THREE.MathUtils.lerp(playerBank, targetBank, damping(BANK_RESPONSE_K, dt));
+
+      const turnSpeedFactor = THREE.MathUtils.clamp(
+        CRUISE_SPEED / Math.max(playerSpeed, 1),
+        0.72,
+        1.28
+      );
+      const turnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * turnSpeedFactor;
+      if (Math.abs(turnRate) > 0.00001) {
+        tmpQ1.setFromAxisAngle(WORLD_UP, turnRate * dt);
+        playerFlightFrame.premultiply(tmpQ1).normalize();
+      }
+
+      if (Math.abs(pitchInput) > 0.00001) {
+        tmpQ1.setFromAxisAngle(LOCAL_RIGHT, pitchInput * PITCH_RATE * dt);
+        playerFlightFrame.multiply(tmpQ1).normalize();
+      }
+      syncPlayerOrientation();
 
       const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") || gamepadInput.boost;
       const brake = keys.has("ControlLeft") || keys.has("ControlRight") || gamepadInput.brake;
