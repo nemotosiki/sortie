@@ -14,7 +14,10 @@ const browser = await chromium.launch({
     "--ignore-gpu-blocklist",
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
-    "--autoplay-policy=no-user-gesture-required"
+    "--autoplay-policy=no-user-gesture-required",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding"
   ]
 });
 
@@ -81,37 +84,34 @@ try {
   assert(fallbackLock.selectedMarkerClass.includes("selected"),
     `selected enemy marker is not distinguished: ${JSON.stringify(fallbackLock)}`);
 
+  // The CI renderer can be heavily frame-throttled. Hold yaw and boost long enough for the
+  // selected flank target to leave the camera frustum even at a few rendered frames per second.
   await page.keyboard.press("m");
   await page.waitForFunction(() => window.__game.controlMode === "expert");
   await page.keyboard.down("e");
+  await page.keyboard.down("Shift");
 
   const snapshots = [];
   let arrowState = null;
-  for (let i = 0; i < 28; i += 1) {
+  for (let i = 0; i < 80; i += 1) {
     await page.waitForTimeout(250);
     const snapshot = await page.evaluate(() => {
       const game = window.__game;
       const enemy = game.enemies.find((candidate) => candidate.id === 3);
       const marker = document.querySelector('.enemyMarker[data-enemy-id="3"]');
       return {
-        t: performance.now(),
         state: game.state,
         health: game.health,
         selectedTargetId: game.selectedTargetId,
         lockTargetId: game.lock.targetId,
-        cameraMode: game.cameraMode,
-        controlMode: game.controlMode,
-        player: {
-          position: { ...game.player.position },
-          forward: { ...game.player.forward },
-          speed: game.player.speed
-        },
-        enemy: enemy ? { position: { ...enemy.position }, alive: enemy.alive } : null,
+        playerForward: { ...game.player.forward },
+        playerSpeed: game.player.speed,
+        enemyPosition: enemy ? { ...enemy.position } : null,
         arrow: { ...game.hud.targetArrow },
         markerClass: marker?.className || ""
       };
     });
-    snapshots.push(snapshot);
+    if (i % 4 === 0 || snapshot.arrow.active || snapshot.state !== "playing") snapshots.push(snapshot);
     if (snapshot.arrow.active && snapshot.arrow.targetId === 3) {
       arrowState = await page.evaluate(() => {
         const arrow = window.__game.hud.targetArrow;
@@ -127,8 +127,10 @@ try {
       });
       break;
     }
+    if (snapshot.state !== "playing") break;
   }
   await page.keyboard.up("e");
+  await page.keyboard.up("Shift");
   console.log(`TARGET_ARROW_SNAPSHOTS=${JSON.stringify(snapshots)}`);
 
   assert(arrowState, `off-screen selected target arrow missing; snapshots=${JSON.stringify(snapshots)}`);
@@ -155,5 +157,6 @@ try {
   console.log(JSON.stringify({ initialHud, fallbackLock, arrowState }));
 } finally {
   await page.keyboard.up("e").catch(() => {});
+  await page.keyboard.up("Shift").catch(() => {});
   await browser.close();
 }
