@@ -33,18 +33,14 @@ await page.addInitScript(() => {
 });
 
 const setKey = async (code, pressed) => {
-  await page.evaluate(({ code, pressed }) => {
-    const keyByCode = {
-      ControlLeft: "Control",
-      KeyS: "s"
-    };
-    window.dispatchEvent(new KeyboardEvent(pressed ? "keydown" : "keyup", {
-      bubbles: true,
-      cancelable: true,
-      code,
-      key: keyByCode[code] || ""
-    }));
-  }, { code, pressed });
+  const keyByCode = {
+    ControlLeft: "Control",
+    KeyS: "s"
+  };
+  const key = keyByCode[code];
+  if (!key) throw new Error(`unknown keyboard code: ${code}`);
+  if (pressed) await page.keyboard.down(key);
+  else await page.keyboard.up(key);
   await page.waitForTimeout(80);
 };
 
