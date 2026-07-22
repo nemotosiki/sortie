@@ -87,11 +87,20 @@ const collectSimulationDistance = async (targetDistance, timeoutMs = 20000) => p
   { targetDistance, timeoutMs }
 );
 
-try {
-  await page.goto("http://127.0.0.1:4173/index.html", { waitUntil: "networkidle" });
+const startFreshMission = async () => {
   await page.waitForFunction(() => window.__game?.state === "ready");
   await page.click("#startBtn");
   await page.waitForFunction(() => window.__game?.state === "playing");
+  await page.waitForFunction(() => {
+    const position = window.__game?.player?.position;
+    if (!position) return false;
+    return Math.hypot(position.x, position.y - 260, position.z - 620) < 40;
+  });
+};
+
+try {
+  await page.goto("http://127.0.0.1:4173/index.html", { waitUntil: "networkidle" });
+  await startFreshMission();
 
   const initial = await page.evaluate(() => structuredClone(window.__game));
   assert(initial.health === 100, `initial health was ${initial.health}`);
@@ -132,12 +141,12 @@ try {
   const bankAfterRelease = await displayedBank();
   assert(bankAfterRelease < 0.08, `auto-level did not settle after releasing roll: ${bankAfterRelease}`);
 
+  await page.reload({ waitUntil: "networkidle" });
+  await startFreshMission();
   await page.evaluate(() => {
-    document.getElementById("startBtn").click();
     document.body.tabIndex = -1;
     document.body.focus();
   });
-  await page.waitForTimeout(100);
   await page.keyboard.down("a");
   await page.keyboard.down("s");
   const keyboardSamples = await collectSimulationDistance(160);
