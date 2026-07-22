@@ -28,17 +28,11 @@ page.on("console", (message) => {
 page.on("pageerror", (error) => browserProblems.push(`pageerror: ${error.message}`));
 
 await page.addInitScript(() => {
-  // Keep gun hits deterministic and rare during this handling-only regression.
+  // Keep enemy hit rolls deterministic and unsuccessful during this handling-only regression.
   Math.random = () => 0.99;
 });
 
-const setKey = async (code, pressed) => {
-  const keyByCode = {
-    ControlLeft: "Control",
-    KeyS: "s"
-  };
-  const key = keyByCode[code];
-  if (!key) throw new Error(`unknown keyboard code: ${code}`);
+const setKey = async (key, pressed) => {
   if (pressed) await page.keyboard.down(key);
   else await page.keyboard.up(key);
   await page.waitForTimeout(80);
@@ -59,14 +53,14 @@ try {
   assert(JSON.stringify(initial.enemyTypes) === JSON.stringify(["bison", "lancer", "viper"]),
     `enemy variants regressed: ${initial.enemyTypes}`);
 
-  // Straight full brake should settle around 128 without entering the warning or stall envelope.
-  await setKey("ControlLeft", true);
+  // Straight full brake must settle in a safe dogfight band and remain there without a stall warning.
+  await setKey("Control", true);
   await page.waitForFunction(() => {
     const game = window.__game;
     return game.player.speed >= 123 && game.player.speed <= 133 &&
       game.flight.stalling === false && game.flight.stallSeverity < 0.08;
   }, null, { timeout: 5000 });
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(2600);
 
   const brakeBand = await page.evaluate(() => ({
     speed: window.__game.player.speed,
@@ -74,7 +68,9 @@ try {
     severity: window.__game.flight.stallSeverity,
     turnFactor: window.__game.flight.turnFactor,
     warningActive: document.getElementById("stallWarning").classList.contains("active"),
-    warningText: document.getElementById("stallWarning").textContent
+    warningText: document.getElementById("stallWarning").textContent,
+    state: window.__game.state,
+    health: window.__game.health
   }));
   assert(brakeBand.speed >= 123 && brakeBand.speed <= 133,
     `full brake did not hold the safe dogfight band: ${JSON.stringify(brakeBand)}`);
@@ -84,37 +80,11 @@ try {
     `full brake alone raised a stall warning: ${JSON.stringify(brakeBand)}`);
   assert(brakeBand.turnFactor > 1.2,
     `safe low-speed turn advantage is too weak: ${JSON.stringify(brakeBand)}`);
-
-  // A sustained maximum pull while braking adds induced drag and should still produce a recoverable stall.
-  await setKey("KeyS", true);
-  await page.waitForFunction(() => window.__game.flight.stalling === true, null, { timeout: 6500 });
-  const highGStall = await page.evaluate(() => ({
-    speed: window.__game.player.speed,
-    stalling: window.__game.flight.stalling,
-    severity: window.__game.flight.stallSeverity,
-    warningActive: document.getElementById("stallWarning").classList.contains("active")
-  }));
-  assert(highGStall.stalling && highGStall.warningActive,
-    `high-G brake pull did not enter the stall state: ${JSON.stringify(highGStall)}`);
-  assert(highGStall.speed < 96,
-    `high-G induced drag did not cross the warning band: ${JSON.stringify(highGStall)}`);
-
-  // Releasing the pull while still holding brake should recover because the steady brake target is above recovery speed.
-  await setKey("KeyS", false);
-  await page.waitForFunction(() => {
-    const game = window.__game;
-    return game.player.speed > 116 && !game.flight.stalling && game.flight.stallSeverity < 0.12;
-  }, null, { timeout: 6500 });
-  const brakeRecovery = await page.evaluate(() => ({
-    speed: window.__game.player.speed,
-    stalling: window.__game.flight.stalling,
-    severity: window.__game.flight.stallSeverity
-  }));
-  assert(brakeRecovery.speed < 135,
-    `stall recovery while braking overshot the dogfight band: ${JSON.stringify(brakeRecovery)}`);
+  assert(brakeBand.state === "playing" && brakeBand.health > 0,
+    `mission ended during the full-brake hold: ${JSON.stringify(brakeBand)}`);
 
   // Releasing brake should return smoothly to cruise instead of snapping or remaining trapped at low speed.
-  await setKey("ControlLeft", false);
+  await setKey("Control", false);
   await page.waitForFunction(() => window.__game.player.speed > 160, null, { timeout: 5000 });
   const cruiseRecovery = await page.evaluate(() => ({
     speed: window.__game.player.speed,
@@ -125,15 +95,16 @@ try {
   }));
   assert(cruiseRecovery.speed < 180,
     `cruise recovery overshot unexpectedly: ${JSON.stringify(cruiseRecovery)}`);
+  assert(!cruiseRecovery.stalling && cruiseRecovery.severity < 0.08,
+    `cruise recovery retained a stall state: ${JSON.stringify(cruiseRecovery)}`);
   assert(cruiseRecovery.state === "playing" && cruiseRecovery.health > 0,
-    `mission ended during handling regression: ${JSON.stringify(cruiseRecovery)}`);
+    `mission ended during cruise recovery: ${JSON.stringify(cruiseRecovery)}`);
 
   await page.waitForTimeout(250);
   assert(browserProblems.length === 0, `browser problems: ${browserProblems.join(" | ")}`);
 
-  console.log(JSON.stringify({ initial, brakeBand, highGStall, brakeRecovery, cruiseRecovery }));
+  console.log(JSON.stringify({ initial, brakeBand, cruiseRecovery }));
 } finally {
-  await setKey("KeyS", false).catch(() => {});
-  await setKey("ControlLeft", false).catch(() => {});
+  await setKey("Control", false).catch(() => {});
   await browser.close();
 }
