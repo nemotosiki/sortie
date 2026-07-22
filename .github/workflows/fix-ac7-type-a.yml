@@ -1,0 +1,83 @@
+name: Fix Ace Combat 7 Type A gamepad mapping
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".sortie-ac7/ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch, validate, and publish
+        shell: bash
+        run: |
+          set +e
+          diagnostic=.sortie-ac7/diagnostic.txt
+          : > "$diagnostic"
+
+          python3 .sortie-ac7/apply_mapping.py >> "$diagnostic" 2>&1
+          patch_status=$?
+          echo "patch_status=$patch_status" >> "$diagnostic"
+
+          if [ "$patch_status" -eq 0 ]; then
+            node --check /tmp/sortie-game.mjs >> "$diagnostic" 2>&1
+            node_status=$?
+          else
+            node_status=99
+          fi
+          echo "node_status=$node_status" >> "$diagnostic"
+
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          echo "chrome_bin=$chrome_bin" >> "$diagnostic"
+
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
+            npm install --prefix .sortie-ac7 --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
+            npm_status=$?
+          else
+            npm_status=99
+          fi
+          echo "npm_status=$npm_status" >> "$diagnostic"
+
+          browser_status=99
+          if [ "$npm_status" -eq 0 ]; then
+            python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-ac7-server.log 2>&1 &
+            server_pid=$!
+            sleep 1
+            CHROME_BIN="$chrome_bin" node .sortie-ac7/browser_test.mjs >> "$diagnostic" 2>&1
+            browser_status=$?
+            kill "$server_pid" 2>/dev/null || true
+            echo "--- server log ---" >> "$diagnostic"
+            cat /tmp/sortie-ac7-server.log >> "$diagnostic" 2>&1
+          fi
+          echo "browser_status=$browser_status" >> "$diagnostic"
+
+          rm -rf .sortie-ac7/node_modules
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
+            rm -rf .sortie-ac7
+            rm -f .github/workflows/fix-ac7-type-a.yml
+            git add -A
+            git commit -m "Fix Ace Combat 7 Type A gamepad mapping"
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          git checkout -- index.html 2>/dev/null || true
+          git add "$diagnostic"
+          git commit -m "Record AC7 gamepad mapping diagnostics"
+          git push origin HEAD:main
+          cat "$diagnostic"
+          exit 1
