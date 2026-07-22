@@ -1,4 +1,4 @@
-name: Diagnose Sortie gameplay patch
+name: Diagnose Sortie browser regression test
 
 on:
   push:
@@ -12,24 +12,37 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Run patch and capture diagnostics
+      - name: Run patched browser test and capture diagnostics
         shell: bash
         run: |
           set +e
-          python3 .sortie-maintenance/apply_fix.py > .sortie-maintenance/diagnostic.txt 2>&1
-          patch_status=$?
-          echo "patch_status=$patch_status" >> .sortie-maintenance/diagnostic.txt
-          if [ "$patch_status" -eq 0 ]; then
-            node --check /tmp/sortie-game.mjs >> .sortie-maintenance/diagnostic.txt 2>&1
-            echo "node_status=$?" >> .sortie-maintenance/diagnostic.txt
-          fi
+          : > .sortie-maintenance/diagnostic.txt
+          python3 .sortie-maintenance/apply_fix.py >> .sortie-maintenance/diagnostic.txt 2>&1
+          echo "patch_status=$?" >> .sortie-maintenance/diagnostic.txt
+          node --check /tmp/sortie-game.mjs >> .sortie-maintenance/diagnostic.txt 2>&1
+          echo "node_status=$?" >> .sortie-maintenance/diagnostic.txt
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          echo "chrome_bin=$chrome_bin" >> .sortie-maintenance/diagnostic.txt
+          npm install --prefix .sortie-maintenance --no-package-lock --no-save playwright-core@1.54.1 >> .sortie-maintenance/diagnostic.txt 2>&1
+          echo "npm_status=$?" >> .sortie-maintenance/diagnostic.txt
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-server.log 2>&1 &
+          server_pid=$!
+          sleep 1
+          CHROME_BIN="$chrome_bin" node .sortie-maintenance/browser_test.mjs >> .sortie-maintenance/diagnostic.txt 2>&1
+          browser_status=$?
+          echo "browser_status=$browser_status" >> .sortie-maintenance/diagnostic.txt
+          kill "$server_pid" 2>/dev/null || true
+          echo "--- server log ---" >> .sortie-maintenance/diagnostic.txt
+          cat /tmp/sortie-server.log >> .sortie-maintenance/diagnostic.txt 2>&1
           git checkout -- index.html
+          rm -rf .sortie-maintenance/node_modules
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .sortie-maintenance/diagnostic.txt
-          git commit -m "Record Sortie patch diagnostics"
+          git commit -m "Record Sortie browser diagnostics"
           git push origin HEAD:main
