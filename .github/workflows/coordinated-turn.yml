@@ -19,281 +19,66 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply coordinated turn patch
+      - name: Patch, test, and publish or record diagnostics
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
+          set +e
+          diagnostic=.sortie-turn/diagnostic.txt
+          : > "$diagnostic"
 
-          path = Path("index.html")
-          text = path.read_text(encoding="utf-8")
+          python3 .sortie-turn/apply_turn.py >> "$diagnostic" 2>&1
+          patch_status=$?
+          echo "patch_status=$patch_status" >> "$diagnostic"
 
-          def replace_once(old: str, new: str, label: str) -> None:
-              global text
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected exactly one anchor, found {count}")
-              text = text.replace(old, new, 1)
+          if [ "$patch_status" -eq 0 ]; then
+            node --check /tmp/sortie-game.mjs >> "$diagnostic" 2>&1
+            node_status=$?
+          else
+            node_status=99
+          fi
+          echo "node_status=$node_status" >> "$diagnostic"
 
-          replace_once(
-              '        <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ダイブ / プル。ロール中にプルすると旋回。</span></div>\n'
-              '        <div class="controlItem"><strong>A / D · ← / →</strong><span>左ロール / 右ロール。</span></div>',
-              '        <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ダイブ / プル。バンク中も機首の上下を維持。</span></div>\n'
-              '        <div class="controlItem"><strong>A / D · ← / →</strong><span>左バンク / 右バンク。入力を離すと自動水平復帰。</span></div>',
-              "keyboard flight help",
-          )
-
-          replace_once(
-              '        <div class="controlItem"><strong>GAMEPAD</strong><span>左スティック/D-Padで操縦、RT/LTで加減速、RBで機銃、A/LBでミサイル。</span></div>',
-              '        <div class="controlItem"><strong>GAMEPAD</strong><span>左スティック/D-Padでバンクとピッチ、RT/LTで加減速、RBで機銃、A/LBでミサイル。</span></div>',
-              "gamepad flight help",
-          )
-
-          replace_once(
-              '    const PITCH_RATE = THREE.MathUtils.degToRad(58);\n'
-              '    const ROLL_RATE = THREE.MathUtils.degToRad(98);',
-              '    const PITCH_RATE = THREE.MathUtils.degToRad(58);\n'
-              '    const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);\n'
-              '    const COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);\n'
-              '    const BANK_RESPONSE_K = 0.006;',
-              "coordinated turn constants",
-          )
-
-          replace_once(
-              '    let missionElapsed = 0;\n    let playerHitCooldown = 0;',
-              '    let missionElapsed = 0;\n    let playerHitCooldown = 0;\n    let playerBank = 0;',
-              "player bank state",
-          )
-
-          replace_once(
-              '    scene.add(player);\n\n    const cameraLook = new THREE.Vector3();',
-              '    scene.add(player);\n    const playerFlightFrame = new THREE.Quaternion();\n\n    const cameraLook = new THREE.Vector3();',
-              "unbanked flight frame",
-          )
-
-          replace_once(
-              '    function resetPlayerTransform() {\n'
-              '      player.position.set(0, 260, 620);\n'
-              '      player.quaternion.identity();\n'
-              '      player.quaternion.normalize();\n'
-              '    }',
-              '    function resetPlayerTransform() {\n'
-              '      player.position.set(0, 260, 620);\n'
-              '      playerFlightFrame.identity();\n'
-              '      playerBank = 0;\n'
-              '      syncPlayerOrientation();\n'
-              '    }',
-              "player transform reset",
-          )
-
-          replace_once(
-              '    function updatePlayer(dt) {',
-              '    function syncPlayerOrientation() {\n'
-              '      tmpQ1.setFromAxisAngle(LOCAL_FORWARD, -playerBank);\n'
-              '      player.quaternion.copy(playerFlightFrame).multiply(tmpQ1).normalize();\n'
-              '    }\n\n'
-              '    function updatePlayer(dt) {',
-              "player orientation helper",
-          )
-
-          replace_once(
-              '      const pitchInput = THREE.MathUtils.clamp(keyboardPitch + gamepadInput.pitch, -1, 1);\n'
-              '      const rollInput = THREE.MathUtils.clamp(keyboardRoll + gamepadInput.roll, -1, 1);\n\n'
-              '      if (pitchInput !== 0) player.rotateX(pitchInput * PITCH_RATE * dt);\n'
-              '      if (rollInput !== 0) player.rotateZ(rollInput * ROLL_RATE * dt);\n'
-              '      player.quaternion.normalize();',
-              '      const pitchInput = THREE.MathUtils.clamp(keyboardPitch + gamepadInput.pitch, -1, 1);\n'
-              '      const rollInput = THREE.MathUtils.clamp(keyboardRoll + gamepadInput.roll, -1, 1);\n\n'
-              '      const targetBank = rollInput * MAX_BANK_ANGLE;\n'
-              '      playerBank = THREE.MathUtils.lerp(playerBank, targetBank, damping(BANK_RESPONSE_K, dt));\n\n'
-              '      const turnSpeedFactor = THREE.MathUtils.clamp(\n'
-              '        CRUISE_SPEED / Math.max(playerSpeed, 1),\n'
-              '        0.72,\n'
-              '        1.28\n'
-              '      );\n'
-              '      const turnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * turnSpeedFactor;\n'
-              '      if (Math.abs(turnRate) > 0.00001) {\n'
-              '        tmpQ1.setFromAxisAngle(WORLD_UP, turnRate * dt);\n'
-              '        playerFlightFrame.premultiply(tmpQ1).normalize();\n'
-              '      }\n\n'
-              '      if (Math.abs(pitchInput) > 0.00001) {\n'
-              '        tmpQ1.setFromAxisAngle(LOCAL_RIGHT, pitchInput * PITCH_RATE * dt);\n'
-              '        playerFlightFrame.multiply(tmpQ1).normalize();\n'
-              '      }\n'
-              '      syncPlayerOrientation();',
-              "coordinated player rotation",
-          )
-
-          path.write_text(text, encoding="utf-8")
-
-          required = [
-              "MAX_BANK_ANGLE",
-              "COORDINATED_TURN_RATE",
-              "BANK_RESPONSE_K",
-              "playerFlightFrame.premultiply",
-              "syncPlayerOrientation",
-          ]
-          for token in required:
-              if token not in text:
-                  raise SystemExit(f"missing required coordinated-turn token: {token}")
-          if "player.rotateZ(rollInput" in text or "ROLL_RATE" in text:
-              raise SystemExit("legacy continuously accumulated roll logic remains")
-          if text.count('id="gamepadStatus"') != 1:
-              raise SystemExit("gamepad HUD hook changed unexpectedly")
-          if text.count('id="state"') != 1 or text.count('id="health"') != 1:
-              raise SystemExit("required automation hooks changed unexpectedly")
-
-          module = text.rsplit('<script type="module">', 1)[1].split("</script>", 1)[0]
-          Path("/tmp/sortie-game.mjs").write_text(module, encoding="utf-8")
-          PY
-          node --check /tmp/sortie-game.mjs
-
-      - name: Run local HTTP browser regression
-        shell: bash
-        run: |
-          set -euo pipefail
           chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          test -n "$chrome_bin"
-          npm install --prefix .sortie-turn --no-package-lock --no-save playwright-core@1.54.1 >/dev/null
-          cat > /tmp/sortie-turn-test.mjs <<'JS'
-          import { chromium } from "playwright-core";
+          echo "chrome_bin=$chrome_bin" >> "$diagnostic"
 
-          const assert = (condition, message) => {
-            if (!condition) throw new Error(message);
-          };
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ -n "$chrome_bin" ]; then
+            npm install --prefix .sortie-turn --no-package-lock --no-save playwright-core@1.54.1 >> "$diagnostic" 2>&1
+            npm_status=$?
+          else
+            npm_status=99
+          fi
+          echo "npm_status=$npm_status" >> "$diagnostic"
 
-          const browser = await chromium.launch({
-            executablePath: process.env.CHROME_BIN,
-            headless: true,
-            args: [
-              "--no-sandbox",
-              "--disable-dev-shm-usage",
-              "--enable-webgl",
-              "--ignore-gpu-blocklist",
-              "--use-angle=swiftshader",
-              "--enable-unsafe-swiftshader"
-            ]
-          });
+          browser_status=99
+          if [ "$npm_status" -eq 0 ]; then
+            python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-turn-server.log 2>&1 &
+            server_pid=$!
+            sleep 1
+            CHROME_BIN="$chrome_bin" node .sortie-turn/browser_test.mjs >> "$diagnostic" 2>&1
+            browser_status=$?
+            kill "$server_pid" 2>/dev/null || true
+            echo "--- server log ---" >> "$diagnostic"
+            cat /tmp/sortie-turn-server.log >> "$diagnostic" 2>&1
+          fi
+          echo "browser_status=$browser_status" >> "$diagnostic"
 
-          const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-          const browserProblems = [];
-          page.on("console", (message) => {
-            if (message.type() === "warning" || message.type() === "error") {
-              browserProblems.push(`${message.type()}: ${message.text()}`);
-            }
-          });
-          page.on("pageerror", (error) => browserProblems.push(`pageerror: ${error.message}`));
-
-          await page.addInitScript(() => {
-            Math.random = () => 0.99;
-            const buttons = Array.from({ length: 16 }, () => ({ pressed: false, touched: false, value: 0 }));
-            window.__testPad = {
-              id: "Virtual Standard Gamepad",
-              index: 0,
-              connected: true,
-              mapping: "standard",
-              timestamp: 0,
-              axes: [0, 0, 0, 0],
-              buttons,
-              vibrationActuator: null,
-              hapticActuators: []
-            };
-            Object.defineProperty(navigator, "getGamepads", {
-              configurable: true,
-              value: () => window.__testPad.connected ? [window.__testPad] : []
-            });
-          });
-
-          const headingOf = (forward) => Math.atan2(forward.x, -forward.z);
-          const displayedBank = async () => page.evaluate(() => {
-            const transform = document.getElementById("pitchLadder").style.transform;
-            const match = transform.match(/rotate\(([-+0-9.eE]+)rad\)/);
-            return match ? Math.abs(Number(match[1])) : 0;
-          });
-
-          try {
-            await page.goto("http://127.0.0.1:4173/index.html", { waitUntil: "networkidle" });
-            await page.waitForFunction(() => window.__game?.state === "ready");
-            await page.click("#startBtn");
-            await page.waitForFunction(() => window.__game?.state === "playing");
-
-            const initial = await page.evaluate(() => structuredClone(window.__game));
-            assert(initial.health === 100, `initial health was ${initial.health}`);
-            await page.waitForTimeout(2500);
-            const idle = await page.evaluate(() => structuredClone(window.__game));
-            assert(idle.state === "playing", `idle state became ${idle.state}`);
-            assert(idle.health === 100, `idle health dropped to ${idle.health}`);
-
-            await page.evaluate(() => {
-              window.__testPad.axes[0] = 0.78;
-              window.__testPad.axes[1] = 0.34;
-              window.dispatchEvent(new Event("gamepadconnected"));
-            });
-
-            const headings = [];
-            let finalForward = null;
-            for (let i = 0; i < 14; i += 1) {
-              await page.waitForTimeout(100);
-              finalForward = await page.evaluate(() => ({ ...window.__game.player.forward }));
-              headings.push(headingOf(finalForward));
-            }
-
-            for (let i = 1; i < headings.length; i += 1) {
-              while (headings[i] - headings[i - 1] > Math.PI) headings[i] -= Math.PI * 2;
-              while (headings[i] - headings[i - 1] < -Math.PI) headings[i] += Math.PI * 2;
-            }
-            const headingChange = headings.at(-1) - headings[0];
-            const worstBacktrack = Math.min(...headings.slice(1).map((value, index) => value - headings[index]));
-            const bankDuringTurn = await displayedBank();
-            const padStatus = await page.evaluate(() => document.getElementById("gamepadStatus").textContent);
-
-            assert(padStatus.includes("ONLINE"), `unexpected gamepad status: ${padStatus}`);
-            assert(headingChange > 0.28, `diagonal gamepad input did not create a sustained right turn: ${headingChange}`);
-            assert(worstBacktrack > -0.025, `heading reversed during continuous bank input: ${worstBacktrack}`);
-            assert(finalForward.y > 0.08, `diagonal gamepad pitch did not raise the nose: ${finalForward.y}`);
-            assert(bankDuringTurn > 0.24, `aircraft did not visibly bank during turn: ${bankDuringTurn}`);
-
-            await page.evaluate(() => {
-              window.__testPad.axes[0] = 0;
-              window.__testPad.axes[1] = 0;
-            });
-            await page.waitForTimeout(900);
-            const bankAfterRelease = await displayedBank();
-            assert(bankAfterRelease < 0.08, `auto-level did not settle after releasing roll: ${bankAfterRelease}`);
-
-            await page.evaluate(() => document.getElementById("startBtn").click());
-            await page.waitForFunction(() => window.__game?.state === "playing");
-            await page.keyboard.down("ArrowLeft");
-            await page.keyboard.down("ArrowDown");
-            await page.waitForTimeout(1200);
-            await page.keyboard.up("ArrowDown");
-            await page.keyboard.up("ArrowLeft");
-            const keyboardForward = await page.evaluate(() => ({ ...window.__game.player.forward }));
-            const keyboardHeading = headingOf(keyboardForward);
-            assert(keyboardHeading < -0.24, `diagonal keyboard input did not create a left turn: ${keyboardHeading}`);
-            assert(keyboardForward.y > 0.12, `keyboard pitch did not raise the nose: ${keyboardForward.y}`);
-
-            assert(browserProblems.length === 0, browserProblems.join("\n"));
-          } finally {
-            await browser.close();
-          }
-          JS
-
-          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/sortie-turn-server.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          sleep 1
-          CHROME_BIN="$chrome_bin" node /tmp/sortie-turn-test.mjs
-
-      - name: Commit verified flight model to main
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf .sortie-turn
-          rm -f .github/workflows/coordinated-turn.yml
+          rm -rf .sortie-turn/node_modules
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
-          git add -A
-          git commit -m "Improve coordinated turn flight model"
+
+          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$npm_status" -eq 0 ] && [ "$browser_status" -eq 0 ]; then
+            rm -rf .sortie-turn
+            rm -f .github/workflows/coordinated-turn.yml
+            rm -f .github/workflows/actions-ping.yml
+            git add -A
+            git commit -m "Improve coordinated turn flight model"
+            git push origin HEAD:main
+            exit 0
+          fi
+
+          git checkout -- index.html
+          git add "$diagnostic"
+          git commit -m "Record coordinated turn diagnostics"
           git push origin HEAD:main
+          cat "$diagnostic"
+          exit 1
