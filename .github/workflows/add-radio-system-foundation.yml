@@ -1,0 +1,508 @@
+name: Add radio system foundation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".radio-foundation-ready"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-static-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply radio foundation, validate, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one anchor, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''    #missionBanner.danger { color: var(--danger); }
+    #missionBanner.success { color: #fff6a0; }
+
+    #boostIndicator {
+''',
+              '''    #missionBanner.danger { color: var(--danger); }
+    #missionBanner.success { color: #fff6a0; }
+
+    #radioPanel {
+      position: absolute;
+      left: 50%;
+      bottom: clamp(6px, 1.2vh, 16px);
+      z-index: 35;
+      transform: translate(-50%, 8px);
+      width: min(640px, 86vw);
+      padding: 9px 20px;
+      text-align: center;
+      background: var(--panel);
+      border-top: 1px solid var(--hud-soft);
+      border-bottom: 1px solid var(--hud-soft);
+      opacity: 0;
+      transition: opacity 140ms ease, transform 140ms ease;
+      font-size: clamp(12px, 1.2vw, 15px);
+      pointer-events: none;
+    }
+
+    #radioPanel.visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    #radioPanel.command #radioSpeaker { color: var(--hud); }
+    #radioPanel.wingman #radioSpeaker { color: var(--warning); }
+    #radioPanel.enemy #radioSpeaker { color: var(--danger); }
+
+    #radioSpeaker {
+      margin-right: 10px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+    }
+
+    #radioText {
+      color: #eaf6ff;
+      letter-spacing: 0.01em;
+    }
+
+    #boostIndicator {
+''',
+              "radio CSS",
+          )
+
+          replace_once(
+              '''    <div id="gamepadStatus">GAMEPAD OFFLINE</div>
+  </div>
+
+  <div id="damageFlash"></div>
+''',
+              '''    <div id="gamepadStatus">GAMEPAD OFFLINE</div>
+  </div>
+
+  <div id="radioPanel"><span id="radioSpeaker"></span><span id="radioText"></span></div>
+
+  <div id="damageFlash"></div>
+''',
+              "radio DOM",
+          )
+
+          replace_once(
+              '''    const ui = {
+''',
+              '''    const RADIO_SPEAKERS = {
+      command: { label: "COMMAND", toneFreq: 620, toneType: "square" },
+      wingman: { label: "WINGMAN", toneFreq: 460, toneType: "sine" },
+      enemy: { label: "HOSTILE", toneFreq: 340, toneType: "sawtooth" }
+    };
+
+    const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
+
+    const RADIO_QUEUE_MAX = 4;
+    const RADIO_CHAR_INTERVAL = 0.03;
+    const RADIO_HOLD_BASE = 0.9;
+    const RADIO_HOLD_PER_CHAR = 0.012;
+    const RADIO_HOLD_MAX = 3.2;
+    const RADIO_MIN_GAP = 0.3;
+    const RADIO_SPEAKER_COOLDOWN = 4.5;
+    const RADIO_LINE_COOLDOWN = 25;
+
+    const ui = {
+''',
+              "radio constants",
+          )
+
+          replace_once(
+              '''      missionBanner: document.getElementById("missionBanner"),
+      boostIndicator: document.getElementById("boostIndicator"),
+''',
+              '''      missionBanner: document.getElementById("missionBanner"),
+      radioPanel: document.getElementById("radioPanel"),
+      radioSpeaker: document.getElementById("radioSpeaker"),
+      radioText: document.getElementById("radioText"),
+      boostIndicator: document.getElementById("boostIndicator"),
+''',
+              "radio UI bindings",
+          )
+
+          replace_once(
+              '''    let damageSmokeTimer = 0;
+    let currentCameraFov = BASE_CAMERA_FOV;
+
+    const gamepadInput = {
+''',
+              '''    let damageSmokeTimer = 0;
+    let currentCameraFov = BASE_CAMERA_FOV;
+
+    const radioQueue = [];
+    const radioSpeakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
+    let radioLineReadyAt = {};
+    let radioGapUntil = 0;
+
+    const radioState = {
+      active: false,
+      speakerId: null,
+      lineId: null,
+      fullText: "",
+      revealedChars: 0,
+      charTimer: 0,
+      holdTimer: 0
+    };
+
+    const gamepadInput = {
+''',
+              "radio state",
+          )
+
+          replace_once(
+              '''      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0 },
+      threats: { incomingMissiles: [], nearest: null },
+''',
+              '''      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0 },
+      radio: {
+        active: false,
+        speakerId: null,
+        lineId: null,
+        text: "",
+        revealedChars: 0,
+        totalChars: 0,
+        complete: false,
+        queueLength: 0
+      },
+      threats: { incomingMissiles: [], nearest: null },
+''',
+              "radio hook literal",
+          )
+
+          replace_once(
+              '''      updateCamera(dt);
+      updateVisualStatus(dt);
+      updateHud();
+''',
+              '''      updateCamera(dt);
+      updateVisualStatus(dt);
+      updateRadio(dt);
+      updateHud();
+''',
+              "unconditional radio update",
+          )
+
+          replace_once(
+              '''    function startMission() {
+      keys.clear();
+      clearMissionObjects();
+      resetPlayerTransform();
+''',
+              '''    function startMission() {
+      keys.clear();
+      clearMissionObjects();
+      resetRadio();
+      resetPlayerTransform();
+''',
+              "mission radio reset",
+          )
+
+          replace_once(
+              '''      enemyMissileSerial += 1;
+      enemyMissilesLaunched += 1;
+      enemyMissiles.push({
+''',
+              '''      enemyMissileSerial += 1;
+      enemyMissilesLaunched += 1;
+      triggerRadioLine("enemy", "Fox two, fox two!", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
+      enemyMissiles.push({
+''',
+              "enemy missile radio call",
+          )
+
+          replace_once(
+              '''      if (preferredTargetId === enemy.id) preferredTargetId = null;
+      showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+    }
+''',
+              '''      if (preferredTargetId === enemy.id) preferredTargetId = null;
+      showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+      triggerRadioLine("wingman", "Splash one! Nice shot!", RADIO_PRIORITY.NORMAL, "kill-callout");
+    }
+''',
+              "kill radio call",
+          )
+
+          replace_once(
+              '''      } else if (health <= 30) {
+        showBanner("WARNING · CRITICAL DAMAGE", 1.1, "danger");
+      }
+''',
+              '''      } else if (health <= 30) {
+        showBanner("WARNING · CRITICAL DAMAGE", 1.1, "danger");
+        triggerRadioLine("wingman", "You're hit bad! Get some altitude!", RADIO_PRIORITY.URGENT, "critical-damage");
+      }
+''',
+              "critical damage radio call",
+          )
+
+          replace_once(
+              '''      if (waveNumber < 2) {
+        spawnWave(2);
+        showBanner("WAVE 2 · INBOUND", 2.0, "danger");
+''',
+              '''      if (waveNumber < 2) {
+        spawnWave(2);
+        showBanner("WAVE 2 · INBOUND", 2.0, "danger");
+        triggerRadioLine("command", "Multiple bandits inbound, wave two. Stay sharp.", RADIO_PRIORITY.NORMAL, "wave2-inbound");
+''',
+              "wave two radio call",
+          )
+
+          replace_once(
+              '''      setState(success ? STATE_COMPLETE : STATE_GAMEOVER);
+''',
+              '''      resetRadio();
+      triggerRadioLine(
+        "command",
+        success
+          ? "All hostiles down. Good work out there — RTB."
+          : "We've lost contact. Return to base if you can hear this.",
+        RADIO_PRIORITY.CRITICAL,
+        "mission-outcome"
+      );
+      setState(success ? STATE_COMPLETE : STATE_GAMEOVER);
+''',
+              "mission outcome radio call",
+          )
+
+          replace_once(
+              '''      hook.audio.threatBeeps = audioSystem.threatBeeps;
+      hook.player.position.x = player.position.x;
+''',
+              '''      hook.audio.threatBeeps = audioSystem.threatBeeps;
+      hook.radio.active = radioState.active;
+      hook.radio.speakerId = radioState.speakerId;
+      hook.radio.lineId = radioState.lineId;
+      hook.radio.text = radioState.fullText;
+      hook.radio.revealedChars = radioState.revealedChars;
+      hook.radio.totalChars = radioState.fullText.length;
+      hook.radio.complete = radioState.active && radioState.revealedChars >= radioState.fullText.length;
+      hook.radio.queueLength = radioQueue.length;
+      hook.player.position.x = player.position.x;
+''',
+              "radio hook sync",
+          )
+
+          replace_once(
+              '''    function getOrCreateEnemyMarker(enemy) {
+''',
+              '''    function triggerRadioLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null) {
+      if (!RADIO_SPEAKERS[speakerId] || typeof text !== "string" || text.length === 0) return false;
+      const resolvedPriority = Number.isFinite(priority) ? Math.trunc(priority) : RADIO_PRIORITY.NORMAL;
+      const resolvedId = id ? String(id) : `${speakerId}:${text.slice(0, 24)}`;
+      if ((radioLineReadyAt[resolvedId] || 0) > missionElapsed) return false;
+      if (radioQueue.some((request) => request.id === resolvedId)) return false;
+
+      if (radioQueue.length >= RADIO_QUEUE_MAX) {
+        let worstIdx = 0;
+        for (let i = 1; i < radioQueue.length; i += 1) {
+          if (radioQueue[i].priority < radioQueue[worstIdx].priority) worstIdx = i;
+        }
+        if (resolvedPriority <= radioQueue[worstIdx].priority) return false;
+        radioQueue.splice(worstIdx, 1);
+      }
+
+      radioQueue.push({
+        id: resolvedId,
+        speakerId,
+        text,
+        priority: resolvedPriority,
+        queuedAt: missionElapsed
+      });
+      radioQueue.sort((a, b) => b.priority - a.priority || a.queuedAt - b.queuedAt);
+      return true;
+    }
+
+    function updateRadio(dt) {
+      if (radioState.active) {
+        if (radioState.revealedChars < radioState.fullText.length) {
+          radioState.charTimer -= dt;
+          while (radioState.charTimer <= 0 && radioState.revealedChars < radioState.fullText.length) {
+            radioState.revealedChars += 1;
+            radioState.charTimer += RADIO_CHAR_INTERVAL;
+          }
+          ui.radioText.textContent = radioState.fullText.slice(0, radioState.revealedChars);
+        } else {
+          radioState.holdTimer -= dt;
+          if (radioState.holdTimer <= 0) {
+            radioGapUntil = missionElapsed + RADIO_MIN_GAP;
+            radioState.active = false;
+            radioState.speakerId = null;
+            radioState.lineId = null;
+            radioState.fullText = "";
+            radioState.revealedChars = 0;
+            radioState.charTimer = 0;
+            radioState.holdTimer = 0;
+            ui.radioText.textContent = "";
+            ui.radioPanel.classList.remove("visible");
+          }
+        }
+        return;
+      }
+
+      if (missionElapsed < radioGapUntil || radioQueue.length === 0) return;
+
+      const idx = radioQueue.findIndex(
+        (request) => (radioSpeakerReadyAt[request.speakerId] || 0) <= missionElapsed
+      );
+      if (idx === -1) return;
+
+      const request = radioQueue.splice(idx, 1)[0];
+      const speaker = RADIO_SPEAKERS[request.speakerId];
+      radioSpeakerReadyAt[request.speakerId] = missionElapsed + RADIO_SPEAKER_COOLDOWN;
+      radioLineReadyAt[request.id] = missionElapsed + RADIO_LINE_COOLDOWN;
+
+      radioState.active = true;
+      radioState.speakerId = request.speakerId;
+      radioState.lineId = request.id;
+      radioState.fullText = request.text;
+      radioState.revealedChars = 0;
+      radioState.charTimer = RADIO_CHAR_INTERVAL;
+      radioState.holdTimer = Math.min(
+        RADIO_HOLD_MAX,
+        RADIO_HOLD_BASE + request.text.length * RADIO_HOLD_PER_CHAR
+      );
+
+      playTone(speaker.toneFreq, 0.1, 0.09, speaker.toneType);
+
+      ui.radioSpeaker.textContent = speaker.label;
+      ui.radioPanel.className = request.speakerId;
+      void ui.radioPanel.offsetWidth;
+      ui.radioPanel.classList.add("visible");
+      ui.radioText.textContent = "";
+    }
+
+    function resetRadio() {
+      radioQueue.length = 0;
+      radioState.active = false;
+      radioState.speakerId = null;
+      radioState.lineId = null;
+      radioState.fullText = "";
+      radioState.revealedChars = 0;
+      radioState.charTimer = 0;
+      radioState.holdTimer = 0;
+      radioSpeakerReadyAt.command = 0;
+      radioSpeakerReadyAt.wingman = 0;
+      radioSpeakerReadyAt.enemy = 0;
+      radioLineReadyAt = {};
+      radioGapUntil = 0;
+      ui.radioSpeaker.textContent = "";
+      ui.radioText.textContent = "";
+      ui.radioPanel.classList.remove("visible");
+    }
+
+    function getOrCreateEnemyMarker(enemy) {
+''',
+              "radio functions",
+          )
+
+          required_markers = [
+              'const RADIO_SPEAKERS = {',
+              'const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };',
+              'const RADIO_QUEUE_MAX = 4;',
+              'function triggerRadioLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null)',
+              'function updateRadio(dt)',
+              'function resetRadio()',
+              'id="radioPanel"',
+              'id="radioSpeaker"',
+              'id="radioText"',
+              'updateRadio(dt);',
+              'hook.radio.queueLength = radioQueue.length;',
+              '"wave2-inbound"',
+              '"critical-damage"',
+              '`enemy-missile-${enemy.id}`',
+              '"kill-callout"',
+              '"mission-outcome"',
+          ]
+          for marker in required_markers:
+              if marker not in text:
+                  raise SystemExit(f"missing radio marker: {marker}")
+
+          if text.count('function triggerRadioLine(') != 1:
+              raise SystemExit("triggerRadioLine must be defined exactly once")
+          if text.count('function updateRadio(dt)') != 1:
+              raise SystemExit("updateRadio must be defined exactly once")
+          if text.count('function resetRadio()') != 1:
+              raise SystemExit("resetRadio must be defined exactly once")
+          if text.count('updateRadio(dt);') != 1:
+              raise SystemExit("updateRadio must be called exactly once per frame")
+
+          outcome_block = '''      resetRadio();
+      triggerRadioLine(
+        "command",
+        success
+          ? "All hostiles down. Good work out there — RTB."
+          : "We've lost contact. Return to base if you can hear this.",
+        RADIO_PRIORITY.CRITICAL,
+        "mission-outcome"
+      );
+      setState(success ? STATE_COMPLETE : STATE_GAMEOVER);'''
+          if outcome_block not in text:
+              raise SystemExit("mission outcome reset/queue/state ordering is invalid")
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+
+          required_ids = [
+              "score", "highscore", "health", "missiles", "kills", "state",
+              "startBtn", "retryBtn", "radioPanel", "radioSpeaker", "radioText"
+          ]
+          for element_id in required_ids:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          for state in ("ready", "playing", "missionComplete", "gameover"):
+              if f'"{state}"' not in text:
+                  raise SystemExit(f"missing state literal: {state}")
+
+          if "@latest" in text:
+              raise SystemExit("unfixed CDN version found")
+          if "console.warn(" in text or "console.error(" in text:
+              raise SystemExit("console warning/error call added")
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/add-radio-system-foundation.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add index.html .github/workflows/add-radio-system-foundation.yml
+          git diff --cached --check
+          git commit -m "Add radio system foundation"
+          git push origin HEAD:main
