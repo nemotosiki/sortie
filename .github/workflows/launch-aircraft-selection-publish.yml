@@ -46,7 +46,7 @@ jobs:
               elif line.startswith('          '):
                   lines.append(line[10:])
               else:
-                  raise SystemExit(f'unexpected staged publisher indentation: {line!r}')
+                  lines.append(line)
           script = '\n'.join(lines) + '\n'
           cleanup = 'rm -f .github/workflows/add-aircraft-selection.yml'
           cleanup_replacement = cleanup + ' .github/workflows/launch-aircraft-selection-publish.yml .aircraft-selection-merge-trigger'
