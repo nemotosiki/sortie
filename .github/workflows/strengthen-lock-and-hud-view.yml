@@ -1,12 +1,10 @@
 name: Strengthen lock-on and HUD-only view
-# Retrigger after GitHub indexed the staged workflow.
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
-      - ".github/workflows/strengthen-lock-and-hud-view.yml"
+      - ".lock-hud-ready"
 
 permissions:
   contents: write
