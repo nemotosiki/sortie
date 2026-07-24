@@ -1,0 +1,88 @@
+name: Fix enemy missile terminal-hit iteration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fix-enemy-missile-terminal-hit.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-static-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply guard, validate, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''        if (distance < 13) {
+            createExplosion(missile.mesh.position, 0xff4d45, 0.72);
+            applyPlayerDamage(missile.damage);
+            removeEnemyMissile(i);
+            continue;
+          }
+          '''
+          new = '''        if (distance < 13) {
+            createExplosion(missile.mesh.position, 0xff4d45, 0.72);
+            applyPlayerDamage(missile.damage);
+            removeEnemyMissile(i);
+            if (gameState !== STATE_PLAYING) return;
+            continue;
+          }
+          '''
+
+          if text.count(old) != 1:
+              raise SystemExit(f"expected exactly one terminal-hit block, found {text.count(old)}")
+
+          text = text.replace(old, new, 1)
+          if text.count("if (gameState !== STATE_PLAYING) return;") < 1:
+              raise SystemExit("mission-end guard was not inserted")
+          if text.count(new) != 1:
+              raise SystemExit("patched terminal-hit block is not unique")
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+
+          required_ids = [
+              "score", "highscore", "health", "missiles", "kills", "state",
+              "startBtn", "retryBtn"
+          ]
+          for element_id in required_ids:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/fix-enemy-missile-terminal-hit.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add index.html .github/workflows/fix-enemy-missile-terminal-hit.yml
+          git diff --cached --check
+          git commit -m "Guard enemy missile loop after mission end"
+          git push origin HEAD:main
