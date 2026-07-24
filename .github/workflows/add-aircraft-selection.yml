@@ -1,0 +1,679 @@
+name: Add selectable player aircraft
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".aircraft-selection-ready"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-aircraft-selection
+  cancel-in-progress: true
+
+jobs:
+  patch-static-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply aircraft selection, validate, clean up, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one occurrence, found {count}")
+              text = text.replace(old, new, 1)
+
+          # CSS: aircraft picker, cards, secondary result action, and mobile layout.
+          css_block = '''    .aircraftSelect { margin: 16px 0 20px; text-align: left; }
+
+    .aircraftSelectHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .aircraftSelectHint {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: rgba(220, 247, 255, 0.5);
+    }
+
+    .aircraftCardRow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .aircraftCard {
+      position: relative;
+      text-align: left;
+      padding: 12px;
+      border: 1px solid rgba(143, 239, 255, 0.2);
+      background: rgba(32, 119, 145, 0.08);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+
+    .aircraftCard:hover,
+    .aircraftCard:focus-visible {
+      border-color: rgba(167, 246, 255, 0.55);
+      background: rgba(83, 217, 239, 0.14);
+    }
+
+    .aircraftCard.active {
+      border-color: #a7f6ff;
+      background: rgba(83, 217, 239, 0.2);
+      box-shadow: 0 0 18px rgba(106, 232, 255, 0.28), inset 0 0 18px rgba(83, 217, 239, 0.1);
+    }
+
+    .aircraftTag {
+      display: inline-block;
+      margin-bottom: 4px;
+      padding: 2px 6px;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      border: 1px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .aircraftName {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: #ecfdff;
+    }
+
+    .aircraftRole {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: #a8f4ff;
+    }
+
+    .aircraftBlurb {
+      margin: 8px 0;
+      min-height: 4.4em;
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: rgba(220, 247, 255, 0.7);
+    }
+
+    .statRow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 3px 0;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: rgba(220, 247, 255, 0.5);
+    }
+
+    .statRow span:first-child { width: 34px; flex-shrink: 0; }
+    .aircraftStatBar { flex: 1; height: 5px; }
+
+    .aircraftMissiles {
+      display: block;
+      margin-top: 6px;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: rgba(220, 247, 255, 0.55);
+    }
+
+    .actionButton.secondary {
+      min-width: 0;
+      margin-top: 12px;
+      padding: 10px 22px;
+      border-color: rgba(143, 239, 255, 0.35);
+      background: rgba(83, 217, 239, 0.04);
+      font-size: 11px;
+    }
+
+'''
+          replace_once('    .controls {\n', css_block + '    .controls {\n', 'aircraft picker CSS anchor')
+          replace_once(
+              '      .controls { grid-template-columns: 1fr 1fr; }\n',
+              '      .controls { grid-template-columns: 1fr 1fr; }\n      .aircraftCardRow { grid-template-columns: 1fr 1fr; }\n',
+              'mobile aircraft cards',
+          )
+
+          # HTML: picker, help item, and result-screen return action.
+          picker_html = '''      <div class="aircraftSelect" id="aircraftSelect" role="radiogroup" aria-label="Select Aircraft">
+        <div class="aircraftSelectHeader">
+          <span class="titleKicker">SELECT AIRCRAFT</span>
+          <span class="aircraftSelectHint">A/D · ←/→ · D-PAD で切替</span>
+        </div>
+        <div class="aircraftCardRow" id="aircraftCardRow"></div>
+      </div>
+'''
+          replace_once(
+              '      <p class="subtitle">敵戦闘機6機を2波に分けて迎撃せよ。照準を重ねてミサイルをロックし、短距離では機銃で仕留める。</p>\n',
+              '      <p class="subtitle">敵戦闘機6機を2波に分けて迎撃せよ。照準を重ねてミサイルをロックし、短距離では機銃で仕留める。</p>\n' + picker_html,
+              'aircraft picker markup',
+          )
+          replace_once(
+              '        <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>',
+              '        <div class="controlItem"><strong>A/D · ←/→ · D-PAD</strong><span>スタート画面で機体を切替。</span></div>\n        <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>',
+              'aircraft keyboard help',
+          )
+          replace_once(
+              '      <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>\n',
+              '      <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>\n      <button id="changeAircraftBtn" class="actionButton secondary" type="button">◀ CHANGE AIRCRAFT</button>\n',
+              'change aircraft button',
+          )
+
+          # Mutable player-performance values and maximum health.
+          mutable_constants = [
+              ('const PLAYER_MISSILE_CAPACITY = 10;', 'let PLAYER_MISSILE_CAPACITY = 10;'),
+              ('const CRUISE_SPEED = 170;', 'let CRUISE_SPEED = 170;'),
+              ('const BOOST_SPEED = 340;', 'let BOOST_SPEED = 340;'),
+              ('const BRAKE_SPEED = 128;', 'let BRAKE_SPEED = 128;'),
+              ('const PITCH_RATE = THREE.MathUtils.degToRad(58);', 'let PITCH_RATE = THREE.MathUtils.degToRad(58);'),
+              ('const EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);', 'let EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);'),
+              ('const YAW_RATE = THREE.MathUtils.degToRad(16);', 'let YAW_RATE = THREE.MathUtils.degToRad(16);'),
+              ('const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);', 'let MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);'),
+              ('const NORMAL_ROLL_SPRING = 22;', 'let NORMAL_ROLL_SPRING = 22;'),
+              ('const NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);', 'let NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);'),
+              ('const COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);', 'let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);'),
+          ]
+          for old, new in mutable_constants:
+              replace_once(old, new, f'mutable constant {old}')
+          replace_once(
+              '    let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);\n    const TARGET_FOCUS_HOLD_MS = 360;',
+              '    let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);\n    let PLAYER_MAX_HEALTH = 100;\n    const TARGET_FOCUS_HOLD_MS = 360;',
+              'player max health',
+          )
+
+          aircraft_table = '''
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f15", "f4", "f22"]);
+    const DEFAULT_AIRCRAFT_ID = "f16";
+
+    const AIRCRAFT_TYPES = Object.freeze({
+      f16: Object.freeze({
+        id: "f16",
+        label: "F-16 FIGHTING FALCON",
+        role: "Multirole Dogfighter",
+        tag: "RECOMMENDED",
+        blurb: "軽量・俊敏。旋回性能は4機中最速。まず乗るならこの一機。",
+        cruiseSpeed: 170, boostSpeed: 340, brakeSpeed: 128,
+        pitchRateDeg: 58, rollRateDeg: 102, yawRateDeg: 16, maxBankAngleDeg: 68,
+        normalRollSpring: 22, rollRateLimitDeg: 125, turnRateDeg: 42,
+        missileCapacity: 10, maxHealth: 100,
+        theme: Object.freeze({
+          primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
+          canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
+        })
+      }),
+      f15: Object.freeze({
+        id: "f15",
+        label: "F-15 EAGLE",
+        role: "Air Superiority Fighter",
+        tag: "",
+        blurb: "全4機中最速。旋回性能も十分に高く、隙のない万能重戦闘機。",
+        cruiseSpeed: 210, boostSpeed: 420, brakeSpeed: 158,
+        pitchRateDeg: 51, rollRateDeg: 90, yawRateDeg: 14, maxBankAngleDeg: 60,
+        normalRollSpring: 19, rollRateLimitDeg: 110, turnRateDeg: 37,
+        missileCapacity: 12, maxHealth: 115,
+        theme: Object.freeze({
+          primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
+          canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
+        })
+      }),
+      f4: Object.freeze({
+        id: "f4",
+        label: "F-4 PHANTOM II",
+        role: "Heavy Interceptor",
+        tag: "HEAVY",
+        blurb: "旧世代の重装甲機。旋回は4機中最も鈍いが、耐久力と搭載弾数は随一。",
+        cruiseSpeed: 185, boostSpeed: 370, brakeSpeed: 139,
+        pitchRateDeg: 41, rollRateDeg: 72, yawRateDeg: 11, maxBankAngleDeg: 48,
+        normalRollSpring: 16, rollRateLimitDeg: 89, turnRateDeg: 30,
+        missileCapacity: 14, maxHealth: 130,
+        theme: Object.freeze({
+          primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
+          canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
+        })
+      }),
+      f22: Object.freeze({
+        id: "f22",
+        label: "F-22 RAPTOR",
+        role: "Stealth Air Superiority",
+        tag: "ADVANCED",
+        blurb: "アフターバーナー無しで巡航できる高速機。搭載弾数は4機中最少、装甲も控えめ。乗りこなせば強い。",
+        cruiseSpeed: 239, boostSpeed: 385, brakeSpeed: 145,
+        pitchRateDeg: 55, rollRateDeg: 83, yawRateDeg: 13, maxBankAngleDeg: 55,
+        normalRollSpring: 18, rollRateLimitDeg: 101, turnRateDeg: 34,
+        missileCapacity: 6, maxHealth: 105,
+        theme: Object.freeze({
+          primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
+          canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
+        })
+      })
+    });
+'''
+          replace_once(
+              '    const OUTRO_RETREAT_BANNER_AT = 10.8;\n\n    const ENEMY_TYPE_ORDER',
+              '    const OUTRO_RETREAT_BANNER_AT = 10.8;\n' + aircraft_table + '\n    const ENEMY_TYPE_ORDER',
+              'aircraft data table',
+          )
+
+          # DOM references and module state.
+          replace_once(
+              '      startBtn: document.getElementById("startBtn"),\n      retryBtn: document.getElementById("retryBtn"),',
+              '      startBtn: document.getElementById("startBtn"),\n      retryBtn: document.getElementById("retryBtn"),\n      aircraftCardRow: document.getElementById("aircraftCardRow"),\n      changeAircraftBtn: document.getElementById("changeAircraftBtn"),',
+              'aircraft UI references',
+          )
+          replace_once(
+              '    let health = 100;\n    let missileCount = PLAYER_MISSILE_CAPACITY;',
+              '    let health = 100;\n    let selectedAircraftId = DEFAULT_AIRCRAFT_ID;\n    let missileCount = PLAYER_MISSILE_CAPACITY;',
+              'selected aircraft state',
+          )
+          replace_once(
+              '      previousTarget: false,\n      previousCamera: false,',
+              '      previousTarget: false,\n      previousCamera: false,\n      previousCycleLeft: false,\n      previousCycleRight: false,',
+              'gamepad aircraft edge state',
+          )
+
+          # Test hooks and initial loadout snapshot.
+          replace_once(
+              '      debrief: [],\n      selectedTargetId: null,',
+              '      debrief: [],\n      aircraftCatalog: [...AIRCRAFT_ORDER],\n      selectedAircraft: selectedAircraftId,\n      loadout: {\n        aircraftId: selectedAircraftId,\n        cruiseSpeed: CRUISE_SPEED,\n        boostSpeed: BOOST_SPEED,\n        brakeSpeed: BRAKE_SPEED,\n        maxHealth: PLAYER_MAX_HEALTH,\n        missileCapacity: PLAYER_MISSILE_CAPACITY\n      },\n      selectedTargetId: null,',
+              'aircraft hook initial state',
+          )
+          replace_once(
+              '        aceDestroyed: false,\n        forceDamageEnemy:',
+              '        aceDestroyed: false,\n        forceSelectAircraft: (id) => selectAircraft(id),\n        forceDamageEnemy:',
+              'force select aircraft hook',
+          )
+
+          # Player model is now data-driven and replaceable.
+          old_player_model = '''    const player = new THREE.Group();
+    const playerModel = createAircraftModel({
+      primary: 0xe6fbff,
+      secondary: 0x16b9de,
+      accent: 0x22354b,
+      canopy: 0x69dfff,
+      exhaust: 0x8cecff,
+      scale: 1
+    });
+'''
+          new_player_model = '''    const player = new THREE.Group();
+    let playerModel = createAircraftModel(AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].theme);
+'''
+          replace_once(old_player_model, new_player_model, 'data-driven player model')
+
+          # Render picker at startup and wire the result-screen return action.
+          replace_once('    syncGameHook();\n\n    ui.startBtn.addEventListener', '    syncGameHook();\n    renderAircraftCards();\n\n    ui.startBtn.addEventListener', 'initial aircraft card render')
+          replace_once(
+              '''    ui.retryBtn.addEventListener("click", () => {
+      ensureAudio();
+      startMission();
+    });
+''',
+              '''    ui.retryBtn.addEventListener("click", () => {
+      ensureAudio();
+      startMission();
+    });
+    ui.changeAircraftBtn.addEventListener("click", () => {
+      ensureAudio();
+      setState(STATE_READY);
+    });
+''',
+              'change aircraft listener',
+          )
+
+          # Ready-screen keyboard selection.
+          replace_once(
+              '      if (event.code === "Enter" && !event.repeat) {',
+              '''      if ((event.code === "ArrowLeft" || event.code === "KeyA") &&
+          !event.repeat && gameState === STATE_READY) {
+        cycleAircraft(-1);
+        return;
+      }
+      if ((event.code === "ArrowRight" || event.code === "KeyD") &&
+          !event.repeat && gameState === STATE_READY) {
+        cycleAircraft(1);
+        return;
+      }
+
+      if (event.code === "Enter" && !event.repeat) {''',
+              'keyboard aircraft selection',
+          )
+
+          # D-pad selection edge handling while preserving in-flight D-pad roll.
+          replace_once(
+              '''      gamepadInput.previousTarget = false;
+      gamepadInput.previousCamera = false;
+      gamepadInput.targetPressedAt = 0;''',
+              '''      gamepadInput.previousTarget = false;
+      gamepadInput.previousCamera = false;
+      gamepadInput.previousCycleLeft = false;
+      gamepadInput.previousCycleRight = false;
+      gamepadInput.targetPressedAt = 0;''',
+              'clear aircraft cycle edges',
+          )
+          replace_once(
+              '''      const dpadRoll = (gamepadButtonPressed(selected, 14) ? 1 : 0) -
+        (gamepadButtonPressed(selected, 15) ? 1 : 0);''',
+              '''      const dpadLeftPressed = gamepadButtonPressed(selected, 14);
+      const dpadRightPressed = gamepadButtonPressed(selected, 15);
+      const dpadRoll = (dpadLeftPressed ? 1 : 0) - (dpadRightPressed ? 1 : 0);''',
+              'dpad aircraft inputs',
+          )
+          replace_once(
+              '      if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();\n',
+              '''      if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
+      if (gameState === STATE_READY) {
+        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) cycleAircraft(-1);
+        if (dpadRightPressed && !gamepadInput.previousCycleRight) cycleAircraft(1);
+      }
+''',
+              'gamepad aircraft selection',
+          )
+          replace_once(
+              '      gamepadInput.previousTarget = targetPressed;\n      gamepadInput.previousCamera = cameraPressed;',
+              '      gamepadInput.previousTarget = targetPressed;\n      gamepadInput.previousCamera = cameraPressed;\n      gamepadInput.previousCycleLeft = dpadLeftPressed;\n      gamepadInput.previousCycleRight = dpadRightPressed;',
+              'store aircraft cycle edges',
+          )
+
+          # Apply the selected loadout once per mission and use proportional HP thresholds.
+          replace_once('    function startMission() {\n      keys.clear();', '    function startMission() {\n      applyAircraftLoadout(selectedAircraftId);\n      keys.clear();', 'mission loadout application')
+          replace_once('      health = 100;\n      missileCount = PLAYER_MISSILE_CAPACITY;', '      health = PLAYER_MAX_HEALTH;\n      missileCount = PLAYER_MISSILE_CAPACITY;', 'mission maximum health')
+          replace_once('        applyPlayerDamage(100, true);', '        applyPlayerDamage(PLAYER_MAX_HEALTH, true);', 'ground collision damage')
+          replace_once('THREE.MathUtils.clamp(Math.round(amount), 1, 100)', 'THREE.MathUtils.clamp(Math.round(amount), 1, PLAYER_MAX_HEALTH)', 'damage clamp')
+          replace_once('      } else if (health <= 30) {', '      } else if (health <= PLAYER_MAX_HEALTH * 0.3) {', 'critical damage threshold')
+          replace_once('health / 100', 'health / PLAYER_MAX_HEALTH', 'health bar ratio')
+          replace_once('ui.statusPanel.classList.toggle("healthLow", health <= 30);', 'ui.statusPanel.classList.toggle("healthLow", health <= PLAYER_MAX_HEALTH * 0.3);', 'health HUD threshold')
+          replace_once('hook.debug.lowHealthSmokeActive = health < 55 && smokeParticlePool.activeCount > 0;', 'hook.debug.lowHealthSmokeActive = health < PLAYER_MAX_HEALTH * 0.55 && smokeParticlePool.activeCount > 0;', 'debug smoke threshold')
+          replace_once('if (gameState !== STATE_PLAYING || health >= 55 || !playerModel.group.visible)', 'if (gameState !== STATE_PLAYING || health >= PLAYER_MAX_HEALTH * 0.55 || !playerModel.group.visible)', 'smoke guard threshold')
+          replace_once('const severity = THREE.MathUtils.clamp((55 - health) / 45, 0, 1);', 'const severity = THREE.MathUtils.clamp((PLAYER_MAX_HEALTH * 0.55 - health) / (PLAYER_MAX_HEALTH * 0.45), 0, 1);', 'smoke severity ratio')
+
+          # Live hook synchronization.
+          replace_once(
+              '      hook.timeScale = timeScale;\n      hook.killCam.active = killCam.active;',
+              '''      hook.timeScale = timeScale;
+      hook.selectedAircraft = selectedAircraftId;
+      hook.loadout.aircraftId = selectedAircraftId;
+      hook.loadout.cruiseSpeed = CRUISE_SPEED;
+      hook.loadout.boostSpeed = BOOST_SPEED;
+      hook.loadout.brakeSpeed = BRAKE_SPEED;
+      hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
+      hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
+      hook.killCam.active = killCam.active;''',
+              'aircraft hook synchronization',
+          )
+
+          # Reuse cached geometry to create a distinct Raptor silhouette.
+          replace_once(
+              '''        variantParts.push(finLeft, finRight, railLeft, railRight);
+      }
+
+      root.add(''',
+              '''        variantParts.push(finLeft, finRight, railLeft, railRight);
+      } else if (theme.variant === "raptor") {
+        body.scale.set(1.04, 0.86, 1.06);
+        nose.scale.set(0.88, 0.8, 1.05);
+        wing.scale.set(1.0, 0.6, 1.08);
+        tailWing.scale.set(0.88, 0.58, 0.96);
+        fin.visible = false;
+        cockpit.scale.set(0.68, 0.48, 1.55);
+        cockpit.position.set(0, 0.92, -2.05);
+
+        const finLeft = new THREE.Mesh(geometry.fin, secondary);
+        finLeft.position.set(-1.55, 0.55, 4.5);
+        finLeft.scale.set(0.6, 0.95, 0.64);
+        finLeft.rotateZ(-0.34);
+        const finRight = new THREE.Mesh(geometry.fin, secondary);
+        finRight.position.set(1.55, 0.55, 4.5);
+        finRight.scale.set(0.6, 0.95, 0.64);
+        finRight.rotateZ(0.34);
+        variantParts.push(finLeft, finRight);
+      }
+
+      root.add(''',
+              'raptor model variant',
+          )
+
+          aircraft_functions = '''
+
+    function rebuildPlayerModel(id) {
+      if (gameState === STATE_PLAYING) return;
+      const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
+      player.remove(playerModel.group);
+      disposeAircraftMaterials(playerModel);
+      playerModel = createAircraftModel(spec.theme);
+      player.add(playerModel.group);
+      playerModel.group.visible = cameraMode !== "cockpit";
+    }
+
+    function applyAircraftLoadout(id) {
+      const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
+      selectedAircraftId = spec.id;
+      CRUISE_SPEED = spec.cruiseSpeed;
+      BOOST_SPEED = spec.boostSpeed;
+      BRAKE_SPEED = spec.brakeSpeed;
+      PITCH_RATE = THREE.MathUtils.degToRad(spec.pitchRateDeg);
+      EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(spec.rollRateDeg);
+      YAW_RATE = THREE.MathUtils.degToRad(spec.yawRateDeg);
+      MAX_BANK_ANGLE = THREE.MathUtils.degToRad(spec.maxBankAngleDeg);
+      NORMAL_ROLL_SPRING = spec.normalRollSpring;
+      NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(spec.rollRateLimitDeg);
+      COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
+      PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
+      PLAYER_MAX_HEALTH = spec.maxHealth;
+      rebuildPlayerModel(spec.id);
+    }
+
+    function selectAircraft(id) {
+      if (gameState === STATE_PLAYING) return false;
+      if (!AIRCRAFT_TYPES[id]) return false;
+      selectedAircraftId = id;
+      rebuildPlayerModel(id);
+      updateAircraftCardsUI();
+      window.__game.selectedAircraft = selectedAircraftId;
+      return true;
+    }
+
+    function cycleAircraft(delta) {
+      const idx = AIRCRAFT_ORDER.indexOf(selectedAircraftId);
+      selectAircraft(AIRCRAFT_ORDER[(idx + delta + AIRCRAFT_ORDER.length) % AIRCRAFT_ORDER.length]);
+    }
+
+    function statPercent(value, min, max) {
+      if (max === min) return 100;
+      return Math.round(20 + ((value - min) / (max - min)) * 80);
+    }
+
+    function renderAircraftCards() {
+      const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
+      const speeds = specs.map((spec) => spec.boostSpeed);
+      const turns = specs.map((spec) => spec.turnRateDeg);
+      const armors = specs.map((spec) => spec.maxHealth);
+
+      ui.aircraftCardRow.replaceChildren(...specs.map((spec) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "aircraftCard";
+        card.dataset.aircraft = spec.id;
+        card.setAttribute("role", "radio");
+        card.setAttribute("aria-checked", String(spec.id === selectedAircraftId));
+        const speedPercent = statPercent(spec.boostSpeed, Math.min(...speeds), Math.max(...speeds)) / 100;
+        const turnPercent = statPercent(spec.turnRateDeg, Math.min(...turns), Math.max(...turns)) / 100;
+        const armorPercent = statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100;
+        card.innerHTML = `
+          ${spec.tag ? `<span class="aircraftTag">${spec.tag}</span>` : ""}
+          <span class="aircraftName">${spec.label}</span>
+          <span class="aircraftRole">${spec.role}</span>
+          <p class="aircraftBlurb">${spec.blurb}</p>
+          <div class="aircraftStats">
+            <div class="statRow"><span>SPD</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${speedPercent})"></span></div></div>
+            <div class="statRow"><span>TURN</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${turnPercent})"></span></div></div>
+            <div class="statRow"><span>ARMOR</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${armorPercent})"></span></div></div>
+          </div>
+          <span class="aircraftMissiles">MSL × ${spec.missileCapacity}</span>
+        `;
+        card.addEventListener("click", () => {
+          ensureAudio();
+          selectAircraft(spec.id);
+        });
+        return card;
+      }));
+      updateAircraftCardsUI();
+    }
+
+    function updateAircraftCardsUI() {
+      for (const card of ui.aircraftCardRow.children) {
+        const active = card.dataset.aircraft === selectedAircraftId;
+        card.classList.toggle("active", active);
+        card.setAttribute("aria-checked", String(active));
+      }
+    }
+'''
+          replace_once(
+              '''    function disposeAircraftMaterials(model) {
+      for (const material of model.standardMaterials) material.dispose();
+      model.flameMaterial.dispose();
+    }
+''',
+              '''    function disposeAircraftMaterials(model) {
+      for (const material of model.standardMaterials) material.dispose();
+      model.flameMaterial.dispose();
+    }''' + aircraft_functions + '\n',
+              'aircraft selection functions',
+          )
+
+          # Static verification.
+          required = [
+              'const AIRCRAFT_ORDER = Object.freeze(["f16", "f15", "f4", "f22"]);',
+              'const DEFAULT_AIRCRAFT_ID = "f16";',
+              'label: "F-16 FIGHTING FALCON"',
+              'label: "F-15 EAGLE"',
+              'label: "F-4 PHANTOM II"',
+              'label: "F-22 RAPTOR"',
+              'cruiseSpeed: 185, boostSpeed: 370, brakeSpeed: 139',
+              'missileCapacity: 14, maxHealth: 130',
+              'cruiseSpeed: 239, boostSpeed: 385, brakeSpeed: 145',
+              'variant: "raptor"',
+              'let PLAYER_MAX_HEALTH = 100;',
+              'let playerModel = createAircraftModel(AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].theme);',
+              'applyAircraftLoadout(selectedAircraftId);',
+              'health = PLAYER_MAX_HEALTH;',
+              'applyPlayerDamage(PLAYER_MAX_HEALTH, true);',
+              'forceSelectAircraft: (id) => selectAircraft(id),',
+              'aircraftCatalog: [...AIRCRAFT_ORDER],',
+              'changeAircraftBtn: document.getElementById("changeAircraftBtn")',
+              'previousCycleLeft: false',
+              'if (gameState === STATE_READY) {',
+              'renderAircraftCards();',
+              'theme.variant === "raptor"',
+              'label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;',
+              'forwardOf(enemy.group, tmpV4);',
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing required aircraft marker: {marker}")
+
+          for constant_name in [
+              'PLAYER_MISSILE_CAPACITY', 'CRUISE_SPEED', 'BOOST_SPEED', 'BRAKE_SPEED',
+              'PITCH_RATE', 'EXPERT_ROLL_RATE', 'YAW_RATE', 'MAX_BANK_ANGLE',
+              'NORMAL_ROLL_SPRING', 'NORMAL_ROLL_RATE_LIMIT', 'COORDINATED_TURN_RATE',
+          ]:
+              if re.search(rf'const {constant_name}\b', text):
+                  raise SystemExit(f"player performance value remained const: {constant_name}")
+              if not re.search(rf'let {constant_name}\b', text):
+                  raise SystemExit(f"player performance value missing mutable declaration: {constant_name}")
+
+          obsolete = [
+              'health / 100',
+              'health <= 30',
+              'health < 55',
+              'health >= 55',
+              'applyPlayerDamage(100, true);',
+              'THREE.MathUtils.clamp(Math.round(amount), 1, 100)',
+              'const playerModel = createAircraftModel({',
+          ]
+          for marker in obsolete:
+              if marker in text:
+                  raise SystemExit(f"obsolete fixed-player implementation remains: {marker}")
+
+          if text.count('id="aircraftSelect"') != 1 or text.count('id="aircraftCardRow"') != 1:
+              raise SystemExit('aircraft picker DOM ids are missing or duplicated')
+          if text.count('id="changeAircraftBtn"') != 1:
+              raise SystemExit('change aircraft button is missing or duplicated')
+          if text.count('function selectAircraft(') != 1 or text.count('function applyAircraftLoadout(') != 1:
+              raise SystemExit('aircraft selection functions are duplicated or missing')
+          if text.count('previousCycleLeft') < 4 or text.count('previousCycleRight') < 4:
+              raise SystemExit('gamepad aircraft edge state is incomplete')
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+          Path('/tmp/sortie-game.mjs').write_text(scripts[0], encoding='utf-8')
+
+          for element_id in [
+              'score', 'highscore', 'health', 'missiles', 'kills', 'state',
+              'startBtn', 'retryBtn', 'aircraftSelect', 'aircraftCardRow', 'changeAircraftBtn',
+          ]:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          if 'three@0.180.0' not in text or '@latest' in text:
+              raise SystemExit('Three.js version pin changed')
+          if 'console.warn(' in text or 'console.error(' in text:
+              raise SystemExit('console warning/error call added')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/add-aircraft-selection.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ['git', 'diff', '--cached', '--name-only'],
+              text=True,
+          ).splitlines())
+          expected = {'index.html', '.github/workflows/add-aircraft-selection.yml'}
+          if changed != expected:
+              raise SystemExit(f'unexpected staged files: {sorted(changed)}')
+          PY
+
+          git commit -m "Add selectable player aircraft"
+          git push origin HEAD:main
