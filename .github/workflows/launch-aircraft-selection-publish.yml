@@ -1,12 +1,8 @@
 name: Launch selectable aircraft publish
-# Retrigger after workflow registration.
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/launch-aircraft-selection-publish.yml"
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
@@ -17,6 +13,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.event.issue.title == 'Run selectable aircraft static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
