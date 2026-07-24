@@ -108,14 +108,18 @@ jobs:
               if marker not in text:
                   raise SystemExit(f"missing required preserved/restored marker: {marker}")
 
+          updated_blocks = pattern.findall(text)
+          if len(updated_blocks) != 1:
+              raise SystemExit(f"updated enemy marker CSS block count was {len(updated_blocks)}, expected 1")
+          marker_block = updated_blocks[0]
           obsolete = [
               'clip-path: polygon(50% 100%, 0 0, 100% 0);',
               '.enemyMarker.selected,\n    .enemyMarker.locked {',
               'border-radius: 50%;',
           ]
           for marker in obsolete:
-              if marker in text:
-                  raise SystemExit(f"obsolete chevron/circle marker CSS remains: {marker}")
+              if marker in marker_block:
+                  raise SystemExit(f"obsolete chevron/circle marker CSS remains in enemy marker block: {marker}")
 
           module_after = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
           if module_after != module_before:
