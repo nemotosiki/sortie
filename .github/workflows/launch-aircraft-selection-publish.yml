@@ -1,0 +1,57 @@
+name: Launch selectable aircraft publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/launch-aircraft-selection-publish.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-aircraft-selection
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Execute staged publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/add-aircraft-selection.yml').read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          if workflow.count(marker) != 1:
+              raise SystemExit('staged publisher shell block was not uniquely identifiable')
+          block = workflow.split(marker, 1)[1]
+          lines = []
+          for line in block.splitlines():
+              if not line:
+                  lines.append('')
+              elif line.startswith('          '):
+                  lines.append(line[10:])
+              else:
+                  raise SystemExit(f'unexpected staged publisher indentation: {line!r}')
+          script = '\n'.join(lines) + '\n'
+          cleanup = 'rm -f .github/workflows/add-aircraft-selection.yml'
+          replacement = cleanup + ' .github/workflows/launch-aircraft-selection-publish.yml'
+          if script.count(cleanup) != 1:
+              raise SystemExit('staged publisher cleanup command was not uniquely identifiable')
+          script = script.replace(cleanup, replacement, 1)
+          Path('/tmp/run-aircraft-publisher.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/run-aircraft-publisher.sh
