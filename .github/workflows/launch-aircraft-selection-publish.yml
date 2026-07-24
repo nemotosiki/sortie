@@ -25,11 +25,13 @@ jobs:
           fetch-depth: 0
 
       - name: Execute staged publisher
+        id: publisher
+        continue-on-error: true
         shell: bash
         run: |
-          set +e
-          (
-            python3 - <<'PY'
+          set -o pipefail
+          exec > >(tee .aircraft-selection-diagnostic.txt) 2>&1
+          python3 - <<'PY'
           from pathlib import Path
 
           workflow = Path('.github/workflows/add-aircraft-selection.yml').read_text(encoding='utf-8')
@@ -58,26 +60,16 @@ jobs:
           script = script.replace(expected, expected_replacement, 1)
           Path('/tmp/run-aircraft-publisher.sh').write_text(script, encoding='utf-8')
           PY
-            bash /tmp/run-aircraft-publisher.sh
-          ) > /tmp/aircraft-publisher.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            git fetch origin main
-            git reset --hard origin/main
-            tail -n 120 /tmp/aircraft-publisher.log > .aircraft-selection-diagnostic.txt
-            git config user.name "OpenAI"
-            git config user.email "noreply@openai.com"
-            git add .aircraft-selection-diagnostic.txt
-            git commit -m "Record aircraft selection validation failure"
-            git push origin HEAD:main
-            exit "$status"
-          fi
-          exit 0
+          bash /tmp/run-aircraft-publisher.sh
 
       - name: Upload diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aircraft-selection-diagnostic
           path: .aircraft-selection-diagnostic.txt
           if-no-files-found: error
+
+      - name: Propagate publisher result
+        if: steps.publisher.outcome != 'success'
+        run: exit 1
