@@ -813,6 +813,115 @@
       letter-spacing: 0.08em;
     }
 
+    .aircraftSelect { margin: 16px 0 20px; text-align: left; }
+
+    .aircraftSelectHeader {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .aircraftSelectHint {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: rgba(220, 247, 255, 0.5);
+    }
+
+    .aircraftCardRow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .aircraftCard {
+      position: relative;
+      text-align: left;
+      padding: 12px;
+      border: 1px solid rgba(143, 239, 255, 0.2);
+      background: rgba(32, 119, 145, 0.08);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+
+    .aircraftCard:hover,
+    .aircraftCard:focus-visible {
+      border-color: rgba(167, 246, 255, 0.55);
+      background: rgba(83, 217, 239, 0.14);
+    }
+
+    .aircraftCard.active {
+      border-color: #a7f6ff;
+      background: rgba(83, 217, 239, 0.2);
+      box-shadow: 0 0 18px rgba(106, 232, 255, 0.28), inset 0 0 18px rgba(83, 217, 239, 0.1);
+    }
+
+    .aircraftTag {
+      display: inline-block;
+      margin-bottom: 4px;
+      padding: 2px 6px;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      border: 1px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .aircraftName {
+      display: block;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      color: #ecfdff;
+    }
+
+    .aircraftRole {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      color: #a8f4ff;
+    }
+
+    .aircraftBlurb {
+      margin: 8px 0;
+      min-height: 4.4em;
+      font-size: 10.5px;
+      line-height: 1.5;
+      color: rgba(220, 247, 255, 0.7);
+    }
+
+    .statRow {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 3px 0;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: rgba(220, 247, 255, 0.5);
+    }
+
+    .statRow span:first-child { width: 34px; flex-shrink: 0; }
+    .aircraftStatBar { flex: 1; height: 5px; }
+
+    .aircraftMissiles {
+      display: block;
+      margin-top: 6px;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: rgba(220, 247, 255, 0.55);
+    }
+
+    .actionButton.secondary {
+      min-width: 0;
+      margin-top: 12px;
+      padding: 10px 22px;
+      border-color: rgba(143, 239, 255, 0.35);
+      background: rgba(83, 217, 239, 0.04);
+      font-size: 11px;
+    }
+
     .controls {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -993,6 +1102,7 @@
       #statusPanel { width: 54vw; transform: scale(0.88); transform-origin: left bottom; }
       #radarWrap { width: 150px; }
       .controls { grid-template-columns: 1fr 1fr; }
+      .aircraftCardRow { grid-template-columns: 1fr 1fr; }
       .controlItem:last-child { grid-column: 1 / -1; }
     }
 
@@ -1104,6 +1214,13 @@
       <div class="titleKicker">SINGLE MISSION / CALLSIGN RAVEN</div>
       <h1>Sortie</h1>
       <p class="subtitle">敵戦闘機6機を2波に分けて迎撃せよ。照準を重ねてミサイルをロックし、短距離では機銃で仕留める。</p>
+      <div class="aircraftSelect" id="aircraftSelect" role="radiogroup" aria-label="Select Aircraft">
+        <div class="aircraftSelectHeader">
+<span class="titleKicker">SELECT AIRCRAFT</span>
+<span class="aircraftSelectHint">A/D · ←/→ · D-PAD で切替</span>
+        </div>
+        <div class="aircraftCardRow" id="aircraftCardRow"></div>
+      </div>
       <div class="controls">
         <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ピッチ。NORMAL / EXPERTの両モードで機首を上下。</span></div>
         <div class="controlItem"><strong>A / D · ← / →</strong><span>NORMALは目標バンク、EXPERTは直接ロール。</span></div>
@@ -1113,6 +1230,7 @@
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
         <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全10発。</span></div>
         <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。L1/R1でヨー、L2加速、R2減速。</span></div>
+        <div class="controlItem"><strong>A/D · ←/→ · D-PAD</strong><span>スタート画面で機体を切替。</span></div>
         <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>
       </div>
       <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
@@ -1134,6 +1252,7 @@
         <ul id="debriefIntelLines"></ul>
       </div>
       <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>
+      <button id="changeAircraftBtn" class="actionButton secondary" type="button">◀ CHANGE AIRCRAFT</button>
     </div>
   </section>
 
@@ -1152,11 +1271,11 @@
     const LOCAL_RIGHT = new THREE.Vector3(1, 0, 0);
     const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
-    const PLAYER_MISSILE_CAPACITY = 10;
-    const CRUISE_SPEED = 170;
-    const BOOST_SPEED = 340;
+    let PLAYER_MISSILE_CAPACITY = 10;
+    let CRUISE_SPEED = 170;
+    let BOOST_SPEED = 340;
     // Full brake settles in a controllable dogfight band; hard pulling adds induced drag.
-    const BRAKE_SPEED = 128;
+    let BRAKE_SPEED = 128;
     const BRAKE_HIGH_G_SPEED_DROP = 52;
     // Damping uses 1 - Math.pow(k, dt): larger k values create slower, weightier response.
     const BOOST_SPEED_RESPONSE_K = 0.22;
@@ -1176,15 +1295,16 @@
     const MAX_COMBAT_POPUPS = 12;
     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
     const STALL_SINK_RATE = 44;
-    const PITCH_RATE = THREE.MathUtils.degToRad(58);
-    const EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
-    const YAW_RATE = THREE.MathUtils.degToRad(16);
+    let PITCH_RATE = THREE.MathUtils.degToRad(58);
+    let EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
+    let YAW_RATE = THREE.MathUtils.degToRad(16);
     const EXPERT_ROLL_RESPONSE_K = 0.055;
-    const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
-    const NORMAL_ROLL_SPRING = 22;
+    let MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
+    let NORMAL_ROLL_SPRING = 22;
     const NORMAL_ROLL_DAMPING = 6.2;
-    const NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);
-    const COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
+    let NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);
+    let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
+    let PLAYER_MAX_HEALTH = 100;
     const TARGET_FOCUS_HOLD_MS = 360;
     const GUN_RANGE = 750;
     const GUN_RATE = 12;
@@ -1236,6 +1356,72 @@
     const KILLCAM_FOV_TIGHTEN = 6;
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
+
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f15", "f4", "f22"]);
+    const DEFAULT_AIRCRAFT_ID = "f16";
+
+    const AIRCRAFT_TYPES = Object.freeze({
+      f16: Object.freeze({
+        id: "f16",
+        label: "F-16 FIGHTING FALCON",
+        role: "Multirole Dogfighter",
+        tag: "RECOMMENDED",
+        blurb: "軽量・俊敏。旋回性能は4機中最速。まず乗るならこの一機。",
+        cruiseSpeed: 170, boostSpeed: 340, brakeSpeed: 128,
+        pitchRateDeg: 58, rollRateDeg: 102, yawRateDeg: 16, maxBankAngleDeg: 68,
+        normalRollSpring: 22, rollRateLimitDeg: 125, turnRateDeg: 42,
+        missileCapacity: 10, maxHealth: 100,
+        theme: Object.freeze({
+primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
+canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
+        })
+      }),
+      f15: Object.freeze({
+        id: "f15",
+        label: "F-15 EAGLE",
+        role: "Air Superiority Fighter",
+        tag: "",
+        blurb: "全4機中最速。旋回性能も十分に高く、隙のない万能重戦闘機。",
+        cruiseSpeed: 210, boostSpeed: 420, brakeSpeed: 158,
+        pitchRateDeg: 51, rollRateDeg: 90, yawRateDeg: 14, maxBankAngleDeg: 60,
+        normalRollSpring: 19, rollRateLimitDeg: 110, turnRateDeg: 37,
+        missileCapacity: 12, maxHealth: 115,
+        theme: Object.freeze({
+primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
+        })
+      }),
+      f4: Object.freeze({
+        id: "f4",
+        label: "F-4 PHANTOM II",
+        role: "Heavy Interceptor",
+        tag: "HEAVY",
+        blurb: "旧世代の重装甲機。旋回は4機中最も鈍いが、耐久力と搭載弾数は随一。",
+        cruiseSpeed: 185, boostSpeed: 370, brakeSpeed: 139,
+        pitchRateDeg: 41, rollRateDeg: 72, yawRateDeg: 11, maxBankAngleDeg: 48,
+        normalRollSpring: 16, rollRateLimitDeg: 89, turnRateDeg: 30,
+        missileCapacity: 14, maxHealth: 130,
+        theme: Object.freeze({
+primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
+        })
+      }),
+      f22: Object.freeze({
+        id: "f22",
+        label: "F-22 RAPTOR",
+        role: "Stealth Air Superiority",
+        tag: "ADVANCED",
+        blurb: "アフターバーナー無しで巡航できる高速機。搭載弾数は4機中最少、装甲も控えめ。乗りこなせば強い。",
+        cruiseSpeed: 239, boostSpeed: 385, brakeSpeed: 145,
+        pitchRateDeg: 55, rollRateDeg: 83, yawRateDeg: 13, maxBankAngleDeg: 55,
+        normalRollSpring: 18, rollRateLimitDeg: 101, turnRateDeg: 34,
+        missileCapacity: 6, maxHealth: 105,
+        theme: Object.freeze({
+primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
+canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
+        })
+      })
+    });
 
     const ENEMY_TYPE_ORDER = Object.freeze([
       Object.freeze(["viper", "lancer", "bison"]),
@@ -1513,6 +1699,8 @@
       resultScreen: document.getElementById("resultScreen"),
       startBtn: document.getElementById("startBtn"),
       retryBtn: document.getElementById("retryBtn"),
+      aircraftCardRow: document.getElementById("aircraftCardRow"),
+      changeAircraftBtn: document.getElementById("changeAircraftBtn"),
       state: document.getElementById("state"),
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
@@ -1604,6 +1792,7 @@
     let score = 0;
     let highscore = readHighscore();
     let health = 100;
+    let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let missileCount = PLAYER_MISSILE_CAPACITY;
     let kills = 0;
     let waveNumber = 0;
@@ -1688,6 +1877,8 @@
       previousModeToggle: false,
       previousTarget: false,
       previousCamera: false,
+      previousCycleLeft: false,
+      previousCycleRight: false,
       targetPressedAt: 0,
       targetLong: false,
       targetFocus: false,
@@ -1733,6 +1924,16 @@
       killCam: { active: false, timer: 0, enemyId: null },
       outro: { active: false, elapsed: 0, retreatBannerFired: false },
       debrief: [],
+      aircraftCatalog: [...AIRCRAFT_ORDER],
+      selectedAircraft: selectedAircraftId,
+      loadout: {
+        aircraftId: selectedAircraftId,
+        cruiseSpeed: CRUISE_SPEED,
+        boostSpeed: BOOST_SPEED,
+        brakeSpeed: BRAKE_SPEED,
+        maxHealth: PLAYER_MAX_HEALTH,
+        missileCapacity: PLAYER_MISSILE_CAPACITY
+      },
       selectedTargetId: null,
       weapons: {
         gunShots: 0,
@@ -1780,6 +1981,7 @@
         missileKills: 0,
         damageTaken: 0,
         aceDestroyed: false,
+        forceSelectAircraft: (id) => selectAircraft(id),
         forceDamageEnemy: (id, amount = 200) => {
           if (gameState !== STATE_PLAYING) return false;
           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
@@ -1847,14 +2049,7 @@
     const explosionSpriteTexture = createParticleTexture("explosion");
 
     const player = new THREE.Group();
-    const playerModel = createAircraftModel({
-      primary: 0xe6fbff,
-      secondary: 0x16b9de,
-      accent: 0x22354b,
-      canopy: 0x69dfff,
-      exhaust: 0x8cecff,
-      scale: 1
-    });
+    let playerModel = createAircraftModel(AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].theme);
     player.add(playerModel.group);
     scene.add(player);
     const playerFlightFrame = new THREE.Quaternion();
@@ -1868,6 +2063,7 @@
     resize();
     updateHud();
     syncGameHook();
+    renderAircraftCards();
 
     ui.startBtn.addEventListener("click", () => {
       ensureAudio();
@@ -1876,6 +2072,10 @@
     ui.retryBtn.addEventListener("click", () => {
       ensureAudio();
       startMission();
+    });
+    ui.changeAircraftBtn.addEventListener("click", () => {
+      ensureAudio();
+      setState(STATE_READY);
     });
     window.addEventListener("pointerdown", ensureAudio, { passive: true });
 
@@ -1900,6 +2100,17 @@
           cameraKeyHold.focus = false;
           cameraKeyHold.targetId = preferredTargetId ?? lock.targetId ?? cameraFocusTargetId;
         }
+        return;
+      }
+
+      if ((event.code === "ArrowLeft" || event.code === "KeyA") &&
+!event.repeat && gameState === STATE_READY) {
+        cycleAircraft(-1);
+        return;
+      }
+      if ((event.code === "ArrowRight" || event.code === "KeyD") &&
+!event.repeat && gameState === STATE_READY) {
+        cycleAircraft(1);
         return;
       }
 
@@ -2077,6 +2288,8 @@
       gamepadInput.previousModeToggle = false;
       gamepadInput.previousTarget = false;
       gamepadInput.previousCamera = false;
+      gamepadInput.previousCycleLeft = false;
+      gamepadInput.previousCycleRight = false;
       gamepadInput.targetPressedAt = 0;
       gamepadInput.targetLong = false;
       gamepadInput.targetFocus = false;
@@ -2120,8 +2333,9 @@
       const axisY = applyDeadzone(Number(selected.axes?.[1] || 0));
       const dpadPitch = (gamepadButtonPressed(selected, 13) ? 1 : 0) -
         (gamepadButtonPressed(selected, 12) ? 1 : 0);
-      const dpadRoll = (gamepadButtonPressed(selected, 14) ? 1 : 0) -
-        (gamepadButtonPressed(selected, 15) ? 1 : 0);
+      const dpadLeftPressed = gamepadButtonPressed(selected, 14);
+      const dpadRightPressed = gamepadButtonPressed(selected, 15);
+      const dpadRoll = (dpadLeftPressed ? 1 : 0) - (dpadRightPressed ? 1 : 0);
       const yawRight = gamepadButtonPressed(selected, 5) ? 1 : 0;
       const yawLeft = gamepadButtonPressed(selected, 4) ? 1 : 0;
 
@@ -2149,6 +2363,10 @@
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
       if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
+      if (gameState === STATE_READY) {
+        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) cycleAircraft(-1);
+        if (dpadRightPressed && !gamepadInput.previousCycleRight) cycleAircraft(1);
+      }
 
       if (targetPressed && !gamepadInput.previousTarget) {
         gamepadInput.targetPressedAt = now;
@@ -2175,6 +2393,8 @@
       gamepadInput.previousModeToggle = modePressed;
       gamepadInput.previousTarget = targetPressed;
       gamepadInput.previousCamera = cameraPressed;
+      gamepadInput.previousCycleLeft = dpadLeftPressed;
+      gamepadInput.previousCycleRight = dpadRightPressed;
     }
 
     function adoptNormalFlightFrame() {
@@ -2401,6 +2621,7 @@
     }
 
     function startMission() {
+      applyAircraftLoadout(selectedAircraftId);
       keys.clear();
       clearMissionObjects();
       resetRadio();
@@ -2417,7 +2638,7 @@
       window.__game.debrief = [];
       ui.debriefIntelLines.replaceChildren();
       score = 0;
-      health = 100;
+      health = PLAYER_MAX_HEALTH;
       missileCount = PLAYER_MISSILE_CAPACITY;
       kills = 0;
       fearStageReached = 0;
@@ -2659,7 +2880,7 @@
 
       if (player.position.y <= 4) {
         player.position.y = 4;
-        applyPlayerDamage(100, true);
+        applyPlayerDamage(PLAYER_MAX_HEALTH, true);
       }
 
       gunCooldown = Math.max(0, gunCooldown - dt);
@@ -3290,7 +3511,7 @@
       if (!bypassCooldown && (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0)) return false;
 
       const safeAmount = Number.isFinite(amount)
-        ? THREE.MathUtils.clamp(Math.round(amount), 1, 100)
+        ? THREE.MathUtils.clamp(Math.round(amount), 1, PLAYER_MAX_HEALTH)
         : 0;
       if (safeAmount <= 0) return false;
 
@@ -3310,7 +3531,7 @@
         createExplosion(player.position, 0xffad45, 1.45);
         playerModel.group.visible = false;
         completeMission(false);
-      } else if (health <= 30) {
+      } else if (health <= PLAYER_MAX_HEALTH * 0.3) {
         showBanner("WARNING · CRITICAL DAMAGE", 1.1, "danger");
         triggerRadioLine("wingman", "You're hit bad! Get some altitude!", RADIO_PRIORITY.URGENT, "critical-damage");
       }
@@ -3960,8 +4181,8 @@
         ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
         : "FLIGHT CONTROL · NORMAL · COORDINATED TURN + L1/R1 YAW · M/SHARE TOGGLE";
       ui.controlModeStatus.classList.toggle("expert", expertMode);
-      ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / 100, 0, 1)})`;
-      ui.statusPanel.classList.toggle("healthLow", health <= 30);
+      ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / PLAYER_MAX_HEALTH, 0, 1)})`;
+      ui.statusPanel.classList.toggle("healthLow", health <= PLAYER_MAX_HEALTH * 0.3);
 
       const lowSpeed = gameState === STATE_PLAYING && playerSpeed < STALL_WARNING_SPEED;
       ui.stallWarning.classList.toggle("active", lowSpeed || stalling);
@@ -4013,6 +4234,13 @@
       hook.cameraMode = cameraMode;
       hook.cameraFov = currentCameraFov;
       hook.timeScale = timeScale;
+      hook.selectedAircraft = selectedAircraftId;
+      hook.loadout.aircraftId = selectedAircraftId;
+      hook.loadout.cruiseSpeed = CRUISE_SPEED;
+      hook.loadout.boostSpeed = BOOST_SPEED;
+      hook.loadout.brakeSpeed = BRAKE_SPEED;
+      hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
+      hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
       hook.killCam.enemyId = killCam.enemyId;
@@ -4047,7 +4275,7 @@
       hook.debug.activeAudioSources = audioSystem.activeSources.size;
       hook.debug.activeCombatPopups = combatPopups.length;
       hook.debug.activeEffects = effects.length;
-      hook.debug.lowHealthSmokeActive = health < 55 && smokeParticlePool.activeCount > 0;
+      hook.debug.lowHealthSmokeActive = health < PLAYER_MAX_HEALTH * 0.55 && smokeParticlePool.activeCount > 0;
       hook.debug.fearStageReached = fearStageReached;
       hook.debug.nickname = playerNickname;
       hook.debug.gunKills = gunKills;
@@ -4757,12 +4985,12 @@
     }
 
     function updatePlayerDamageSmoke(dt) {
-      if (gameState !== STATE_PLAYING || health >= 55 || !playerModel.group.visible) {
+      if (gameState !== STATE_PLAYING || health >= PLAYER_MAX_HEALTH * 0.55 || !playerModel.group.visible) {
         damageSmokeTimer = 0;
         return;
       }
 
-      const severity = THREE.MathUtils.clamp((55 - health) / 45, 0, 1);
+      const severity = THREE.MathUtils.clamp((PLAYER_MAX_HEALTH * 0.55 - health) / (PLAYER_MAX_HEALTH * 0.45), 0, 1);
       const interval = THREE.MathUtils.lerp(0.19, 0.045, severity);
       damageSmokeTimer -= dt;
       let emitted = 0;
@@ -5047,6 +5275,24 @@
         const railRight = railLeft.clone();
         railRight.position.x = 8.35;
         variantParts.push(finLeft, finRight, railLeft, railRight);
+      } else if (theme.variant === "raptor") {
+        body.scale.set(1.04, 0.86, 1.06);
+        nose.scale.set(0.88, 0.8, 1.05);
+        wing.scale.set(1.0, 0.6, 1.08);
+        tailWing.scale.set(0.88, 0.58, 0.96);
+        fin.visible = false;
+        cockpit.scale.set(0.68, 0.48, 1.55);
+        cockpit.position.set(0, 0.92, -2.05);
+
+        const finLeft = new THREE.Mesh(geometry.fin, secondary);
+        finLeft.position.set(-1.55, 0.55, 4.5);
+        finLeft.scale.set(0.6, 0.95, 0.64);
+        finLeft.rotateZ(-0.34);
+        const finRight = new THREE.Mesh(geometry.fin, secondary);
+        finRight.position.set(1.55, 0.55, 4.5);
+        finRight.scale.set(0.6, 0.95, 0.64);
+        finRight.rotateZ(0.34);
+        variantParts.push(finLeft, finRight);
       }
 
       root.add(
@@ -5094,6 +5340,100 @@
       for (const material of model.standardMaterials) material.dispose();
       model.flameMaterial.dispose();
     }
+
+    function rebuildPlayerModel(id) {
+      if (gameState === STATE_PLAYING) return;
+      const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
+      player.remove(playerModel.group);
+      disposeAircraftMaterials(playerModel);
+      playerModel = createAircraftModel(spec.theme);
+      player.add(playerModel.group);
+      playerModel.group.visible = cameraMode !== "cockpit";
+    }
+
+    function applyAircraftLoadout(id) {
+      const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
+      selectedAircraftId = spec.id;
+      CRUISE_SPEED = spec.cruiseSpeed;
+      BOOST_SPEED = spec.boostSpeed;
+      BRAKE_SPEED = spec.brakeSpeed;
+      PITCH_RATE = THREE.MathUtils.degToRad(spec.pitchRateDeg);
+      EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(spec.rollRateDeg);
+      YAW_RATE = THREE.MathUtils.degToRad(spec.yawRateDeg);
+      MAX_BANK_ANGLE = THREE.MathUtils.degToRad(spec.maxBankAngleDeg);
+      NORMAL_ROLL_SPRING = spec.normalRollSpring;
+      NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(spec.rollRateLimitDeg);
+      COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
+      PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
+      PLAYER_MAX_HEALTH = spec.maxHealth;
+      rebuildPlayerModel(spec.id);
+    }
+
+    function selectAircraft(id) {
+      if (gameState === STATE_PLAYING) return false;
+      if (!AIRCRAFT_TYPES[id]) return false;
+      selectedAircraftId = id;
+      rebuildPlayerModel(id);
+      updateAircraftCardsUI();
+      window.__game.selectedAircraft = selectedAircraftId;
+      return true;
+    }
+
+    function cycleAircraft(delta) {
+      const idx = AIRCRAFT_ORDER.indexOf(selectedAircraftId);
+      selectAircraft(AIRCRAFT_ORDER[(idx + delta + AIRCRAFT_ORDER.length) % AIRCRAFT_ORDER.length]);
+    }
+
+    function statPercent(value, min, max) {
+      if (max === min) return 100;
+      return Math.round(20 + ((value - min) / (max - min)) * 80);
+    }
+
+    function renderAircraftCards() {
+      const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
+      const speeds = specs.map((spec) => spec.boostSpeed);
+      const turns = specs.map((spec) => spec.turnRateDeg);
+      const armors = specs.map((spec) => spec.maxHealth);
+
+      ui.aircraftCardRow.replaceChildren(...specs.map((spec) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "aircraftCard";
+        card.dataset.aircraft = spec.id;
+        card.setAttribute("role", "radio");
+        card.setAttribute("aria-checked", String(spec.id === selectedAircraftId));
+        const speedPercent = statPercent(spec.boostSpeed, Math.min(...speeds), Math.max(...speeds)) / 100;
+        const turnPercent = statPercent(spec.turnRateDeg, Math.min(...turns), Math.max(...turns)) / 100;
+        const armorPercent = statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100;
+        card.innerHTML = `
+${spec.tag ? `<span class="aircraftTag">${spec.tag}</span>` : ""}
+<span class="aircraftName">${spec.label}</span>
+<span class="aircraftRole">${spec.role}</span>
+<p class="aircraftBlurb">${spec.blurb}</p>
+<div class="aircraftStats">
+  <div class="statRow"><span>SPD</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${speedPercent})"></span></div></div>
+  <div class="statRow"><span>TURN</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${turnPercent})"></span></div></div>
+  <div class="statRow"><span>ARMOR</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${armorPercent})"></span></div></div>
+</div>
+<span class="aircraftMissiles">MSL × ${spec.missileCapacity}</span>
+        `;
+        card.addEventListener("click", () => {
+ensureAudio();
+selectAircraft(spec.id);
+        });
+        return card;
+      }));
+      updateAircraftCardsUI();
+    }
+
+    function updateAircraftCardsUI() {
+      for (const card of ui.aircraftCardRow.children) {
+        const active = card.dataset.aircraft === selectedAircraftId;
+        card.classList.toggle("active", active);
+        card.setAttribute("aria-checked", String(active));
+      }
+    }
+
 
     function createWorld() {
       const skyCanvas = document.createElement("canvas");
