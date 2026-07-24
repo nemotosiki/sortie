@@ -1352,6 +1352,82 @@
 
     const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
 
+    const KILL_CALLOUTS = [
+      "Splash one! Nice shot!",
+      "Splash! Good kill!",
+      "He's going down!",
+      "Another one off the board!",
+      "That's a kill! Keep it rolling!"
+    ];
+
+    const RADIO_FEAR_STAGES = [
+      {
+        minKills: 1,
+        entry: {
+          speaker: "enemy",
+          priority: RADIO_PRIORITY.NORMAL,
+          text: "Viper Two is down. Hold formation — it's one bandit."
+        },
+        support: null,
+        pool: [
+          "Stay on the plan. He got lucky.",
+          "All units, tighten up. Check your six.",
+          "One loss changes nothing. Press the attack."
+        ]
+      },
+      {
+        minKills: 2,
+        entry: {
+          speaker: "enemy",
+          priority: RADIO_PRIORITY.NORMAL,
+          text: "That's two of ours gone! Who IS this guy?"
+        },
+        support: null,
+        pool: [
+          "Bison Lead, he's not on my scope — where is he?!",
+          "We're getting picked apart out here!",
+          "Do NOT engage alone. Pair up, now!"
+        ]
+      },
+      {
+        minKills: 4,
+        entry: {
+          speaker: "enemy",
+          priority: RADIO_PRIORITY.URGENT,
+          text: "He's cutting us to pieces! Break! Break!"
+        },
+        support: {
+          speaker: "wingman",
+          priority: RADIO_PRIORITY.NORMAL,
+          text: "They're panicking out there. Keep the pressure on!"
+        },
+        pool: [
+          "I can't shake him! I can't shake him!",
+          "Mayday! Mayday! Lancer Two going down!",
+          "That has to be {nickname}... nobody else flies like that!",
+          "Where is our support?! We need support NOW!"
+        ]
+      },
+      {
+        minKills: 6,
+        entry: {
+          speaker: "enemy",
+          priority: RADIO_PRIORITY.URGENT,
+          text: "All units, disengage! {nickname} owns this sky!"
+        },
+        support: {
+          speaker: "command",
+          priority: RADIO_PRIORITY.NORMAL,
+          text: "Enemy comms are collapsing. They have a name for you now: {nickname}."
+        },
+        pool: [
+          "I'm not dying out here. I'm pulling out!",
+          "Stay away from me... stay AWAY!",
+          "You can't outfly {nickname}. Nobody outflies {nickname}."
+        ]
+      }
+    ];
+
     const RADIO_QUEUE_MAX = 4;
     const RADIO_CHAR_INTERVAL = 0.03;
     const RADIO_HOLD_BASE = 0.9;
@@ -1494,6 +1570,11 @@
     let nearestMissileThreat = null;
     let damageSmokeTimer = 0;
     let currentCameraFov = BASE_CAMERA_FOV;
+    let fearStageReached = 0;
+    let gunKills = 0;
+    let missileKills = 0;
+    let damageTaken = 0;
+    let playerNickname = null;
 
     const radioQueue = [];
     const radioSpeakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
@@ -1607,7 +1688,12 @@
         activeCombatPopups: 0,
         activeEffects: 0,
         particleCapacity: MAX_SPARK_PARTICLES + MAX_DEBRIS_PARTICLES + MAX_SMOKE_PARTICLES,
-        lowHealthSmokeActive: false
+        lowHealthSmokeActive: false,
+        fearStageReached: 0,
+        nickname: null,
+        gunKills: 0,
+        missileKills: 0,
+        damageTaken: 0
       },
       enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
@@ -2176,6 +2262,11 @@
       health = 100;
       missileCount = PLAYER_MISSILE_CAPACITY;
       kills = 0;
+      fearStageReached = 0;
+      gunKills = 0;
+      missileKills = 0;
+      damageTaken = 0;
+      playerNickname = null;
       waveNumber = 0;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
@@ -2948,6 +3039,8 @@
       enemy.model.group.visible = false;
       createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, missileHit ? 1.15 : 0.95);
       kills += 1;
+      if (missileHit) missileKills += 1;
+      else gunKills += 1;
       score = kills * KILL_SCORE;
       if (score > highscore) {
         highscore = score;
@@ -2959,7 +3052,7 @@
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
-      triggerRadioLine("wingman", "Splash one! Nice shot!", RADIO_PRIORITY.NORMAL, "kill-callout");
+      onKillRadio(kills);
     }
 
     function applyPlayerDamage(amount, bypassCooldown = false) {
@@ -2974,6 +3067,7 @@
       const previousHealth = health;
       health = Math.max(0, previousHealth - safeAmount);
       if (health >= previousHealth) return false;
+      damageTaken += safeAmount;
       if (!bypassCooldown) playerHitCooldown = PLAYER_HIT_COOLDOWN;
 
       const hitIntensity = THREE.MathUtils.clamp(safeAmount / 24, 0.35, 1);
@@ -3265,6 +3359,84 @@
       ui.radioSpeaker.textContent = "";
       ui.radioText.textContent = "";
       ui.radioPanel.classList.remove("visible");
+    }
+
+    function radioSay(speaker, text, priority, id) {
+      if (typeof text !== "string") return false;
+      const resolvedText = text.replace(/\{nickname\}/g, () => getPlayerNickname());
+      return triggerRadioLine(speaker, resolvedText, priority, id);
+    }
+
+    function fearStageFor(kills) {
+      let stage = 0;
+      for (let i = 0; i < RADIO_FEAR_STAGES.length; i += 1) {
+        if (kills >= RADIO_FEAR_STAGES[i].minKills) stage = i + 1;
+      }
+      return stage;
+    }
+
+    function radioIsIdle() {
+      return !radioState.active && radioQueue.length === 0;
+    }
+
+    function getPlayerNickname() {
+      if (playerNickname !== null) return playerNickname;
+
+      if (gunKills >= 3 && gunKills >= missileKills) playerNickname = "Gunfighter";
+      else if (damageTaken <= 10) playerNickname = "Ghost";
+      else if (missionElapsed <= 100) playerNickname = "Reaper";
+      else if (damageTaken >= 60) playerNickname = "Butcher";
+      else playerNickname = "Demon";
+
+      return playerNickname;
+    }
+
+    function onKillRadio(kills) {
+      const stage = fearStageFor(kills);
+      if (stage > fearStageReached) {
+        fearStageReached = stage;
+        if (stage === 1) {
+          radioSay("wingman", KILL_CALLOUTS[0], RADIO_PRIORITY.NORMAL, "kill-callout-1");
+        }
+        const stageContent = RADIO_FEAR_STAGES[stage - 1];
+        radioSay(
+          stageContent.entry.speaker,
+          stageContent.entry.text,
+          stageContent.entry.priority,
+          `fear-stage-${stage}`
+        );
+        if (stageContent.support) {
+          radioSay(
+            stageContent.support.speaker,
+            stageContent.support.text,
+            stageContent.support.priority,
+            `fear-stage-${stage}-support`
+          );
+        }
+        return;
+      }
+
+      if (!radioIsIdle()) return;
+      const stageContent = RADIO_FEAR_STAGES[Math.max(0, stage - 1)];
+      if (!stageContent) return;
+
+      if (kills % 2 === 0) {
+        const index = Math.floor(kills / 2) % stageContent.pool.length;
+        radioSay(
+          "enemy",
+          stageContent.pool[index],
+          RADIO_PRIORITY.NORMAL,
+          `fear-s${stage}-p${index}`
+        );
+      } else {
+        const index = (kills - 1) % KILL_CALLOUTS.length;
+        radioSay(
+          "wingman",
+          KILL_CALLOUTS[index],
+          RADIO_PRIORITY.NORMAL,
+          `kill-callout-${kills}`
+        );
+      }
     }
 
     function getOrCreateEnemyMarker(enemy) {
@@ -3565,6 +3737,11 @@
       hook.debug.activeCombatPopups = combatPopups.length;
       hook.debug.activeEffects = effects.length;
       hook.debug.lowHealthSmokeActive = health < 55 && smokeParticlePool.activeCount > 0;
+      hook.debug.fearStageReached = fearStageReached;
+      hook.debug.nickname = playerNickname;
+      hook.debug.gunKills = gunKills;
+      hook.debug.missileKills = missileKills;
+      hook.debug.damageTaken = damageTaken;
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
