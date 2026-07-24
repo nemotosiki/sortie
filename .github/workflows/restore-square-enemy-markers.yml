@@ -43,97 +43,55 @@ jobs:
           if len(module_before) != 1:
               raise SystemExit(f"expected one module script, found {len(module_before)}")
 
-          old = '''    .enemyMarker {
-            position: absolute;
-            width: 16px;
-            height: 12px;
-            transform: translate(-50%, -160%);
-            background: currentColor;
-            color: #f4f7fa;
-            opacity: 0;
-            visibility: hidden;
-            clip-path: polygon(50% 100%, 0 0, 100% 0);
-            filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
-            transition: opacity 90ms ease, color 90ms ease, width 90ms ease, height 90ms ease;
-            will-change: left, top;
-          }
+          pattern = re.compile(r'    \.enemyMarker \{\n.*?(?=    \.enemyMarkerLabel \{)', re.S)
+          matches = pattern.findall(text)
+          if len(matches) != 1:
+              raise SystemExit(f"enemy marker CSS block count was {len(matches)}, expected 1")
 
-          .enemyMarker::before {
-            display: none;
-          }
-
-          .enemyMarker.active {
-            opacity: 0.88;
-            visibility: visible;
-          }
-
-          .enemyMarker.selected,
-          .enemyMarker.locked {
-            width: 40px;
-            height: 40px;
-            transform: translate(-50%, -50%);
-            background: none;
-            clip-path: none;
-            border-radius: 50%;
-            border: 1.5px solid currentColor;
-          }
-
-          .enemyMarker.selected {
-            color: #ffe66f;
-            filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
-          }
-
-          .enemyMarker.locked {
-            color: #ff5968;
-            filter: drop-shadow(0 0 8px rgba(255, 89, 104, 0.85));
-          }
-          '''
-
-          new = '''    .enemyMarker {
-            position: absolute;
-            width: 36px;
-            height: 36px;
-            transform: translate(-50%, -50%);
-            border: 1px solid rgba(112, 255, 151, 0.92);
-            color: #78ff9d;
-            opacity: 0;
-            visibility: hidden;
-            filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));
-            transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;
-            will-change: left, top;
-          }
-
-          .enemyMarker::before {
-            content: "";
-            position: absolute;
-            inset: 5px;
-            border: 1px solid currentColor;
-            opacity: 0.28;
-          }
-
-          .enemyMarker.active {
-            opacity: 0.88;
-            visibility: visible;
-          }
-
-          .enemyMarker.selected {
-            width: 43px;
-            height: 43px;
-            color: #ffe66f;
-            border-color: currentColor;
-            filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
-          }
-
-          .enemyMarker.locked {
-            color: #ff5968;
-            border-color: currentColor;
-          }
-          '''
-
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f"enemy marker CSS anchor count was {count}, expected 1")
-          text = text.replace(old, new, 1)
+          restored = "\n".join([
+              "    .enemyMarker {",
+              "      position: absolute;",
+              "      width: 36px;",
+              "      height: 36px;",
+              "      transform: translate(-50%, -50%);",
+              "      border: 1px solid rgba(112, 255, 151, 0.92);",
+              "      color: #78ff9d;",
+              "      opacity: 0;",
+              "      visibility: hidden;",
+              "      filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));",
+              "      transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;",
+              "      will-change: left, top;",
+              "    }",
+              "",
+              "    .enemyMarker::before {",
+              "      content: \"\";",
+              "      position: absolute;",
+              "      inset: 5px;",
+              "      border: 1px solid currentColor;",
+              "      opacity: 0.28;",
+              "    }",
+              "",
+              "    .enemyMarker.active {",
+              "      opacity: 0.88;",
+              "      visibility: visible;",
+              "    }",
+              "",
+              "    .enemyMarker.selected {",
+              "      width: 43px;",
+              "      height: 43px;",
+              "      color: #ffe66f;",
+              "      border-color: currentColor;",
+              "      filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));",
+              "    }",
+              "",
+              "    .enemyMarker.locked {",
+              "      color: #ff5968;",
+              "      border-color: currentColor;",
+              "    }",
+              "",
+              "",
+          ])
+          text = pattern.sub(restored, text, count=1)
 
           required = [
               'width: 36px;\n      height: 36px;',
@@ -150,8 +108,14 @@ jobs:
               if marker not in text:
                   raise SystemExit(f"missing required preserved/restored marker: {marker}")
 
-          if old in text:
-              raise SystemExit("chevron/circle marker CSS remains")
+          obsolete = [
+              'clip-path: polygon(50% 100%, 0 0, 100% 0);',
+              '.enemyMarker.selected,\n    .enemyMarker.locked {',
+              'border-radius: 50%;',
+          ]
+          for marker in obsolete:
+              if marker in text:
+                  raise SystemExit(f"obsolete chevron/circle marker CSS remains: {marker}")
 
           module_after = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
           if module_after != module_before:
