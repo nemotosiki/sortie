@@ -7,8 +7,59 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: fix-yaw-controls
+  cancel-in-progress: true
+
 jobs:
-  registration-probe:
+  patch-static-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - run: echo "yaw workflow registered"
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply controls, validate, clean up, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 -m py_compile .yaw-fix/apply.py
+          python3 .yaw-fix/apply.py
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -rf .yaw-fix
+          rm -f .github/workflows/fix-yaw-controls.yml .run-yaw-fix
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only"],
+              text=True,
+          ).splitlines())
+          expected = {
+              "index.html",
+              ".yaw-fix/apply.py",
+              ".github/workflows/fix-yaw-controls.yml",
+              ".run-yaw-fix",
+          }
+          if changed != expected:
+              raise SystemExit(f"unexpected staged files: {sorted(changed)}")
+          PY
+
+          git commit -m "Fix gamepad yaw and throttle controls"
+          git push origin HEAD:main
