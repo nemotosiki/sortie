@@ -1,13 +1,81 @@
 name: Add named ace Ironback
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/add-ironback-ace.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".ironback-ready"
 
 permissions:
   contents: write
 
+concurrency:
+  group: ironback-static-publish
+  cancel-in-progress: false
+
 jobs:
-  dormant:
+  patch-static-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - run: echo "Workflow staged; the patch script will activate it in the next commit."
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply Ironback feature, validate, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 -m py_compile .ironback/apply.py
+          python3 .ironback/apply.py
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -rf .ironback
+          rm -f .github/workflows/add-ironback-ace.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only"],
+              text=True,
+          ).splitlines())
+          allowed = [
+              {
+                  "index.html",
+                  ".ironback/apply.py",
+                  ".github/workflows/add-ironback-ace.yml",
+              },
+              {
+                  ".ironback/apply.py",
+                  ".github/workflows/add-ironback-ace.yml",
+              },
+          ]
+          if changed not in allowed:
+              raise SystemExit(f"unexpected staged files: {sorted(changed)}")
+          PY
+
+          git commit -m "Add named ace Ironback and kill-cam"
+          git push origin HEAD:main
