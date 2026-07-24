@@ -1,13 +1,156 @@
-name: Tune missile performance
+name: Tune missile speed and damage
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/tune-missile-performance.yml"
 
 permissions:
   contents: write
 
 jobs:
-  dormant:
+  patch-static-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - run: echo "Workflow staged; the next commit activates the one-time static publish."
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply numeric tuning, validate, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one occurrence, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''        speed: 235,
+                  maxSpeed: 285,
+                  turnRate: THREE.MathUtils.degToRad(72),
+                  damage: 16,
+          ''',
+              '''        speed: 380,
+                  maxSpeed: 460,
+                  turnRate: THREE.MathUtils.degToRad(72),
+                  damage: 24,
+          ''',
+              "VIPER missile profile",
+          )
+          replace_once(
+              '''        speed: 205,
+                  maxSpeed: 250,
+                  turnRate: THREE.MathUtils.degToRad(46),
+                  damage: 24,
+          ''',
+              '''        speed: 330,
+                  maxSpeed: 400,
+                  turnRate: THREE.MathUtils.degToRad(46),
+                  damage: 36,
+          ''',
+              "BISON missile profile",
+          )
+          replace_once(
+              '''        speed: 220,
+                  maxSpeed: 270,
+                  turnRate: THREE.MathUtils.degToRad(58),
+                  damage: 19,
+          ''',
+              '''        speed: 355,
+                  maxSpeed: 430,
+                  turnRate: THREE.MathUtils.degToRad(58),
+                  damage: 29,
+          ''',
+              "LANCER missile profile",
+          )
+          replace_once(
+              "        speed: Math.max(playerSpeed + 55, 225),",
+              "        speed: Math.max(playerSpeed + 120, 300),",
+              "player missile launch speed",
+          )
+          replace_once(
+              "        missile.speed = THREE.MathUtils.lerp(missile.speed, 320, damping(0.012, dt));",
+              "        missile.speed = THREE.MathUtils.lerp(missile.speed, 520, damping(0.012, dt));",
+              "player missile target speed",
+          )
+
+          required = [
+              "        speed: 380,\n        maxSpeed: 460,\n        turnRate: THREE.MathUtils.degToRad(72),\n        damage: 24,",
+              "        speed: 330,\n        maxSpeed: 400,\n        turnRate: THREE.MathUtils.degToRad(46),\n        damage: 36,",
+              "        speed: 355,\n        maxSpeed: 430,\n        turnRate: THREE.MathUtils.degToRad(58),\n        damage: 29,",
+              "speed: Math.max(playerSpeed + 120, 300)",
+              "THREE.MathUtils.lerp(missile.speed, 520, damping(0.012, dt))",
+              "const BOOST_SPEED = 340;",
+              "if (gameState !== STATE_PLAYING) return;",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing required marker: {marker}")
+
+          obsolete = [
+              "speed: Math.max(playerSpeed + 55, 225)",
+              "THREE.MathUtils.lerp(missile.speed, 320, damping(0.012, dt))",
+          ]
+          for marker in obsolete:
+              if marker in text:
+                  raise SystemExit(f"obsolete missile value remains: {marker}")
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+
+          for element_id in ["score", "highscore", "health", "missiles", "kills", "state", "startBtn", "retryBtn"]:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/tune-missile-performance.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only"],
+              text=True,
+          ).splitlines())
+          expected = {
+              "index.html",
+              ".github/workflows/tune-missile-performance.yml",
+          }
+          if changed != expected:
+              raise SystemExit(f"unexpected staged files: {sorted(changed)}")
+          PY
+
+          git commit -m "Tune missile speed and damage"
+          git push origin HEAD:main
