@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          exec > >(tee .aircraft-selection-diagnostic.txt) 2>&1
+          exec > >(tee /tmp/aircraft-selection-diagnostic.txt) 2>&1
           python3 - <<'PY'
           from pathlib import Path
 
@@ -67,7 +67,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aircraft-selection-diagnostic
-          path: .aircraft-selection-diagnostic.txt
+          path: /tmp/aircraft-selection-diagnostic.txt
           if-no-files-found: error
 
       - name: Propagate publisher result
