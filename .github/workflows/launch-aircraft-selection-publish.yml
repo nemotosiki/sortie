@@ -1,19 +1,21 @@
 name: Launch selectable aircraft publish
 
 on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, edited]
+  push:
+    branches:
+      - main
+    paths:
+      - ".aircraft-selection-merge-trigger"
 
 permissions:
   contents: write
 
 concurrency:
-  group: add-aircraft-selection-target
+  group: add-aircraft-selection-merge
   cancel-in-progress: true
 
 jobs:
   publish:
-    if: github.event.pull_request.title == 'Run selectable aircraft static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -46,10 +48,15 @@ jobs:
                   raise SystemExit(f'unexpected staged publisher indentation: {line!r}')
           script = '\n'.join(lines) + '\n'
           cleanup = 'rm -f .github/workflows/add-aircraft-selection.yml'
-          replacement = cleanup + ' .github/workflows/launch-aircraft-selection-publish.yml'
+          cleanup_replacement = cleanup + ' .github/workflows/launch-aircraft-selection-publish.yml .aircraft-selection-merge-trigger'
           if script.count(cleanup) != 1:
               raise SystemExit('staged publisher cleanup command was not uniquely identifiable')
-          script = script.replace(cleanup, replacement, 1)
+          script = script.replace(cleanup, cleanup_replacement, 1)
+          expected = "expected = {'index.html', '.github/workflows/add-aircraft-selection.yml'}"
+          expected_replacement = "expected = {'index.html', '.github/workflows/add-aircraft-selection.yml', '.github/workflows/launch-aircraft-selection-publish.yml', '.aircraft-selection-merge-trigger'}"
+          if script.count(expected) != 1:
+              raise SystemExit('staged publisher expected-files check was not uniquely identifiable')
+          script = script.replace(expected, expected_replacement, 1)
           Path('/tmp/run-aircraft-publisher.sh').write_text(script, encoding='utf-8')
           PY
           bash /tmp/run-aircraft-publisher.sh
