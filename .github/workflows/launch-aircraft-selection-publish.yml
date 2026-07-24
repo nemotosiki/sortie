@@ -73,3 +73,11 @@ jobs:
             exit "$status"
           fi
           exit 0
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aircraft-selection-diagnostic
+          path: .aircraft-selection-diagnostic.txt
+          if-no-files-found: error
