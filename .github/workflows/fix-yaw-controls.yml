@@ -1,18 +1,17 @@
 name: Fix yaw and throttle controls
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
-      - ".github/workflows/fix-yaw-controls.yml"
+      - ".yaw-controls-ready"
 
 permissions:
   contents: write
 
 concurrency:
   group: fix-yaw-controls
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   patch-static-publish:
@@ -182,7 +181,7 @@ jobs:
           if text.count('YAW_RATE') != 3:
               raise SystemExit(f"expected YAW_RATE definition plus two uses, found {text.count('YAW_RATE')}")
           if text.count('if (Math.abs(yawInput) > 0.00001)') != 2:
-              raise SystemExit("NORMAL and EXPERT yaw branches are not both present")
+              raise SystemExit('NORMAL and EXPERT yaw branches are not both present')
 
           scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
           if len(scripts) != 1:
