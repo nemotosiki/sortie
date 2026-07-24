@@ -893,6 +893,39 @@
       font-size: 34px;
     }
 
+    .debriefIntel {
+      max-width: 680px;
+      margin: 24px auto 28px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 211, 95, 0.34);
+      text-align: left;
+    }
+
+    .debriefIntelHeader {
+      margin-bottom: 10px;
+      color: rgba(255, 218, 126, 0.68);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+    }
+
+    #debriefIntelLines {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #debriefIntelLines li {
+      color: rgba(188, 255, 201, 0.78);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: clamp(10px, 1.05vw, 12px);
+      line-height: 1.55;
+      letter-spacing: 0.03em;
+    }
+
+    #debriefIntelLines li + li { margin-top: 7px; }
+    #debriefIntelLines li::before { content: ">> "; color: #ffd35f; }
+
     #controlModeStatus {
       position: absolute;
       left: 50%;
@@ -1096,6 +1129,10 @@
         <div class="resultStat"><span>KILLS</span><strong id="finalKills">0</strong></div>
         <div class="resultStat"><span>HIGH SCORE</span><strong id="finalHighscore">0</strong></div>
       </div>
+      <div class="debriefIntel" id="debriefIntel">
+        <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
+        <ul id="debriefIntelLines"></ul>
+      </div>
       <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>
     </div>
   </section>
@@ -1197,6 +1234,8 @@
     const KILLCAM_SCALE = 0.18;
     const KILLCAM_RAMP = 0.35;
     const KILLCAM_FOV_TIGHTEN = 6;
+    const OUTRO_COMPLETE_AT = 16.0;
+    const OUTRO_RETREAT_BANNER_AT = 10.8;
 
     const ENEMY_TYPE_ORDER = Object.freeze([
       Object.freeze(["viper", "lancer", "bison"]),
@@ -1512,7 +1551,8 @@
       resultMessage: document.getElementById("resultMessage"),
       finalScore: document.getElementById("finalScore"),
       finalKills: document.getElementById("finalKills"),
-      finalHighscore: document.getElementById("finalHighscore")
+      finalHighscore: document.getElementById("finalHighscore"),
+      debriefIntelLines: document.getElementById("debriefIntelLines")
     };
 
     const scene = new THREE.Scene();
@@ -1601,6 +1641,8 @@
       enemyId: null,
       focusPoint: new THREE.Vector3()
     };
+    const outro = { active: false, elapsed: 0, retreatBannerFired: false };
+    let aceDestroyed = false;
     let preferredTargetId = null;
     let lockGraceTimer = 0;
     let cameraFocusActive = false;
@@ -1689,6 +1731,8 @@
       cameraFov: BASE_CAMERA_FOV,
       timeScale: 1,
       killCam: { active: false, timer: 0, enemyId: null },
+      outro: { active: false, elapsed: 0, retreatBannerFired: false },
+      debrief: [],
       selectedTargetId: null,
       weapons: {
         gunShots: 0,
@@ -1735,11 +1779,34 @@
         gunKills: 0,
         missileKills: 0,
         damageTaken: 0,
+        aceDestroyed: false,
         forceDamageEnemy: (id, amount = 200) => {
           if (gameState !== STATE_PLAYING) return false;
           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
           if (!enemy) return false;
           damageEnemy(enemy, amount, false);
+          return true;
+        },
+        forceStartOutro: () => {
+          if (gameState !== STATE_PLAYING || outro.active) return false;
+          for (const enemy of enemies) {
+            if (!enemy.alive) continue;
+            enemy.alive = false;
+            enemy.deadTimer = 0.2;
+            enemy.hitbox.visible = false;
+            enemy.model.group.visible = false;
+          }
+          kills = TOTAL_ENEMIES;
+          aceDestroyed = true;
+          waveNumber = 2;
+          resetLock();
+          preferredTargetId = null;
+          startOutro();
+          return true;
+        },
+        skipOutro: () => {
+          if (!outro.active) return false;
+          outro.elapsed = OUTRO_COMPLETE_AT;
           return true;
         }
       },
@@ -2342,6 +2409,12 @@
       killCam.active = false;
       killCam.timer = 0;
       killCam.enemyId = null;
+      outro.active = false;
+      outro.elapsed = 0;
+      outro.retreatBannerFired = false;
+      aceDestroyed = false;
+      window.__game.debrief = [];
+      ui.debriefIntelLines.replaceChildren();
       score = 0;
       health = 100;
       missileCount = PLAYER_MISSILE_CAPACITY;
@@ -2398,6 +2471,25 @@
       clock.getDelta();
     }
 
+    function buildDebriefIntelLines(success) {
+      const nickname = getPlayerNickname();
+      const lines = [];
+      if (success) {
+        lines.push("Confirm IRONBACK is down. Repeat — IRONBACK is down.");
+        lines.push(`${kills} aircraft lost to a single fighter. They call him '${nickname}'.`);
+        lines.push(gunKills >= missileKills
+          ? "Gun kills. Most of them were GUN kills. Recommend we never come back here."
+          : "He never wasted a missile. Every launch, a coffin.");
+      } else {
+        lines.push("Splash one. The bandit is down. The sky is ours again.");
+        lines.push(aceDestroyed
+          ? "IRONBACK didn't make it home either. Some trade."
+          : "IRONBACK is already asking who's next.");
+        if (kills > 0) lines.push(`They lost ${kills} of ours before they took him down.`);
+      }
+      return lines;
+    }
+
     function setState(nextState) {
       gameState = nextState;
       ui.state.textContent = nextState;
@@ -2407,13 +2499,21 @@
       if (nextState === STATE_READY) {
         queueMicrotask(() => ui.startBtn.focus({ preventScroll: true }));
       } else if (nextState === STATE_COMPLETE || nextState === STATE_GAMEOVER) {
-        ui.resultTitle.textContent = nextState === STATE_COMPLETE ? "MISSION COMPLETE" : "MISSION FAILED";
-        ui.resultMessage.textContent = nextState === STATE_COMPLETE
-          ? "全ターゲットの撃墜を確認。制空任務完了。"
+        const success = nextState === STATE_COMPLETE;
+        ui.resultTitle.textContent = success ? "MISSION COMPLETE" : "MISSION FAILED";
+        ui.resultMessage.textContent = success
+          ? "敵増援は全機撤退。制空権確保。"
           : "機体損傷が限界に到達。再出撃せよ。";
         ui.finalScore.textContent = String(score);
         ui.finalKills.textContent = String(kills);
         ui.finalHighscore.textContent = String(highscore);
+        const debriefLines = buildDebriefIntelLines(success);
+        ui.debriefIntelLines.replaceChildren(...debriefLines.map((line) => {
+          const item = document.createElement("li");
+          item.textContent = line;
+          return item;
+        }));
+        window.__game.debrief = debriefLines;
         queueMicrotask(() => ui.retryBtn.focus({ preventScroll: true }));
       }
     }
@@ -3167,6 +3267,7 @@
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
       if (enemy.isAce) {
+        aceDestroyed = true;
         startAceKillCam(enemy);
         triggerRadioLine(
           "enemy",
@@ -3212,6 +3313,10 @@
 
     function updateMission(dt) {
       if (gameState !== STATE_PLAYING) return;
+      if (outro.active) {
+        updateOutro(dt);
+        return;
+      }
       const living = enemies.some((enemy) => enemy.alive);
       if (living) {
         waveClearTimer = -1;
@@ -3242,8 +3347,51 @@
           "ace-foreshadow-wingman"
         );
       } else if (kills >= TOTAL_ENEMIES) {
-        completeMission(true);
+        startOutro();
       }
+    }
+
+    function startOutro() {
+      outro.active = true;
+      outro.elapsed = 0;
+      outro.retreatBannerFired = false;
+      resetRadio();
+      showBanner("WARNING · MULTIPLE CONTACTS INBOUND", 2.6, "danger");
+      playTone(46, 1.2, 0.18, "sawtooth");
+      cameraShake = Math.min(1.8, cameraShake + 0.45);
+      radioSay(
+        "command",
+        "New contacts! Large formation inbound — twelve plus. Stand by.",
+        RADIO_PRIORITY.URGENT,
+        "outro-scare"
+      );
+      radioSay(
+        "wingman",
+        "Twelve bandits?! {nickname}, we can't take another wave!",
+        RADIO_PRIORITY.URGENT,
+        "outro-dread"
+      );
+      radioSay(
+        "enemy",
+        "This is Bison Lead. Ironback is gone. All flights abort — get out, NOW!",
+        RADIO_PRIORITY.URGENT,
+        "outro-break"
+      );
+      radioSay(
+        "command",
+        "...contacts are turning. All of them. They're running from you, {nickname}.",
+        RADIO_PRIORITY.URGENT,
+        "outro-retreat"
+      );
+    }
+
+    function updateOutro(dt) {
+      outro.elapsed += dt;
+      if (!outro.retreatBannerFired && outro.elapsed >= OUTRO_RETREAT_BANNER_AT) {
+        outro.retreatBannerFired = true;
+        showBanner("ENEMY FORCE RETREATING", 2.6, "success");
+      }
+      if (outro.elapsed >= OUTRO_COMPLETE_AT) completeMission(true);
     }
 
     function completeMission(success) {
@@ -3261,14 +3409,21 @@
         saveHighscore();
       }
       resetRadio();
-      triggerRadioLine(
-        "command",
-        success
-          ? "All hostiles down. Good work out there — RTB."
-          : "We've lost contact. Return to base if you can hear this.",
-        RADIO_PRIORITY.CRITICAL,
-        "mission-outcome"
-      );
+      if (success) {
+        radioSay(
+          "command",
+          "Sky's clear. Full enemy withdrawal confirmed. Come home, {nickname}.",
+          RADIO_PRIORITY.CRITICAL,
+          "mission-outcome"
+        );
+      } else {
+        triggerRadioLine(
+          "command",
+          "We've lost contact. Return to base if you can hear this.",
+          RADIO_PRIORITY.CRITICAL,
+          "mission-outcome"
+        );
+      }
       setState(success ? STATE_COMPLETE : STATE_GAMEOVER);
     }
 
@@ -3854,6 +4009,9 @@
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
       hook.killCam.enemyId = killCam.enemyId;
+      hook.outro.active = outro.active;
+      hook.outro.elapsed = outro.elapsed;
+      hook.outro.retreatBannerFired = outro.retreatBannerFired;
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
       hook.weapons.gunShots = gunShots;
       hook.weapons.missilesLaunched = missilesLaunched;
@@ -3888,6 +4046,7 @@
       hook.debug.gunKills = gunKills;
       hook.debug.missileKills = missileKills;
       hook.debug.damageTaken = damageTaken;
+      hook.debug.aceDestroyed = aceDestroyed;
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
