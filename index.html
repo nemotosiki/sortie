@@ -455,21 +455,24 @@
 
     .enemyMarker {
       position: absolute;
-      width: 16px;
-      height: 12px;
-      transform: translate(-50%, -160%);
-      background: currentColor;
-      color: #f4f7fa;
+      width: 36px;
+      height: 36px;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(112, 255, 151, 0.92);
+      color: #78ff9d;
       opacity: 0;
       visibility: hidden;
-      clip-path: polygon(50% 100%, 0 0, 100% 0);
-      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
-      transition: opacity 90ms ease, color 90ms ease, width 90ms ease, height 90ms ease;
+      filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));
+      transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;
       will-change: left, top;
     }
 
     .enemyMarker::before {
-      display: none;
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border: 1px solid currentColor;
+      opacity: 0.28;
     }
 
     .enemyMarker.active {
@@ -477,25 +480,17 @@
       visibility: visible;
     }
 
-    .enemyMarker.selected,
-    .enemyMarker.locked {
-      width: 40px;
-      height: 40px;
-      transform: translate(-50%, -50%);
-      background: none;
-      clip-path: none;
-      border-radius: 50%;
-      border: 1.5px solid currentColor;
-    }
-
     .enemyMarker.selected {
+      width: 43px;
+      height: 43px;
       color: #ffe66f;
+      border-color: currentColor;
       filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
     }
 
     .enemyMarker.locked {
       color: #ff5968;
-      filter: drop-shadow(0 0 8px rgba(255, 89, 104, 0.85));
+      border-color: currentColor;
     }
 
     .enemyMarkerLabel {
