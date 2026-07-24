@@ -1,11 +1,10 @@
 name: Fix enemy missile terminal-hit iteration
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
-      - ".github/workflows/fix-enemy-missile-terminal-hit.yml"
+      - ".enemy-missile-fix/ready"
 
 permissions:
   contents: write
@@ -26,6 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
 
           python3 - <<'PY'
           from pathlib import Path
@@ -54,10 +56,10 @@ jobs:
               raise SystemExit(f"expected exactly one terminal-hit block, found {text.count(old)}")
 
           text = text.replace(old, new, 1)
-          if text.count("if (gameState !== STATE_PLAYING) return;") < 1:
-              raise SystemExit("mission-end guard was not inserted")
           if text.count(new) != 1:
               raise SystemExit("patched terminal-hit block is not unique")
+          if "removeEnemyMissile(i);\n            if (gameState !== STATE_PLAYING) return;\n            continue;" not in text:
+              raise SystemExit("mission-end guard is not immediately after terminal-hit removal")
 
           scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
           if len(scripts) != 1:
