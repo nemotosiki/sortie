@@ -1,13 +1,304 @@
 name: Restyle enemy aircraft and HUD markers
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/restyle-enemy-hud.yml"
 
 permissions:
   contents: write
 
 jobs:
-  dormant:
+  patch-static-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - run: echo "Workflow staged; the next commit activates the one-time static publish."
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply visual changes, validate, clean up, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one occurrence, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''    .enemyMarker {
+                position: absolute;
+                width: 36px;
+                height: 36px;
+                transform: translate(-50%, -50%);
+                border: 1px solid rgba(112, 255, 151, 0.92);
+                color: #78ff9d;
+                opacity: 0;
+                visibility: hidden;
+                filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));
+                transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;
+                will-change: left, top;
+              }
+
+              .enemyMarker::before {
+                content: "";
+                position: absolute;
+                inset: 5px;
+                border: 1px solid currentColor;
+                opacity: 0.28;
+              }
+
+              .enemyMarker.active {
+                opacity: 0.88;
+                visibility: visible;
+              }
+
+              .enemyMarker.selected {
+                width: 43px;
+                height: 43px;
+                color: #ffe66f;
+                border-color: currentColor;
+                filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
+              }
+
+              .enemyMarker.locked {
+                color: #ff5968;
+                border-color: currentColor;
+              }
+          ''',
+              '''    .enemyMarker {
+                position: absolute;
+                width: 16px;
+                height: 12px;
+                transform: translate(-50%, -160%);
+                background: currentColor;
+                color: #f4f7fa;
+                opacity: 0;
+                visibility: hidden;
+                clip-path: polygon(50% 100%, 0 0, 100% 0);
+                filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
+                transition: opacity 90ms ease, color 90ms ease, width 90ms ease, height 90ms ease;
+                will-change: left, top;
+              }
+
+              .enemyMarker::before {
+                display: none;
+              }
+
+              .enemyMarker.active {
+                opacity: 0.88;
+                visibility: visible;
+              }
+
+              .enemyMarker.selected,
+              .enemyMarker.locked {
+                width: 40px;
+                height: 40px;
+                transform: translate(-50%, -50%);
+                background: none;
+                clip-path: none;
+                border-radius: 50%;
+                border: 1.5px solid currentColor;
+              }
+
+              .enemyMarker.selected {
+                color: #ffe66f;
+                filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
+              }
+
+              .enemyMarker.locked {
+                color: #ff5968;
+                filter: drop-shadow(0 0 8px rgba(255, 89, 104, 0.85));
+              }
+          ''',
+              "enemy marker CSS",
+          )
+
+          replace_once(
+              '''        theme: Object.freeze({
+                    primary: 0xe93655,
+                    secondary: 0x741328,
+                    accent: 0x20d7e7,
+                    canopy: 0xffcc7b,
+                    exhaust: 0x62edff,
+                    scale: 0.72,
+                    variant: "viper"
+                  })
+          ''',
+              '''        theme: Object.freeze({
+                    primary: 0xf2f5f7,
+                    secondary: 0xc7cdd3,
+                    accent: 0x20d7e7,
+                    canopy: 0xffcc7b,
+                    exhaust: 0x62edff,
+                    scale: 0.72,
+                    variant: "viper"
+                  })
+          ''',
+              "VIPER white theme",
+          )
+
+          replace_once(
+              '''        theme: Object.freeze({
+                    primary: 0xd96a2d,
+                    secondary: 0x6b2915,
+                    accent: 0x30201d,
+                    canopy: 0xffd06b,
+                    exhaust: 0xff8a4d,
+                    scale: 0.88,
+                    variant: "bison"
+                  })
+          ''',
+              '''        theme: Object.freeze({
+                    primary: 0xf2f5f7,
+                    secondary: 0xc7cdd3,
+                    accent: 0xd96a2d,
+                    canopy: 0xffd06b,
+                    exhaust: 0xff8a4d,
+                    scale: 0.88,
+                    variant: "bison"
+                  })
+          ''',
+              "BISON white theme",
+          )
+
+          replace_once(
+              '''        theme: Object.freeze({
+                    primary: 0x8d45c7,
+                    secondary: 0x43225f,
+                    accent: 0xf05cce,
+                    canopy: 0x9ce9ff,
+                    exhaust: 0xd978ff,
+                    scale: 0.78,
+                    variant: "lancer"
+                  })
+          ''',
+              '''        theme: Object.freeze({
+                    primary: 0xf2f5f7,
+                    secondary: 0xc7cdd3,
+                    accent: 0x8d45c7,
+                    canopy: 0x9ce9ff,
+                    exhaust: 0xd978ff,
+                    scale: 0.78,
+                    variant: "lancer"
+                  })
+          ''',
+              "LANCER white theme",
+          )
+
+          replace_once(
+              '        label.textContent = `TGT ${enemy.id} · ${enemy.label}`;\n',
+              '        const distance = Math.round(player.position.distanceTo(enemy.group.position));\n        label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;\n',
+              "enemy marker distance label",
+          )
+
+          required = [
+              "width: 16px;\n      height: 12px;",
+              "transform: translate(-50%, -160%);",
+              "clip-path: polygon(50% 100%, 0 0, 100% 0);",
+              ".enemyMarker.selected,\n    .enemyMarker.locked {",
+              "border-radius: 50%;",
+              "border: 1.5px solid currentColor;",
+              "filter: drop-shadow(0 0 8px rgba(255, 89, 104, 0.85));",
+              "const distance = Math.round(player.position.distanceTo(enemy.group.position));",
+              "label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;",
+              "primary: 0x23262e,",
+              "secondary: 0x101218,",
+              "accent: 0xffd35f,",
+              "three@0.180.0",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing required visual marker: {marker}")
+
+          if text.count("primary: 0xf2f5f7,") != 3:
+              raise SystemExit("expected exactly three white enemy primary colors")
+          if text.count("secondary: 0xc7cdd3,") != 3:
+              raise SystemExit("expected exactly three gray enemy secondary colors")
+          if text.count("accent: 0x20d7e7,") != 1:
+              raise SystemExit("VIPER cyan accent changed unexpectedly")
+          if text.count("accent: 0xd96a2d,") != 1:
+              raise SystemExit("BISON orange accent missing or duplicated")
+          if text.count("accent: 0x8d45c7,") != 1:
+              raise SystemExit("LANCER purple accent missing or duplicated")
+
+          obsolete = [
+              "width: 36px;\n      height: 36px;",
+              "border: 1px solid rgba(112, 255, 151, 0.92);",
+              "color: #78ff9d;",
+              "primary: 0xe93655,",
+              "secondary: 0x741328,",
+              "secondary: 0x6b2915,",
+              "secondary: 0x43225f,",
+              'label.textContent = `TGT ${enemy.id} · ${enemy.label}`;',
+          ]
+          for marker in obsolete:
+              if marker in text:
+                  raise SystemExit(f"obsolete enemy visual remains: {marker}")
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+
+          for element_id in [
+              "score", "highscore", "health", "missiles", "kills", "state",
+              "startBtn", "retryBtn", "enemyMarkers", "targetBox"
+          ]:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          if "@latest" in text:
+              raise SystemExit("Three.js version pin changed")
+          if "console.warn(" in text or "console.error(" in text:
+              raise SystemExit("console warning/error call added")
+
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/restyle-enemy-hud.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only"],
+              text=True,
+          ).splitlines())
+          expected = {
+              "index.html",
+              ".github/workflows/restyle-enemy-hud.yml",
+          }
+          if changed != expected:
+              raise SystemExit(f"unexpected staged files: {sorted(changed)}")
+          PY
+
+          git commit -m "Restyle enemy aircraft and HUD markers"
+          git push origin HEAD:main
