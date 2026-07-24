@@ -1,13 +1,236 @@
 name: Strengthen lock-on and HUD-only view
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/strengthen-lock-and-hud-view.yml"
 
 permissions:
   contents: write
 
 jobs:
-  dormant:
+  patch-static-publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
-      - run: echo "Workflow staged; the next commit activates the one-time static publish."
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply lock and camera changes, validate, and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("index.html")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one occurrence, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''    const LOCK_RANGE = 1200;
+              const LOCK_TIME = 1.2;
+              const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(9));
+              const TOTAL_ENEMIES = 6;
+          ''',
+              '''    const LOCK_RANGE = 1200;
+              const LOCK_TIME = 0.85;
+              const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
+              const LOCK_GRACE_TIME = 0.4;
+              const LOCK_HYSTERESIS_BONUS = 0.15;
+              const TOTAL_ENEMIES = 6;
+          ''',
+              "lock constants",
+          )
+
+          replace_once(
+              '''    let cameraMode = CAMERA_MODES[0];
+              let preferredTargetId = null;
+              let cameraFocusActive = false;
+          ''',
+              '''    let cameraMode = CAMERA_MODES[0];
+              let preferredTargetId = null;
+              let lockGraceTimer = 0;
+              let cameraFocusActive = false;
+          ''',
+              "lock grace state",
+          )
+
+          replace_once(
+              '''    function cycleCamera() {
+              const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
+              cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
+              showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
+            }
+          ''',
+              '''    function cycleCamera() {
+              const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
+              cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
+              if (gameState === STATE_PLAYING) playerModel.group.visible = cameraMode !== "cockpit";
+              showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
+            }
+          ''',
+              "camera model visibility",
+          )
+
+          replace_once(
+              '''      resetRadio();
+              resetPlayerTransform();
+              playerModel.group.visible = true;
+              score = 0;
+          ''',
+              '''      resetRadio();
+              resetPlayerTransform();
+              playerModel.group.visible = cameraMode !== "cockpit";
+              score = 0;
+          ''',
+              "mission camera visibility",
+          )
+
+          replace_once(
+              '''        const selectionScore = dot * 4 - distance / LOCK_RANGE;
+                if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
+                if (selectionScore > bestScore) {
+          ''',
+              '''        let selectionScore = dot * 4 - distance / LOCK_RANGE;
+                if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
+                if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
+                if (selectionScore > bestScore) {
+          ''',
+              "lock hysteresis scoring",
+          )
+
+          replace_once(
+              '''      if (!candidate) {
+              resetLock();
+              return;
+            }
+
+            if (lock.targetId !== candidate.id) {
+          ''',
+              '''      if (!candidate) {
+              lockGraceTimer += dt;
+              if (lockGraceTimer >= LOCK_GRACE_TIME) resetLock();
+              return;
+            }
+            lockGraceTimer = 0;
+
+            if (lock.targetId !== candidate.id) {
+          ''',
+              "lock grace handling",
+          )
+
+          replace_once(
+              '''    function resetLock() {
+              lock.targetId = null;
+              lock.progress = 0;
+              lock.locked = false;
+            }
+          ''',
+              '''    function resetLock() {
+              lock.targetId = null;
+              lock.progress = 0;
+              lock.locked = false;
+              lockGraceTimer = 0;
+            }
+          ''',
+              "lock reset state",
+          )
+
+          required = [
+              "const LOCK_TIME = 0.85;",
+              "const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));",
+              "const LOCK_GRACE_TIME = 0.4;",
+              "const LOCK_HYSTERESIS_BONUS = 0.15;",
+              "let lockGraceTimer = 0;",
+              "let selectionScore = dot * 4 - distance / LOCK_RANGE;",
+              "if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;",
+              "lockGraceTimer += dt;",
+              "if (lockGraceTimer >= LOCK_GRACE_TIME) resetLock();",
+              "playerModel.group.visible = cameraMode !== \"cockpit\";",
+              "const CAMERA_MODES = [\"chase\", \"close\", \"cockpit\"];",
+              "const BOOST_SPEED = 340;",
+              "if (gameState !== STATE_PLAYING) return;",
+          ]
+          for marker in required:
+              if marker not in text:
+                  raise SystemExit(f"missing required marker: {marker}")
+
+          obsolete = [
+              "const LOCK_TIME = 1.2;",
+              "const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(9));",
+              "const selectionScore = dot * 4 - distance / LOCK_RANGE;",
+              "playerModel.group.visible = true;",
+          ]
+          for marker in obsolete:
+              if marker in text:
+                  raise SystemExit(f"obsolete implementation remains: {marker}")
+
+          if text.count('playerModel.group.visible = cameraMode !== "cockpit";') != 2:
+              raise SystemExit("HUD-only visibility assignment is missing or duplicated")
+          if text.count("lockGraceTimer = 0;") < 2:
+              raise SystemExit("lock grace timer is not reset in all required paths")
+          if text.count("function updateLock(dt)") != 1 or text.count("function resetLock()") != 1:
+              raise SystemExit("lock functions are missing or duplicated")
+
+          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
+          if len(scripts) != 1:
+              raise SystemExit(f"expected one module script, found {len(scripts)}")
+
+          for element_id in ["score", "highscore", "health", "missiles", "kills", "state", "startBtn", "retryBtn"]:
+              if text.count(f'id="{element_id}"') != 1:
+                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
+
+          if "three@0.180.0" not in text or "@latest" in text:
+              raise SystemExit("Three.js version pin changed")
+          if "console.warn(" in text or "console.error(" in text:
+              raise SystemExit("console warning/error call added")
+
+          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          node --check /tmp/sortie-game.mjs
+          git diff --check
+
+          rm -f .github/workflows/strengthen-lock-and-hud-view.yml
+
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          git diff --cached --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          changed = set(subprocess.check_output(
+              ["git", "diff", "--cached", "--name-only"],
+              text=True,
+          ).splitlines())
+          expected = {
+              "index.html",
+              ".github/workflows/strengthen-lock-and-hud-view.yml",
+          }
+          if changed != expected:
+              raise SystemExit(f"unexpected staged files: {sorted(changed)}")
+          PY
+
+          git commit -m "Strengthen lock-on and add HUD-only view"
+          git push origin HEAD:main
