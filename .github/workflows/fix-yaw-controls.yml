@@ -1,8 +1,11 @@
 name: Fix yaw and throttle controls
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, edited]
+  push:
+    branches:
+      - main
+    paths:
+      - ".run-yaw-fix"
 
 permissions:
   contents: write
@@ -165,7 +168,7 @@ jobs:
           node --check /tmp/sortie-game.mjs
           git diff --check
 
-          rm -f .github/workflows/fix-yaw-controls.yml
+          rm -f .github/workflows/fix-yaw-controls.yml .run-yaw-fix
 
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
@@ -179,7 +182,7 @@ jobs:
               ['git', 'diff', '--cached', '--name-only'],
               text=True,
           ).splitlines())
-          expected = {'index.html', '.github/workflows/fix-yaw-controls.yml'}
+          expected = {'index.html', '.github/workflows/fix-yaw-controls.yml', '.run-yaw-fix'}
           if changed != expected:
               raise SystemExit(f'unexpected staged files: {sorted(changed)}')
           PY
