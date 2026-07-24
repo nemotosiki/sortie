@@ -1,0 +1,47 @@
+name: Trigger selectable aircraft publish
+
+on:
+  push:
+    branches:
+      - agent/run-aircraft-selection-publish
+    paths:
+      - ".aircraft-selection-run"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Execute staged static publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/add-aircraft-selection.yml').read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          if workflow.count(marker) != 1:
+              raise SystemExit('staged publisher shell block was not uniquely identifiable')
+          block = workflow.split(marker, 1)[1]
+          lines = []
+          for line in block.splitlines():
+              if not line:
+                  lines.append('')
+              elif line.startswith('          '):
+                  lines.append(line[10:])
+              else:
+                  raise SystemExit(f'unexpected staged publisher indentation: {line!r}')
+          Path('/tmp/run-aircraft-publisher.sh').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+          bash /tmp/run-aircraft-publisher.sh
