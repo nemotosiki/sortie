@@ -1152,8 +1152,10 @@
     const GUN_RANGE = 750;
     const GUN_RATE = 12;
     const LOCK_RANGE = 1200;
-    const LOCK_TIME = 1.2;
-    const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(9));
+    const LOCK_TIME = 0.85;
+    const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
+    const LOCK_GRACE_TIME = 0.4;
+    const LOCK_HYSTERESIS_BONUS = 0.15;
     const TOTAL_ENEMIES = 6;
     const KILL_SCORE = 1000;
     const RADAR_RANGE = 1400;
@@ -1564,6 +1566,7 @@
     let controlMode = CONTROL_NORMAL;
     let cameraMode = CAMERA_MODES[0];
     let preferredTargetId = null;
+    let lockGraceTimer = 0;
     let cameraFocusActive = false;
     let cameraFocusTargetId = null;
     let cameraFocusSource = null;
@@ -2098,6 +2101,7 @@
     function cycleCamera() {
       const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
       cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
+      if (gameState === STATE_PLAYING) playerModel.group.visible = cameraMode !== "cockpit";
       showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
     }
 
@@ -2257,7 +2261,7 @@
       clearMissionObjects();
       resetRadio();
       resetPlayerTransform();
-      playerModel.group.visible = true;
+      playerModel.group.visible = cameraMode !== "cockpit";
       score = 0;
       health = 100;
       missileCount = PLAYER_MISSILE_CAPACITY;
@@ -2751,7 +2755,8 @@
         const dot = tmpV1.dot(tmpV2);
         if (dot < LOCK_DOT) continue;
 
-        const selectionScore = dot * 4 - distance / LOCK_RANGE;
+        let selectionScore = dot * 4 - distance / LOCK_RANGE;
+        if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
         if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
         if (selectionScore > bestScore) {
           bestScore = selectionScore;
@@ -2764,9 +2769,11 @@
       candidate = preferredCandidate || candidate;
 
       if (!candidate) {
-        resetLock();
+        lockGraceTimer += dt;
+        if (lockGraceTimer >= LOCK_GRACE_TIME) resetLock();
         return;
       }
+      lockGraceTimer = 0;
 
       if (lock.targetId !== candidate.id) {
         lock.targetId = candidate.id;
@@ -2783,6 +2790,7 @@
       lock.targetId = null;
       lock.progress = 0;
       lock.locked = false;
+      lockGraceTimer = 0;
     }
 
     function spawnWave(number) {
