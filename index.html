@@ -4157,15 +4157,39 @@
         const angle = Math.atan2(rightDistance, forwardDistance);
         const px = center + Math.sin(angle) * radius * scale;
         const py = center - Math.cos(angle) * radius * scale;
-        const locked = lock.locked && lock.targetId === enemy.id;
+        const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);
 
-        ctx.fillStyle = locked ? "#fff06a" : enemy.spec.radarColor;
-        ctx.shadowColor = locked ? "#fff06a" : enemy.spec.radarColor;
-        ctx.shadowBlur = locked ? 10 : 6;
+        forwardOf(enemy.group, tmpV4);
+        const headingRight = tmpV4.dot(tmpV2);
+        const headingForward = tmpV4.dot(lastRadarForward);
+        const headingAngle = Math.atan2(headingRight, headingForward);
+
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(headingAngle);
+        ctx.fillStyle = "#f4f7fa";
+        ctx.shadowColor = "#f4f7fa";
+        ctx.shadowBlur = isTarget ? 8 : 5;
         ctx.beginPath();
-        ctx.arc(px, py, locked ? 4 : 3, 0, Math.PI * 2);
+        ctx.moveTo(0, -4.5);
+        ctx.lineTo(-3, 3);
+        ctx.lineTo(0, 1);
+        ctx.lineTo(3, 3);
+        ctx.closePath();
         ctx.fill();
+        ctx.restore();
         ctx.shadowBlur = 0;
+
+        if (isTarget) {
+          ctx.strokeStyle = lock.locked ? "#ff4f5e" : "#ffe66f";
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.shadowBlur = 9;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(px, py, 7, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
       }
 
       for (const missile of enemyMissiles) {
