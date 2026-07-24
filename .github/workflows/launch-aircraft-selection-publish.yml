@@ -1,21 +1,19 @@
 name: Launch selectable aircraft publish
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".aircraft-selection-merge-trigger"
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: write
 
 concurrency:
-  group: add-aircraft-selection-merge
+  group: add-aircraft-selection-pr
   cancel-in-progress: true
 
 jobs:
   publish:
+    if: github.event.pull_request.title == 'Run selectable aircraft static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
