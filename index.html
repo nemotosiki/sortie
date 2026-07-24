@@ -455,24 +455,21 @@
 
     .enemyMarker {
       position: absolute;
-      width: 36px;
-      height: 36px;
-      transform: translate(-50%, -50%);
-      border: 1px solid rgba(112, 255, 151, 0.92);
-      color: #78ff9d;
+      width: 16px;
+      height: 12px;
+      transform: translate(-50%, -160%);
+      background: currentColor;
+      color: #f4f7fa;
       opacity: 0;
       visibility: hidden;
-      filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));
-      transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;
+      clip-path: polygon(50% 100%, 0 0, 100% 0);
+      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
+      transition: opacity 90ms ease, color 90ms ease, width 90ms ease, height 90ms ease;
       will-change: left, top;
     }
 
     .enemyMarker::before {
-      content: "";
-      position: absolute;
-      inset: 5px;
-      border: 1px solid currentColor;
-      opacity: 0.28;
+      display: none;
     }
 
     .enemyMarker.active {
@@ -480,17 +477,25 @@
       visibility: visible;
     }
 
+    .enemyMarker.selected,
+    .enemyMarker.locked {
+      width: 40px;
+      height: 40px;
+      transform: translate(-50%, -50%);
+      background: none;
+      clip-path: none;
+      border-radius: 50%;
+      border: 1.5px solid currentColor;
+    }
+
     .enemyMarker.selected {
-      width: 43px;
-      height: 43px;
       color: #ffe66f;
-      border-color: currentColor;
       filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
     }
 
     .enemyMarker.locked {
       color: #ff5968;
-      border-color: currentColor;
+      filter: drop-shadow(0 0 8px rgba(255, 89, 104, 0.85));
     }
 
     .enemyMarkerLabel {
@@ -1277,8 +1282,8 @@
         tracerColor: 0xff4967,
         explosionColor: 0xff5475,
         theme: Object.freeze({
-          primary: 0xe93655,
-          secondary: 0x741328,
+          primary: 0xf2f5f7,
+          secondary: 0xc7cdd3,
           accent: 0x20d7e7,
           canopy: 0xffcc7b,
           exhaust: 0x62edff,
@@ -1320,9 +1325,9 @@
         tracerColor: 0xff8248,
         explosionColor: 0xffa348,
         theme: Object.freeze({
-          primary: 0xd96a2d,
-          secondary: 0x6b2915,
-          accent: 0x30201d,
+          primary: 0xf2f5f7,
+          secondary: 0xc7cdd3,
+          accent: 0xd96a2d,
           canopy: 0xffd06b,
           exhaust: 0xff8a4d,
           scale: 0.88,
@@ -1364,9 +1369,9 @@
         tracerColor: 0xd76cff,
         explosionColor: 0xd679ff,
         theme: Object.freeze({
-          primary: 0x8d45c7,
-          secondary: 0x43225f,
-          accent: 0xf05cce,
+          primary: 0xf2f5f7,
+          secondary: 0xc7cdd3,
+          accent: 0x8d45c7,
           canopy: 0x9ce9ff,
           exhaust: 0xd978ff,
           scale: 0.78,
@@ -3893,7 +3898,8 @@
         marker.classList.toggle("active", active);
         marker.classList.toggle("selected", selected);
         marker.classList.toggle("locked", locked);
-        label.textContent = `TGT ${enemy.id} · ${enemy.label}`;
+        const distance = Math.round(player.position.distanceTo(enemy.group.position));
+        label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;
 
         if (active) {
           const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
