@@ -1,12 +1,10 @@
 name: Restyle tactical radar targets
-# Retrigger after GitHub indexed the staged workflow.
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
-      - ".github/workflows/restyle-radar-targets.yml"
+      - ".radar-restyle-ready"
 
 permissions:
   contents: write
@@ -17,7 +15,6 @@ concurrency:
 
 jobs:
   patch-static-publish:
-    if: github.event.head_commit.message == 'Run radar target restyle static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -115,13 +112,17 @@ jobs:
           for (const missile of enemyMissiles) {
           '''
 
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f"radar enemy block: expected exactly one occurrence, found {count}")
-          text = text.replace(old, new, 1)
+          old_count = text.count(old)
+          new_marker = 'const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);'
+          if old_count == 1:
+              text = text.replace(old, new, 1)
+          elif old_count == 0 and new_marker in text:
+              pass
+          else:
+              raise SystemExit(f"radar enemy block is not in an expected state: old_count={old_count}")
 
           required = [
-              'const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);',
+              new_marker,
               'forwardOf(enemy.group, tmpV4);',
               'const headingAngle = Math.atan2(headingRight, headingForward);',
               'ctx.rotate(headingAngle);',
@@ -152,7 +153,7 @@ jobs:
 
           if text.count('ctx.rotate(headingAngle);') != 1:
               raise SystemExit("enemy heading rotation is missing or duplicated")
-          if text.count('const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);') != 1:
+          if text.count(new_marker) != 1:
               raise SystemExit("radar target selection marker is missing or duplicated")
 
           scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
@@ -181,6 +182,11 @@ jobs:
           git config user.email "noreply@openai.com"
           git add -A
           git diff --cached --check
+
+          if git diff --cached --quiet; then
+            echo "Radar restyle is already published."
+            exit 0
+          fi
 
           python3 - <<'PY'
           import subprocess
