@@ -1169,6 +1169,35 @@
       cockpit: Object.freeze({ back: -4.8, height: 1.9, look: 96, lookHeight: 0.9, rollFollow: 0.9 })
     });
 
+    const ACE_CALLSIGN = "IRONBACK";
+    const ACE_SPEC_OVERRIDES = Object.freeze({
+      label: ACE_CALLSIGN,
+      role: "Squadron Leader",
+      behavior: "evasive",
+      hp: 140,
+      maxSpeed: 225,
+      pursuitBonus: 16,
+      pursuitTurn: THREE.MathUtils.degToRad(58),
+      evadeLateral: 40,
+      evadeVertical: 18,
+      evadeFrequency: 1.1,
+      radarColor: "#ffe066",
+      tracerColor: 0xffd35f,
+      theme: Object.freeze({
+        primary: 0x23262e,
+        secondary: 0x101218,
+        accent: 0xffd35f,
+        canopy: 0xffe9a8,
+        exhaust: 0xffd35f,
+        scale: 0.88,
+        variant: "bison"
+      })
+    });
+    const KILLCAM_DURATION = 1.6;
+    const KILLCAM_SCALE = 0.18;
+    const KILLCAM_RAMP = 0.35;
+    const KILLCAM_FOV_TIGHTEN = 6;
+
     const ENEMY_TYPE_ORDER = Object.freeze([
       Object.freeze(["viper", "lancer", "bison"]),
       Object.freeze(["bison", "viper", "lancer"])
@@ -1565,6 +1594,13 @@
     let playerControlAuthority = 1;
     let controlMode = CONTROL_NORMAL;
     let cameraMode = CAMERA_MODES[0];
+    let timeScale = 1;
+    const killCam = {
+      active: false,
+      timer: 0,
+      enemyId: null,
+      focusPoint: new THREE.Vector3()
+    };
     let preferredTargetId = null;
     let lockGraceTimer = 0;
     let cameraFocusActive = false;
@@ -1651,6 +1687,8 @@
       controlMode,
       cameraMode,
       cameraFov: BASE_CAMERA_FOV,
+      timeScale: 1,
+      killCam: { active: false, timer: 0, enemyId: null },
       selectedTargetId: null,
       weapons: {
         gunShots: 0,
@@ -1696,7 +1734,14 @@
         nickname: null,
         gunKills: 0,
         missileKills: 0,
-        damageTaken: 0
+        damageTaken: 0,
+        forceDamageEnemy: (id, amount = 200) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy) return false;
+          damageEnemy(enemy, amount, false);
+          return true;
+        }
       },
       enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
@@ -1845,9 +1890,40 @@
 
     requestAnimationFrame(animate);
 
+    function startAceKillCam(enemy) {
+      killCam.active = true;
+      killCam.timer = KILLCAM_DURATION;
+      killCam.enemyId = enemy.id;
+      killCam.focusPoint.copy(enemy.group.position);
+      cameraShake = Math.min(1.8, cameraShake + 0.4);
+    }
+
+    function updateKillCam(rawDt) {
+      if (!killCam.active) {
+        timeScale = 1;
+        return;
+      }
+      if (gameState !== STATE_PLAYING) {
+        killCam.active = false;
+        timeScale = 1;
+        return;
+      }
+      killCam.timer -= rawDt;
+      if (killCam.timer <= 0) {
+        killCam.active = false;
+        timeScale = 1;
+        return;
+      }
+      timeScale = killCam.timer > KILLCAM_RAMP
+        ? KILLCAM_SCALE
+        : THREE.MathUtils.lerp(1, KILLCAM_SCALE, killCam.timer / KILLCAM_RAMP);
+    }
+
     function animate() {
       requestAnimationFrame(animate);
-      const dt = Math.min(clock.getDelta(), 0.05);
+      const rawDt = Math.min(clock.getDelta(), 0.05);
+      updateKillCam(rawDt);
+      const dt = rawDt * timeScale;
 
       updateEffects(dt);
       updateGamepadInput();
@@ -1870,10 +1946,10 @@
 
       updatePlayerDamageSmoke(dt);
       updateParticlePools(dt);
-      updateAudioCues(dt);
-      updateCamera(dt);
-      updateVisualStatus(dt);
-      updateRadio(dt);
+      updateAudioCues(rawDt);
+      updateCamera(rawDt);
+      updateVisualStatus(rawDt);
+      updateRadio(rawDt);
       updateHud();
       drawRadar();
       syncGameHook();
@@ -2262,6 +2338,10 @@
       resetRadio();
       resetPlayerTransform();
       playerModel.group.visible = cameraMode !== "cockpit";
+      timeScale = 1;
+      killCam.active = false;
+      killCam.timer = 0;
+      killCam.enemyId = null;
       score = 0;
       health = 100;
       missileCount = PLAYER_MISSILE_CAPACITY;
@@ -2811,14 +2891,15 @@
           .addScaledVector(spawnRight, lateralOffsets[i])
           .addScaledVector(spawnUp, altitudeOffsets[i]);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, number, i, waveTypes[i]);
+        spawnEnemy(position, number, i, waveTypes[i], number === 2 && i === 0);
       }
     }
 
-    function spawnEnemy(position, wave, slot, typeKey) {
+    function spawnEnemy(position, wave, slot, typeKey, isAce = false) {
       enemySerial += 1;
       const id = (wave - 1) * 3 + slot + 1;
-      const spec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
+      const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
+      const spec = isAce ? Object.freeze({ ...baseSpec, ...ACE_SPEC_OVERRIDES }) : baseSpec;
       const root = new THREE.Group();
       root.position.copy(position);
       root.userData.enemyType = spec.key;
@@ -2855,6 +2936,9 @@
         label: spec.label,
         role: spec.role,
         behavior: spec.behavior,
+        isAce,
+        aceEngageLineFired: false,
+        aceHalfLineFired: false,
         spec,
         group: root,
         model,
@@ -2907,7 +2991,18 @@
         tmpV1.copy(player.position).sub(enemy.group.position);
         const distanceToPlayer = tmpV1.length();
 
-        if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) enemy.mode = "pursuit";
+        if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
+          enemy.mode = "pursuit";
+          if (enemy.isAce && !enemy.aceEngageLineFired) {
+            enemy.aceEngageLineFired = true;
+            triggerRadioLine(
+              "enemy",
+              "This is Ironback. All units fall back — the bandit is mine.",
+              RADIO_PRIORITY.NORMAL,
+              "ace-engage"
+            );
+          }
+        }
         if (enemy.mode === "pursuit" && distanceToPlayer > spec.disengageRange) enemy.mode = "patrol";
 
         const leader = spec.behavior === "formation"
@@ -3039,7 +3134,18 @@
       if (!enemy.alive) return;
       enemy.hp -= amount;
       enemy.hitFlash = 0.12;
-      if (enemy.hp > 0) return;
+      if (enemy.hp > 0) {
+        if (enemy.isAce && !enemy.aceHalfLineFired && enemy.hp <= enemy.maxHp * 0.5) {
+          enemy.aceHalfLineFired = true;
+          triggerRadioLine(
+            "enemy",
+            "Not bad. You'll need more than that to bring ME down.",
+            RADIO_PRIORITY.NORMAL,
+            "ace-half"
+          );
+        }
+        return;
+      }
 
       enemy.alive = false;
       enemy.deadTimer = 2.4;
@@ -3060,6 +3166,15 @@
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+      if (enemy.isAce) {
+        startAceKillCam(enemy);
+        triggerRadioLine(
+          "enemy",
+          "This is Ironback... I'm hit... going down.",
+          RADIO_PRIORITY.URGENT,
+          "ace-down"
+        );
+      }
       onKillRadio(kills);
     }
 
@@ -3114,7 +3229,18 @@
       if (waveNumber < 2) {
         spawnWave(2);
         showBanner("WAVE 2 · INBOUND", 2.0, "danger");
-        triggerRadioLine("command", "Multiple bandits inbound, wave two. Stay sharp.", RADIO_PRIORITY.NORMAL, "wave2-inbound");
+        triggerRadioLine(
+          "command",
+          "Second wave inbound. Lead contact is flagged: ace craft, callsign IRONBACK. Stay sharp.",
+          RADIO_PRIORITY.NORMAL,
+          "wave2-inbound"
+        );
+        triggerRadioLine(
+          "wingman",
+          "Ironback?! I've heard the stories. Do not let him get behind you.",
+          RADIO_PRIORITY.NORMAL,
+          "ace-foreshadow-wingman"
+        );
       } else if (kills >= TOTAL_ENEMIES) {
         completeMission(true);
       }
@@ -3160,7 +3286,8 @@
       const targetFov = BASE_CAMERA_FOV +
         HIGH_SPEED_FOV_BONUS * highSpeedBlend -
         LOW_SPEED_FOV_REDUCTION * lowSpeedBlend +
-        cameraShake * 1.25;
+        cameraShake * 1.25 -
+        (killCam.active ? KILLCAM_FOV_TIGHTEN : 0);
       const nextFov = THREE.MathUtils.lerp(camera.fov, targetFov, damping(CAMERA_FOV_RESPONSE_K, dt));
       if (Math.abs(nextFov - camera.fov) > 0.001) {
         camera.fov = nextFov;
@@ -3194,6 +3321,7 @@
       if (focusTarget) {
         desiredLook.copy(focusTarget.group.position).addScaledVector(WORLD_UP, 1.8);
       }
+      if (killCam.active) desiredLook.copy(killCam.focusPoint);
       if (cameraShake > 0) {
         desiredLook.x += (Math.random() - 0.5) * cameraShake * 2.8;
         desiredLook.y += (Math.random() - 0.5) * cameraShake * 2.3;
@@ -3201,11 +3329,17 @@
       }
 
       camera.position.lerp(desiredPosition, damping(0.0017, dt));
-      cameraLook.lerp(desiredLook, damping(focusTarget ? 0.00008 : 0.0005, dt));
+      cameraLook.lerp(
+        desiredLook,
+        damping((focusTarget || killCam.active) ? 0.00008 : 0.0005, dt)
+      );
       cameraUp.lerp(tmpV3, damping(0.003, dt)).normalize();
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       tmpQ1.setFromRotationMatrix(tmpM1);
-      camera.quaternion.slerp(tmpQ1, damping(focusTarget ? 0.00012 : 0.0007, dt));
+      camera.quaternion.slerp(
+        tmpQ1,
+        damping((focusTarget || killCam.active) ? 0.00012 : 0.0007, dt)
+      );
       camera.quaternion.normalize();
 
       world.skyGroup.position.copy(camera.position);
@@ -3716,6 +3850,10 @@
       hook.controlMode = controlMode;
       hook.cameraMode = cameraMode;
       hook.cameraFov = currentCameraFov;
+      hook.timeScale = timeScale;
+      hook.killCam.active = killCam.active;
+      hook.killCam.timer = killCam.timer;
+      hook.killCam.enemyId = killCam.enemyId;
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
       hook.weapons.gunShots = gunShots;
       hook.weapons.missilesLaunched = missilesLaunched;
@@ -3777,6 +3915,7 @@
         },
         alive: enemy.alive,
         isLocked: enemy.alive && lock.locked && lock.targetId === enemy.id,
+        isAce: Boolean(enemy.isAce),
         type: enemy.type,
         label: enemy.label,
         role: enemy.role,
