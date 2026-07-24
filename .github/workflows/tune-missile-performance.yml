@@ -1,11 +1,10 @@
 name: Tune missile speed and damage
 
 on:
-  push:
-    branches:
-      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
     paths:
-      - ".github/workflows/tune-missile-performance.yml"
+      - ".missile-tuning-ready"
 
 permissions:
   contents: write
@@ -26,7 +25,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           git fetch origin main
           git reset --hard origin/main
 
@@ -107,18 +105,16 @@ jobs:
               if marker not in text:
                   raise SystemExit(f"missing required marker: {marker}")
 
-          obsolete = [
+          for marker in [
               "speed: Math.max(playerSpeed + 55, 225)",
               "THREE.MathUtils.lerp(missile.speed, 320, damping(0.012, dt))",
-          ]
-          for marker in obsolete:
+          ]:
               if marker in text:
                   raise SystemExit(f"obsolete missile value remains: {marker}")
 
           scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
           if len(scripts) != 1:
               raise SystemExit(f"expected one module script, found {len(scripts)}")
-
           for element_id in ["score", "highscore", "health", "missiles", "kills", "state", "startBtn", "retryBtn"]:
               if text.count(f'id="{element_id}"') != 1:
                   raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
@@ -129,7 +125,6 @@ jobs:
 
           node --check /tmp/sortie-game.mjs
           git diff --check
-
           rm -f .github/workflows/tune-missile-performance.yml
 
           git config user.name "OpenAI"
@@ -139,15 +134,11 @@ jobs:
 
           python3 - <<'PY'
           import subprocess
-
           changed = set(subprocess.check_output(
               ["git", "diff", "--cached", "--name-only"],
               text=True,
           ).splitlines())
-          expected = {
-              "index.html",
-              ".github/workflows/tune-missile-performance.yml",
-          }
+          expected = {"index.html", ".github/workflows/tune-missile-performance.yml"}
           if changed != expected:
               raise SystemExit(f"unexpected staged files: {sorted(changed)}")
           PY
