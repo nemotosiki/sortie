@@ -560,6 +560,45 @@
       text-shadow: 0 0 7px rgba(255, 54, 77, 0.95);
     }
 
+    #combatPopups {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .combatPopup {
+      position: absolute;
+      min-width: 150px;
+      padding: 5px 12px 6px;
+      transform: translate(-50%, -50%);
+      border-left: 2px solid rgba(255, 236, 128, 0.88);
+      border-right: 2px solid rgba(255, 236, 128, 0.88);
+      background: linear-gradient(90deg, transparent, rgba(7, 18, 27, 0.82) 18%, rgba(7, 18, 27, 0.82) 82%, transparent);
+      color: #fff5a8;
+      text-align: center;
+      text-shadow: 0 0 10px rgba(255, 204, 73, 0.92);
+      pointer-events: none;
+      will-change: left, top, transform, opacity;
+    }
+
+    .combatPopup strong {
+      display: block;
+      font-size: 18px;
+      font-style: italic;
+      letter-spacing: 0.16em;
+    }
+
+    .combatPopup span {
+      display: block;
+      margin-top: 2px;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+
     #missionBanner {
       position: absolute;
       left: 50%;
@@ -675,9 +714,12 @@
       pointer-events: none;
       opacity: 0;
       background:
-        radial-gradient(circle, transparent 32%, rgba(255, 22, 48, 0.18) 62%, rgba(255, 0, 30, 0.72) 130%),
-        linear-gradient(rgba(255, 20, 40, 0.08), rgba(255, 20, 40, 0.08));
+        radial-gradient(circle at 50% 50%, transparent 16%, rgba(255, 54, 70, 0.08) 38%, rgba(255, 20, 44, 0.46) 78%, rgba(160, 0, 24, 0.9) 140%),
+        repeating-linear-gradient(98deg, transparent 0 23px, rgba(255, 110, 110, 0.035) 24px 25px),
+        linear-gradient(rgba(255, 24, 48, 0.1), rgba(255, 24, 48, 0.1));
+      box-shadow: inset 0 0 150px rgba(255, 0, 32, 0.72);
       mix-blend-mode: screen;
+      will-change: opacity, filter;
     }
 
     .screen {
@@ -960,6 +1002,7 @@
     </div>
 
     <div id="enemyMarkers"></div>
+    <div id="combatPopups"></div>
 
     <div id="targetBox">
       <span id="targetRange">0M</span>
@@ -1035,17 +1078,25 @@
     const PLAYER_MISSILE_CAPACITY = 10;
     const CRUISE_SPEED = 170;
     const BOOST_SPEED = 340;
-    // Full brake now settles in a controllable dogfight band instead of forcing a stall.
-    // A sustained high-G pull while braking adds induced drag and can still cross the stall threshold.
+    // Full brake settles in a controllable dogfight band; hard pulling adds induced drag.
     const BRAKE_SPEED = 128;
     const BRAKE_HIGH_G_SPEED_DROP = 52;
-    const BOOST_SPEED_RESPONSE_K = 0.006;
-    const BRAKE_SPEED_RESPONSE_K = 0.018;
-    const CRUISE_SPEED_RESPONSE_K = 0.055;
+    // Damping uses 1 - Math.pow(k, dt): larger k values create slower, weightier response.
+    const BOOST_SPEED_RESPONSE_K = 0.22;
+    const BRAKE_SPEED_RESPONSE_K = 0.16;
+    const CRUISE_SPEED_RESPONSE_K = 0.32;
     const STALL_WARNING_SPEED = 96;
     const STALL_ENTRY_SPEED = 84;
     const STALL_DEEP_SPEED = 62;
     const STALL_RECOVERY_SPEED = 114;
+    const BASE_CAMERA_FOV = 64;
+    const HIGH_SPEED_FOV_BONUS = 8;
+    const LOW_SPEED_FOV_REDUCTION = 2.5;
+    const CAMERA_FOV_RESPONSE_K = 0.16;
+    const MAX_SPARK_PARTICLES = 300;
+    const MAX_DEBRIS_PARTICLES = 180;
+    const MAX_SMOKE_PARTICLES = 200;
+    const MAX_COMBAT_POPUPS = 12;
     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
     const STALL_SINK_RATE = 44;
     const PITCH_RATE = THREE.MathUtils.degToRad(58);
@@ -1272,6 +1323,7 @@
       altitude: document.getElementById("altitudeValue"),
       wave: document.getElementById("waveReadout"),
       enemyMarkers: document.getElementById("enemyMarkers"),
+      combatPopups: document.getElementById("combatPopups"),
       targetBox: document.getElementById("targetBox"),
       targetRange: document.getElementById("targetRange"),
       lockLabel: document.getElementById("lockLabel"),
@@ -1299,7 +1351,7 @@
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x7ba8ba, 650, 3350);
 
-    const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 7000);
+    const camera = new THREE.PerspectiveCamera(BASE_CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 7000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x6698b2, 1);
@@ -1329,6 +1381,7 @@
     const missilesInFlight = [];
     const enemyMissiles = [];
     const effects = [];
+    const combatPopups = [];
     const enemyMarkerElements = new Map();
     const enemyMarkerScreenState = [];
     const targetArrowState = {
@@ -1336,7 +1389,8 @@
       targetId: null,
       x: 0,
       y: 0,
-      angle: 0
+      angle: 0,
+      mode: "hidden"
     };
 
     let gameState = STATE_READY;
@@ -1378,6 +1432,8 @@
     let cameraFocusTargetId = null;
     let cameraFocusSource = null;
     let nearestMissileThreat = null;
+    let damageSmokeTimer = 0;
+    let currentCameraFov = BASE_CAMERA_FOV;
 
     const gamepadInput = {
       connected: false,
@@ -1397,13 +1453,15 @@
       previousCamera: false,
       targetPressedAt: 0,
       targetLong: false,
-      targetFocus: false
+      targetFocus: false,
+      targetId: null
     };
 
     const cameraKeyHold = {
       pressed: false,
       pressedAt: 0,
-      focus: false
+      focus: false,
+      targetId: null
     };
 
     const audioSystem = {
@@ -1414,7 +1472,8 @@
       lastLocked: false,
       lockBeeps: 0,
       lockCompleteCues: 0,
-      threatBeeps: 0
+      threatBeeps: 0,
+      activeSources: new Set()
     };
 
     const lock = {
@@ -1432,6 +1491,7 @@
       kills,
       controlMode,
       cameraMode,
+      cameraFov: BASE_CAMERA_FOV,
       selectedTargetId: null,
       weapons: {
         gunShots: 0,
@@ -1450,7 +1510,19 @@
       threats: { incomingMissiles: [], nearest: null },
       hud: {
         visibleEnemyMarkers: [],
-        targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0 }
+        targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0, mode: "hidden" }
+      },
+      debug: {
+        destroyedEnemies: 0,
+        activeParticles: 0,
+        activeSparkParticles: 0,
+        activeDebrisParticles: 0,
+        activeSmokeParticles: 0,
+        activeAudioSources: 0,
+        activeCombatPopups: 0,
+        activeEffects: 0,
+        particleCapacity: MAX_SPARK_PARTICLES + MAX_DEBRIS_PARTICLES + MAX_SMOKE_PARTICLES,
+        lowHealthSmokeActive: false
       },
       enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
@@ -1465,6 +1537,28 @@
     const geometry = createSharedGeometry();
     const shared = createSharedMaterials();
     const world = createWorld();
+    const sparkParticlePool = createParticlePool(MAX_SPARK_PARTICLES, {
+      size: 5.4,
+      opacity: 0.94,
+      blending: THREE.AdditiveBlending,
+      texture: createParticleTexture("spark"),
+      additive: true
+    });
+    const debrisParticlePool = createParticlePool(MAX_DEBRIS_PARTICLES, {
+      size: 3.8,
+      opacity: 0.86,
+      blending: THREE.NormalBlending,
+      texture: createParticleTexture("debris"),
+      additive: false
+    });
+    const smokeParticlePool = createParticlePool(MAX_SMOKE_PARTICLES, {
+      size: 25,
+      opacity: 0.42,
+      blending: THREE.NormalBlending,
+      texture: createParticleTexture("smoke"),
+      additive: false
+    });
+    const explosionSpriteTexture = createParticleTexture("explosion");
 
     const player = new THREE.Group();
     const playerModel = createAircraftModel({
@@ -1518,6 +1612,7 @@
           cameraKeyHold.pressed = true;
           cameraKeyHold.pressedAt = performance.now();
           cameraKeyHold.focus = false;
+          cameraKeyHold.targetId = preferredTargetId ?? lock.targetId ?? cameraFocusTargetId;
         }
         return;
       }
@@ -1543,6 +1638,7 @@
           cameraKeyHold.pressed = false;
           cameraKeyHold.focus = false;
           cameraKeyHold.pressedAt = 0;
+          cameraKeyHold.targetId = null;
           if (!heldLong) cycleCamera();
         }
         return;
@@ -1556,8 +1652,10 @@
       cameraKeyHold.pressed = false;
       cameraKeyHold.focus = false;
       cameraKeyHold.pressedAt = 0;
+      cameraKeyHold.targetId = null;
       gamepadInput.targetFocus = false;
       gamepadInput.targetLong = false;
+      gamepadInput.targetId = null;
       cameraFocusActive = false;
       cameraFocusTargetId = null;
       cameraFocusSource = null;
@@ -1596,6 +1694,8 @@
         animateIdle(dt);
       }
 
+      updatePlayerDamageSmoke(dt);
+      updateParticlePools(dt);
       updateAudioCues(dt);
       updateCamera(dt);
       updateVisualStatus(dt);
@@ -1662,6 +1762,7 @@
       gamepadInput.targetPressedAt = 0;
       gamepadInput.targetLong = false;
       gamepadInput.targetFocus = false;
+      gamepadInput.targetId = null;
       setGamepadStatus(false, "");
     }
 
@@ -1734,6 +1835,7 @@
         gamepadInput.targetPressedAt = now;
         gamepadInput.targetLong = false;
         gamepadInput.targetFocus = false;
+        gamepadInput.targetId = preferredTargetId ?? lock.targetId ?? cameraFocusTargetId;
       }
       if (targetPressed && !gamepadInput.targetLong &&
           now - gamepadInput.targetPressedAt >= TARGET_FOCUS_HOLD_MS) {
@@ -1745,6 +1847,7 @@
         gamepadInput.targetPressedAt = 0;
         gamepadInput.targetLong = false;
         gamepadInput.targetFocus = false;
+        gamepadInput.targetId = null;
       }
 
       gamepadInput.missile = missilePressed;
@@ -1842,7 +1945,8 @@
         return null;
       }
 
-      const requestedId = lock.targetId ?? preferredTargetId ?? cameraFocusTargetId;
+      const heldTargetId = source === "gamepad" ? gamepadInput.targetId : cameraKeyHold.targetId;
+      const requestedId = heldTargetId ?? lock.targetId ?? preferredTargetId ?? cameraFocusTargetId;
       const target = enemies.find((enemy) => enemy.alive && enemy.id === requestedId);
       if (!target) {
         cameraFocusActive = false;
@@ -1893,12 +1997,25 @@
       gain.gain.exponentialRampToValueAtTime(0.0001, end);
       oscillator.connect(gain);
       gain.connect(master);
+      audioSystem.activeSources.add(oscillator);
       oscillator.start(start);
       oscillator.stop(end + 0.02);
       oscillator.addEventListener("ended", () => {
+        audioSystem.activeSources.delete(oscillator);
         oscillator.disconnect();
         gain.disconnect();
       }, { once: true });
+    }
+
+    function stopActiveAudioSources() {
+      for (const source of audioSystem.activeSources) {
+        try {
+          source.stop();
+        } catch {
+          // Sources that already ended are removed by their ended handler.
+        }
+      }
+      audioSystem.activeSources.clear();
     }
 
     function updateAudioCues(dt) {
@@ -1984,6 +2101,10 @@
       lock.locked = false;
       damageFlash = 0;
       cameraShake = 0;
+      damageSmokeTimer = 0;
+      currentCameraFov = BASE_CAMERA_FOV;
+      camera.fov = BASE_CAMERA_FOV;
+      camera.updateProjectionMatrix();
       missileSide = 1;
       missionElapsed = 0;
       playerHitCooldown = 0;
@@ -2001,8 +2122,10 @@
       nearestMissileThreat = null;
       cameraKeyHold.pressed = false;
       cameraKeyHold.focus = false;
+      cameraKeyHold.targetId = null;
       gamepadInput.targetFocus = false;
       gamepadInput.targetLong = false;
+      gamepadInput.targetId = null;
       audioSystem.lockTimer = 0;
       audioSystem.threatTimer = 0;
       audioSystem.lastLocked = false;
@@ -2741,6 +2864,9 @@
         highscore = score;
         saveHighscore();
       }
+      createDestroyedPopup(enemy.group.position, enemy.label, KILL_SCORE);
+      playTone(150, 0.18, 0.1, "sawtooth");
+      playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
@@ -2760,8 +2886,9 @@
       if (health >= previousHealth) return false;
       if (!bypassCooldown) playerHitCooldown = PLAYER_HIT_COOLDOWN;
 
-      damageFlash = Math.min(1, damageFlash + 0.72);
-      cameraShake = Math.min(1, cameraShake + 0.5);
+      const hitIntensity = THREE.MathUtils.clamp(safeAmount / 24, 0.35, 1);
+      damageFlash = Math.min(1.4, damageFlash + 0.78 + hitIntensity * 0.52);
+      cameraShake = Math.min(1.8, cameraShake + 0.58 + hitIntensity * 0.72);
       updateAircraftFlash(playerModel, 0.14);
       createImpactBurst(player.position, 0xff654f, 0.9);
 
@@ -2817,6 +2944,27 @@
     }
 
     function updateCamera(dt) {
+      const highSpeedBlend = THREE.MathUtils.clamp(
+        (playerSpeed - CRUISE_SPEED) / Math.max(1, BOOST_SPEED - CRUISE_SPEED),
+        0,
+        1
+      );
+      const lowSpeedBlend = THREE.MathUtils.clamp(
+        (CRUISE_SPEED - playerSpeed) / Math.max(1, CRUISE_SPEED - BRAKE_SPEED),
+        0,
+        1
+      );
+      const targetFov = BASE_CAMERA_FOV +
+        HIGH_SPEED_FOV_BONUS * highSpeedBlend -
+        LOW_SPEED_FOV_REDUCTION * lowSpeedBlend +
+        cameraShake * 1.25;
+      const nextFov = THREE.MathUtils.lerp(camera.fov, targetFov, damping(CAMERA_FOV_RESPONSE_K, dt));
+      if (Math.abs(nextFov - camera.fov) > 0.001) {
+        camera.fov = nextFov;
+        currentCameraFov = nextFov;
+        camera.updateProjectionMatrix();
+      }
+
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
       const profile = CAMERA_PROFILES[cameraMode] || CAMERA_PROFILES.chase;
@@ -2830,11 +2978,11 @@
         .addScaledVector(tmpV1, -profile.back)
         .addScaledVector(tmpV3, profile.height);
 
-      cameraShake = Math.max(0, cameraShake - dt * 1.9);
+      cameraShake = Math.max(0, cameraShake - dt * 1.35);
       if (cameraShake > 0) {
-        desiredPosition.x += (Math.random() - 0.5) * cameraShake * 2.6;
-        desiredPosition.y += (Math.random() - 0.5) * cameraShake * 2.2;
-        desiredPosition.z += (Math.random() - 0.5) * cameraShake * 2.6;
+        desiredPosition.x += (Math.random() - 0.5) * cameraShake * 5.2;
+        desiredPosition.y += (Math.random() - 0.5) * cameraShake * 4.2;
+        desiredPosition.z += (Math.random() - 0.5) * cameraShake * 5.2;
       }
 
       const desiredLook = tmpV5.copy(player.position)
@@ -2842,6 +2990,11 @@
         .addScaledVector(tmpV3, profile.lookHeight);
       if (focusTarget) {
         desiredLook.copy(focusTarget.group.position).addScaledVector(WORLD_UP, 1.8);
+      }
+      if (cameraShake > 0) {
+        desiredLook.x += (Math.random() - 0.5) * cameraShake * 2.8;
+        desiredLook.y += (Math.random() - 0.5) * cameraShake * 2.3;
+        desiredLook.z += (Math.random() - 0.5) * cameraShake * 2.8;
       }
 
       camera.position.lerp(desiredPosition, damping(0.0017, dt));
@@ -2863,6 +3016,9 @@
         .multiplyScalar(1 - profile.rollFollow)
         .addScaledVector(tmpV2, profile.rollFollow)
         .normalize();
+      camera.fov = BASE_CAMERA_FOV;
+      currentCameraFov = BASE_CAMERA_FOV;
+      camera.updateProjectionMatrix();
       camera.position.copy(player.position)
         .addScaledVector(tmpV1, -profile.back)
         .addScaledVector(cameraUp, profile.height);
@@ -2875,8 +3031,10 @@
     }
 
     function updateVisualStatus(dt) {
-      damageFlash = Math.max(0, damageFlash - dt * 1.9);
-      ui.damageFlash.style.opacity = String(damageFlash);
+      damageFlash = Math.max(0, damageFlash - dt * 1.35);
+      const flashOpacity = THREE.MathUtils.clamp(damageFlash, 0, 1);
+      ui.damageFlash.style.opacity = String(flashOpacity);
+      ui.damageFlash.style.filter = `saturate(${1 + flashOpacity * 1.8}) contrast(${1 + flashOpacity * 0.35})`;
 
       if (bannerTimer > 0) {
         bannerTimer -= dt;
@@ -2892,6 +3050,7 @@
       camera.updateMatrixWorld();
       updateEnemyHudMarkers();
       updateTargetBox();
+      updateCombatPopups(dt);
     }
 
     function showBanner(text, duration, tone = "") {
@@ -2931,19 +3090,23 @@
       targetArrowState.x = 0;
       targetArrowState.y = 0;
       targetArrowState.angle = 0;
+      targetArrowState.mode = "hidden";
     }
 
     function updateTargetDirectionArrow() {
-      // The off-screen cue is a momentary situational-awareness aid, matching
-      // the existing Triangle/Y and C hold controls. A short press can show it
-      // briefly; a long press keeps it available while target-view engages.
-      const directionHeld = cameraKeyHold.pressed || gamepadInput.previousTarget;
+      // Keep the cue alive for the complete physical hold, including after the
+      // long-hold camera focus state has activated.
+      const directionHeld = cameraKeyHold.pressed || cameraKeyHold.focus ||
+        gamepadInput.previousTarget || gamepadInput.targetFocus;
       if (!directionHeld) {
         clearTargetDirectionArrow();
         return;
       }
 
-      const targetId = preferredTargetId ?? lock.targetId;
+      const heldTargetId = gamepadInput.previousTarget || gamepadInput.targetFocus
+        ? gamepadInput.targetId
+        : cameraKeyHold.targetId;
+      const targetId = heldTargetId ?? preferredTargetId ?? lock.targetId;
       const target = enemies.find((enemy) => enemy.alive && enemy.id === targetId);
       if (!target || gameState !== STATE_PLAYING) {
         clearTargetDirectionArrow();
@@ -2952,8 +3115,29 @@
 
       tmpV6.copy(target.group.position).applyMatrix4(camera.matrixWorldInverse);
       tmpV7.copy(target.group.position).project(camera);
+      const locked = lock.locked && lock.targetId === target.id;
+      const distance = Math.round(player.position.distanceTo(target.group.position));
+
       if (isHudProjectionVisible(tmpV7, tmpV6, 1.12)) {
-        clearTargetDirectionArrow();
+        const width = Math.max(1, window.innerWidth);
+        const height = Math.max(1, window.innerHeight);
+        const x = THREE.MathUtils.clamp((tmpV7.x * 0.5 + 0.5) * width, 42, width - 42);
+        const y = THREE.MathUtils.clamp((-tmpV7.y * 0.5 + 0.5) * height - 58, 42, height - 42);
+        const angle = Math.PI;
+
+        ui.targetDirectionArrow.style.left = `${x}px`;
+        ui.targetDirectionArrow.style.top = `${y}px`;
+        ui.targetDirectionGlyph.style.transform = `rotate(${angle}rad)`;
+        ui.targetDirectionLabel.textContent = `TGT ${target.id} · ${distance}M`;
+        ui.targetDirectionArrow.classList.add("active");
+        ui.targetDirectionArrow.classList.toggle("locked", locked);
+
+        targetArrowState.active = true;
+        targetArrowState.targetId = target.id;
+        targetArrowState.x = x;
+        targetArrowState.y = y;
+        targetArrowState.angle = angle;
+        targetArrowState.mode = "onscreen";
         return;
       }
 
@@ -2988,8 +3172,6 @@
       const x = width * 0.5 + directionX * edgeScale;
       const y = height * 0.5 + directionY * edgeScale;
       const angle = Math.atan2(directionY, directionX) + Math.PI * 0.5;
-      const locked = lock.locked && lock.targetId === target.id;
-      const distance = Math.round(player.position.distanceTo(target.group.position));
 
       ui.targetDirectionArrow.style.left = `${x}px`;
       ui.targetDirectionArrow.style.top = `${y}px`;
@@ -3003,6 +3185,7 @@
       targetArrowState.x = x;
       targetArrowState.y = y;
       targetArrowState.angle = angle;
+      targetArrowState.mode = "edge";
     }
 
     function updateEnemyHudMarkers() {
@@ -3146,6 +3329,7 @@
       hook.kills = Math.round(kills);
       hook.controlMode = controlMode;
       hook.cameraMode = cameraMode;
+      hook.cameraFov = currentCameraFov;
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
       hook.weapons.gunShots = gunShots;
       hook.weapons.missilesLaunched = missilesLaunched;
@@ -3164,6 +3348,17 @@
       hook.hud.targetArrow.x = targetArrowState.x;
       hook.hud.targetArrow.y = targetArrowState.y;
       hook.hud.targetArrow.angle = targetArrowState.angle;
+      hook.hud.targetArrow.mode = targetArrowState.mode;
+      hook.debug.destroyedEnemies = kills;
+      hook.debug.activeSparkParticles = sparkParticlePool.activeCount;
+      hook.debug.activeDebrisParticles = debrisParticlePool.activeCount;
+      hook.debug.activeSmokeParticles = smokeParticlePool.activeCount;
+      hook.debug.activeParticles =
+        sparkParticlePool.activeCount + debrisParticlePool.activeCount + smokeParticlePool.activeCount;
+      hook.debug.activeAudioSources = audioSystem.activeSources.size;
+      hook.debug.activeCombatPopups = combatPopups.length;
+      hook.debug.activeEffects = effects.length;
+      hook.debug.lowHealthSmokeActive = health < 55 && smokeParticlePool.activeCount > 0;
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
@@ -3350,6 +3545,10 @@
         effect.dispose?.();
       }
       effects.length = 0;
+      clearParticlePools();
+      clearCombatPopups();
+      stopActiveAudioSources();
+      damageSmokeTimer = 0;
 
       for (const marker of enemyMarkerElements.values()) marker.remove();
       enemyMarkerElements.clear();
@@ -3408,120 +3607,124 @@
     }
 
     function createSmokePuff(position, scale) {
-      const material = new THREE.MeshBasicMaterial({
-        color: 0xdbe8e9,
-        transparent: true,
-        opacity: 0.32,
-        depthWrite: false
-      });
-      const mesh = new THREE.Mesh(geometry.smoke, material);
-      mesh.position.copy(position);
-      mesh.scale.setScalar(scale);
-      scene.add(mesh);
-      const drift = new THREE.Vector3((Math.random() - 0.5) * 3, 4 + Math.random() * 3, (Math.random() - 0.5) * 3);
-      effects.push({
-        node: mesh,
-        age: 0,
-        duration: 0.85,
-        update(t, dt) {
-          mesh.position.addScaledVector(drift, dt);
-          mesh.scale.setScalar(scale * (1 + t * 2.8));
-          material.opacity = 0.32 * (1 - t) * (1 - t);
-        },
-        dispose() { material.dispose(); }
-      });
+      const velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 3,
+        4 + Math.random() * 3,
+        (Math.random() - 0.5) * 3
+      );
+      smokeParticlePool.spawn(
+        position,
+        velocity,
+        0.72 + scale * 0.42,
+        0xb9c6c8,
+        -0.55,
+        0.38
+      );
     }
 
     function createImpactBurst(position, color, scale) {
-      const material = new THREE.MeshBasicMaterial({
+      spawnParticleBurst(
+        sparkParticlePool,
+        position,
         color,
-        transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-      });
-      const group = new THREE.Group();
-      group.position.copy(position);
-      const particles = [];
-      for (let i = 0; i < 8; i += 1) {
-        const particle = new THREE.Mesh(geometry.spark, material);
-        const velocity = randomUnitVector().multiplyScalar((18 + Math.random() * 30) * scale);
-        particle.scale.setScalar((0.12 + Math.random() * 0.22) * scale);
-        group.add(particle);
-        particles.push({ mesh: particle, velocity });
-      }
-      scene.add(group);
-      effects.push({
-        node: group,
-        age: 0,
-        duration: 0.45,
-        update(t, dt) {
-          for (const particle of particles) {
-            particle.mesh.position.addScaledVector(particle.velocity, dt);
-            particle.velocity.multiplyScalar(Math.pow(0.05, dt));
-          }
-          material.opacity = 0.9 * (1 - t);
-        },
-        dispose() { material.dispose(); }
-      });
+        18,
+        42,
+        112,
+        0.22,
+        0.55,
+        scale,
+        10,
+        0.055
+      );
+      spawnParticleBurst(
+        debrisParticlePool,
+        position,
+        color,
+        7,
+        18,
+        54,
+        0.42,
+        0.82,
+        scale,
+        18,
+        0.16
+      );
+      createFeedbackFlash(position, color, 2.2 * scale, 0.2);
     }
 
     function createExplosion(position, color, scale) {
-      const particleMaterial = new THREE.MeshStandardMaterial({
+      spawnParticleBurst(
+        sparkParticlePool,
+        position,
+        0xffe59b,
+        54,
+        52,
+        148,
+        0.42,
+        1.05,
+        scale,
+        12,
+        0.085
+      );
+      spawnParticleBurst(
+        debrisParticlePool,
+        position,
         color,
-        emissive: color,
-        emissiveIntensity: 2.4,
-        roughness: 0.55,
-        transparent: true,
-        opacity: 1,
-        depthWrite: false
-      });
-      const flashMaterial = new THREE.MeshBasicMaterial({
-        color: 0xfff0a8,
+        30,
+        24,
+        92,
+        0.8,
+        1.7,
+        scale,
+        24,
+        0.22
+      );
+
+      for (let i = 0; i < 16; i += 1) {
+        const origin = position.clone().addScaledVector(randomUnitVector(), Math.random() * 3.6 * scale);
+        const velocity = randomUnitVector().multiplyScalar((7 + Math.random() * 18) * scale);
+        velocity.y += 5 + Math.random() * 10;
+        smokeParticlePool.spawn(origin, velocity, 1.25 + Math.random() * 0.8, 0x24272c, -1.5, 0.36);
+      }
+
+      const group = new THREE.Group();
+      group.position.copy(position);
+      const spriteMaterial = new THREE.SpriteMaterial({
+        map: explosionSpriteTexture,
+        color,
         transparent: true,
         opacity: 1,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       });
-      const group = new THREE.Group();
-      group.position.copy(position);
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.scale.setScalar(9 * scale);
+
+      const flashMaterial = new THREE.MeshBasicMaterial({
+        color: 0xfff5bd,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
       const flash = new THREE.Mesh(geometry.flash, flashMaterial);
-      flash.scale.setScalar(2.5 * scale);
-      group.add(flash);
-
-      const particles = [];
-      for (let i = 0; i < 22; i += 1) {
-        const particle = new THREE.Mesh(geometry.explosionChunk, particleMaterial);
-        particle.position.copy(randomUnitVector()).multiplyScalar(Math.random() * 3.5 * scale);
-        particle.scale.setScalar((0.35 + Math.random() * 1.1) * scale);
-        group.add(particle);
-        particles.push({
-          mesh: particle,
-          velocity: randomUnitVector().multiplyScalar((18 + Math.random() * 50) * scale),
-          spinX: (Math.random() - 0.5) * 8,
-          spinY: (Math.random() - 0.5) * 8
-        });
-      }
-
+      flash.scale.setScalar(2.8 * scale);
+      group.add(sprite, flash);
       scene.add(group);
+
       effects.push({
         node: group,
         age: 0,
-        duration: 1.35,
-        update(t, dt) {
-          flash.scale.setScalar((2.5 + t * 18) * scale);
-          flashMaterial.opacity = Math.max(0, 1 - t * 4);
-          particleMaterial.opacity = Math.max(0, 1 - t);
-          for (const particle of particles) {
-            particle.mesh.position.addScaledVector(particle.velocity, dt);
-            particle.velocity.y -= 9 * dt;
-            particle.velocity.multiplyScalar(Math.pow(0.18, dt));
-            particle.mesh.rotateX(particle.spinX * dt);
-            particle.mesh.rotateY(particle.spinY * dt);
-          }
+        duration: 1.28,
+        update(t) {
+          const bloom = 9 + THREE.MathUtils.smoothstep(t, 0, 0.72) * 48;
+          sprite.scale.setScalar(bloom * scale);
+          spriteMaterial.opacity = Math.max(0, (1 - t) * (1 - t * 0.35));
+          flash.scale.setScalar((2.8 + t * 24) * scale);
+          flashMaterial.opacity = Math.max(0, 1 - t * 5.2);
         },
         dispose() {
-          particleMaterial.dispose();
+          spriteMaterial.dispose();
           flashMaterial.dispose();
         }
       });
@@ -3538,6 +3741,341 @@
           effect.dispose?.();
           effects.splice(i, 1);
         }
+      }
+    }
+
+    function createParticleTexture(kind) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      ctx.clearRect(0, 0, 64, 64);
+      if (kind === "debris") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(17, 17, 30, 30);
+      } else {
+        const gradient = ctx.createRadialGradient(32, 32, 1, 32, 32, 31);
+        if (kind === "smoke") {
+          gradient.addColorStop(0, "rgba(255,255,255,0.72)");
+          gradient.addColorStop(0.45, "rgba(255,255,255,0.36)");
+          gradient.addColorStop(1, "rgba(255,255,255,0)");
+        } else if (kind === "explosion") {
+          gradient.addColorStop(0, "rgba(255,255,255,1)");
+          gradient.addColorStop(0.18, "rgba(255,246,190,0.98)");
+          gradient.addColorStop(0.52, "rgba(255,126,24,0.72)");
+          gradient.addColorStop(1, "rgba(255,36,0,0)");
+        } else {
+          gradient.addColorStop(0, "rgba(255,255,255,1)");
+          gradient.addColorStop(0.28, "rgba(255,255,255,0.88)");
+          gradient.addColorStop(1, "rgba(255,255,255,0)");
+        }
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function createParticlePool(capacity, options) {
+      const positions = new Float32Array(capacity * 3);
+      const colors = new Float32Array(capacity * 3);
+      positions.fill(1000000);
+
+      const bufferGeometry = new THREE.BufferGeometry();
+      const positionAttribute = new THREE.BufferAttribute(positions, 3);
+      const colorAttribute = new THREE.BufferAttribute(colors, 3);
+      positionAttribute.setUsage(THREE.DynamicDrawUsage);
+      colorAttribute.setUsage(THREE.DynamicDrawUsage);
+      bufferGeometry.setAttribute("position", positionAttribute);
+      bufferGeometry.setAttribute("color", colorAttribute);
+
+      const material = new THREE.PointsMaterial({
+        size: options.size,
+        map: options.texture,
+        transparent: true,
+        opacity: options.opacity,
+        vertexColors: true,
+        depthWrite: false,
+        alphaTest: 0.015,
+        sizeAttenuation: true,
+        blending: options.blending
+      });
+      const points = new THREE.Points(bufferGeometry, material);
+      points.frustumCulled = false;
+      points.renderOrder = options.additive ? 8 : 4;
+      scene.add(points);
+
+      return {
+        capacity,
+        positions,
+        colors,
+        positionAttribute,
+        colorAttribute,
+        points,
+        additive: options.additive,
+        cursor: 0,
+        activeCount: 0,
+        particles: Array.from({ length: capacity }, () => ({
+          active: false,
+          position: new THREE.Vector3(),
+          velocity: new THREE.Vector3(),
+          color: new THREE.Color(),
+          age: 0,
+          duration: 1,
+          gravity: 0,
+          drag: 0.2
+        })),
+        spawn(position, velocity, duration, color, gravity = 0, drag = 0.2) {
+          let index = this.cursor;
+          for (let offset = 0; offset < this.capacity; offset += 1) {
+            const candidate = (this.cursor + offset) % this.capacity;
+            if (!this.particles[candidate].active) {
+              index = candidate;
+              break;
+            }
+          }
+          this.cursor = (index + 1) % this.capacity;
+          const particle = this.particles[index];
+          particle.active = true;
+          particle.position.copy(position);
+          particle.velocity.copy(velocity);
+          particle.color.set(color);
+          particle.age = 0;
+          particle.duration = Math.max(0.05, duration);
+          particle.gravity = gravity;
+          particle.drag = THREE.MathUtils.clamp(drag, 0.01, 0.99);
+        }
+      };
+    }
+
+    function updateParticlePool(pool, dt) {
+      let activeCount = 0;
+      for (let index = 0; index < pool.capacity; index += 1) {
+        const particle = pool.particles[index];
+        const offset = index * 3;
+
+        if (!particle.active) {
+          pool.positions[offset] = 1000000;
+          pool.positions[offset + 1] = 1000000;
+          pool.positions[offset + 2] = 1000000;
+          continue;
+        }
+
+        particle.age += dt;
+        if (particle.age >= particle.duration) {
+          particle.active = false;
+          pool.positions[offset] = 1000000;
+          pool.positions[offset + 1] = 1000000;
+          pool.positions[offset + 2] = 1000000;
+          continue;
+        }
+
+        particle.velocity.y -= particle.gravity * dt;
+        particle.velocity.multiplyScalar(Math.pow(particle.drag, dt));
+        particle.position.addScaledVector(particle.velocity, dt);
+
+        const fade = Math.max(0, 1 - particle.age / particle.duration);
+        const intensity = pool.additive ? 0.18 + fade * 0.82 : 0.28 + fade * 0.72;
+        pool.positions[offset] = particle.position.x;
+        pool.positions[offset + 1] = particle.position.y;
+        pool.positions[offset + 2] = particle.position.z;
+        pool.colors[offset] = particle.color.r * intensity;
+        pool.colors[offset + 1] = particle.color.g * intensity;
+        pool.colors[offset + 2] = particle.color.b * intensity;
+        activeCount += 1;
+      }
+
+      pool.activeCount = activeCount;
+      pool.positionAttribute.needsUpdate = true;
+      pool.colorAttribute.needsUpdate = true;
+    }
+
+    function updateParticlePools(dt) {
+      updateParticlePool(sparkParticlePool, dt);
+      updateParticlePool(debrisParticlePool, dt);
+      updateParticlePool(smokeParticlePool, dt);
+    }
+
+    function clearParticlePool(pool) {
+      for (const particle of pool.particles) particle.active = false;
+      pool.activeCount = 0;
+      pool.positions.fill(1000000);
+      pool.colors.fill(0);
+      pool.positionAttribute.needsUpdate = true;
+      pool.colorAttribute.needsUpdate = true;
+    }
+
+    function clearParticlePools() {
+      clearParticlePool(sparkParticlePool);
+      clearParticlePool(debrisParticlePool);
+      clearParticlePool(smokeParticlePool);
+    }
+
+    function spawnParticleBurst(
+      pool,
+      position,
+      color,
+      count,
+      minSpeed,
+      maxSpeed,
+      minDuration,
+      maxDuration,
+      scale,
+      gravity,
+      drag
+    ) {
+      for (let index = 0; index < count; index += 1) {
+        const direction = randomUnitVector();
+        const origin = position.clone().addScaledVector(direction, Math.random() * 2.2 * scale);
+        const velocity = direction.multiplyScalar(
+          THREE.MathUtils.lerp(minSpeed, maxSpeed, Math.random()) * scale
+        );
+        pool.spawn(
+          origin,
+          velocity,
+          THREE.MathUtils.lerp(minDuration, maxDuration, Math.random()),
+          color,
+          gravity,
+          drag
+        );
+      }
+    }
+
+    function createFeedbackFlash(position, color, scale, duration) {
+      const material = new THREE.SpriteMaterial({
+        map: explosionSpriteTexture,
+        color,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.position.copy(position);
+      sprite.scale.setScalar(scale);
+      scene.add(sprite);
+      effects.push({
+        node: sprite,
+        age: 0,
+        duration,
+        update(t) {
+          sprite.scale.setScalar(scale * (1 + t * 4.5));
+          material.opacity = 0.95 * (1 - t) * (1 - t);
+        },
+        dispose() {
+          material.dispose();
+        }
+      });
+    }
+
+    function createDestroyedPopup(position, label, points) {
+      while (combatPopups.length >= MAX_COMBAT_POPUPS) {
+        const oldest = combatPopups.shift();
+        oldest?.element.remove();
+      }
+
+      const element = document.createElement("div");
+      element.className = "combatPopup";
+      const title = document.createElement("strong");
+      title.textContent = "DESTROYED";
+      const detail = document.createElement("span");
+      detail.textContent = `+${points} · ${label}`;
+      element.append(title, detail);
+      ui.combatPopups.appendChild(element);
+      combatPopups.push({
+        element,
+        position: position.clone(),
+        age: 0,
+        duration: 1.35
+      });
+    }
+
+    function updateCombatPopups(dt) {
+      for (let index = combatPopups.length - 1; index >= 0; index -= 1) {
+        const popup = combatPopups[index];
+        popup.age += dt;
+        if (popup.age >= popup.duration) {
+          popup.element.remove();
+          combatPopups.splice(index, 1);
+          continue;
+        }
+
+        tmpV6.copy(popup.position).applyMatrix4(camera.matrixWorldInverse);
+        tmpV7.copy(popup.position).project(camera);
+        if (tmpV6.z >= -0.1 || tmpV7.z < -1 || tmpV7.z > 1) {
+          popup.element.style.opacity = "0";
+          continue;
+        }
+
+        const progress = popup.age / popup.duration;
+        const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
+        popup.element.style.left = `${x}px`;
+        popup.element.style.top = `${y}px`;
+        popup.element.style.opacity = String(Math.sin(Math.PI * Math.min(1, progress * 1.08)));
+        popup.element.style.transform =
+          `translate(-50%, calc(-50% - ${progress * 58}px)) scale(${1 + progress * 0.16})`;
+      }
+    }
+
+    function clearCombatPopups() {
+      for (const popup of combatPopups) popup.element.remove();
+      combatPopups.length = 0;
+    }
+
+    function updatePlayerDamageSmoke(dt) {
+      if (gameState !== STATE_PLAYING || health >= 55 || !playerModel.group.visible) {
+        damageSmokeTimer = 0;
+        return;
+      }
+
+      const severity = THREE.MathUtils.clamp((55 - health) / 45, 0, 1);
+      const interval = THREE.MathUtils.lerp(0.19, 0.045, severity);
+      damageSmokeTimer -= dt;
+      let emitted = 0;
+
+      while (damageSmokeTimer <= 0 && emitted < 3) {
+        forwardOf(player, tmpV1);
+        upOf(player, tmpV2);
+        rightOf(player, tmpV3);
+        const origin = player.position.clone()
+          .addScaledVector(tmpV1, -7.6)
+          .addScaledVector(tmpV2, 0.3 + Math.random() * 0.8)
+          .addScaledVector(tmpV3, (Math.random() - 0.5) * 2.4);
+        const velocity = tmpV1.clone()
+          .multiplyScalar(-(8 + Math.random() * 7))
+          .addScaledVector(tmpV2, 4 + Math.random() * 6)
+          .addScaledVector(randomUnitVector(), 1.5 + Math.random() * 3.5);
+
+        smokeParticlePool.spawn(
+          origin,
+          velocity,
+          1.35 + severity * 1.15 + Math.random() * 0.55,
+          severity > 0.7 ? 0x08090b : 0x171b20,
+          -1.2,
+          0.48
+        );
+
+        if (severity > 0.72 && Math.random() > 0.42) {
+          const secondaryVelocity = velocity.clone().multiplyScalar(0.72)
+            .addScaledVector(randomUnitVector(), 2.2);
+          smokeParticlePool.spawn(
+            origin,
+            secondaryVelocity,
+            1.2 + Math.random() * 0.7,
+            0x050607,
+            -0.8,
+            0.52
+          );
+        }
+
+        damageSmokeTimer += interval;
+        emitted += 1;
       }
     }
 
