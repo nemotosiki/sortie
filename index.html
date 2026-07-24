@@ -1112,12 +1112,12 @@
       <div class="controls">
         <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ピッチ。NORMAL / EXPERTの両モードで機首を上下。</span></div>
         <div class="controlItem"><strong>A / D · ← / →</strong><span>NORMALは目標バンク、EXPERTは直接ロール。</span></div>
-        <div class="controlItem"><strong>Q / E</strong><span>EXPERT時のみ、機体ローカル軸で左 / 右ヨー。</span></div>
+        <div class="controlItem"><strong>Q / E · L1 / R1</strong><span>NORMAL / EXPERTの両モードで左 / 右ヨー。</span></div>
         <div class="controlItem"><strong>M / SHARE</strong><span>NORMALとEXPERTをいつでも切替。</span></div>
         <div class="controlItem"><strong>SHIFT / CTRL</strong><span>全開減速は安全な格闘戦速度を維持。強く引き起こし続けると誘導抗力で失速。</span></div>
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
         <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全10発。</span></div>
-        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。R2/L2で加減速。</span></div>
+        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。L1/R1でヨー、L2加速、R2減速。</span></div>
         <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>
       </div>
       <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
@@ -1183,7 +1183,7 @@
     const STALL_SINK_RATE = 44;
     const PITCH_RATE = THREE.MathUtils.degToRad(58);
     const EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
-    const EXPERT_YAW_RATE = THREE.MathUtils.degToRad(48);
+    const YAW_RATE = THREE.MathUtils.degToRad(16);
     const EXPERT_ROLL_RESPONSE_K = 0.055;
     const MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
     const NORMAL_ROLL_SPRING = 22;
@@ -2123,22 +2123,23 @@
 
       const axisX = applyDeadzone(Number(selected.axes?.[0] || 0));
       const axisY = applyDeadzone(Number(selected.axes?.[1] || 0));
-      const rightAxisX = applyDeadzone(Number(selected.axes?.[2] || 0));
       const dpadPitch = (gamepadButtonPressed(selected, 13) ? 1 : 0) -
         (gamepadButtonPressed(selected, 12) ? 1 : 0);
       const dpadRoll = (gamepadButtonPressed(selected, 14) ? 1 : 0) -
         (gamepadButtonPressed(selected, 15) ? 1 : 0);
+      const yawRight = gamepadButtonPressed(selected, 5) ? 1 : 0;
+      const yawLeft = gamepadButtonPressed(selected, 4) ? 1 : 0;
 
       gamepadInput.pitch = THREE.MathUtils.clamp(axisY + dpadPitch, -1, 1);
       gamepadInput.roll = THREE.MathUtils.clamp(-axisX + dpadRoll, -1, 1);
-      gamepadInput.yaw = -rightAxisX;
-      gamepadInput.boost = gamepadButtonValue(selected, 7) > 0.22;
-      gamepadInput.brake = gamepadButtonValue(selected, 6) > 0.22;
+      gamepadInput.yaw = yawRight - yawLeft;
+      gamepadInput.boost = gamepadButtonValue(selected, 6) > 0.22;
+      gamepadInput.brake = gamepadButtonValue(selected, 7) > 0.22;
 
       // Standard Gamepad mapping / Ace Combat 7 Type A:
       // 0 = Cross/A (gun), 1 = Circle/B (missile), 2 = Square/X (camera),
-      // 3 = Triangle/Y (short target cycle, long target view), 6/7 = L2/R2,
-      // 8 = Share/View (NORMAL/EXPERT).
+      // 3 = Triangle/Y (short target cycle, long target view), 4/5 = L1/R1 yaw,
+      // 6 = L2 boost, 7 = R2 brake, 8 = Share/View (NORMAL/EXPERT).
       gamepadInput.gun = gamepadButtonPressed(selected, 0);
 
       const missilePressed = gamepadButtonPressed(selected, 1);
@@ -2617,6 +2618,11 @@
           playerFlightFrame.premultiply(tmpQ1).normalize();
         }
 
+        if (Math.abs(yawInput) > 0.00001) {
+          tmpQ1.setFromAxisAngle(WORLD_UP, yawInput * YAW_RATE * playerTurnFactor * dt);
+          playerFlightFrame.premultiply(tmpQ1).normalize();
+        }
+
         if (Math.abs(pitchInput) > 0.00001) {
           tmpQ1.setFromAxisAngle(
             LOCAL_RIGHT,
@@ -2643,7 +2649,7 @@
           player.rotateX(pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority * dt);
         }
         if (Math.abs(yawInput) > 0.00001) {
-          player.rotateY(yawInput * EXPERT_YAW_RATE * playerTurnFactor * playerControlAuthority * dt);
+          player.rotateY(yawInput * YAW_RATE * playerTurnFactor * playerControlAuthority * dt);
         }
         if (Math.abs(expertRollRate) > 0.00001) player.rotateZ(expertRollRate * dt);
         if (stallSeverity > 0.005) player.rotateX(-STALL_NOSE_DROP_RATE * stallSeverity * dt);
@@ -3956,8 +3962,8 @@
       ui.wave.textContent = `WAVE ${waveNumber} / 2`;
       const expertMode = controlMode === CONTROL_EXPERT;
       ui.controlModeStatus.textContent = expertMode
-        ? "FLIGHT CONTROL · EXPERT · Q/E + R-STICK YAW · M/SHARE TOGGLE"
-        : "FLIGHT CONTROL · NORMAL · COORDINATED TURN · M/SHARE TOGGLE";
+        ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
+        : "FLIGHT CONTROL · NORMAL · COORDINATED TURN + L1/R1 YAW · M/SHARE TOGGLE";
       ui.controlModeStatus.classList.toggle("expert", expertMode);
       ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / 100, 0, 1)})`;
       ui.statusPanel.classList.toggle("healthLow", health <= 30);
