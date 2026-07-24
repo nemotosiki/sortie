@@ -31,172 +31,17 @@ jobs:
 
           diagnostic=.lock-hud-diagnostic.txt
           : > "$diagnostic"
+          echo "run_id=$GITHUB_RUN_ID" >> "$diagnostic"
 
-          python3 - <<'PY' >> "$diagnostic" 2>&1
-          from pathlib import Path
-          import re
+          python3 -m py_compile .lock-hud-fix/apply.py >> "$diagnostic" 2>&1
+          pycompile_status=$?
+          echo "pycompile_status=$pycompile_status" >> "$diagnostic"
 
-          path = Path("index.html")
-          text = path.read_text(encoding="utf-8")
-
-          def replace_expected(old: str, new: str, label: str) -> None:
-              global text
-              new_count = text.count(new)
-              if new_count == 1:
-                  print(f"{label}: already applied")
-                  return
-              if new_count > 1:
-                  raise SystemExit(f"{label}: new block duplicated ({new_count})")
-              old_count = text.count(old)
-              if old_count != 1:
-                  raise SystemExit(f"{label}: expected one old block, found {old_count}")
-              text = text.replace(old, new, 1)
-              print(f"{label}: applied")
-
-          old_constants = '''    const LOCK_RANGE = 1200;
-              const LOCK_TIME = 1.2;
-              const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(9));
-              const TOTAL_ENEMIES = 6;
-          '''
-          new_constants = '''    const LOCK_RANGE = 1200;
-              const LOCK_TIME = 0.85;
-              const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
-              const LOCK_GRACE_TIME = 0.4;
-              const LOCK_HYSTERESIS_BONUS = 0.15;
-              const TOTAL_ENEMIES = 6;
-          '''
-          replace_expected(old_constants, new_constants, "lock constants")
-
-          old_state = '''    let cameraMode = CAMERA_MODES[0];
-              let preferredTargetId = null;
-              let cameraFocusActive = false;
-          '''
-          new_state = '''    let cameraMode = CAMERA_MODES[0];
-              let preferredTargetId = null;
-              let lockGraceTimer = 0;
-              let cameraFocusActive = false;
-          '''
-          replace_expected(old_state, new_state, "lock grace state")
-
-          old_cycle = '''    function cycleCamera() {
-              const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
-              cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
-              showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
-            }
-          '''
-          new_cycle = '''    function cycleCamera() {
-              const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
-              cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
-              if (gameState === STATE_PLAYING) playerModel.group.visible = cameraMode !== "cockpit";
-              showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
-            }
-          '''
-          replace_expected(old_cycle, new_cycle, "camera model visibility")
-
-          old_start = '''      resetRadio();
-              resetPlayerTransform();
-              playerModel.group.visible = true;
-              score = 0;
-          '''
-          new_start = '''      resetRadio();
-              resetPlayerTransform();
-              playerModel.group.visible = cameraMode !== "cockpit";
-              score = 0;
-          '''
-          replace_expected(old_start, new_start, "mission camera visibility")
-
-          old_score = '''        const selectionScore = dot * 4 - distance / LOCK_RANGE;
-                if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
-                if (selectionScore > bestScore) {
-          '''
-          new_score = '''        let selectionScore = dot * 4 - distance / LOCK_RANGE;
-                if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
-                if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
-                if (selectionScore > bestScore) {
-          '''
-          replace_expected(old_score, new_score, "lock hysteresis scoring")
-
-          old_grace = '''      if (!candidate) {
-              resetLock();
-              return;
-            }
-
-            if (lock.targetId !== candidate.id) {
-          '''
-          new_grace = '''      if (!candidate) {
-              lockGraceTimer += dt;
-              if (lockGraceTimer >= LOCK_GRACE_TIME) resetLock();
-              return;
-            }
-            lockGraceTimer = 0;
-
-            if (lock.targetId !== candidate.id) {
-          '''
-          replace_expected(old_grace, new_grace, "lock grace handling")
-
-          old_reset = '''    function resetLock() {
-              lock.targetId = null;
-              lock.progress = 0;
-              lock.locked = false;
-            }
-          '''
-          new_reset = '''    function resetLock() {
-              lock.targetId = null;
-              lock.progress = 0;
-              lock.locked = false;
-              lockGraceTimer = 0;
-            }
-          '''
-          replace_expected(old_reset, new_reset, "lock reset state")
-
-          required_counts = {
-              "const LOCK_TIME = 0.85;": 1,
-              "const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));": 1,
-              "const LOCK_GRACE_TIME = 0.4;": 1,
-              "const LOCK_HYSTERESIS_BONUS = 0.15;": 1,
-              "let lockGraceTimer = 0;": 1,
-              "let selectionScore = dot * 4 - distance / LOCK_RANGE;": 1,
-              "if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;": 1,
-              "lockGraceTimer += dt;": 1,
-              "if (lockGraceTimer >= LOCK_GRACE_TIME) resetLock();": 1,
-              'playerModel.group.visible = cameraMode !== "cockpit";': 2,
-          }
-          for marker, expected in required_counts.items():
-              actual = text.count(marker)
-              if actual != expected:
-                  raise SystemExit(f"marker count mismatch for {marker!r}: {actual} != {expected}")
-
-          forbidden = [
-              "const LOCK_TIME = 1.2;",
-              "const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(9));",
-              "const selectionScore = dot * 4 - distance / LOCK_RANGE;",
-              old_start,
-          ]
-          for marker in forbidden:
-              if marker in text:
-                  raise SystemExit(f"obsolete implementation remains: {marker[:80]!r}")
-
-          if text.count("function updateLock(dt)") != 1 or text.count("function resetLock()") != 1:
-              raise SystemExit("lock functions are missing or duplicated")
-          if 'const CAMERA_MODES = ["chase", "close", "cockpit"];' not in text:
-              raise SystemExit("camera mode registry changed")
-          if "three@0.180.0" not in text or "@latest" in text:
-              raise SystemExit("Three.js version pin changed")
-          if "console.warn(" in text or "console.error(" in text:
-              raise SystemExit("console warning/error call added")
-
-          scripts = re.findall(r'<script type="module">(.*?)</script>', text, flags=re.S)
-          if len(scripts) != 1:
-              raise SystemExit(f"expected one module script, found {len(scripts)}")
-          for element_id in ["score", "highscore", "health", "missiles", "kills", "state", "startBtn", "retryBtn"]:
-              if text.count(f'id="{element_id}"') != 1:
-                  raise SystemExit(f"required DOM id {element_id!r} is missing or duplicated")
-
-          Path("/tmp/sortie-game.mjs").write_text(scripts[0], encoding="utf-8")
-          path.write_text(text, encoding="utf-8")
-          print("static patch validation: success")
-          PY
-          patch_status=$?
+          patch_status=99
+          if [ "$pycompile_status" -eq 0 ]; then
+            python3 .lock-hud-fix/apply.py >> "$diagnostic" 2>&1
+            patch_status=$?
+          fi
           echo "patch_status=$patch_status" >> "$diagnostic"
 
           node_status=99
@@ -210,7 +55,9 @@ jobs:
           echo "node_status=$node_status" >> "$diagnostic"
           echo "diff_status=$diff_status" >> "$diagnostic"
 
-          if [ "$patch_status" -eq 0 ] && [ "$node_status" -eq 0 ] && [ "$diff_status" -eq 0 ]; then
+          if [ "$pycompile_status" -eq 0 ] && [ "$patch_status" -eq 0 ] &&
+             [ "$node_status" -eq 0 ] && [ "$diff_status" -eq 0 ]; then
+            rm -rf .lock-hud-fix
             rm -f "$diagnostic"
             rm -f .github/workflows/strengthen-lock-and-hud-view.yml
 
@@ -229,6 +76,8 @@ jobs:
           expected = {
               "index.html",
               ".github/workflows/strengthen-lock-and-hud-view.yml",
+              ".lock-hud-fix/apply.py",
+              ".lock-hud-diagnostic.txt",
           }
           if changed != expected:
               raise SystemExit(f"unexpected staged files: {sorted(changed)}")
@@ -243,7 +92,7 @@ jobs:
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
           git add "$diagnostic"
-          git commit -m "Record lock-on and HUD view diagnostics"
+          git commit --allow-empty -m "Record lock-on and HUD view diagnostics"
           git push origin HEAD:main
           cat "$diagnostic"
           exit 1
