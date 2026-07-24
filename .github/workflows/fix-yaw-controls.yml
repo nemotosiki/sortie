@@ -1,8 +1,8 @@
 name: Fix yaw and throttle controls
 
 on:
-  issues:
-    types: [edited]
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   patch-static-publish:
-    if: github.event.issue.title == 'Run yaw control static publish'
+    if: github.event.pull_request.title == 'Run yaw control static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
