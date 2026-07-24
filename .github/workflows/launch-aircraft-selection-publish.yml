@@ -1,19 +1,19 @@
 name: Launch selectable aircraft publish
 
 on:
-  issues:
-    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: write
 
 concurrency:
-  group: add-aircraft-selection
+  group: add-aircraft-selection-target
   cancel-in-progress: true
 
 jobs:
   publish:
-    if: github.event.issue.title == 'Run selectable aircraft static publish'
+    if: github.event.pull_request.title == 'Run selectable aircraft static publish'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
