@@ -40,86 +40,81 @@ jobs:
           path = Path("index.html")
           text = path.read_text(encoding="utf-8")
 
-          old = '''      for (const enemy of enemies) {
-            if (!enemy.alive) continue;
-            tmpV3.copy(enemy.group.position).sub(player.position);
-            const rightDistance = tmpV3.dot(tmpV2);
-            const forwardDistance = tmpV3.dot(lastRadarForward);
-            const planarDistance = Math.hypot(rightDistance, forwardDistance);
-            const scale = Math.min(1, planarDistance / RADAR_RANGE);
-            const angle = Math.atan2(rightDistance, forwardDistance);
-            const px = center + Math.sin(angle) * radius * scale;
-            const py = center - Math.cos(angle) * radius * scale;
-            const locked = lock.locked && lock.targetId === enemy.id;
+          start_marker = (
+              "      for (const enemy of enemies) {\n"
+              "        if (!enemy.alive) continue;\n"
+              "        tmpV3.copy(enemy.group.position).sub(player.position);\n"
+              "        const rightDistance = tmpV3.dot(tmpV2);\n"
+              "        const forwardDistance = tmpV3.dot(lastRadarForward);\n"
+          )
+          end_marker = "\n\n      for (const missile of enemyMissiles) {"
+          new_marker = "const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);"
 
-            ctx.fillStyle = locked ? "#fff06a" : enemy.spec.radarColor;
-            ctx.shadowColor = locked ? "#fff06a" : enemy.spec.radarColor;
-            ctx.shadowBlur = locked ? 10 : 6;
-            ctx.beginPath();
-            ctx.arc(px, py, locked ? 4 : 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-          }
+          start = text.find(start_marker)
+          if start >= 0:
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit("radar enemy block end marker was not found")
+              old_block = text[start:end]
+              for marker in [
+                  'const locked = lock.locked && lock.targetId === enemy.id;',
+                  'ctx.fillStyle = locked ? "#fff06a" : enemy.spec.radarColor;',
+                  'ctx.arc(px, py, locked ? 4 : 3, 0, Math.PI * 2);',
+              ]:
+                  if marker not in old_block:
+                      raise SystemExit(f"radar enemy block is missing expected old marker: {marker}")
 
-          for (const missile of enemyMissiles) {
-          '''
-
-          new = '''      for (const enemy of enemies) {
-            if (!enemy.alive) continue;
-            tmpV3.copy(enemy.group.position).sub(player.position);
-            const rightDistance = tmpV3.dot(tmpV2);
-            const forwardDistance = tmpV3.dot(lastRadarForward);
-            const planarDistance = Math.hypot(rightDistance, forwardDistance);
-            const scale = Math.min(1, planarDistance / RADAR_RANGE);
-            const angle = Math.atan2(rightDistance, forwardDistance);
-            const px = center + Math.sin(angle) * radius * scale;
-            const py = center - Math.cos(angle) * radius * scale;
-            const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);
-
-            forwardOf(enemy.group, tmpV4);
-            const headingRight = tmpV4.dot(tmpV2);
-            const headingForward = tmpV4.dot(lastRadarForward);
-            const headingAngle = Math.atan2(headingRight, headingForward);
-
-            ctx.save();
-            ctx.translate(px, py);
-            ctx.rotate(headingAngle);
-            ctx.fillStyle = "#f4f7fa";
-            ctx.shadowColor = "#f4f7fa";
-            ctx.shadowBlur = isTarget ? 8 : 5;
-            ctx.beginPath();
-            ctx.moveTo(0, -4.5);
-            ctx.lineTo(-3, 3);
-            ctx.lineTo(0, 1);
-            ctx.lineTo(3, 3);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-            ctx.shadowBlur = 0;
-
-            if (isTarget) {
-              ctx.strokeStyle = lock.locked ? "#ff4f5e" : "#ffe66f";
-              ctx.shadowColor = ctx.strokeStyle;
-              ctx.shadowBlur = 9;
-              ctx.lineWidth = 1.4;
-              ctx.beginPath();
-              ctx.arc(px, py, 7, 0, Math.PI * 2);
-              ctx.stroke();
-              ctx.shadowBlur = 0;
-            }
-          }
-
-          for (const missile of enemyMissiles) {
-          '''
-
-          old_count = text.count(old)
-          new_marker = 'const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);'
-          if old_count == 1:
-              text = text.replace(old, new, 1)
-          elif old_count == 0 and new_marker in text:
+              new_block = "\n".join([
+                  "      for (const enemy of enemies) {",
+                  "        if (!enemy.alive) continue;",
+                  "        tmpV3.copy(enemy.group.position).sub(player.position);",
+                  "        const rightDistance = tmpV3.dot(tmpV2);",
+                  "        const forwardDistance = tmpV3.dot(lastRadarForward);",
+                  "        const planarDistance = Math.hypot(rightDistance, forwardDistance);",
+                  "        const scale = Math.min(1, planarDistance / RADAR_RANGE);",
+                  "        const angle = Math.atan2(rightDistance, forwardDistance);",
+                  "        const px = center + Math.sin(angle) * radius * scale;",
+                  "        const py = center - Math.cos(angle) * radius * scale;",
+                  "        const isTarget = enemy.id === (preferredTargetId ?? lock.targetId);",
+                  "",
+                  "        forwardOf(enemy.group, tmpV4);",
+                  "        const headingRight = tmpV4.dot(tmpV2);",
+                  "        const headingForward = tmpV4.dot(lastRadarForward);",
+                  "        const headingAngle = Math.atan2(headingRight, headingForward);",
+                  "",
+                  "        ctx.save();",
+                  "        ctx.translate(px, py);",
+                  "        ctx.rotate(headingAngle);",
+                  "        ctx.fillStyle = \"#f4f7fa\";",
+                  "        ctx.shadowColor = \"#f4f7fa\";",
+                  "        ctx.shadowBlur = isTarget ? 8 : 5;",
+                  "        ctx.beginPath();",
+                  "        ctx.moveTo(0, -4.5);",
+                  "        ctx.lineTo(-3, 3);",
+                  "        ctx.lineTo(0, 1);",
+                  "        ctx.lineTo(3, 3);",
+                  "        ctx.closePath();",
+                  "        ctx.fill();",
+                  "        ctx.restore();",
+                  "        ctx.shadowBlur = 0;",
+                  "",
+                  "        if (isTarget) {",
+                  "          ctx.strokeStyle = lock.locked ? \"#ff4f5e\" : \"#ffe66f\";",
+                  "          ctx.shadowColor = ctx.strokeStyle;",
+                  "          ctx.shadowBlur = 9;",
+                  "          ctx.lineWidth = 1.4;",
+                  "          ctx.beginPath();",
+                  "          ctx.arc(px, py, 7, 0, Math.PI * 2);",
+                  "          ctx.stroke();",
+                  "          ctx.shadowBlur = 0;",
+                  "        }",
+                  "      }",
+              ])
+              text = text[:start] + new_block + text[end:]
+          elif new_marker in text:
               pass
           else:
-              raise SystemExit(f"radar enemy block is not in an expected state: old_count={old_count}")
+              raise SystemExit("radar enemy block is not in an expected state")
 
           required = [
               new_marker,
