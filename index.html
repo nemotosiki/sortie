@@ -2106,9 +2106,195 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // A mission is an ordered list of wave entries; radio, banners, restock and
     // the outro all key off the entry type and its position. parTime is the
     // S-rank pace in seconds; records persist per mission key in localStorage.
+    // ---------------------------------------------------------------------
+    // Map presets (M2). Every value createWorld() used to hardcode lives here,
+    // so a mission can pick its map by key. `archipelagoDay` reproduces the
+    // pre-M2 world exactly - same numbers, same RNG draw order - and is the
+    // regression baseline; the other three reuse the identical build path.
+    // ---------------------------------------------------------------------
+    const WORLD_PRESETS = Object.freeze({
+      archipelagoDay: {
+        label: "ARCHIPELAGO DAY",
+        clearColor: 0x6698b2,
+        sky: [[0, "#06172f"], [0.32, "#174f7a"], [0.62, "#79b7d1"], [0.74, "#d7d5c0"], [1, "#305d75"]],
+        fog: { color: 0x7ba8ba, near: 650, far: 3350 },
+        sun: {
+          position: [-1150, 1180, -2600], color: 0xfff1bd, radius: 74,
+          glare: [
+            { scale: 1500, color: 0xfff2cd, opacity: 0.55 },
+            { scale: 430, color: 0xfffbe8, opacity: 0.95 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        sunRoad: {
+          color: 0xffd98a, opacity: 0.3, width: 560, length: 3400,
+          rotationY: Math.atan2(1150, 2600), position: [-700, 0.4, -1580]
+        },
+        ocean: {
+          base: "#16506a", bright: "140, 214, 228", dark: "10, 48, 66",
+          repeat: 26, roughness: 0.4, metalness: 0.2
+        },
+        lights: {
+          hemi: { sky: 0xc9efff, ground: 0x152839, intensity: 2.25 },
+          key: { color: 0xfff3db, intensity: 3.2, position: [-700, 1200, -500] },
+          fill: { color: 0x79d6ff, intensity: 0.85, position: [500, 240, 900] }
+        },
+        mountains: {
+          count: 7, radius: [130, 280], height: [80, 190], distance: [2400, 3900],
+          snowyAbove: 150, snowLine: 0.7, roughness: 0.94,
+          palette: { low: 0x46603f, mid: 0x5d6b52, rock: 0x716f63, peak: 0x7d7a6e, snow: 0xe9eff2 },
+          corridor: null, plateau: null
+        },
+        islands: { count: 10, stone: 0x53675d, green: 0x527951 },
+        clouds: {
+          scale: 1, hero: true, color: 0xf4f8f9, opacity: 0.72,
+          cirrusColor: 0xeef6f8, cirrusOpacity: 0.3
+        }
+      },
+
+      // Fleet-hunting weather: a fat sun sitting on the horizon, an orange
+      // glitter road across dark water, and just two distant peaks so the
+      // silhouette of the carrier group owns the frame.
+      sunsetOcean: {
+        label: "SUNSET OCEAN",
+        clearColor: 0x9a6a52,
+        // Horizon is stop 0.5 - the ember band has to sit just above it.
+        sky: [[0, "#101a3d"], [0.26, "#2d2657"], [0.4, "#7b3450"], [0.47, "#cc6238"], [0.5, "#ffb96e"], [0.58, "#8e3a49"], [1, "#3a1c33"]],
+        fog: { color: 0x9a6a52, near: 650, far: 3350 },
+        sun: {
+          position: [-300, 260, -3000], color: 0xffb36b, radius: 150,
+          glare: [
+            { scale: 2300, color: 0xff9a4e, opacity: 0.78 },
+            { scale: 760, color: 0xffd9a8, opacity: 0.98 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        sunRoad: {
+          color: 0xff9a4a, opacity: 0.62, width: 820, length: 3800,
+          rotationY: Math.atan2(300, 3000), position: [-190, 0.4, -1820]
+        },
+        ocean: {
+          base: "#102f38", bright: "255, 168, 104", dark: "5, 22, 30",
+          repeat: 26, roughness: 0.33, metalness: 0.3
+        },
+        lights: {
+          hemi: { sky: 0xffb98a, ground: 0x2a1b2e, intensity: 1.5 },
+          key: { color: 0xffa25c, intensity: 2.4, position: [-300, 320, -900] },
+          fill: { color: 0x6a4b8a, intensity: 0.5, position: [400, 200, 800] }
+        },
+        mountains: {
+          count: 2, radius: [180, 300], height: [150, 240], distance: [3600, 3900],
+          snowyAbove: 999, snowLine: 0.7, roughness: 0.94,
+          palette: { low: 0x2b2130, mid: 0x3a2a34, rock: 0x4a3439, peak: 0x5b4240, snow: 0xd8bfae },
+          corridor: null, plateau: null
+        },
+        islands: { count: 6, stone: 0x36262c, green: 0x3b2f2c },
+        clouds: {
+          scale: 1.5, hero: true, color: 0xffb894, opacity: 0.78,
+          cirrusColor: 0xff9f7a, cirrusOpacity: 0.36
+        }
+      },
+
+      // Low-altitude ingress map: two staggered rows of snow spires ahead of
+      // the spawn make a slalom canyon, with a background ring so the horizon
+      // does not read as empty water.
+      glacierCanyon: {
+        label: "GLACIER CANYON",
+        clearColor: 0xcfe0ea,
+        sky: [[0, "#1d3f6b"], [0.28, "#4d80ad"], [0.44, "#a8cfe4"], [0.5, "#e6f2f8"], [0.62, "#9dbccb"], [1, "#7fa3b5"]],
+        fog: { color: 0xcfe0ea, near: 500, far: 2900 },
+        sun: {
+          position: [-900, 420, -2900], color: 0xf4fbff, radius: 92,
+          glare: [
+            { scale: 1400, color: 0xdcefff, opacity: 0.5 },
+            { scale: 400, color: 0xffffff, opacity: 0.9 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        sunRoad: {
+          color: 0xcfe6ff, opacity: 0.24, width: 520, length: 3200,
+          rotationY: Math.atan2(900, 2900), position: [-540, 0.4, -1740]
+        },
+        ocean: {
+          base: "#4f86a0", bright: "222, 240, 250", dark: "36, 76, 98",
+          repeat: 26, roughness: 0.26, metalness: 0.36
+        },
+        lights: {
+          hemi: { sky: 0xdcefff, ground: 0x2a3a49, intensity: 2.4 },
+          key: { color: 0xeaf6ff, intensity: 2.6, position: [-900, 900, -900] },
+          fill: { color: 0x9ec8ff, intensity: 0.9, position: [600, 300, 700] }
+        },
+        mountains: {
+          count: 4, radius: [200, 380], height: [250, 430], distance: [2600, 3900],
+          snowyAbove: 0, snowLine: 0.16, roughness: 0.9,
+          palette: { low: 0x6d8b9c, mid: 0x8ea9b8, rock: 0xa8c0cc, peak: 0xe9f3f8, snow: 0xeef6fa },
+          corridor: {
+            rows: 2, per: 6, gap: 700, step: 1200, startZ: 400, stagger: 600,
+            radius: [150, 230], height: [420, 620], snowyAbove: 0
+          },
+          plateau: null
+        },
+        islands: { count: 4, stone: 0x8ea7b6, green: 0xd7e7f0 },
+        clouds: {
+          scale: 0.8, hero: true, color: 0xeaf4fa, opacity: 0.7,
+          cirrusColor: 0xdfeaf2, cirrusOpacity: 0.3
+        }
+      },
+
+      // Night strike map: star dome, moonlight instead of sun, and one broad
+      // low plateau reserved for the M3 ground installation.
+      nightBase: {
+        label: "NIGHT BASE",
+        clearColor: 0x05080f,
+        sky: [[0, "#01030a"], [0.3, "#040a18"], [0.44, "#0d1830"], [0.5, "#17243f"], [0.62, "#0a1220"], [1, "#050a14"]],
+        fog: { color: 0x0a1220, near: 400, far: 2600 },
+        sun: null,
+        moon: {
+          position: [1100, 900, -2600], color: 0xf3f7ff, radius: 66,
+          glare: [
+            { scale: 760, color: 0xbfd4ff, opacity: 0.32 },
+            { scale: 210, color: 0xffffff, opacity: 0.8 }
+          ]
+        },
+        stars: { count: 420, radius: 3200, size: 2.6, seed: 0x51a25, color: 0xdfe9ff, warm: 0xffd7b0 },
+        sunRoad: {
+          color: 0xbfd4ff, opacity: 0.26, width: 420, length: 3200,
+          rotationY: Math.atan2(-1100, 2600), position: [660, 0.4, -1560]
+        },
+        ocean: {
+          base: "#050c1c", bright: "70, 100, 160", dark: "1, 3, 9",
+          repeat: 26, roughness: 0.42, metalness: 0.4
+        },
+        lights: {
+          hemi: { sky: 0x2a3a5a, ground: 0x05070d, intensity: 0.55 },
+          key: { color: 0xb9cdf5, intensity: 0.35, position: [1100, 900, -900] },
+          fill: { color: 0x2b3f6b, intensity: 0.18, position: [-500, 200, 800] }
+        },
+        mountains: {
+          count: 3, radius: [170, 320], height: [140, 260], distance: [2200, 3400],
+          snowyAbove: 999, snowLine: 0.7, roughness: 0.95,
+          palette: { low: 0x151d28, mid: 0x18202c, rock: 0x1c2532, peak: 0x222c3a, snow: 0x39465a },
+          corridor: null,
+          // Flat-topped island - the future home of the M3 base structures.
+          plateau: { radius: [420, 420], height: [92, 92], topRadius: 0.72, at: [900, -1200], snowyAbove: 999 }
+        },
+        islands: { count: 3, stone: 0x131a24, green: 0x11181f },
+        clouds: {
+          scale: 0.5, hero: true, color: 0x27324a, opacity: 0.5,
+          cirrusColor: 0x1c2436, cirrusOpacity: 0.22
+        }
+      }
+    });
+
+    const DEFAULT_WORLD_PRESET = "archipelagoDay";
+
     const MISSIONS = Object.freeze([
       {
         key: "m01",
+        world: "archipelagoDay",
         title: "FIRST CONTACT",
         jp: "哨戒空域に敵編隊3機。全機撃墜し、制空権を確保せよ。",
         sequence: ["air1"],
@@ -2118,6 +2304,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       },
       {
         key: "m02",
+        world: "archipelagoDay",
         title: "TWO-PRONGED",
         jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
         sequence: ["air1", "air2plain"],
@@ -2127,6 +2314,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       },
       {
         key: "m03",
+        world: "sunsetOcean",
         title: "FLEET DESTRUCTION",
         jp: "敵機動部隊を捕捉した。空母1、護衛イージス艦2。対艦攻撃で殲滅せよ。",
         sequence: ["naval"],
@@ -2136,6 +2324,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       },
       {
         key: "m04",
+        world: "archipelagoDay",
         title: "IRONBACK",
         jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
         sequence: ["air2"],
@@ -2145,6 +2334,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       },
       {
         key: "m05",
+        world: "archipelagoDay",
         title: "FINAL SORTIE",
         jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
         sequence: ["air1", "air2", "naval"],
@@ -2758,6 +2948,27 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           snapCamera();
           return true;
         },
+        forceWorld: (key) => {
+          if (gameState === STATE_PLAYING) return false;
+          if (key === null || key === undefined) {
+            worldOverride = null;
+            applyWorldPreset(MISSIONS[currentMissionIndex].world);
+            return true;
+          }
+          if (!WORLD_PRESETS[key]) return false;
+          worldOverride = key;
+          applyWorldPreset(key);
+          return true;
+        },
+        worldPresets: () => Object.keys(WORLD_PRESETS),
+        worldMountains: () => world.mountains.map((mountain) => ({
+          x: mountain.x, z: mountain.z, r: mountain.r, h: mountain.h
+        })),
+        gpuMemory: () => ({
+          geometries: renderer.info.memory.geometries,
+          textures: renderer.info.memory.textures,
+          programs: renderer.info.programs ? renderer.info.programs.length : -1
+        }),
         worldProbe: () => ({
           cloud: world.cloudVolumes.reduce((a, b) => (b.r > a.r ? b : a)),
           mountain: world.mountains[0],
@@ -2809,6 +3020,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           return true;
         }
       },
+      world: { preset: null, label: null, mountains: 0 },
       enemyCatalog: Object.keys(ENEMY_TYPES),
       player: {
         position: { x: 0, y: 0, z: 0 },
@@ -2821,7 +3033,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     const geometry = createSharedGeometry();
     const shared = createSharedMaterials();
-    const world = createWorld();
+    let world = createWorld(DEFAULT_WORLD_PRESET);
+    // Debug override (debug.forceWorld) wins over the mission's own map.
+    let worldOverride = null;
     const sparkParticlePool = createParticlePool(MAX_SPARK_PARTICLES, {
       size: 5.4,
       opacity: 0.94,
@@ -3751,6 +3965,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       applyAircraftLoadout(selectedAircraftId);
       keys.clear();
       clearMissionObjects();
+      applyWorldPreset(worldOverride || MISSIONS[currentMissionIndex].world);
       resetRadio();
       resetPlayerTransform();
       playerModel.group.visible = cameraMode !== "cockpit";
@@ -6256,6 +6471,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.debug.missileKills = missileKills;
       hook.debug.damageTaken = damageTaken;
       hook.debug.aceDestroyed = aceDestroyed;
+      hook.world.preset = world.preset;
+      hook.world.label = world.label;
+      hook.world.mountains = world.mountains.length;
       hook.mission = {
         index: currentMissionIndex,
         key: MISSIONS[currentMissionIndex].key,
@@ -7944,54 +8162,104 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       setState(STATE_READY);
     }
 
-    function createWorld() {
+    // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
+    // returned record so disposeWorld() can hand it all back when a mission
+    // switches maps - otherwise each swap would leak a whole world.
+    function createWorld(presetKey) {
+      const key = WORLD_PRESETS[presetKey] ? presetKey : DEFAULT_WORLD_PRESET;
+      const preset = WORLD_PRESETS[key];
+      const roots = [];
+      const geometries = [];
+      const materials = [];
+      const textures = [];
+      const keepGeometry = (item) => { geometries.push(item); return item; };
+      const keepMaterial = (item) => { materials.push(item); return item; };
+      const keepTexture = (item) => { textures.push(item); return item; };
+      const addRoot = (node) => { scene.add(node); roots.push(node); return node; };
+
+      scene.fog.color.setHex(preset.fog.color);
+      scene.fog.near = preset.fog.near;
+      scene.fog.far = preset.fog.far;
+      renderer.setClearColor(preset.clearColor, 1);
+
       const skyCanvas = document.createElement("canvas");
       skyCanvas.width = 32;
       skyCanvas.height = 512;
       const skyCtx = skyCanvas.getContext("2d");
       const skyGradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
-      skyGradient.addColorStop(0, "#06172f");
-      skyGradient.addColorStop(0.32, "#174f7a");
-      skyGradient.addColorStop(0.62, "#79b7d1");
-      skyGradient.addColorStop(0.74, "#d7d5c0");
-      skyGradient.addColorStop(1, "#305d75");
+      for (const [offset, color] of preset.sky) skyGradient.addColorStop(offset, color);
       skyCtx.fillStyle = skyGradient;
       skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
-      const skyTexture = new THREE.CanvasTexture(skyCanvas);
+      const skyTexture = keepTexture(new THREE.CanvasTexture(skyCanvas));
       skyTexture.colorSpace = THREE.SRGBColorSpace;
 
       const skyGroup = new THREE.Group();
       const skySphere = new THREE.Mesh(
-        new THREE.SphereGeometry(3600, 36, 18),
-        new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, depthWrite: false, fog: false })
+        keepGeometry(new THREE.SphereGeometry(3600, 36, 18)),
+        keepMaterial(new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide, depthWrite: false, fog: false }))
       );
       skySphere.renderOrder = -100;
       skyGroup.add(skySphere);
 
-      const sun = new THREE.Mesh(
-        new THREE.SphereGeometry(74, 20, 12),
-        new THREE.MeshBasicMaterial({ color: 0xfff1bd, fog: false })
-      );
-      sun.position.set(-1150, 1180, -2600);
-      skyGroup.add(sun);
+      // Stars ride inside the sky group, so they stay at "infinity" while the
+      // camera moves. depthTest off + renderOrder -99 paints them over the sky
+      // dome but still behind anything opaque (ocean, terrain, the moon).
+      if (preset.stars) {
+        const starRng = mulberry32(preset.stars.seed);
+        const starPositions = new Float32Array(preset.stars.count * 3);
+        const starColors = new Float32Array(preset.stars.count * 3);
+        const starColor = new THREE.Color();
+        for (let i = 0; i < preset.stars.count; i += 1) {
+          const up = 0.04 + starRng() * 0.96;
+          const ring = Math.sqrt(Math.max(0, 1 - up * up));
+          const theta = starRng() * Math.PI * 2;
+          starPositions[i * 3] = Math.cos(theta) * ring * preset.stars.radius;
+          starPositions[i * 3 + 1] = up * preset.stars.radius;
+          starPositions[i * 3 + 2] = Math.sin(theta) * ring * preset.stars.radius;
+          const shade = 0.34 + starRng() * 0.66;
+          starColor.setHex(starRng() > 0.86 ? preset.stars.warm : preset.stars.color);
+          starColors[i * 3] = starColor.r * shade;
+          starColors[i * 3 + 1] = starColor.g * shade;
+          starColors[i * 3 + 2] = starColor.b * shade;
+        }
+        const starGeometry = keepGeometry(new THREE.BufferGeometry());
+        starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+        starGeometry.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
+        const stars = new THREE.Points(starGeometry, keepMaterial(new THREE.PointsMaterial({
+          size: preset.stars.size, sizeAttenuation: false, vertexColors: true,
+          transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending,
+          depthWrite: false, depthTest: false, fog: false
+        })));
+        stars.renderOrder = -99;
+        stars.frustumCulled = false;
+        skyGroup.add(stars);
+      }
 
-      // Layered additive glare makes the sun read as a light source instead of
-      // a yellow ball - the AC games lean hard on this.
-      const glareTexture = makeGlareTexture();
-      const glareWide = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glareTexture, color: 0xfff2cd, transparent: true, opacity: 0.55,
-        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
-      }));
-      glareWide.scale.set(1500, 1500, 1);
-      glareWide.position.copy(sun.position);
-      const glareCore = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: glareTexture, color: 0xfffbe8, transparent: true, opacity: 0.95,
-        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
-      }));
-      glareCore.scale.set(430, 430, 1);
-      glareCore.position.copy(sun.position);
-      skyGroup.add(glareWide, glareCore);
-      scene.add(skyGroup);
+      // Layered additive glare makes a disc read as a light source instead of
+      // a flat ball - the AC games lean hard on this. Same builder for the sun
+      // and the moon; a preset supplies one, the other, or neither.
+      const glareTexture = keepTexture(makeGlareTexture());
+      const addCelestial = (body) => {
+        if (!body) return;
+        const disc = new THREE.Mesh(
+          keepGeometry(new THREE.SphereGeometry(body.radius, 20, 12)),
+          keepMaterial(new THREE.MeshBasicMaterial({ color: body.color, fog: false }))
+        );
+        disc.position.set(body.position[0], body.position[1], body.position[2]);
+        skyGroup.add(disc);
+        for (const layer of body.glare) {
+          const sprite = new THREE.Sprite(keepMaterial(new THREE.SpriteMaterial({
+            map: glareTexture, color: layer.color, transparent: true, opacity: layer.opacity,
+            blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
+          })));
+          sprite.scale.set(layer.scale, layer.scale, 1);
+          sprite.position.copy(disc.position);
+          skyGroup.add(sprite);
+        }
+      };
+      addCelestial(preset.sun);
+      addCelestial(preset.moon);
+      addRoot(skyGroup);
 
       // Ocean with a scrolling wave-noise texture (replaces the dev grid as the
       // low-altitude speed cue) plus an additive sun-glint road toward the sun.
@@ -8000,81 +8268,115 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       oceanCanvas.height = 256;
       const oceanCtx = oceanCanvas.getContext("2d");
       const oceanRng = mulberry32(0x0cea11);
-      oceanCtx.fillStyle = "#16506a";
+      oceanCtx.fillStyle = preset.ocean.base;
       oceanCtx.fillRect(0, 0, 256, 256);
       for (let i = 0; i < 900; i += 1) {
         const bright = oceanRng() > 0.45;
         oceanCtx.fillStyle = bright
-          ? `rgba(140, 214, 228, ${0.05 + oceanRng() * 0.1})`
-          : `rgba(10, 48, 66, ${0.06 + oceanRng() * 0.1})`;
+          ? `rgba(${preset.ocean.bright}, ${0.05 + oceanRng() * 0.1})`
+          : `rgba(${preset.ocean.dark}, ${0.06 + oceanRng() * 0.1})`;
         const w = 4 + oceanRng() * 22;
         oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
       }
-      const oceanTexture = new THREE.CanvasTexture(oceanCanvas);
+      const oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas));
       oceanTexture.wrapS = THREE.RepeatWrapping;
       oceanTexture.wrapT = THREE.RepeatWrapping;
-      oceanTexture.repeat.set(26, 26);
+      oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
       oceanTexture.colorSpace = THREE.SRGBColorSpace;
-      const oceanGeometry = new THREE.PlaneGeometry(12000, 12000, 1, 1);
+      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(12000, 12000, 1, 1));
       oceanGeometry.rotateX(-Math.PI / 2);
-      const oceanMaterial = new THREE.MeshStandardMaterial({
+      const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
         map: oceanTexture,
-        roughness: 0.4,
-        metalness: 0.2
-      });
+        roughness: preset.ocean.roughness,
+        metalness: preset.ocean.metalness
+      }));
       const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
       ocean.position.y = 0;
-      scene.add(ocean);
+      addRoot(ocean);
 
-      const sunRoadGeometry = new THREE.PlaneGeometry(560, 3400);
-      sunRoadGeometry.rotateX(-Math.PI / 2);
-      const sunRoad = new THREE.Mesh(sunRoadGeometry, new THREE.MeshBasicMaterial({
-        map: glareTexture, color: 0xffd98a, transparent: true, opacity: 0.3,
-        blending: THREE.AdditiveBlending, depthWrite: false, fog: false
-      }));
-      sunRoad.rotation.y = Math.atan2(1150, 2600);
-      sunRoad.position.set(-700, 0.4, -1580);
-      scene.add(sunRoad);
+      if (preset.sunRoad) {
+        const road = preset.sunRoad;
+        const sunRoadGeometry = keepGeometry(new THREE.PlaneGeometry(road.width, road.length));
+        sunRoadGeometry.rotateX(-Math.PI / 2);
+        const sunRoad = new THREE.Mesh(sunRoadGeometry, keepMaterial(new THREE.MeshBasicMaterial({
+          map: glareTexture, color: road.color, transparent: true, opacity: road.opacity,
+          blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+        })));
+        sunRoad.rotation.y = road.rotationY;
+        sunRoad.position.set(road.position[0], road.position[1], road.position[2]);
+        addRoot(sunRoad);
+      }
 
-      const hemi = new THREE.HemisphereLight(0xc9efff, 0x152839, 2.25);
-      scene.add(hemi);
-      const sunLight = new THREE.DirectionalLight(0xfff3db, 3.2);
-      sunLight.position.set(-700, 1200, -500);
-      scene.add(sunLight);
-      const fill = new THREE.DirectionalLight(0x79d6ff, 0.85);
-      fill.position.set(500, 240, 900);
-      scene.add(fill);
+      const hemi = new THREE.HemisphereLight(preset.lights.hemi.sky, preset.lights.hemi.ground, preset.lights.hemi.intensity);
+      addRoot(hemi);
+      const sunLight = new THREE.DirectionalLight(preset.lights.key.color, preset.lights.key.intensity);
+      sunLight.position.set(preset.lights.key.position[0], preset.lights.key.position[1], preset.lights.key.position[2]);
+      addRoot(sunLight);
+      const fill = new THREE.DirectionalLight(preset.lights.fill.color, preset.lights.fill.intensity);
+      fill.position.set(preset.lights.fill.position[0], preset.lights.fill.position[1], preset.lights.fill.position[2]);
+      addRoot(fill);
 
       const rng = mulberry32(0x50a71e);
 
       // Noise-displaced mountain islands with height-banded vertex colors.
       // They double as terrain hazards - updatePlayer treats them as solid.
-      const mountainMaterial = new THREE.MeshStandardMaterial({
-        vertexColors: true, roughness: 0.94, metalness: 0
-      });
+      // Placement is either the classic scattered ring or, for canyon maps, a
+      // pair of staggered walls straight ahead of the spawn point.
+      const mountainConfig = preset.mountains;
+      const corridorSlots = [];
+      if (mountainConfig.corridor) {
+        const lane = mountainConfig.corridor;
+        for (let row = 0; row < lane.rows; row += 1) {
+          const x = (row - (lane.rows - 1) / 2) * lane.gap;
+          const shift = row % 2 === 1 ? lane.stagger : 0;
+          for (let i = 0; i < lane.per; i += 1) {
+            corridorSlots.push({ x, z: lane.startZ + shift - i * lane.step });
+          }
+        }
+      }
+      const mountainMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: mountainConfig.roughness, metalness: 0
+      }));
       const mountains = [];
-      for (let i = 0; i < 7; i += 1) {
-        const radius = 130 + rng() * 150;
-        const height = 80 + rng() * 110;
-        const snowy = height > 150;
-        const mountain = new THREE.Mesh(buildMountainGeometry(rng, snowy), mountainMaterial);
+      const mountainTotal = corridorSlots.length + mountainConfig.count + (mountainConfig.plateau ? 1 : 0);
+      for (let i = 0; i < mountainTotal; i += 1) {
+        const slot = i < corridorSlots.length ? corridorSlots[i] : null;
+        const plateau = mountainConfig.plateau && i === mountainTotal - 1 ? mountainConfig.plateau : null;
+        const shape = slot ? mountainConfig.corridor : (plateau || mountainConfig);
+        const radius = shape.radius[0] + rng() * (shape.radius[1] - shape.radius[0]);
+        const height = shape.height[0] + rng() * (shape.height[1] - shape.height[0]);
+        const snowy = height > shape.snowyAbove;
+        const mountain = new THREE.Mesh(keepGeometry(buildMountainGeometry(rng, snowy, {
+          palette: mountainConfig.palette,
+          snowLine: mountainConfig.snowLine,
+          topRadius: plateau ? plateau.topRadius : 0.08
+        })), mountainMaterial);
         const depth = radius * (0.75 + rng() * 0.35);
         mountain.scale.set(radius, height, depth);
         mountain.rotation.y = rng() * Math.PI * 2;
         const angle = rng() * Math.PI * 2;
-        const distance = 2400 + rng() * 1500;
-        mountain.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
-        scene.add(mountain);
+        const distance = mountainConfig.distance[0] + rng() * (mountainConfig.distance[1] - mountainConfig.distance[0]);
+        let x = Math.cos(angle) * distance;
+        let z = Math.sin(angle) * distance;
+        if (slot) {
+          x = slot.x;
+          z = slot.z;
+        } else if (plateau) {
+          x = plateau.at[0];
+          z = plateau.at[1];
+        }
+        mountain.position.set(x, 0, z);
+        addRoot(mountain);
         mountains.push({
           x: mountain.position.x, z: mountain.position.z,
           r: Math.max(radius, depth) * 0.85, h: height * 0.92
         });
       }
 
-      const islandStone = new THREE.MeshStandardMaterial({ color: 0x53675d, roughness: 0.96, metalness: 0 });
-      const islandGreen = new THREE.MeshStandardMaterial({ color: 0x527951, roughness: 0.92, metalness: 0 });
-      const islandGeometry = new THREE.CylinderGeometry(1, 1.18, 1, 9, 1, false);
-      for (let i = 0; i < 10; i += 1) {
+      const islandStone = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.stone, roughness: 0.96, metalness: 0 }));
+      const islandGreen = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.green, roughness: 0.92, metalness: 0 }));
+      const islandGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1.18, 1, 9, 1, false));
+      for (let i = 0; i < preset.islands.count; i += 1) {
         const island = new THREE.Group();
         const radius = 22 + rng() * 40;
         const height = 4 + rng() * 10;
@@ -8091,19 +8393,20 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const angle = rng() * Math.PI * 2;
         const distance = 700 + rng() * 2900;
         island.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
-        scene.add(island);
+        addRoot(island);
       }
 
       // Three cloud layers: low cumulus you dogfight through, taller mid deck,
       // stretched cirrus far above. Volumes feed the fly-through white-out.
+      const cloudConfig = preset.clouds;
       const cloudVolumes = [];
-      const cloudMaterial = new THREE.MeshLambertMaterial({
-        color: 0xf4f8f9, transparent: true, opacity: 0.72, depthWrite: false
-      });
-      const cirrusMaterial = new THREE.MeshLambertMaterial({
-        color: 0xeef6f8, transparent: true, opacity: 0.3, depthWrite: false
-      });
-      const cloudGeometry = new THREE.SphereGeometry(1, 9, 7);
+      const cloudMaterial = keepMaterial(new THREE.MeshLambertMaterial({
+        color: cloudConfig.color, transparent: true, opacity: cloudConfig.opacity, depthWrite: false
+      }));
+      const cirrusMaterial = keepMaterial(new THREE.MeshLambertMaterial({
+        color: cloudConfig.cirrusColor, transparent: true, opacity: cloudConfig.cirrusOpacity, depthWrite: false
+      }));
+      const cloudGeometry = keepGeometry(new THREE.SphereGeometry(1, 9, 7));
       const buildCluster = (y, size, pieces, squash, at) => {
         const cloud = new THREE.Group();
         for (let j = 0; j < pieces; j += 1) {
@@ -8125,29 +8428,64 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           at ? at.z : Math.sin(angle) * distance
         );
         cloud.rotateY(rng() * Math.PI);
-        scene.add(cloud);
+        addRoot(cloud);
         cloudVolumes.push({
           x: cloud.position.x, y: cloud.position.y, z: cloud.position.z,
           r: size * (1.2 + pieces * 0.12)
         });
       };
-      for (let i = 0; i < 13; i += 1) buildCluster(300 + rng() * 380, 32 + rng() * 24, 6 + Math.floor(rng() * 4), 0.5);
-      for (let i = 0; i < 9; i += 1) buildCluster(900 + rng() * 480, 36 + rng() * 26, 5 + Math.floor(rng() * 4), 0.42);
+      const lowCount = Math.max(1, Math.round(13 * cloudConfig.scale));
+      const midCount = Math.max(1, Math.round(9 * cloudConfig.scale));
+      const cirrusCount = Math.max(1, Math.round(7 * cloudConfig.scale));
+      for (let i = 0; i < lowCount; i += 1) buildCluster(300 + rng() * 380, 32 + rng() * 24, 6 + Math.floor(rng() * 4), 0.5);
+      for (let i = 0; i < midCount; i += 1) buildCluster(900 + rng() * 480, 36 + rng() * 26, 5 + Math.floor(rng() * 4), 0.42);
       // Hero cumulus near the arena - big enough to actually disappear into
       // mid-dogfight, the way AC7 uses its one big cloud bank.
-      buildCluster(470, 95, 11, 0.5, { x: 620, z: -420 });
-      buildCluster(520, 80, 9, 0.5, { x: -900, z: 1050 });
-      for (let i = 0; i < 7; i += 1) {
+      if (cloudConfig.hero) {
+        buildCluster(470, 95, 11, 0.5, { x: 620, z: -420 });
+        buildCluster(520, 80, 9, 0.5, { x: -900, z: 1050 });
+      }
+      for (let i = 0; i < cirrusCount; i += 1) {
         const streak = new THREE.Mesh(cloudGeometry, cirrusMaterial);
         const angle = rng() * Math.PI * 2;
         const distance = 900 + rng() * 2600;
         streak.position.set(Math.cos(angle) * distance, 1750 + rng() * 550, Math.sin(angle) * distance);
         streak.scale.set(200 + rng() * 140, 4 + rng() * 4, 50 + rng() * 40);
         streak.rotation.y = rng() * Math.PI;
-        scene.add(streak);
+        addRoot(streak);
       }
 
-      return { skyGroup, oceanTexture, cloudVolumes, mountains };
+      return {
+        preset: key, label: preset.label, skyGroup, oceanTexture, cloudVolumes, mountains,
+        roots, geometries, materials, textures
+      };
+    }
+
+    // Detaches a world from the scene and releases every GPU resource it owns.
+    // renderer.info.memory must return to its baseline after this.
+    function disposeWorld(target) {
+      if (!target) return false;
+      for (const node of target.roots) scene.remove(node);
+      for (const item of target.geometries) item.dispose();
+      for (const item of target.materials) item.dispose();
+      for (const item of target.textures) item.dispose();
+      target.roots.length = 0;
+      target.geometries.length = 0;
+      target.materials.length = 0;
+      target.textures.length = 0;
+      target.mountains.length = 0;
+      target.cloudVolumes.length = 0;
+      return true;
+    }
+
+    // Swaps the live map. No-op when the requested preset is already up, so a
+    // restart of the same mission never rebuilds (and never hitches).
+    function applyWorldPreset(presetKey) {
+      const key = WORLD_PRESETS[presetKey] ? presetKey : DEFAULT_WORLD_PRESET;
+      if (world && world.preset === key) return false;
+      disposeWorld(world);
+      world = createWorld(key);
+      return true;
     }
 
     function makeGlareTexture() {
@@ -8168,10 +8506,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     // Cone displaced by angular harmonics - reads as a rocky volcanic island.
-    // Vertex colors band by height: green shore, scrub, rock, then snow on the
-    // tallest peaks.
-    function buildMountainGeometry(rng, snowy) {
-      const geo = new THREE.CylinderGeometry(0.08, 1, 1, 16, 5, false);
+    // Vertex colors band by height using the map palette: shore, scrub, rock,
+    // then the peak color above the snow line. `topRadius` near 1 turns the
+    // cone into a flat-topped plateau (the night map's base island).
+    function buildMountainGeometry(rng, snowy, shape) {
+      const geo = new THREE.CylinderGeometry(shape.topRadius, 1, 1, 16, 5, false);
       geo.translate(0, 0.5, 0);
       const position = geo.attributes.position;
       const phase1 = rng() * Math.PI * 2;
@@ -8185,24 +8524,26 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const radius = Math.hypot(x, z);
         if (radius > 1e-5) {
           const theta = Math.atan2(z, x);
-          const shape = 1 + amp1 * Math.sin(3 * theta + phase1) +
+          const displaced = 1 + amp1 * Math.sin(3 * theta + phase1) +
             amp2 * Math.sin(7 * theta + phase2) +
             0.05 * Math.sin(11 * theta + y * 9);
-          position.setX(i, x * shape);
-          position.setZ(i, z * shape);
+          position.setX(i, x * displaced);
+          position.setZ(i, z * displaced);
         }
       }
       const colors = new Float32Array(position.count * 3);
-      const low = new THREE.Color(0x46603f);
-      const mid = new THREE.Color(0x5d6b52);
-      const rock = new THREE.Color(0x716f63);
-      const peak = new THREE.Color(snowy ? 0xe9eff2 : 0x7d7a6e);
+      const snowLine = shape.snowLine;
+      const scrubLine = snowLine * 0.5;
+      const low = new THREE.Color(shape.palette.low);
+      const mid = new THREE.Color(shape.palette.mid);
+      const rock = new THREE.Color(shape.palette.rock);
+      const peak = new THREE.Color(snowy ? shape.palette.snow : shape.palette.peak);
       const scratch = new THREE.Color();
       for (let i = 0; i < position.count; i += 1) {
         const t = THREE.MathUtils.clamp(position.getY(i), 0, 1);
-        if (t < 0.35) scratch.copy(low).lerp(mid, t / 0.35);
-        else if (t < 0.7) scratch.copy(mid).lerp(rock, (t - 0.35) / 0.35);
-        else scratch.copy(rock).lerp(peak, (t - 0.7) / 0.3);
+        if (t < scrubLine) scratch.copy(low).lerp(mid, t / scrubLine);
+        else if (t < snowLine) scratch.copy(mid).lerp(rock, (t - scrubLine) / (snowLine - scrubLine));
+        else scratch.copy(rock).lerp(peak, (t - snowLine) / (1 - snowLine));
         colors[i * 3] = scratch.r;
         colors[i * 3 + 1] = scratch.g;
         colors[i * 3 + 2] = scratch.b;
