@@ -2248,7 +2248,7 @@
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
     const AIRCRAFT_ORDER = Object.freeze([
-      "f16", "gripen", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "mig31", "f4", "f22"
+      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "f22"
     ]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
@@ -2655,6 +2655,44 @@ canopy: 0x8fe0ff, exhaust: 0x9fd8ff, scale: 0.99, variant: "rafale"
         theme: Object.freeze({
 primary: 0x8a939c, secondary: 0x525c66, accent: 0xb5423c,
 canopy: 0x8fe0ff, exhaust: 0xbfe4ff, scale: 1.03, variant: "typhoon"
+        })
+      }),
+      // Su-37: the turn-fight specialist. Canards and thrust vectoring buy the
+      // highest pitch rate in the hangar - above the Raptor's - and the best
+      // low-speed behaviour anywhere here (stall entry 64, authority loss 0.40),
+      // which is the whole point of the airframe: it keeps pointing the nose
+      // after everything else has run out of wing. It pays for that in top end
+      // and armour, so it loses the aggregate to the F-22 while beating it in
+      // the one axis it cares about.
+      //
+      // WARNING - the stall invariants are at ZERO margin on this airframe:
+      //   brakeSpeed 116 - 52 = 64 >= stallEntrySpeed 64  (margin 0)
+      //   stallEntrySpeed 64 > STALL_DEEP_SPEED 62        (margin 2)
+      // Lowering brakeSpeed by even 1 breaks the "brakes alone can never stall
+      // you" guarantee. Both numbers are load-bearing; do not tune them apart.
+      //
+      // SP.W is QAAM, not the 4AAM the real AC7 Su-37 carries. Deliberate: the
+      // F-35C also fields 4AAM, and giving both the same launcher erases the
+      // difference between them. A jet built to sit behind a target wants the
+      // round that can follow it there.
+      su37: Object.freeze({
+        id: "su37",
+        label: "Su-37 TERMINATOR",
+        role: "Super-Maneuverable Fighter",
+        tag: "ACE",
+        blurb: "カナードと推力偏向ノズルを備えた超機動戦闘機。低速域でも機首は思いのままに向き、旋回性能では最強のステルス機にすら肉薄する。最高速と装甲では一歩譲る、格闘戦の専門家。",
+        cruiseSpeed: 225, boostSpeed: 430, brakeSpeed: 116,
+        pitchRateDeg: 53, rollRateDeg: 178, yawRateDeg: 15, maxBankAngleDeg: 64,
+        normalRollSpring: 48, rollRateLimitDeg: 170, turnRateDeg: 38,
+        rollDamping: 12.4, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.40, structuralG: 3.35,
+        gunDamage: 23, missileDamage: 98,
+        boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.54,
+        missileCapacity: 12, maxHealth: 150,
+        spw: Object.freeze({ key: "qaam", capacity: 14 }),
+        tipSpan: 8.9, tipZ: 2.6,
+        theme: Object.freeze({
+primary: 0x8d9aa6, secondary: 0x4a5a67, accent: 0xd8b23a,
+canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.10, variant: "terminator"
         })
       }),
       f4: Object.freeze({
@@ -3637,6 +3675,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // that island, and its y comes from surfaceHeightAt so the strip sits
         // on the terrain rather than hovering over the sea.
         friendlyBase: { x: 120, z: -19800, heading: 0.12, label: "ALLIED AIRBASE", failRadius: 400 },
+        // The one mission whose objective is 19.8km down-range: the default
+        // origin-centred arena would call the player out of bounds around the
+        // 76s mark, long before the chase reaches the field. So the arena is
+        // laid over the whole run instead - centred midway between the spawn
+        // (z +620) and the field (z -19800), sized so spawn, bombers, escort
+        // and the field all sit inside the 90% warning ring with room to
+        // overshoot past the field and turn around.
+        battleCenter: { x: 0, z: -9900 },
+        battleRadius: 13500,
         briefing: "敵爆撃編隊が本基地へ向かっている——大型機2、護衛は旧式のF-4が2。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標は爆撃機のみ。護衛のF-4は無視して構わない。",
         introRadio: [
           { speaker: "command", text: "初任務だ。敵爆撃編隊、本基地へ直行中——投弾される前に叩き落とせ。", id: "m01-brief" },
@@ -3819,6 +3866,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // denominator. Concurrent entries ride in on one of these.
         waveCount: waves.filter((wave) => !wave.concurrent).length,
         groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
+        battleCenter: mission.battleCenter ? Object.freeze(mission.battleCenter) : null,
         floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
         introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
         map: Object.freeze(mission.map)
@@ -9715,8 +9763,18 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // Centre on the mission's own objectives when it places ground targets;
       // otherwise the arena is built around the player's spawn, which sits at
       // the origin. Air waves spawn off the player's nose, so origin is right.
+      //
+      // Neither default holds for a mission whose objective runs away from the
+      // player: a strike the player has to chase ends far down-range with no
+      // ground unit to centre on, so the arena would cut the chase off before
+      // the objective resolves. `battleCenter` (with `battleRadius`) lets such
+      // a mission state its own arena, and it wins over both defaults.
+      const center = mission && mission.battleCenter;
       const units = mission && mission.groundUnits;
-      if (units && units.length > 0) {
+      if (center) {
+        battleArea.centerX = center.x;
+        battleArea.centerZ = center.z;
+      } else if (units && units.length > 0) {
         let sumX = 0;
         let sumZ = 0;
         for (const unit of units) {
@@ -11816,6 +11874,25 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -3.0], [1.6, -2.7], [12.5, 5.4], [12.5, 6.6], [3.0, 3.2],
         [0, 3.2], [-3.0, 3.2], [-12.5, 6.6], [-12.5, 5.4], [-1.6, -2.7]
       ], 0.26);
+      // Su-37: the Flanker planform - a big swept wing blended into the body,
+      // cropped square at the tip for the missile rail. Half-span 8.9 matches
+      // the airframe's tipSpan. Wider chord than the Raptor's diamond because
+      // wing area is what a sustained-turn airframe is made of.
+      const wingTerminator = extrudedSurface([
+        [0, -5.2], [1.6, -3.4], [8.9, 2.2], [8.9, 3.6], [3.0, 4.8],
+        [0, 4.8], [-3.0, 4.8], [-8.9, 3.6], [-8.9, 2.2], [-1.6, -3.4]
+      ], 0.3);
+      // Su-37 canard: the read-at-a-glance feature. No other airframe in the
+      // hangar has a lifting surface AHEAD of the wing, so this one small
+      // planform is the entire identification cue. Swept, short-span, mounted
+      // just behind the cockpit.
+      // Drawn as ONE full-span surface (like stabRaptor) and added once on the
+      // centreline. The waist at +/-1.1 is narrow and set back, so what reads
+      // from outside is two swept foreplanes either side of the forebody.
+      const canardTerminator = extrudedSurface([
+        [0, 0.35], [1.1, -0.1], [4.3, 1.05], [4.3, 1.85], [1.1, 1.75],
+        [0, 1.95], [-1.1, 1.75], [-4.3, 1.85], [-4.3, 1.05], [-1.1, -0.1]
+      ], 0.22);
       const wingRaptor = extrudedSurface([
         [0, -4.4], [6.9, 2.4], [6.9, 3.0], [2.4, 4.6],
         [0, 4.6], [-2.4, 4.6], [-6.9, 3.0], [-6.9, 2.4]
@@ -11907,6 +11984,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor,
         wingLightning, stabLightning, panel,
         wingRafale, wingTyphoon, wingGripen, canard,
+        wingTerminator, canardTerminator,
+        shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
       };
@@ -12343,6 +12422,64 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.panel, dark, 0, -1.0, 6.8, 0.13, 0.13, 2.4).rotation.x = 0.34;
         add(geometry.canopy, navL, -7.7, 0.06, 3.2, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 7.7, 0.06, 3.2, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "terminator") {
+        // Su-37: three features carry this silhouette, in order of how fast
+        // they read - the CANARDS ahead of the wing (no other airframe here has
+        // a foreplane at all), the TUNNEL between two widely separated nacelles
+        // (Flanker's defining structure - from above or below the centre of the
+        // aircraft is open air), and the LERX blending nose into wing root.
+        //
+        // The nacelles sit at +/-1.95, near the F-14's spacing, because the gap
+        // between them IS the identification. A blended body fills the space
+        // ahead of them and stops short so the tunnel stays open aft.
+        add(geometry.fuselage, primary, 0, 0.02, -1.2, 0.94, 0.7, 0.95);
+        add(geometry.nose, primary, 0, -0.04, -8.5, 0.8, 0.62, 1.1);
+        add(geometry.canopy, canopy, 0, 0.88, -4.0, 0.72, 0.58, 1.85);
+        // Blended wing body: the flat centre section ahead of the tunnel that
+        // makes a Flanker look like one continuous lifting surface.
+        add(geometry.panel, primary, 0, -0.16, 0.6, 3.5, 0.5, 7.2);
+        add(geometry.wingTerminator, secondary, 0, -0.05, 1.4);
+        // LERX: long shallow strakes from the cockpit sides into the wing root.
+        add(geometry.panel, secondary, -1.5, 0.06, -4.4, 0.95, 0.12, 4.2);
+        add(geometry.panel, secondary, 1.5, 0.06, -4.4, 0.95, 0.12, 4.2);
+        // ★ Canards, just aft of the cockpit and well ahead of the wing. This
+        // is the part that says "Su-37" and nothing else in the hangar has one.
+        // canardTerminator is a full-span surface (its planform spans -x to +x,
+        // like stabRaptor), so it is added ONCE on the centreline - adding it
+        // per side would draw two overlapping foreplanes across the fuselage.
+        add(geometry.canardTerminator, primary, 0, 0.34, -4.2);
+        // Widely spaced nacelles, their intakes, and the open tunnel between
+        // them - the centre is deliberately left empty aft of z=4.
+        add(geometry.rearBody, secondary, -1.95, -0.1, 5.2, 0.9, 0.9, 1.6);
+        add(geometry.rearBody, secondary, 1.95, -0.1, 5.2, 0.9, 0.9, 1.6);
+        add(geometry.intake, accent, -1.95, -0.38, -2.2, 0.9, 1.15, 1.5);
+        add(geometry.intake, accent, 1.95, -0.38, -2.2, 0.9, 1.15, 1.5);
+        // Thrust-vectoring nozzles: canted 10 deg nose-down so they read as
+        // deflected rather than straight. Static - nothing animates them.
+        add(geometry.nozzle, accent, -1.95, -0.16, 8.6, 1.15, 1.15, 1.15).rotation.x = 0.175;
+        add(geometry.nozzle, accent, 1.95, -0.16, 8.6, 1.15, 1.15, 1.15).rotation.x = 0.175;
+        addFlame(-1.95, -0.34, 10.0, 1.1, 1.1).rotation.x = 0.175;
+        addFlame(1.95, -0.34, 10.0, 1.1, 1.1).rotation.x = 0.175;
+        // Twin outward-canted fins, one above each nacelle, plus ventral fins.
+        add(geometry.fin, secondary, -2.3, 0.55, 5.1, 0.8, 1.15, 0.9, 0.2);
+        add(geometry.fin, secondary, 2.3, 0.55, 5.1, 0.8, 1.15, 0.9, -0.2);
+        add(geometry.panel, dark, -1.95, -0.9, 6.8, 0.16, 0.8, 2.0, 0.28);
+        add(geometry.panel, dark, 1.95, -0.9, 6.8, 0.16, 0.8, 2.0, -0.28);
+        // Stabilators outboard of the nacelles.
+        add(geometry.tailWing, primary, 0, -0.14, 7.2, 1.12, 1, 0.95);
+        // Details: radome, anti-glare strip, dorsal spine, wingtip rails with
+        // rounds on them, nav lights at the geometric tips.
+        add(geometry.nose, dark, 0, -0.06, -10.0, 0.3, 0.26, 0.34);
+        add(geometry.panel, dark, 0, 0.62, -6.0, 0.7, 0.08, 2.0);
+        add(geometry.panel, secondary, 0, 0.5, 2.6, 0.32, 0.2, 4.4);
+        add(geometry.panel, dark, -8.9, 0.0, 4.2, 0.22, 0.16, 2.3);
+        add(geometry.panel, dark, 8.9, 0.0, 4.2, 0.22, 0.16, 2.3);
+        add(geometry.missileBody, light, -8.9, -0.24, 3.9, 0.8, 0.8, 0.75);
+        add(geometry.missileBody, light, 8.9, -0.24, 3.9, 0.8, 0.8, 0.75);
+        add(geometry.missileNose, dark, -8.9, -0.24, 2.1, 0.75, 0.75, 0.75);
+        add(geometry.missileNose, dark, 8.9, -0.24, 2.1, 0.75, 0.75, 0.75);
+        add(geometry.canopy, navL, -9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
       } else if (theme.variant === "bomber") {
         // B-52H: long slab-sided fuselage, high-aspect swept wing, four
         // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
