@@ -114,6 +114,128 @@
       letter-spacing: 0.04em;
     }
 
+    /* Vertical tapes. A fixed pool of rows is reused every frame (translateY +
+       textContent), never rebuilt, so this costs no allocations per frame. */
+    .tape {
+      position: absolute;
+      top: 50%;
+      width: 62px;
+      height: 190px;
+      margin-top: -95px;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+      mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+    }
+
+    #speedTape { left: 100%; margin-left: 14px; }
+    #altTape { right: 100%; margin-right: 14px; }
+
+    .tapeRow {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 0;
+      font-size: 9px;
+      letter-spacing: 0.08em;
+      color: var(--hud-dim);
+      will-change: transform;
+    }
+
+    #altTape .tapeRow { flex-direction: row-reverse; }
+
+    .tapeRow::before {
+      content: "";
+      width: 12px;
+      height: 1px;
+      background: var(--hud-soft);
+      flex: none;
+    }
+
+    .tapeRow.major::before { width: 20px; background: var(--hud); }
+    .tapeRow.major { color: var(--hud); }
+
+    /* Heading strip */
+    #compassStrip {
+      left: 50%;
+      top: clamp(10px, 1.6vw, 20px);
+      transform: translateX(-50%);
+      width: min(420px, 46vw);
+      text-align: center;
+    }
+
+    #compassTicks {
+      position: relative;
+      height: 20px;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+    }
+
+    .compassTick {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 9px;
+      letter-spacing: 0.1em;
+      color: var(--hud-dim);
+      will-change: transform;
+    }
+
+    .compassTick::before {
+      content: "";
+      width: 1px;
+      height: 6px;
+      background: var(--hud-soft);
+    }
+
+    .compassTick.cardinal { color: var(--hud); font-weight: 800; }
+    .compassTick.cardinal::before { height: 10px; background: var(--hud); }
+
+    #headingValue { margin-top: 3px; font-size: 11px; }
+
+    #compassStrip::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 18px;
+      width: 0;
+      height: 0;
+      transform: translateX(-50%);
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--hud);
+    }
+
+    #timePanel {
+      right: clamp(12px, 2vw, 28px);
+      top: clamp(12px, 2vw, 26px);
+    }
+
+    #shootCue {
+      position: absolute;
+      left: 50%;
+      bottom: 26%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 90ms ease;
+    }
+
+    #shootCue.active {
+      opacity: 1;
+      animation: shootBlink 0.5s steps(2, end) infinite;
+    }
+
+    @keyframes shootBlink { 50% { opacity: 0.35; } }
+
     #stateStrip {
       left: 50%;
       top: 64px;
@@ -1121,15 +1243,28 @@
   <div id="gameRoot" aria-hidden="true"></div>
 
   <div id="hud" aria-hidden="true">
+    <section id="compassStrip" class="panel">
+      <div id="compassTicks"></div>
+      <div class="hudBox" id="headingValue">000</div>
+    </section>
+
+    <section id="timePanel" class="panel">
+      <div class="hudRow"><span class="hudBox">TIME</span><strong class="hudVal" id="missionTime">0'00"00</strong></div>
+    </section>
+
     <section id="flightData" class="panel">
       <span class="hudBox">SPEED</span>
       <div class="hudVal big" id="speedValue">0</div>
+      <div class="tape" id="speedTape"></div>
     </section>
 
     <section id="altData" class="panel">
       <span class="hudBox">ALT</span>
       <div class="hudVal big" id="altitudeValue">0</div>
+      <div class="tape" id="altTape"></div>
     </section>
+
+    <div id="shootCue" class="hudBox">SHOOT</div>
 
     <section id="stateStrip" class="panel">
       STATE <strong id="state">ready</strong><span id="waveReadout">WAVE 0 / 2</span>
@@ -1685,6 +1820,12 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       resultScreen: document.getElementById("resultScreen"),
       startBtn: document.getElementById("startBtn"),
       retryBtn: document.getElementById("retryBtn"),
+      compassTicks: document.getElementById("compassTicks"),
+      headingValue: document.getElementById("headingValue"),
+      missionTime: document.getElementById("missionTime"),
+      speedTape: document.getElementById("speedTape"),
+      altTape: document.getElementById("altTape"),
+      shootCue: document.getElementById("shootCue"),
       aircraftCardRow: document.getElementById("aircraftCardRow"),
       changeAircraftBtn: document.getElementById("changeAircraftBtn"),
       state: document.getElementById("state"),
@@ -1900,6 +2041,19 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // Radar-warning-receiver: an enemy has its nose on us and is in firing range.
     const RWR_BEEP_INTERVAL = 0.62;
 
+    // AC-style instrument geometry. Declared up here (not next to the render
+    // helpers) because init runs updateHud() before that point in the file, and
+    // const declarations are not hoisted.
+    const COMPASS_TICK_COUNT = 25;      // one every 15 deg, covers a full sweep
+    const COMPASS_TICK_STEP = 15;
+    const COMPASS_PX_PER_DEG = 3.4;
+    const COMPASS_LABELS = { 0: "N", 90: "E", 180: "S", 270: "W" };
+    const TAPE_ROW_COUNT = 9;
+    const TAPE_PX_PER_ROW = 26;
+    const compassTickNodes = [];
+    const speedTapeNodes = [];
+    const altTapeNodes = [];
+
     const audioSystem = {
       context: null,
       master: null,
@@ -2081,6 +2235,9 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     snapCamera();
     setState(STATE_READY);
     resize();
+    // Must precede the first updateHud(): it populates the node pools that the
+    // compass and tape renderers index into.
+    buildInstrumentNodes();
     updateHud();
     syncGameHook();
     renderAircraftCards();
@@ -4389,6 +4546,82 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ui.targetRange.textContent = `TGT ${target.id} · ${target.label} · ${distance}M`;
     }
 
+    // ---- AC-style instruments -------------------------------------------------
+    // All three build a fixed pool of nodes once and then only move them, so no
+    // DOM is created or destroyed per frame.
+
+    function buildInstrumentNodes() {
+      for (let i = 0; i < COMPASS_TICK_COUNT; i += 1) {
+        const tick = document.createElement("div");
+        tick.className = "compassTick";
+        tick.appendChild(document.createElement("span"));
+        ui.compassTicks.appendChild(tick);
+        compassTickNodes.push(tick);
+      }
+      for (const [pool, host] of [[speedTapeNodes, ui.speedTape], [altTapeNodes, ui.altTape]]) {
+        for (let i = 0; i < TAPE_ROW_COUNT; i += 1) {
+          const row = document.createElement("div");
+          row.className = "tapeRow";
+          row.appendChild(document.createElement("span"));
+          host.appendChild(row);
+          pool.push(row);
+        }
+      }
+    }
+
+    function getPlayerHeadingDeg() {
+      forwardOf(player, tmpV6);
+      // LOCAL_FORWARD is -Z, so north is -Z. Keep this convention in sync with
+      // the radar's cardinal letters.
+      const deg = Math.atan2(tmpV6.x, -tmpV6.z) * 180 / Math.PI;
+      return (deg + 360) % 360;
+    }
+
+    function updateCompass(headingDeg) {
+      // Centre the tick nearest the current heading, then lay the rest out around
+      // it, wrapping through 360 so the strip scrolls continuously.
+      const centreIndex = Math.round(headingDeg / COMPASS_TICK_STEP);
+      const half = (COMPASS_TICK_COUNT - 1) / 2;
+      for (let i = 0; i < COMPASS_TICK_COUNT; i += 1) {
+        const tick = compassTickNodes[i];
+        const stepOffset = i - half;
+        const tickDeg = ((centreIndex + stepOffset) * COMPASS_TICK_STEP + 360000) % 360;
+        let delta = tickDeg - headingDeg;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        const label = COMPASS_LABELS[tickDeg];
+        tick.style.transform = `translateX(calc(-50% + ${(delta * COMPASS_PX_PER_DEG).toFixed(1)}px))`;
+        tick.classList.toggle("cardinal", Boolean(label));
+        const text = label || (tickDeg % 45 === 0 ? String(Math.round(tickDeg)) : "");
+        if (tick.firstChild.textContent !== text) tick.firstChild.textContent = text;
+      }
+      ui.headingValue.textContent = String(Math.round(headingDeg)).padStart(3, "0");
+    }
+
+    function updateTape(nodes, value, step) {
+      const centre = Math.round(value / step) * step;
+      const half = (TAPE_ROW_COUNT - 1) / 2;
+      for (let i = 0; i < TAPE_ROW_COUNT; i += 1) {
+        const row = nodes[i];
+        const rowValue = centre + (half - i) * step;
+        // Higher values sit above centre; offset by the live value so it scrolls.
+        const offset = (value - rowValue) / step * TAPE_PX_PER_ROW;
+        row.style.transform = `translateY(${offset.toFixed(1)}px)`;
+        const visible = rowValue >= 0;
+        const text = visible ? String(rowValue) : "";
+        if (row.firstChild.textContent !== text) row.firstChild.textContent = text;
+        row.classList.toggle("major", visible && rowValue % (step * 2) === 0);
+      }
+    }
+
+    function formatMissionTime(seconds) {
+      const total = Math.max(0, seconds);
+      const m = Math.floor(total / 60);
+      const s = Math.floor(total % 60);
+      const cs = Math.floor((total % 1) * 100);
+      return `${m}'${String(s).padStart(2, "0")}"${String(cs).padStart(2, "0")}`;
+    }
+
     function updateHud() {
       ui.state.textContent = gameState;
       ui.score.textContent = String(Math.round(score));
@@ -4396,9 +4629,17 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ui.health.textContent = String(Math.round(health));
       ui.missiles.textContent = String(Math.round(missileCount));
       ui.kills.textContent = String(Math.round(kills));
-      ui.speed.textContent = String(Math.round(playerSpeed * 3.6));
-      ui.altitude.textContent = String(Math.max(0, Math.round(player.position.y)));
+      const speedKph = Math.round(playerSpeed * 3.6);
+      const altitudeM = Math.max(0, Math.round(player.position.y));
+      ui.speed.textContent = String(speedKph);
+      ui.altitude.textContent = String(altitudeM);
       ui.wave.textContent = `WAVE ${waveNumber} / 2`;
+
+      updateCompass(getPlayerHeadingDeg());
+      updateTape(speedTapeNodes, speedKph, 100);
+      updateTape(altTapeNodes, altitudeM, 100);
+      ui.missionTime.textContent = formatMissionTime(missionElapsed);
+      ui.shootCue.classList.toggle("active", gameState === STATE_PLAYING && lock.locked);
       const expertMode = controlMode === CONTROL_EXPERT;
       ui.controlModeStatus.textContent = expertMode
         ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
