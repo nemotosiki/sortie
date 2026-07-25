@@ -69,6 +69,8 @@
        debrief still shows the HUD behind it, as before. */
     body[data-game-state="missionSelect"] #hud,
     body[data-game-state="missionSelect"] #radioPanel,
+    body[data-game-state="briefing"] #hud,
+    body[data-game-state="briefing"] #radioPanel,
     body[data-game-state="ready"] #hud,
     body[data-game-state="ready"] #radioPanel {
       display: none !important;
@@ -849,6 +851,71 @@
     #missionBanner.danger { color: var(--danger); }
     #missionBanner.success { color: #fff6a0; }
 
+    /* Full-width outcome band (MISSION START / ACCOMPLISHED / FAILED). Lives
+       outside #hud so it can also sit on top of the debrief screen (z 30) and
+       so the menu-state HUD blackout rule never touches it. */
+    #bigBanner {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: 50%;
+      z-index: 45;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 120px;
+      padding: clamp(12px, 2.2vh, 24px) 20px;
+      border-top: 1px solid rgba(120, 255, 160, 0.55);
+      border-bottom: 1px solid rgba(120, 255, 160, 0.55);
+      background: linear-gradient(90deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.93) 20%, rgba(0, 0, 0, 0.93) 80%, rgba(0, 0, 0, 0.7));
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(-50%) scaleY(0.02);
+      transition: opacity 200ms ease, transform 180ms cubic-bezier(0.16, 0.9, 0.3, 1);
+    }
+
+    #bigBanner.visible { opacity: 1; transform: translateY(-50%) scaleY(1); }
+
+    /* Exit is a straight fade: holding scaleY at 1 stops the band collapsing on
+       the way out, so the wipe reads as an entrance-only move. */
+    #bigBanner.fading { opacity: 0; transform: translateY(-50%) scaleY(1); }
+
+    #bigBannerText {
+      padding-left: 0.3em; /* balances the trailing letter-spacing gap */
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: clamp(40px, 6.2vw, 64px);
+      font-style: italic;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: #eafff2;
+      text-shadow: 0 0 26px rgba(120, 255, 170, 0.35);
+      opacity: 0;
+      transition: opacity 260ms ease 110ms;
+    }
+
+    #bigBannerSub {
+      padding-left: 0.34em;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: clamp(10px, 1.1vw, 13px);
+      letter-spacing: 0.34em;
+      text-transform: uppercase;
+      color: rgba(200, 240, 255, 0.66);
+      opacity: 0;
+      transition: opacity 260ms ease 200ms;
+    }
+
+    #bigBanner.visible #bigBannerText,
+    #bigBanner.visible #bigBannerSub { opacity: 1; }
+
+    #bigBanner.success { border-color: rgba(255, 214, 120, 0.72); }
+    #bigBanner.success #bigBannerText { color: #ffe9a8; text-shadow: 0 0 30px rgba(255, 200, 90, 0.45); }
+    #bigBanner.danger { border-color: rgba(255, 96, 96, 0.72); }
+    #bigBanner.danger #bigBannerText { color: #ff8f8f; text-shadow: 0 0 30px rgba(255, 60, 60, 0.45); }
+
     #radioPanel {
       position: absolute;
       left: 50%;
@@ -1129,6 +1196,56 @@
     #missionMapWrap { position: relative; min-width: 0; border: 1px solid rgba(110, 190, 255, 0.2); background: rgba(4, 14, 27, 0.5); }
     #missionMap { position: absolute; inset: 0; width: 100%; height: 100%; }
 
+    /* ---- Briefing screen ------------------------------------------------ */
+    .briefingLayout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr minmax(210px, 280px);
+      gap: clamp(14px, 2vw, 30px);
+      min-height: 0;
+    }
+
+    #briefingMapWrap { position: relative; min-width: 0; border: 1px solid rgba(110, 190, 255, 0.2); background: rgba(4, 14, 27, 0.5); }
+    #briefingMap { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    #briefingObjectives { list-style: none; margin: 2px 0 0; padding: 0; font-size: 12.5px; }
+
+    #briefingObjectives li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 2px 2px;
+      color: #cfe8fb;
+      letter-spacing: 0.08em;
+    }
+
+    #briefingObjectives li i { margin-right: 7px; font-style: normal; }
+    #briefingObjectives li.objAir i { color: #ff6b6b; }
+    #briefingObjectives li.objNaval i,
+    #briefingObjectives li.objGround i { color: #ffb347; }
+
+    .briefingBody {
+      margin: clamp(10px, 1.6vh, 18px) 0 0;
+      min-height: clamp(70px, 11vh, 100px);
+      padding: 11px 16px;
+      border: 1px solid rgba(110, 190, 255, 0.22);
+      border-left: 3px solid rgba(255, 154, 60, 0.85);
+      background: rgba(4, 13, 25, 0.72);
+      color: #dff1ff;
+      font-size: clamp(12px, 1.2vw, 15px);
+      line-height: 1.8;
+      letter-spacing: 0.06em;
+      white-space: pre-wrap;
+    }
+
+    .briefingBody::after { content: "_"; color: #ff9a3c; animation: briefCaret 0.9s steps(1) infinite; }
+    .briefingBody.complete::after { content: ""; }
+
+    @keyframes briefCaret { 50% { opacity: 0; } }
+
+    #briefingHint { color: rgba(160, 200, 230, 0.55); }
+    #briefingHint.ready { color: #d8f2ff; }
+
     .menuSidePanel {
       display: flex;
       flex-direction: column;
@@ -1270,9 +1387,10 @@
 
     .resultStats {
       display: flex;
+      align-items: center;
       justify-content: center;
-      gap: clamp(24px, 7vw, 72px);
-      margin: 28px 0 34px;
+      gap: clamp(20px, 5.5vw, 60px);
+      margin: 28px 0 26px;
     }
 
     .resultStat span {
@@ -1288,6 +1406,61 @@
       color: #fff;
       font-size: 34px;
     }
+
+    /* The rank is the headline of the debrief, so its cell - last in the row,
+       i.e. the right of the card - carries a 120px-class letter instead of the
+       34px the other stats use. */
+    .resultStat.rankCell strong {
+      margin-top: 0;
+      font-size: clamp(56px, 9vw, 120px);
+      font-style: italic;
+      font-weight: 800;
+      line-height: 0.9;
+    }
+
+    .resultStat.rankCell strong.rankNone { font-size: 34px; font-style: normal; }
+
+    #finalRank.stamp { animation: rankStamp 300ms cubic-bezier(0.2, 0.85, 0.25, 1) 300ms both; }
+    #finalRank.rankS { color: #ffd76a; text-shadow: 0 0 24px rgba(255, 195, 70, 0.55); }
+
+    #finalRank.rankS.stamp {
+      animation:
+        rankStamp 300ms cubic-bezier(0.2, 0.85, 0.25, 1) 300ms both,
+        rankPulse 1.5s ease-in-out 640ms infinite;
+    }
+
+    #finalRank.rankA { color: #e8f4ff; text-shadow: 0 0 20px rgba(190, 225, 255, 0.45); }
+    #finalRank.rankB { color: #d9975a; text-shadow: 0 0 18px rgba(210, 140, 70, 0.4); }
+    #finalRank.rankC { color: #9aa9b3; text-shadow: none; }
+
+    @keyframes rankStamp {
+      from { transform: scale(1.6); opacity: 0; }
+      55% { opacity: 1; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes rankPulse {
+      0%, 100% { text-shadow: 0 0 18px rgba(255, 195, 70, 0.45); }
+      50% { text-shadow: 0 0 42px rgba(255, 214, 120, 0.95), 0 0 14px rgba(255, 243, 200, 0.7); }
+    }
+
+    .resultBreakdown {
+      max-width: 540px;
+      margin: 0 auto 24px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: clamp(11px, 1.15vw, 13px);
+      letter-spacing: 0.08em;
+      color: rgba(206, 240, 255, 0.82);
+    }
+
+    .resultBreakdown div {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 2px;
+      border-bottom: 1px dashed rgba(143, 239, 255, 0.14);
+    }
+
+    .resultBreakdown span:first-child { color: rgba(197, 245, 255, 0.55); }
 
     .debriefIntel {
       max-width: 680px;
@@ -1511,6 +1684,8 @@
 
   <div id="radioPanel"><span id="radioSpeaker"></span><span id="radioText"></span></div>
 
+  <div id="bigBanner"><div id="bigBannerText">MISSION START</div><div id="bigBannerSub"></div></div>
+
   <div id="cloudVeil"></div>
   <div id="gVignette"></div>
   <div id="damageFlash"></div>
@@ -1538,6 +1713,34 @@
         <span><span class="legendKey">↑↓ / D-PAD</span> 選択</span>
         <span><span class="legendKey">ENTER / ○</span> 決定</span>
         <button id="missionConfirmBtn" class="actionButton" type="button">SELECT MISSION</button>
+      </footer>
+    </div>
+  </section>
+
+  <section id="briefingScreen" class="screen menuScreen hidden">
+    <div class="menuFrame">
+      <header class="menuHeader">
+        <span class="menuMissionTag" id="briefingNum">MISSION 01</span>
+        <h1 class="menuTitle" id="briefingTitle">FIRST CONTACT</h1>
+        <span class="menuHeaderRule"></span>
+        <span class="menuMissionTag">[ BRIEFING ]</span>
+      </header>
+      <div class="briefingLayout">
+        <div id="briefingMapWrap"><canvas id="briefingMap"></canvas></div>
+        <aside class="menuSidePanel">
+          <span class="menuPanelKicker">OPERATION AREA</span>
+          <h2 class="menuPanelTitle" id="briefingArea">ARCHIPELAGO DAY</h2>
+          <div class="menuRecordHeader">[ OBJECTIVES ]</div>
+          <ul id="briefingObjectives"></ul>
+          <div class="menuRecordHeader">[ PAR TIME ]</div>
+          <div class="menuRankBig" id="briefingPar">—</div>
+        </aside>
+      </div>
+      <p class="briefingBody" id="briefingText"></p>
+      <footer class="menuLegend">
+        <span id="briefingHint"><span class="legendKey">ENTER / ○</span> 進む</span>
+        <span><span class="legendKey">ESC / □</span> ミッション選択</span>
+        <button id="briefingNextBtn" class="actionButton" type="button">PROCEED</button>
       </footer>
     </div>
   </section>
@@ -1577,7 +1780,12 @@
         <div class="resultStat"><span>FINAL SCORE</span><strong id="finalScore">0</strong></div>
         <div class="resultStat"><span>KILLS</span><strong id="finalKills">0</strong></div>
         <div class="resultStat"><span>HIGH SCORE</span><strong id="finalHighscore">0</strong></div>
-        <div class="resultStat"><span>RANK</span><strong id="finalRank">—</strong></div>
+        <div class="resultStat rankCell"><span>RANK</span><strong id="finalRank">—</strong></div>
+      </div>
+      <div class="resultBreakdown" id="resultBreakdown">
+        <div><span>TIME</span><span id="breakdownTime">0'00"00 (PAR 0'00")</span></div>
+        <div><span>DAMAGE TAKEN</span><span id="breakdownDamage">0%</span></div>
+        <div><span>KILLS</span><span id="breakdownKills">0/0</span></div>
       </div>
       <div class="debriefIntel" id="debriefIntel">
         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
@@ -1593,6 +1801,7 @@
     import * as THREE from "three";
 
     const STATE_MISSION_SELECT = "missionSelect";
+    const STATE_BRIEFING = "briefing";
     const STATE_READY = "ready";
     const STATE_PLAYING = "playing";
     const STATE_COMPLETE = "missionComplete";
@@ -2411,7 +2620,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         sequence: ["air1"],
         parTime: 95,
         hasOutro: false,
-        map: { x: 0.27, y: 0.4 }
+        map: { x: 0.27, y: 0.4 },
+        briefing: "哨戒空域レーダーに国籍不明機3。応答なし——交戦規定アルファを許可する。\n全機撃墜し、制空権を確保せよ。"
       },
       {
         key: "m02",
@@ -2421,7 +2631,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         sequence: ["air1", "air2plain"],
         parTime: 210,
         hasOutro: false,
-        map: { x: 0.5, y: 0.27 }
+        map: { x: 0.5, y: 0.27 },
+        briefing: "敵は二正面攻勢を仕掛けてきた。第1波を叩いた直後、増援の第2波が到達する。\n補給は無い。弾を数えながら、連続迎撃せよ。"
       },
       {
         key: "m03",
@@ -2431,7 +2642,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         sequence: ["naval"],
         parTime: 200,
         hasOutro: false,
-        map: { x: 0.71, y: 0.56 }
+        map: { x: 0.71, y: 0.56 },
+        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。"
       },
       {
         key: "m-glacier",
@@ -2452,7 +2664,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           { id: 23, type: "samSite", x: -287, z: -2000, heading: -1.57 },
           { id: 24, type: "radarSite", x: 295, z: -2600, heading: 1.57 }
         ],
-        brief: [
+        briefing: "氷河回廊の尾根に敵レーダー網が敷かれ、輸送路が塞がれている。\n谷底を低空で駆け抜ければSAMの射線は切れる。\n壁のレーダーサイトとSAMを黙らせ、上空の哨戒機も排除せよ。",
+        // Separate from `briefing`: these fire over the radio once the player is
+        // already airborne, so they stay a compressed re-statement of the board.
+        introRadio: [
           { speaker: "command", text: "氷河回廊に敵レーダー網。低空で懐に潜り込み、SAMごと黙らせろ。", id: "glacier-brief" },
           { speaker: "wingman", text: "壁の上にSAMサイトだ！ 谷底を這えば射線が切れるぞ！", id: "glacier-brief-wing" }
         ]
@@ -2489,7 +2704,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           { x: 930, z: -1278 },
           { x: 1012, z: -1325 }
         ],
-        brief: [
+        briefing: "夜間強襲作戦。月明かりを背に敵前線基地へ侵入する。\n対空砲火に注意。燃料庫に火が入れば誘爆が基地を飲み込むはずだ。\n地上目標をすべて破壊し、夜間CAPも撃墜せよ。",
+        introRadio: [
           { speaker: "command", text: "夜間強襲だ。月明かりを背に、敵前線基地を機能停止させろ。", id: "night-brief" },
           { speaker: "wingman", text: "対空砲火に気をつけろ。燃料庫に火が入れば連鎖するはずだ！", id: "night-brief-wing" }
         ]
@@ -2502,7 +2718,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         sequence: ["air2"],
         parTime: 135,
         hasOutro: false,
-        map: { x: 0.42, y: 0.65 }
+        map: { x: 0.42, y: 0.65 },
+        briefing: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入した。\n奴は今まで12機を墜としている。次を君にするな。\n編隊ごと撃墜せよ。"
       },
       {
         key: "m05",
@@ -2512,14 +2729,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         sequence: ["air1", "air2", "naval"],
         parTime: 430,
         hasOutro: true,
-        map: { x: 0.8, y: 0.34 }
+        map: { x: 0.8, y: 0.34 },
+        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n途中、補給ラインでミサイルを再装填できる。\nこの空と海を取り戻せ。幸運を祈る。"
       }
     ].map((mission) => Object.freeze({
       ...mission,
       totalTargets: mission.sequence.length * 3 + (mission.groundUnits ? mission.groundUnits.length : 0),
       groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
       floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
-      brief: mission.brief ? Object.freeze(mission.brief.map(Object.freeze)) : null,
+      introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
       map: Object.freeze(mission.map)
     })));
 
@@ -2705,6 +2923,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missionTimeList: document.getElementById("missionTimeList"),
       missionBlurb: document.getElementById("missionBlurb"),
       missionConfirmBtn: document.getElementById("missionConfirmBtn"),
+      briefingScreen: document.getElementById("briefingScreen"),
+      briefingNum: document.getElementById("briefingNum"),
+      briefingTitle: document.getElementById("briefingTitle"),
+      briefingMap: document.getElementById("briefingMap"),
+      briefingArea: document.getElementById("briefingArea"),
+      briefingObjectives: document.getElementById("briefingObjectives"),
+      briefingPar: document.getElementById("briefingPar"),
+      briefingText: document.getElementById("briefingText"),
+      briefingHint: document.getElementById("briefingHint"),
+      briefingNextBtn: document.getElementById("briefingNextBtn"),
       changeMissionBtn: document.getElementById("changeMissionBtn"),
       aircraftList: document.getElementById("aircraftList"),
       specRole: document.getElementById("specRole"),
@@ -2760,7 +2988,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       finalHighscore: document.getElementById("finalHighscore"),
       finalRank: document.getElementById("finalRank"),
       resultMissionTag: document.getElementById("resultMissionTag"),
-      debriefIntelLines: document.getElementById("debriefIntelLines")
+      debriefIntelLines: document.getElementById("debriefIntelLines"),
+      breakdownTime: document.getElementById("breakdownTime"),
+      breakdownDamage: document.getElementById("breakdownDamage"),
+      breakdownKills: document.getElementById("breakdownKills"),
+      bigBanner: document.getElementById("bigBanner"),
+      bigBannerText: document.getElementById("bigBannerText"),
+      bigBannerSub: document.getElementById("bigBannerSub")
     };
 
     const scene = new THREE.Scene();
@@ -2869,6 +3103,29 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     let waveClearTimer = -1;
     let missileSide = 1;
     let bannerTimer = 0;
+    let bigBannerTimer = 0;
+    // A small banner asked for while the big band is up waits its turn instead
+    // of popping in the same frame (MISSION START vs WAVE 1 at mission start).
+    let pendingBanner = null;
+    let pendingBannerTimer = 0;
+    const SMALL_BANNER_DELAY = 0.8;
+    // Success is announced on the big band first and only becomes a state change
+    // when this timer runs out, so the player keeps flying under ACCOMPLISHED.
+    const OUTCOME_PENDING_TIME = 2.8;
+    const outcomePending = { active: false, timer: 0 };
+    const BRIEFING_ZOOM_TIME = 0.9;
+    const BRIEFING_ZOOM_START = 1;
+    const BRIEFING_ZOOM_END = 2.5;
+    const BRIEFING_CHAR_INTERVAL = 0.03;
+    const briefing = {
+      elapsed: 0,
+      zoom: BRIEFING_ZOOM_START,
+      text: "",
+      revealed: 0,
+      charTimer: 0,
+      complete: false,
+      markers: []
+    };
     let damageFlash = 0;
     let cameraShake = 0;
     let radarCssSize = 180;
@@ -2913,6 +3170,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     const radioSpeakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
     let radioLineReadyAt = {};
     let radioGapUntil = 0;
+    // The radio runs on its own clock rather than missionElapsed: the mission
+    // timer stops the moment the sortie is decided (and never runs in menus),
+    // which would otherwise wedge every gap/cooldown gate shut and swallow the
+    // debrief-side lines.
+    let radioClock = 0;
 
     const radioState = {
       active: false,
@@ -3039,6 +3301,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       killCam: { active: false, timer: 0, enemyId: null },
       outro: { active: false, elapsed: 0, retreatBannerFired: false },
       debrief: [],
+      briefing: { active: false, complete: false, revealed: 0, totalChars: 0, zoom: 1, markers: 0 },
+      bigBanner: { visible: false, text: "", subtitle: "", tone: "", timer: 0 },
+      banner: { visible: false, text: "", timer: 0, pending: null },
+      outcomePending: { active: false, timer: 0 },
       aircraftCatalog: [...AIRCRAFT_ORDER],
       selectedAircraft: selectedAircraftId,
       loadout: {
@@ -3327,6 +3593,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ensureAudio();
       confirmMissionSelection();
     });
+    ui.briefingNextBtn.addEventListener("click", () => {
+      ensureAudio();
+      advanceBriefing();
+    });
     ui.changeMissionBtn.addEventListener("click", () => {
       ensureAudio();
       setState(STATE_MISSION_SELECT);
@@ -3386,7 +3656,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
 
       if (event.code === "Escape" && !event.repeat) {
-        if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
+        if (gameState === STATE_BRIEFING || gameState === STATE_READY ||
+            gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
           setState(STATE_MISSION_SELECT);
         }
         return;
@@ -3395,6 +3666,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (event.code === "Enter" && !event.repeat) {
         if (gameState === STATE_MISSION_SELECT) {
           confirmMissionSelection();
+          return;
+        }
+        if (gameState === STATE_BRIEFING) {
+          advanceBriefing();
           return;
         }
         if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
@@ -3491,7 +3766,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateHoldInputs();
 
       if (gameState === STATE_PLAYING) {
-        missionElapsed += dt;
+        // The clock stops the instant the sortie is decided, so the debrief and
+        // the rank see the time the player actually flew - not the extra 2.8s
+        // spent under the ACCOMPLISHED band.
+        if (!outcomePending.active) missionElapsed += dt;
         playerHitCooldown = Math.max(0, playerHitCooldown - dt);
         updatePlayer(dt);
         if (gameState === STATE_PLAYING) updateEnemies(dt);
@@ -3502,10 +3780,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           updateEnemyMissiles(dt);
           updateMission(dt);
         }
+        // rawDt, not dt: the band above it fades on wall-clock time, so a
+        // kill-cam slowdown at the buzzer must not desync the two.
+        if (gameState === STATE_PLAYING) updateOutcomePending(rawDt);
       } else {
         animateIdle(dt);
         if (gameState === STATE_MISSION_SELECT) {
           renderMissionScreenFrame(performance.now() * 0.001);
+        } else if (gameState === STATE_BRIEFING) {
+          updateBriefing(rawDt);
         }
       }
 
@@ -3660,6 +3943,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (modePressed && !gamepadInput.previousModeToggle) toggleControlMode();
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) {
         if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
+        else if (gameState === STATE_BRIEFING) advanceBriefing();
         else startMission();
       }
       if (cameraPressed && !gamepadInput.previousCamera) {
@@ -3674,6 +3958,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (gameState === STATE_MISSION_SELECT) {
         if (dpadUpPressed && !gamepadInput.previousCycleUp) moveMissionCursor(-1);
         if (dpadDownPressed && !gamepadInput.previousCycleDown) moveMissionCursor(1);
+      } else if (gameState === STATE_BRIEFING) {
+        // Briefing has nothing to cycle: D-pad and stick are deliberately inert
+        // here, or they would drop the player straight into the hangar.
       } else if (gameState !== STATE_PLAYING) {
         if ((dpadLeftPressed && !gamepadInput.previousCycleLeft) ||
             (dpadUpPressed && !gamepadInput.previousCycleUp)) {
@@ -3700,7 +3987,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const menuStickStep = menuStickY < 0 ? -1 : 1;
         if (gameState === STATE_MISSION_SELECT) {
           moveMissionCursor(menuStickStep);
-        } else if (gameState !== STATE_PLAYING) {
+        } else if (gameState !== STATE_PLAYING && gameState !== STATE_BRIEFING) {
           if (gameState !== STATE_READY) setState(STATE_READY);
           cycleAircraft(menuStickStep);
         }
@@ -4252,7 +4539,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       audioSystem.lockTimer = 0;
       audioSystem.threatTimer = 0;
       audioSystem.lastLocked = false;
+      outcomePending.active = false;
+      outcomePending.timer = 0;
+      pendingBanner = null;
+      pendingBannerTimer = 0;
+      bannerTimer = 0;
+      ui.missionBanner.classList.remove("visible");
+      hideBigBanner();
       setState(STATE_PLAYING);
+      // Ahead of the wave spawn so its own banner sees the band already up and
+      // queues itself behind it.
+      showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
       spawnMissionWave(MISSIONS[currentMissionIndex].sequence[0]);
       spawnMissionGround(MISSIONS[currentMissionIndex]);
       snapCamera();
@@ -4289,13 +4586,20 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       document.body.dataset.gameState = nextState;
       ui.state.textContent = nextState;
       ui.missionScreen.classList.toggle("hidden", nextState !== STATE_MISSION_SELECT);
+      ui.briefingScreen.classList.toggle("hidden", nextState !== STATE_BRIEFING);
       ui.startScreen.classList.toggle("hidden", nextState !== STATE_READY);
       ui.resultScreen.classList.toggle("hidden", nextState !== STATE_COMPLETE && nextState !== STATE_GAMEOVER);
 
       if (nextState === STATE_MISSION_SELECT) {
+        hideBigBanner();
         missionCursor = currentMissionIndex;
         updateMissionScreen();
+      } else if (nextState === STATE_BRIEFING) {
+        hideBigBanner();
+        startBriefing();
+        queueMicrotask(() => ui.briefingNextBtn.focus({ preventScroll: true }));
       } else if (nextState === STATE_READY) {
+        hideBigBanner();
         playerModel.group.visible = true;
         updateHangarScreen();
         queueMicrotask(() => ui.startBtn.focus({ preventScroll: true }));
@@ -4312,7 +4616,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ui.finalScore.textContent = String(score);
         ui.finalKills.textContent = String(kills);
         ui.finalHighscore.textContent = String(highscore);
-        ui.finalRank.textContent = success && lastMissionRank ? lastMissionRank : "—";
+        const rank = success && lastMissionRank ? lastMissionRank : null;
+        ui.finalRank.textContent = rank || "—";
+        // className first, then a forced reflow: the stamp is a CSS animation,
+        // and without the reflow a repeat of the same rank would not replay it.
+        ui.finalRank.className = rank ? `rank${rank}` : "rankNone";
+        void ui.finalRank.offsetWidth;
+        if (rank) ui.finalRank.classList.add("stamp");
+        const mission = MISSIONS[currentMissionIndex];
+        const damagePercent = Math.min(100, Math.round((damageTaken / PLAYER_MAX_HEALTH) * 100));
+        ui.breakdownTime.textContent =
+          `${formatMissionTime(missionElapsed)} (PAR ${formatParTime(mission.parTime)})`;
+        ui.breakdownDamage.textContent = `${damagePercent}%`;
+        ui.breakdownKills.textContent = `${kills}/${mission.totalTargets}`;
         ui.resultMissionTag.textContent =
           `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
         const debriefLines = buildDebriefIntelLines(success);
@@ -5200,8 +5516,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (mission.floodlights) {
         for (const light of mission.floodlights) spawnFloodlight(light.x, light.z);
       }
-      if (mission.brief) {
-        for (const line of mission.brief) radioSay(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+      if (mission.introRadio) {
+        for (const line of mission.introRadio) radioSay(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
       }
     }
 
@@ -5996,6 +6312,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function updateMission(dt) {
       if (gameState !== STATE_PLAYING) return;
+      // The sortie is already decided during the ACCOMPLISHED hold - re-running
+      // the wave logic here would re-fire its banner and its completion call.
+      if (outcomePending.active) return;
       if (outro.active) {
         updateOutro(dt);
         return;
@@ -6069,6 +6388,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function completeMission(success) {
       if (gameState !== STATE_PLAYING) return;
+      // A crash during the ACCOMPLISHED hold still counts as a loss: nothing has
+      // been scored yet, so the pending success is simply dropped and the
+      // gameover path below takes over.
+      if (outcomePending.active) {
+        if (success) return;
+        outcomePending.active = false;
+        outcomePending.timer = 0;
+      }
       keys.clear();
       resetLock();
       cameraFocusActive = false;
@@ -6077,33 +6404,70 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       nearestMissileThreat = null;
       for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) removeEnemyMissile(i);
       ui.boostIndicator.classList.remove("active");
-      if (score > highscore) {
-        highscore = score;
-        saveHighscore();
-      }
+
       if (success) {
-        lastMissionRank = computeMissionRank();
-        recordMissionResult(lastMissionRank);
-      } else {
-        lastMissionRank = null;
-      }
-      resetRadio();
-      if (success) {
+        // Stay in `playing` so the win reads over the live sky - the debrief is
+        // only pushed when the band has had its time (see updateOutcomePending).
+        outcomePending.active = true;
+        outcomePending.timer = OUTCOME_PENDING_TIME;
+        resetRadio();
         radioSay(
           "command",
           "空域クリア。敵全機の撤退を確認。帰投せよ、{nickname}。",
           RADIO_PRIORITY.CRITICAL,
           "mission-outcome"
         );
-      } else {
-        triggerRadioLine(
+        showBigBanner(
+          "MISSION ACCOMPLISHED",
+          MISSIONS[currentMissionIndex].title,
+          OUTCOME_PENDING_TIME,
+          "success"
+        );
+        playTone(523.25, 0.55, 0.1, "triangle");
+        playTone(659.25, 0.55, 0.09, "triangle", 0.13);
+        playTone(783.99, 0.85, 0.11, "triangle", 0.26);
+        return;
+      }
+
+      lastMissionRank = null;
+      if (score > highscore) {
+        highscore = score;
+        saveHighscore();
+      }
+      resetRadio();
+      triggerRadioLine(
+        "command",
+        "応答が途絶えた…聞こえていたら帰投せよ。",
+        RADIO_PRIORITY.CRITICAL,
+        "mission-outcome"
+      );
+      setState(STATE_GAMEOVER);
+      showBigBanner("MISSION FAILED", MISSIONS[currentMissionIndex].title, 1.8, "danger");
+      playTone(196, 0.7, 0.1, "sawtooth");
+      playTone(146.83, 0.95, 0.09, "sawtooth", 0.16);
+    }
+
+    function updateOutcomePending(dt) {
+      if (!outcomePending.active) return;
+      outcomePending.timer -= dt;
+      if (outcomePending.timer > 0) return;
+      outcomePending.active = false;
+      outcomePending.timer = 0;
+      if (score > highscore) {
+        highscore = score;
+        saveHighscore();
+      }
+      lastMissionRank = computeMissionRank();
+      recordMissionResult(lastMissionRank);
+      setState(STATE_COMPLETE);
+      if (lastMissionRank === "S") {
+        radioSay(
           "command",
-          "応答が途絶えた…聞こえていたら帰投せよ。",
-          RADIO_PRIORITY.CRITICAL,
-          "mission-outcome"
+          "完璧な仕事だ。司令部が君の名を覚えたぞ。",
+          RADIO_PRIORITY.NORMAL,
+          "rank-s"
         );
       }
-      setState(success ? STATE_COMPLETE : STATE_GAMEOVER);
     }
 
     // Hangar beauty cam: slow orbit around the parked player aircraft while the
@@ -6317,6 +6681,28 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (bannerTimer <= 0) ui.missionBanner.classList.remove("visible");
       }
 
+      if (bigBannerTimer > 0) {
+        bigBannerTimer -= dt;
+        if (bigBannerTimer <= 0) {
+          ui.bigBanner.classList.remove("visible");
+          ui.bigBanner.classList.add("fading");
+        }
+      }
+
+      if (pendingBanner) {
+        pendingBannerTimer -= dt;
+        if (pendingBannerTimer <= 0) {
+          const queued = pendingBanner;
+          pendingBanner = null;
+          pendingBannerTimer = 0;
+          ui.missionBanner.textContent = queued.text;
+          ui.missionBanner.className = queued.tone;
+          void ui.missionBanner.offsetWidth;
+          ui.missionBanner.classList.add("visible");
+          bannerTimer = queued.duration;
+        }
+      }
+
       if (gameState === STATE_PLAYING && health > 0) {
         updateAircraftFlash(playerModel, damageFlash > 0.45 ? 0.06 : 0);
       } else if (health > 0) {
@@ -6330,6 +6716,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function showBanner(text, duration, tone = "") {
+      // The big band owns the screen while it wipes in, so a small banner asked
+      // for underneath it is queued rather than dropped - this is what keeps
+      // WAVE 1 off MISSION START without spawnMissionWave knowing anything.
+      if (bigBannerTimer > 0) {
+        pendingBanner = { text, duration, tone };
+        pendingBannerTimer = SMALL_BANNER_DELAY;
+        return;
+      }
+      pendingBanner = null;
+      pendingBannerTimer = 0;
       ui.missionBanner.textContent = text;
       ui.missionBanner.className = tone;
       void ui.missionBanner.offsetWidth;
@@ -6337,11 +6733,27 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       bannerTimer = duration;
     }
 
+    function showBigBanner(text, subtitle, duration, tone = "") {
+      ui.bigBannerText.textContent = text;
+      ui.bigBannerSub.textContent = subtitle || "";
+      // className resets visible/fading/tone in one go; the reflow that follows
+      // makes the browser replay the wipe from the collapsed state.
+      ui.bigBanner.className = tone;
+      void ui.bigBanner.offsetWidth;
+      ui.bigBanner.classList.add("visible");
+      bigBannerTimer = duration;
+    }
+
+    function hideBigBanner() {
+      bigBannerTimer = 0;
+      ui.bigBanner.className = "";
+    }
+
     function triggerRadioLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null) {
       if (!RADIO_SPEAKERS[speakerId] || typeof text !== "string" || text.length === 0) return false;
       const resolvedPriority = Number.isFinite(priority) ? Math.trunc(priority) : RADIO_PRIORITY.NORMAL;
       const resolvedId = id ? String(id) : `${speakerId}:${text.slice(0, 24)}`;
-      if ((radioLineReadyAt[resolvedId] || 0) > missionElapsed) return false;
+      if ((radioLineReadyAt[resolvedId] || 0) > radioClock) return false;
       if (radioQueue.some((request) => request.id === resolvedId)) return false;
 
       if (radioQueue.length >= RADIO_QUEUE_MAX) {
@@ -6358,13 +6770,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         speakerId,
         text,
         priority: resolvedPriority,
-        queuedAt: missionElapsed
+        queuedAt: radioClock
       });
       radioQueue.sort((a, b) => b.priority - a.priority || a.queuedAt - b.queuedAt);
       return true;
     }
 
     function updateRadio(dt) {
+      radioClock += dt;
       if (radioState.active) {
         if (radioState.revealedChars < radioState.fullText.length) {
           radioState.charTimer -= dt;
@@ -6376,7 +6789,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         } else {
           radioState.holdTimer -= dt;
           if (radioState.holdTimer <= 0) {
-            radioGapUntil = missionElapsed + RADIO_MIN_GAP;
+            radioGapUntil = radioClock + RADIO_MIN_GAP;
             radioState.active = false;
             radioState.speakerId = null;
             radioState.lineId = null;
@@ -6391,17 +6804,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return;
       }
 
-      if (missionElapsed < radioGapUntil || radioQueue.length === 0) return;
+      if (radioClock < radioGapUntil || radioQueue.length === 0) return;
 
       const idx = radioQueue.findIndex(
-        (request) => (radioSpeakerReadyAt[request.speakerId] || 0) <= missionElapsed
+        (request) => (radioSpeakerReadyAt[request.speakerId] || 0) <= radioClock
       );
       if (idx === -1) return;
 
       const request = radioQueue.splice(idx, 1)[0];
       const speaker = RADIO_SPEAKERS[request.speakerId];
-      radioSpeakerReadyAt[request.speakerId] = missionElapsed + RADIO_SPEAKER_COOLDOWN;
-      radioLineReadyAt[request.id] = missionElapsed + RADIO_LINE_COOLDOWN;
+      radioSpeakerReadyAt[request.speakerId] = radioClock + RADIO_SPEAKER_COOLDOWN;
+      radioLineReadyAt[request.id] = radioClock + RADIO_LINE_COOLDOWN;
 
       radioState.active = true;
       radioState.speakerId = request.speakerId;
@@ -6437,6 +6850,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       radioSpeakerReadyAt.enemy = 0;
       radioLineReadyAt = {};
       radioGapUntil = 0;
+      radioClock = 0;
       ui.radioSpeaker.textContent = "";
       ui.radioText.textContent = "";
       ui.radioPanel.classList.remove("visible");
@@ -6800,6 +7214,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return `${m}'${String(s).padStart(2, "0")}"${String(cs).padStart(2, "0")}`;
     }
 
+    // Par is authored in whole seconds, so it drops the centiseconds field.
+    function formatParTime(seconds) {
+      const total = Math.max(0, seconds);
+      return `${Math.floor(total / 60)}'${String(Math.floor(total % 60)).padStart(2, "0")}"`;
+    }
+
     function updateHud() {
       ui.state.textContent = gameState;
       ui.score.textContent = String(Math.round(score));
@@ -6968,8 +7388,30 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         waves: MISSIONS[currentMissionIndex].sequence.length,
         rank: lastMissionRank,
         cursor: missionCursor,
+        elapsed: missionElapsed,
+        parTime: MISSIONS[currentMissionIndex].parTime,
+        totalTargets: MISSIONS[currentMissionIndex].totalTargets,
         unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index))
       };
+      hook.briefing.active = gameState === STATE_BRIEFING;
+      hook.briefing.complete = briefing.complete;
+      hook.briefing.revealed = briefing.revealed;
+      hook.briefing.totalChars = briefing.text.length;
+      hook.briefing.zoom = briefing.zoom;
+      hook.briefing.markers = briefing.markers.length;
+      hook.bigBanner.visible = ui.bigBanner.classList.contains("visible");
+      hook.bigBanner.text = ui.bigBannerText.textContent;
+      hook.bigBanner.subtitle = ui.bigBannerSub.textContent;
+      hook.bigBanner.tone = ui.bigBanner.classList.contains("success")
+        ? "success"
+        : ui.bigBanner.classList.contains("danger") ? "danger" : "";
+      hook.bigBanner.timer = bigBannerTimer;
+      hook.banner.visible = ui.missionBanner.classList.contains("visible");
+      hook.banner.text = ui.missionBanner.textContent;
+      hook.banner.timer = bannerTimer;
+      hook.banner.pending = pendingBanner ? pendingBanner.text : null;
+      hook.outcomePending.active = outcomePending.active;
+      hook.outcomePending.timer = outcomePending.timer;
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
@@ -8585,7 +9027,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     // One drawing routine for both the big map and the thumbnail; `view` zooms
     // in on a mission so the thumb can never drift out of sync with the map.
-    function drawTacticalMap(canvas, view, time) {
+    function drawTacticalMap(canvas, view, time, markers = null) {
       const sized = sizeMenuCanvas(canvas);
       if (!sized) return;
       const { ctx, w, h, dpr } = sized;
@@ -8623,6 +9065,46 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+      }
+
+      // Objective overlay. Sizes divide by the zoom so a marker keeps the same
+      // on-screen weight however far the briefing camera has pushed in.
+      if (markers && markers.length > 0) {
+        const s = 1 / (view ? view.zoom : 1);
+        for (const marker of markers) {
+          const x = marker.x * w;
+          const y = marker.y * h;
+          ctx.globalAlpha = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time * 2.4 + marker.phase));
+          ctx.lineWidth = 1.7 * s;
+          if (marker.kind === "air") {
+            ctx.strokeStyle = "#ff6b6b";
+            ctx.beginPath();
+            ctx.moveTo(x - 8 * s, y + 5.5 * s);
+            ctx.lineTo(x, y - 6 * s);
+            ctx.lineTo(x + 8 * s, y + 5.5 * s);
+            ctx.stroke();
+          } else if (marker.kind === "naval") {
+            ctx.strokeStyle = "#ffb347";
+            ctx.strokeRect(x - 7.5 * s, y - 3 * s, 15 * s, 6 * s);
+            ctx.beginPath();
+            ctx.moveTo(x - 7.5 * s, y);
+            ctx.lineTo(x + 7.5 * s, y);
+            ctx.stroke();
+          } else {
+            ctx.strokeStyle = "#ffc06a";
+            ctx.fillStyle = "rgba(255, 179, 71, 0.25)";
+            ctx.beginPath();
+            ctx.moveTo(x, y - 6.5 * s);
+            ctx.lineTo(x + 6.5 * s, y);
+            ctx.lineTo(x, y + 6.5 * s);
+            ctx.lineTo(x - 6.5 * s, y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
       }
 
       ctx.font = '700 10px "Courier New", monospace';
@@ -8739,6 +9221,128 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return;
       }
       currentMissionIndex = missionCursor;
+      playTone(980, 0.06, 0.05, "square");
+      setState(STATE_BRIEFING);
+    }
+
+    // Deterministic scatter: the same mission always gets the same target
+    // layout, so the briefing map matches itself from one visit to the next.
+    function briefingRandom(seed) {
+      let state = seed >>> 0;
+      return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let t = state;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Objective markers are derived from the mission itself - three contacts per
+    // air/naval wave entry plus one per ground installation - so a mission can
+    // never advertise a target list that its spawner does not deliver.
+    function buildBriefingMarkers(mission) {
+      let seed = 0;
+      for (let i = 0; i < mission.key.length; i += 1) seed = (seed * 31 + mission.key.charCodeAt(i)) >>> 0;
+      const random = briefingRandom(seed + 1);
+      const markers = [];
+      const place = (kind, ring) => {
+        const angle = random() * Math.PI * 2;
+        const radius = ring * (0.62 + random() * 0.55);
+        markers.push({
+          kind,
+          x: mission.map.x + Math.cos(angle) * radius,
+          y: mission.map.y + Math.sin(angle) * radius * 0.7,
+          phase: random() * Math.PI * 2
+        });
+      };
+      mission.sequence.forEach((entry) => {
+        for (let i = 0; i < 3; i += 1) place(entry === "naval" ? "naval" : "air", 0.055);
+      });
+      if (mission.groundUnits) {
+        // Tighter ring than the air/naval contacts - a base is one footprint -
+        // but still clear of the mission dot's own halo and label.
+        for (let i = 0; i < mission.groundUnits.length; i += 1) place("ground", 0.04);
+      }
+      return markers;
+    }
+
+    function startBriefing() {
+      const mission = MISSIONS[currentMissionIndex];
+      briefing.elapsed = 0;
+      briefing.zoom = BRIEFING_ZOOM_START;
+      briefing.text = mission.briefing || mission.jp;
+      briefing.revealed = 0;
+      briefing.charTimer = BRIEFING_CHAR_INTERVAL;
+      briefing.complete = false;
+      briefing.markers = buildBriefingMarkers(mission);
+
+      const airWaves = mission.sequence.filter((entry) => entry !== "naval").length;
+      const navalWaves = mission.sequence.length - airWaves;
+      const groundCount = mission.groundUnits ? mission.groundUnits.length : 0;
+      const objectives = [];
+      if (airWaves > 0) objectives.push(["objAir", "◤", "AIR TARGETS", String(airWaves * 3)]);
+      if (navalWaves > 0) objectives.push(["objNaval", "▭", "NAVAL TARGETS", String(navalWaves * 3)]);
+      if (groundCount > 0) objectives.push(["objGround", "◆", "GROUND TARGETS", String(groundCount)]);
+      objectives.push(["objTotal", "·", "TOTAL", String(mission.totalTargets)]);
+      ui.briefingObjectives.replaceChildren(...objectives.map(([cls, glyph, label, value]) => {
+        const row = document.createElement("li");
+        row.className = cls;
+        row.innerHTML = `<span><i>${glyph}</i>${label}</span><span>${value}</span>`;
+        return row;
+      }));
+
+      ui.briefingNum.textContent = `MISSION ${String(currentMissionIndex + 1).padStart(2, "0")}`;
+      ui.briefingTitle.textContent = mission.title;
+      ui.briefingArea.textContent = WORLD_PRESETS[mission.world]?.label || "UNKNOWN";
+      ui.briefingPar.textContent = formatParTime(mission.parTime);
+      ui.briefingText.textContent = "";
+      ui.briefingText.classList.remove("complete");
+      ui.briefingHint.classList.remove("ready");
+    }
+
+    function updateBriefing(dt) {
+      briefing.elapsed += dt;
+      const mission = MISSIONS[currentMissionIndex];
+      const t = Math.min(1, briefing.elapsed / BRIEFING_ZOOM_TIME);
+      const eased = 1 - Math.pow(1 - t, 3);
+      briefing.zoom = BRIEFING_ZOOM_START + (BRIEFING_ZOOM_END - BRIEFING_ZOOM_START) * eased;
+      drawTacticalMap(
+        ui.briefingMap,
+        { x: mission.map.x, y: mission.map.y, zoom: briefing.zoom },
+        performance.now() * 0.001,
+        briefing.markers
+      );
+
+      if (briefing.complete) return;
+      briefing.charTimer -= dt;
+      while (briefing.charTimer <= 0 && briefing.revealed < briefing.text.length) {
+        briefing.revealed += 1;
+        briefing.charTimer += BRIEFING_CHAR_INTERVAL;
+        // Carriage tick every eighth glyph - a teleprinter, not a voice.
+        if (briefing.revealed % 8 === 0) playTone(1180, 0.015, 0.02);
+      }
+      ui.briefingText.textContent = briefing.text.slice(0, briefing.revealed);
+      if (briefing.revealed >= briefing.text.length) finishBriefingText();
+    }
+
+    function finishBriefingText() {
+      briefing.revealed = briefing.text.length;
+      briefing.complete = true;
+      ui.briefingText.textContent = briefing.text;
+      ui.briefingText.classList.add("complete");
+      ui.briefingHint.classList.add("ready");
+    }
+
+    // ENTER/O is "show me the rest" while the text is still printing and only
+    // becomes "launch" once it has all landed - the AC briefing contract.
+    function advanceBriefing() {
+      if (gameState !== STATE_BRIEFING) return;
+      if (!briefing.complete) {
+        finishBriefingText();
+        playTone(760, 0.04, 0.035, "square");
+        return;
+      }
       playTone(980, 0.06, 0.05, "square");
       setState(STATE_READY);
     }
