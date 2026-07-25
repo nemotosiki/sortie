@@ -6066,8 +6066,23 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       // constant = quicker), so a fast-but-sluggish jet doesn't read as best.
       const speedScore = (spec) => spec.boostSpeed - spec.boostResponse * 320;
       const speeds = specs.map(speedScore);
-      const turns = specs.map((spec) => spec.turnRateDeg);
       const armors = specs.map((spec) => spec.maxHealth);
+      // MOBILITY: how quickly it can point somewhere else, across all four axes.
+      // Each axis is divided by the fleet average first, otherwise roll (53-96
+      // deg/s) would drown out yaw (8-14 deg/s) purely because its numbers are
+      // bigger. Sustained turn and pitch carry the most weight in a dogfight;
+      // yaw is the smallest contributor because it only trims the aim.
+      const axisMean = (key) => specs.reduce((sum, spec) => sum + spec[key], 0) / specs.length;
+      const meanTurn = axisMean("turnRateDeg");
+      const meanPitch = axisMean("pitchRateDeg");
+      const meanRoll = axisMean("rollRateDeg");
+      const meanYaw = axisMean("yawRateDeg");
+      const mobilityScore = (spec) =>
+        (spec.turnRateDeg / meanTurn) * 0.35 +
+        (spec.pitchRateDeg / meanPitch) * 0.3 +
+        (spec.rollRateDeg / meanRoll) * 0.25 +
+        (spec.yawRateDeg / meanYaw) * 0.1;
+      const mobilities = specs.map(mobilityScore);
       // STABILITY: heavy roll damping, a low stall entry speed and a small
       // control loss when stalling all mean "stays where you point it".
       const stabilityScore = (spec) =>
@@ -6086,7 +6101,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         card.setAttribute("role", "radio");
         card.setAttribute("aria-checked", String(spec.id === selectedAircraftId));
         const speedPercent = statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100;
-        const turnPercent = statPercent(spec.turnRateDeg, Math.min(...turns), Math.max(...turns)) / 100;
+        const turnPercent =
+          statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100;
         const armorPercent = statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100;
         const stabilityPercent =
           statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100;
