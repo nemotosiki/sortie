@@ -1667,6 +1667,10 @@
     const MISSION_GRACE_TIME = 3.0;
     const PLAYER_HIT_COOLDOWN = 0.55;
     const GAMEPAD_DEADZONE = 0.18;
+    // Menu cursor via left stick: edge trigger with hysteresis, because a
+    // drifting stick would otherwise free-run the cursor.
+    const MENU_STICK_FIRE = 0.55;
+    const MENU_STICK_RELEASE = 0.3;
     const CAMERA_MODES = ["chase", "close", "cockpit"];
     const CAMERA_PROFILES = Object.freeze({
       chase: Object.freeze({ back: 38, height: 13.5, look: 76, lookHeight: 3.2, rollFollow: 0.38 }),
@@ -2569,6 +2573,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       previousCycleRight: false,
       previousCycleUp: false,
       previousCycleDown: false,
+      menuStickArmed: true,
       targetPressedAt: 0,
       targetLong: false,
       targetFocus: false,
@@ -3147,6 +3152,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.previousCycleRight = false;
       gamepadInput.previousCycleUp = false;
       gamepadInput.previousCycleDown = false;
+      gamepadInput.menuStickArmed = true;
       gamepadInput.targetPressedAt = 0;
       gamepadInput.targetLong = false;
       gamepadInput.targetFocus = false;
@@ -3246,6 +3252,25 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             (dpadDownPressed && !gamepadInput.previousCycleDown)) {
           if (gameState !== STATE_READY) setState(STATE_READY);
           cycleAircraft(1);
+        }
+      }
+
+      // Same menu moves on the left stick: players reach for the stick first,
+      // and the D-pad alone left them thinking the pad was dead. One step per
+      // flick, never while flying - there the stick belongs to the aircraft.
+      const menuStickY = Number(selected.axes?.[1]) || 0;
+      if (Math.abs(menuStickY) < MENU_STICK_RELEASE) {
+        gamepadInput.menuStickArmed = true;
+      } else if (gamepadInput.menuStickArmed && Math.abs(menuStickY) > MENU_STICK_FIRE) {
+        // Disarm even while playing, so a stick still held when a mission ends
+        // does not instantly jump the result screen.
+        gamepadInput.menuStickArmed = false;
+        const menuStickStep = menuStickY < 0 ? -1 : 1;
+        if (gameState === STATE_MISSION_SELECT) {
+          moveMissionCursor(menuStickStep);
+        } else if (gameState !== STATE_PLAYING) {
+          if (gameState !== STATE_READY) setState(STATE_READY);
+          cycleAircraft(menuStickStep);
         }
       }
 
