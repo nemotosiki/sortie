@@ -1493,17 +1493,16 @@
     });
 
     const ACE_CALLSIGN = "IRONBACK";
+    // The ace flies wave 2 slot 0, which is an F-22 — it keeps that airframe's HP,
+    // speed and turn rate untouched so it is exactly as strong as a player F-22.
+    // Only its identity, markings and evasion style are overridden.
     const ACE_SPEC_OVERRIDES = Object.freeze({
       label: ACE_CALLSIGN,
       role: "Squadron Leader",
       behavior: "evasive",
-      hp: 140,
-      maxSpeed: 225,
-      pursuitBonus: 16,
-      pursuitTurn: THREE.MathUtils.degToRad(58),
-      evadeLateral: 40,
-      evadeVertical: 18,
-      evadeFrequency: 1.1,
+      evadeLateral: 58,
+      evadeVertical: 24,
+      evadeFrequency: 1.6,
       radarColor: "#ffe066",
       tracerColor: 0xffd35f,
       theme: Object.freeze({
@@ -1513,7 +1512,7 @@
         canopy: 0xffe9a8,
         exhaust: 0xffd35f,
         scale: 0.88,
-        variant: "bison"
+        variant: "raptor"
       })
     });
     const KILLCAM_DURATION = 1.6;
@@ -1534,10 +1533,10 @@
         tag: "STARTER",
         blurb: "軽量な万能機。性能は上位機に譲るが操縦は素直。まずはこの機体から。",
         cruiseSpeed: 190, boostSpeed: 375, brakeSpeed: 138,
-        pitchRateDeg: 53, rollRateDeg: 98, yawRateDeg: 15, maxBankAngleDeg: 61,
-        normalRollSpring: 21, rollRateLimitDeg: 118, turnRateDeg: 39,
+        pitchRateDeg: 40, rollRateDeg: 74, yawRateDeg: 11, maxBankAngleDeg: 52,
+        normalRollSpring: 17, rollRateLimitDeg: 89, turnRateDeg: 29,
         rollDamping: 6.4, stallWarnSpeed: 94, stallEntrySpeed: 82, stallAuthorityLoss: 0.7,
-        gunDamage: 18, missileDamage: 140,
+        gunDamage: 18, missileDamage: 98,
         boostResponse: 0.21, brakeResponse: 0.18, cruiseResponse: 0.32,
         missileCapacity: 10, maxHealth: 100,
         theme: Object.freeze({
@@ -1552,10 +1551,10 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         tag: "ADVANCED",
         blurb: "大出力エンジンと堅牢な機体を持つ制空戦闘機。F-22に次ぐ高水準。",
         cruiseSpeed: 215, boostSpeed: 425, brakeSpeed: 128,
-        pitchRateDeg: 60, rollRateDeg: 112, yawRateDeg: 17, maxBankAngleDeg: 68,
-        normalRollSpring: 24, rollRateLimitDeg: 134, turnRateDeg: 45,
+        pitchRateDeg: 45, rollRateDeg: 84, yawRateDeg: 13, maxBankAngleDeg: 58,
+        normalRollSpring: 19, rollRateLimitDeg: 101, turnRateDeg: 34,
         rollDamping: 7.6, stallWarnSpeed: 86, stallEntrySpeed: 74, stallAuthorityLoss: 0.55,
-        gunDamage: 22, missileDamage: 165,
+        gunDamage: 22, missileDamage: 98,
         boostResponse: 0.15, brakeResponse: 0.15, cruiseResponse: 0.28,
         missileCapacity: 12, maxHealth: 150,
         theme: Object.freeze({
@@ -1570,10 +1569,10 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         tag: "LEGACY",
         blurb: "1960年代の旧世代機。全性能で他機に劣る。これで戦果を挙げれば本物だ。",
         cruiseSpeed: 165, boostSpeed: 320, brakeSpeed: 152,
-        pitchRateDeg: 40, rollRateDeg: 70, yawRateDeg: 10, maxBankAngleDeg: 46,
-        normalRollSpring: 15, rollRateLimitDeg: 84, turnRateDeg: 28,
+        pitchRateDeg: 30, rollRateDeg: 53, yawRateDeg: 8, maxBankAngleDeg: 40,
+        normalRollSpring: 12, rollRateLimitDeg: 63, turnRateDeg: 21,
         rollDamping: 5.0, stallWarnSpeed: 104, stallEntrySpeed: 92, stallAuthorityLoss: 0.88,
-        gunDamage: 14, missileDamage: 115,
+        gunDamage: 14, missileDamage: 98,
         boostResponse: 0.34, brakeResponse: 0.3, cruiseResponse: 0.42,
         missileCapacity: 8, maxHealth: 125,
         theme: Object.freeze({
@@ -1588,10 +1587,10 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         tag: "TOP TIER",
         blurb: "全性能で他を圧倒する最強のステルス戦闘機。速度・旋回・火力・装甲すべて最高。",
         cruiseSpeed: 240, boostSpeed: 460, brakeSpeed: 118,
-        pitchRateDeg: 68, rollRateDeg: 128, yawRateDeg: 19, maxBankAngleDeg: 76,
-        normalRollSpring: 28, rollRateLimitDeg: 150, turnRateDeg: 52,
+        pitchRateDeg: 51, rollRateDeg: 96, yawRateDeg: 14, maxBankAngleDeg: 65,
+        normalRollSpring: 22, rollRateLimitDeg: 113, turnRateDeg: 39,
         rollDamping: 8.8, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42,
-        gunDamage: 26, missileDamage: 190,
+        gunDamage: 26, missileDamage: 98,
         boostResponse: 0.11, brakeResponse: 0.12, cruiseResponse: 0.24,
         missileCapacity: 14, maxHealth: 200,
         theme: Object.freeze({
@@ -1602,23 +1601,21 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     });
 
     const ENEMY_TYPE_ORDER = Object.freeze([
-      Object.freeze(["viper", "lancer", "bison"]),
-      Object.freeze(["bison", "viper", "lancer"])
+      Object.freeze(["f16", "f15", "f4"]),
+      Object.freeze(["f22", "f4", "f16"])
     ]);
 
-    const ENEMY_TYPES = Object.freeze({
-      viper: Object.freeze({
-        key: "viper",
-        label: "VIPER",
-        role: "Interceptor",
+    // Enemies fly the same four airframes as the player and inherit their
+    // performance from AIRCRAFT_TYPES: HP, cruise/boost speed and turn rate all
+    // come from the shared table, so an enemy F-22 is exactly as strong as the
+    // player's F-22. Only the fields below are AI-side behaviour that the player
+    // has no equivalent for (patrol pattern, engagement envelope, gun accuracy).
+    const ENEMY_AI_PROFILES = Object.freeze({
+      f16: Object.freeze({
         behavior: "evasive",
-        hp: 80,
-        hitboxScale: 0.86,
-        patrolSpeed: 151,
-        pursuitBonus: 38,
-        maxSpeed: 258,
-        patrolTurn: THREE.MathUtils.degToRad(56),
-        pursuitTurn: THREE.MathUtils.degToRad(88),
+        hitboxScale: 0.9,
+        patrolSpeedScale: 1.12,
+        patrolPathScale: 1.18,
         engageRange: 990,
         disengageRange: 1580,
         pursuitBack: 92,
@@ -1636,7 +1633,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         hitChanceScale: 0.42,
         maxHitChance: 0.31,
         damageMin: 7,
-        damageMax: 10,
+        damageMax: 7,
         radarColor: "#ff4f71",
         tracerColor: 0xff4967,
         explosionColor: 0xff5475,
@@ -1650,61 +1647,11 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           variant: "viper"
         })
       }),
-      bison: Object.freeze({
-        key: "bison",
-        label: "BISON",
-        role: "Heavy Fighter",
-        behavior: "armored",
-        hp: 125,
-        hitboxScale: 1.12,
-        patrolSpeed: 108,
-        pursuitBonus: 8,
-        maxSpeed: 205,
-        patrolTurn: THREE.MathUtils.degToRad(30),
-        pursuitTurn: THREE.MathUtils.degToRad(46),
-        engageRange: 870,
-        disengageRange: 1400,
-        pursuitBack: 66,
-        verticalBias: 8,
-        verticalAmplitude: 14,
-        verticalFrequency: 0.72,
-        evadeLateral: 0,
-        evadeVertical: 0,
-        evadeFrequency: 0,
-        speedResponse: 0.045,
-        fireMin: 2.15,
-        fireSpread: 1.45,
-        attackRange: 560,
-        aimThreshold: 0.90,
-        hitChanceScale: 0.54,
-        maxHitChance: 0.38,
-        damageMin: 12,
-        damageMax: 16,
-        radarColor: "#ff9a42",
-        tracerColor: 0xff8248,
-        explosionColor: 0xffa348,
-        theme: Object.freeze({
-          primary: 0xf2f5f7,
-          secondary: 0xc7cdd3,
-          accent: 0xd96a2d,
-          canopy: 0xffd06b,
-          exhaust: 0xff8a4d,
-          scale: 0.88,
-          variant: "bison"
-        })
-      }),
-      lancer: Object.freeze({
-        key: "lancer",
-        label: "LANCER",
-        role: "Formation Fighter",
+      f15: Object.freeze({
         behavior: "formation",
-        hp: 95,
-        hitboxScale: 0.96,
-        patrolSpeed: 132,
-        pursuitBonus: 19,
-        maxSpeed: 230,
-        patrolTurn: THREE.MathUtils.degToRad(43),
-        pursuitTurn: THREE.MathUtils.degToRad(65),
+        hitboxScale: 0.98,
+        patrolSpeedScale: 1,
+        patrolPathScale: 1,
         engageRange: 940,
         disengageRange: 1510,
         pursuitBack: 80,
@@ -1721,8 +1668,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         aimThreshold: 0.92,
         hitChanceScale: 0.47,
         maxHitChance: 0.35,
-        damageMin: 9,
-        damageMax: 12,
+        damageMin: 7,
+        damageMax: 7,
         formationWeight: 0.58,
         radarColor: "#d877ff",
         tracerColor: 0xd76cff,
@@ -1736,45 +1683,159 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           scale: 0.78,
           variant: "lancer"
         })
+      }),
+      f4: Object.freeze({
+        behavior: "armored",
+        hitboxScale: 1.12,
+        patrolSpeedScale: 0.82,
+        patrolPathScale: 0.78,
+        engageRange: 870,
+        disengageRange: 1400,
+        pursuitBack: 66,
+        verticalBias: 8,
+        verticalAmplitude: 14,
+        verticalFrequency: 0.72,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.045,
+        fireMin: 2.15,
+        fireSpread: 1.45,
+        attackRange: 560,
+        aimThreshold: 0.90,
+        hitChanceScale: 0.54,
+        maxHitChance: 0.38,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ff9a42",
+        tracerColor: 0xff8248,
+        explosionColor: 0xffa348,
+        theme: Object.freeze({
+          primary: 0xf2f5f7,
+          secondary: 0xc7cdd3,
+          accent: 0xd96a2d,
+          canopy: 0xffd06b,
+          exhaust: 0xff8a4d,
+          scale: 0.88,
+          variant: "bison"
+        })
+      }),
+      f22: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.94,
+        patrolSpeedScale: 1.06,
+        patrolPathScale: 1.12,
+        engageRange: 1060,
+        disengageRange: 1680,
+        pursuitBack: 96,
+        verticalBias: 20,
+        verticalAmplitude: 36,
+        verticalFrequency: 1.6,
+        evadeLateral: 82,
+        evadeVertical: 32,
+        evadeFrequency: 2.4,
+        speedResponse: 0.014,
+        fireMin: 1.55,
+        fireSpread: 1.3,
+        attackRange: 540,
+        aimThreshold: 0.94,
+        hitChanceScale: 0.5,
+        maxHitChance: 0.36,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#7ee4ff",
+        tracerColor: 0x63d8ff,
+        explosionColor: 0x7ce6ff,
+        theme: Object.freeze({
+          primary: 0x3d434b,
+          secondary: 0x21252b,
+          accent: 0x35c2e0,
+          canopy: 0x9fe9ff,
+          exhaust: 0x8cecff,
+          scale: 0.82,
+          variant: "raptor"
+        })
       })
     });
 
+    // Enemy turn rates are derived from the shared turnRateDeg so the ranking
+    // (F-22 > F-15 > F-16 > F-4) is identical to the player's. Pursuit turning is
+    // the airframe rate scaled up; patrol turning is the airframe rate as-is.
+    const ENEMY_PATROL_TURN_FACTOR = 1.0;
+    const ENEMY_PURSUIT_TURN_FACTOR = 1.8;
+    // Fraction of the airframe's boost headroom the AI spends while chasing.
+    const ENEMY_PURSUIT_THROTTLE = 0.2;
+
+    const ENEMY_TYPES = Object.freeze(Object.fromEntries(
+      Object.keys(ENEMY_AI_PROFILES).map((id) => {
+        const air = AIRCRAFT_TYPES[id];
+        const ai = ENEMY_AI_PROFILES[id];
+        return [id, Object.freeze({
+          ...ai,
+          key: id,
+          label: air.label.split(" ")[0],
+          role: air.role,
+          hp: air.maxHealth,
+          patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
+          pursuitBonus: Math.round((air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE),
+          maxSpeed: air.boostSpeed,
+          patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
+          pursuitTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR)
+        })];
+      })
+    ));
+
+    // Enemy missiles follow the same airframe ranking as everything else and were
+    // halved alongside the player's, so an F-4's missile is the weakest threat and
+    // an F-22's the deadliest.
     const ENEMY_MISSILE_PROFILES = Object.freeze({
-      viper: Object.freeze({
-        cooldownMin: 8.2,
+      f16: Object.freeze({
+        cooldownMin: 9.4,
+        cooldownSpread: 4.8,
+        range: 1300,
+        minRange: 195,
+        speed: 365,
+        maxSpeed: 445,
+        turnRate: THREE.MathUtils.degToRad(64),
+        damage: 98,
+        life: 7.8,
+        launchDot: 0.2
+      }),
+      f15: Object.freeze({
+        cooldownMin: 8.8,
         cooldownSpread: 4.6,
-        range: 1280,
-        minRange: 190,
-        speed: 380,
-        maxSpeed: 460,
-        turnRate: THREE.MathUtils.degToRad(72),
-        damage: 24,
-        life: 7.5,
+        range: 1340,
+        minRange: 200,
+        speed: 385,
+        maxSpeed: 465,
+        turnRate: THREE.MathUtils.degToRad(70),
+        damage: 98,
+        life: 8.0,
         launchDot: 0.22
       }),
-      bison: Object.freeze({
-        cooldownMin: 10.8,
+      f4: Object.freeze({
+        cooldownMin: 11.0,
         cooldownSpread: 5.2,
         range: 1380,
         minRange: 220,
-        speed: 330,
-        maxSpeed: 400,
-        turnRate: THREE.MathUtils.degToRad(46),
-        damage: 36,
+        speed: 322,
+        maxSpeed: 392,
+        turnRate: THREE.MathUtils.degToRad(44),
+        damage: 98,
         life: 8.6,
         launchDot: 0.16
       }),
-      lancer: Object.freeze({
-        cooldownMin: 9.1,
-        cooldownSpread: 4.8,
-        range: 1320,
-        minRange: 200,
-        speed: 355,
-        maxSpeed: 430,
-        turnRate: THREE.MathUtils.degToRad(58),
-        damage: 29,
-        life: 8.0,
-        launchDot: 0.2
+      f22: Object.freeze({
+        cooldownMin: 8.0,
+        cooldownSpread: 4.4,
+        range: 1420,
+        minRange: 185,
+        speed: 405,
+        maxSpeed: 495,
+        turnRate: THREE.MathUtils.degToRad(78),
+        damage: 98,
+        life: 7.6,
+        launchDot: 0.24
       })
     });
 
@@ -1800,7 +1861,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         entry: {
           speaker: "enemy",
           priority: RADIO_PRIORITY.NORMAL,
-          text: "ヴァイパー2、撃墜された。隊形を維持しろ——敵は1機だけだ。"
+          text: "2番機が撃墜された。隊形を維持しろ——敵は1機だけだ。"
         },
         support: null,
         pool: [
@@ -1818,7 +1879,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         },
         support: null,
         pool: [
-          "バイソン隊長、スコープに映らない…どこにいる！？",
+          "隊長、スコープに映らない…どこにいる！？",
           "こっちは各個撃破されてるぞ！",
           "単機で仕掛けるな！ 今すぐ2機1組になれ！"
         ]
@@ -1837,7 +1898,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         },
         pool: [
           "振り切れない！ 振り切れないんだ！",
-          "メーデー！ メーデー！ ランサー2、墜ちる！",
+          "メーデー！ メーデー！ 2番機、墜ちる！",
           "あれは{nickname}だ…あんな飛び方をする奴が他にいるものか！",
           "増援はどうした！？ 今すぐ増援を回せ！"
         ]
@@ -2164,7 +2225,9 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         boostSpeed: BOOST_SPEED,
         brakeSpeed: BRAKE_SPEED,
         maxHealth: PLAYER_MAX_HEALTH,
-        missileCapacity: PLAYER_MISSILE_CAPACITY
+        missileCapacity: PLAYER_MISSILE_CAPACITY,
+        gunDamage: GUN_DAMAGE,
+        missileDamage: MISSILE_DAMAGE
       },
       selectedTargetId: null,
       weapons: {
@@ -3689,7 +3752,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       scene.add(root);
 
       const patrolOrigin = position.clone();
-      const patrolScale = spec.key === "viper" ? 1.18 : (spec.key === "bison" ? 0.78 : 1);
+      const patrolScale = spec.patrolPathScale ?? 1;
       const waypoints = [
         patrolOrigin.clone().add(new THREE.Vector3((slot - 1) * 170 * patrolScale, 35, -240 * patrolScale)),
         patrolOrigin.clone().add(new THREE.Vector3((220 - slot * 90) * patrolScale, -30, 160 * patrolScale)),
@@ -4047,7 +4110,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       );
       radioSay(
         "enemy",
-        "こちらバイソン隊長。アイアンバックがやられた。全機作戦中止——今すぐ離脱しろ！",
+        "こちら編隊長。アイアンバックがやられた。全機作戦中止——今すぐ離脱しろ！",
         RADIO_PRIORITY.URGENT,
         "outro-break"
       );
@@ -4776,6 +4839,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.loadout.brakeSpeed = BRAKE_SPEED;
       hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
+      hook.loadout.gunDamage = GUN_DAMAGE;
+      hook.loadout.missileDamage = MISSILE_DAMAGE;
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
       hook.killCam.enemyId = killCam.enemyId;
