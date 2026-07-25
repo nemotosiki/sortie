@@ -2019,7 +2019,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "rafale", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2245,6 +2245,32 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         theme: Object.freeze({
 primary: 0x6b7a86, secondary: 0x3f4c58, accent: 0x2f6fa8,
 canopy: 0x8fe0ff, exhaust: 0x9fd8ff, scale: 0.99, variant: "rafale"
+        })
+      }),
+      // Typhoon: the straight-ahead air superiority jet of the European trio.
+      // It takes the XLAA that the Eagle and the Tomcat already carry and gives
+      // it the deepest magazine in the hangar - eighteen rounds - because what
+      // it is for is shooting first. Second-hardest gun after the Raptor's and
+      // second-best roll damping in the set; no axis is weak, which is exactly
+      // the point of an air superiority fighter and the opposite of the Gripen.
+      typhoon: Object.freeze({
+        id: "typhoon",
+        label: "TYPHOON",
+        role: "Air Superiority Fighter",
+        tag: "EUROCANARD",
+        blurb: "多国共同開発の次世代制空戦闘機。大型デルタ翼が超音速域でも安定をもたらし、欧州機で随一の速度と火力を誇る。突出した弱点を持たず、長射程ミサイルで先手を取る正統派の制空機だ。",
+        cruiseSpeed: 224, boostSpeed: 440, brakeSpeed: 122,
+        pitchRateDeg: 49, rollRateDeg: 168, yawRateDeg: 13, maxBankAngleDeg: 61,
+        normalRollSpring: 45, rollRateLimitDeg: 161, turnRateDeg: 35,
+        rollDamping: 12.8, stallWarnSpeed: 80, stallEntrySpeed: 68, stallAuthorityLoss: 0.46, structuralG: 3.3,
+        gunDamage: 24, missileDamage: 98,
+        boostResponse: 0.45, brakeResponse: 0.46, cruiseResponse: 0.54,
+        missileCapacity: 14, maxHealth: 155,
+        spw: Object.freeze({ key: "xlaa", capacity: 18 }),
+        tipSpan: 7.8, tipZ: 2.7,
+        theme: Object.freeze({
+primary: 0x8a939c, secondary: 0x525c66, accent: 0xb5423c,
+canopy: 0x8fe0ff, exhaust: 0xbfe4ff, scale: 1.03, variant: "typhoon"
         })
       }),
       f4: Object.freeze({
@@ -10928,6 +10954,49 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 7.5, -0.24, 1.6, 0.7, 0.7, 0.7);
         add(geometry.canopy, navL, -7.62, 0.08, 3.9, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 7.62, 0.08, 3.9, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "typhoon") {
+        // Typhoon: the same delta-canard family as the Rafale, told apart by
+        // two things and only two things. First the canards sit at z -7.0
+        // instead of -4.2 - level with the cockpit, nearly three metres further
+        // forward, a gap wide enough to read from any angle. Second the intake
+        // is a single wide box slung under the chin rather than a pair on the
+        // flanks. The wing is the deepest delta in the hangar to sell "large
+        // delta wings"; the extra area is chord, not span.
+        add(geometry.fuselage, primary, 0, 0, -0.5, 0.94, 0.74, 1.02);
+        add(geometry.nose, primary, 0, 0.02, -8.4, 0.74, 0.62, 1.1);
+        add(geometry.canopy, canopy, 0, 0.9, -4.3, 0.66, 0.56, 1.55);
+        add(geometry.wingTyphoon, secondary, 0, -0.04, 1.2);
+        // Far-forward canards, high on the forebody beside the cockpit. This
+        // station is the single most important number in this branch.
+        add(geometry.canard, primary, -1.5, 0.5, -7.0, 0.92, 1, 0.92, 0.14);
+        add(geometry.canard, primary, 1.5, 0.5, -7.0, 0.92, 1, 0.92, -0.14);
+        // One large centreline fin.
+        add(geometry.fin, secondary, 0, 0.62, 4.7, 0.9, 1.24, 0.92);
+        // Twin engines, close-coupled like the Rafale's.
+        add(geometry.rearBody, secondary, -0.74, -0.04, 6.35, 0.78, 0.78, 1.12);
+        add(geometry.rearBody, secondary, 0.74, -0.04, 6.35, 0.78, 0.78, 1.12);
+        add(geometry.nozzle, accent, -0.74, -0.04, 8.3, 0.9, 0.9, 1);
+        add(geometry.nozzle, accent, 0.74, -0.04, 8.3, 0.9, 0.9, 1);
+        addFlame(-0.74, -0.04, 9.6, 0.9, 0.9);
+        addFlame(0.74, -0.04, 9.6, 0.9, 0.9);
+        // The chin intake: ONE wide flat box under the forebody on the
+        // centreline. No other airframe in the hangar has a single ventral
+        // opening, so this alone separates it from the Rafale head-on.
+        add(geometry.panel, dark, 0, -1.0, -3.4, 1.5, 0.5, 2.4);
+        add(geometry.intake, accent, 0, -0.92, -2.2, 1.25, 0.62, 1.15);
+        // Details: pitot boom, anti-glare strip, dorsal spine, wingtip rails
+        // and nav lights.
+        add(geometry.panel, dark, 0, 0.05, -11.2, 0.07, 0.07, 1.6);
+        add(geometry.panel, dark, 0, 0.64, -6.0, 0.6, 0.08, 1.9);
+        add(geometry.panel, secondary, 0, 0.62, 2.4, 0.3, 0.2, 5.6);
+        add(geometry.panel, dark, -7.8, -0.02, 3.8, 0.2, 0.16, 2.1);
+        add(geometry.panel, dark, 7.8, -0.02, 3.8, 0.2, 0.16, 2.1);
+        add(geometry.missileBody, light, -7.8, -0.24, 3.5, 0.75, 0.75, 0.7);
+        add(geometry.missileBody, light, 7.8, -0.24, 3.5, 0.75, 0.75, 0.7);
+        add(geometry.missileNose, dark, -7.8, -0.24, 1.8, 0.7, 0.7, 0.7);
+        add(geometry.missileNose, dark, 7.8, -0.24, 1.8, 0.7, 0.7, 0.7);
+        add(geometry.canopy, navL, -7.92, 0.08, 4.2, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 7.92, 0.08, 4.2, 0.12, 0.12, 0.12);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
