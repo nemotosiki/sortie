@@ -896,6 +896,22 @@
       will-change: opacity;
     }
 
+    #hitConfirm {
+      position: fixed;
+      left: 50%;
+      top: 60.5%;
+      transform: translateX(-50%);
+      z-index: 12;
+      pointer-events: none;
+      opacity: 0;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.34em;
+      color: #b4ffb9;
+      text-shadow: 0 0 9px rgba(120, 255, 150, 0.8), 0 1px 2px rgba(0, 10, 4, 0.85);
+      will-change: opacity;
+    }
+
     #gVignette {
       position: fixed;
       inset: 0;
@@ -1363,6 +1379,7 @@
 
     <div id="enemyMarkers"></div>
     <div id="combatPopups"></div>
+    <div id="hitConfirm">HIT</div>
 
     <div id="targetBox">
       <span id="targetRange">0M</span>
@@ -1487,7 +1504,7 @@
     const CAMERA_FOV_RESPONSE_K = 0.16;
     const MAX_SPARK_PARTICLES = 300;
     const MAX_DEBRIS_PARTICLES = 180;
-    const MAX_SMOKE_PARTICLES = 200;
+    const MAX_SMOKE_PARTICLES = 320;
     const MAX_COMBAT_POPUPS = 12;
     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
     const STALL_SINK_RATE = 44;
@@ -1523,6 +1540,7 @@
     });
 
     const ACE_CALLSIGN = "IRONBACK";
+    const ACE_TURN_SCALE = 1.2;
     // The ace flies wave 2 slot 0, which is an F-22 — it keeps that airframe's HP,
     // speed and turn rate untouched so it is exactly as strong as a player F-22.
     // Only its identity, markings and evasion style are overridden.
@@ -1796,7 +1814,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // (F-22 > F-15 > F-16 > F-4) is identical to the player's. Pursuit turning is
     // the airframe rate scaled up; patrol turning is the airframe rate as-is.
     const ENEMY_PATROL_TURN_FACTOR = 1.0;
-    const ENEMY_PURSUIT_TURN_FACTOR = 1.8;
+    // 1.25 = the airframe flown at its corner speed. The player peaks at
+    // 1.45 there, so a well-flown player out-turns the same enemy airframe.
+    const ENEMY_PURSUIT_TURN_FACTOR = 1.25;
     // Fraction of the airframe's boost headroom the AI spends while chasing.
     const ENEMY_PURSUIT_THROTTLE = 0.2;
 
@@ -1995,6 +2015,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       wave: document.getElementById("waveReadout"),
       enemyMarkers: document.getElementById("enemyMarkers"),
       combatPopups: document.getElementById("combatPopups"),
+      hitConfirm: document.getElementById("hitConfirm"),
       targetBox: document.getElementById("targetBox"),
       targetRange: document.getElementById("targetRange"),
       lockLabel: document.getElementById("lockLabel"),
@@ -3629,8 +3650,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
         if (missile.trailTimer <= 0) {
           tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.4);
-          createSmokePuff(tmpV3, 0.32);
-          missile.trailTimer += 0.055;
+          createMissileTrailPuff(tmpV3);
+          missile.trailTimer += 0.03;
         }
 
         if (missile.life > 9.5 || missile.mesh.position.y < 0) {
@@ -3717,8 +3738,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
         if (missile.trailTimer <= 0) {
           tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.1);
-          createSmokePuff(tmpV3, 0.27);
-          missile.trailTimer += 0.075;
+          createMissileTrailPuff(tmpV3);
+          missile.trailTimer += 0.045;
         }
 
         if (missile.life > missile.lifeLimit || missile.mesh.position.y < 0 ||
@@ -3855,7 +3876,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       enemySerial += 1;
       const id = (wave - 1) * 3 + slot + 1;
       const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
-      const spec = isAce ? Object.freeze({ ...baseSpec, ...ACE_SPEC_OVERRIDES }) : baseSpec;
+      // The ace flies the same airframe, just sharper - never a different
+      // physics table. ACE_TURN_SCALE is the only stat bonus it gets.
+      const spec = isAce
+        ? Object.freeze({
+            ...baseSpec,
+            ...ACE_SPEC_OVERRIDES,
+            patrolTurn: baseSpec.patrolTurn * ACE_TURN_SCALE,
+            pursuitTurn: baseSpec.pursuitTurn * ACE_TURN_SCALE
+          })
+        : baseSpec;
       const root = new THREE.Group();
       root.position.copy(position);
       root.userData.enemyType = spec.key;
@@ -3911,6 +3941,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         missileCooldown: 1.4 + slot * 0.9 + Math.random() * 0.4,
         deadTimer: 0,
         hitFlash: 0,
+        smokeTimer: 0,
         seed: Math.random() * Math.PI * 2,
         formationLeaderId,
         formationSide: slot === 0 ? -1 : 1,
@@ -3943,6 +3974,25 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
         updateAircraftFlash(enemy.model, enemy.hitFlash);
         enemy.formationActive = false;
+
+        // Damage states: below half HP the aircraft trails grey smoke, below a
+        // quarter it burns - black smoke with orange flame flicker.
+        const hpRatio = enemy.hp / spec.hp;
+        if (hpRatio < 0.5) {
+          enemy.smokeTimer -= dt;
+          if (enemy.smokeTimer <= 0) {
+            const burning = hpRatio < 0.25;
+            forwardOf(enemy.group, tmpV8);
+            tmpV8.multiplyScalar(-6 * spec.theme.scale).add(enemy.group.position);
+            tmpV2.set((Math.random() - 0.5) * 3, 2 + Math.random() * 3, (Math.random() - 0.5) * 3);
+            smokeParticlePool.spawn(tmpV8, tmpV2, 1.5 + Math.random() * 0.7, burning ? 0x17181c : 0x3a3f45, -0.7, 0.42);
+            if (burning) {
+              tmpV2.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+              sparkParticlePool.spawn(tmpV8, tmpV2, 0.28 + Math.random() * 0.2, 0xffab4a, 2, 0.3);
+            }
+            enemy.smokeTimer += burning ? 0.055 : 0.095;
+          }
+        }
 
         tmpV1.copy(player.position).sub(enemy.group.position);
         const distanceToPlayer = tmpV1.length();
@@ -4086,10 +4136,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
     }
 
+    let hitConfirmTimer = 0;
     function damageEnemy(enemy, amount, missileHit) {
       if (!enemy.alive) return;
       enemy.hp -= amount;
       enemy.hitFlash = 0.12;
+      hitConfirmTimer = 0.42;
       if (enemy.hp > 0) {
         if (enemy.isAce && !enemy.aceHalfLineFired && enemy.hp <= enemy.maxHp * 0.5) {
           enemy.aceHalfLineFired = true;
@@ -4461,6 +4513,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function updateVisualStatus(dt) {
+      hitConfirmTimer = Math.max(0, hitConfirmTimer - dt);
+      const hitOpacity = hitConfirmTimer > 0 ? Math.min(1, hitConfirmTimer / 0.26) : 0;
+      ui.hitConfirm.style.opacity = hitOpacity < 0.01 ? "0" : hitOpacity.toFixed(3);
+
       damageFlash = Math.max(0, damageFlash - dt * 1.35);
       const flashOpacity = THREE.MathUtils.clamp(damageFlash, 0, 1);
       ui.damageFlash.style.opacity = String(flashOpacity);
@@ -5120,6 +5176,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         hp: Math.max(0, Math.round(enemy.hp)),
         maxHp: enemy.maxHp,
         speed: enemy.speed,
+        fwd: (() => { const f = forwardOf(enemy.group, tmpV9); return { x: f.x, y: f.y, z: f.z }; })(),
         mode: enemy.mode,
         formationLeaderId: enemy.formationLeaderId,
         formationActive: enemy.formationActive,
@@ -5391,6 +5448,24 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       });
     }
 
+    // Missile exhaust: near-still pale puffs that persist a couple of seconds,
+    // so a missile draws a full AC-style smoke line across the sky.
+    function createMissileTrailPuff(position) {
+      tmpV9.set(
+        (Math.random() - 0.5) * 1.2,
+        (Math.random() - 0.5) * 1.2,
+        (Math.random() - 0.5) * 1.2
+      );
+      smokeParticlePool.spawn(
+        position,
+        tmpV9,
+        2.1 + Math.random() * 0.7,
+        0xcdd6d9,
+        -0.25,
+        0.55
+      );
+    }
+
     function createSmokePuff(position, scale) {
       const velocity = new THREE.Vector3(
         (Math.random() - 0.5) * 3,
@@ -5471,6 +5546,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         velocity.y += 5 + Math.random() * 10;
         smokeParticlePool.spawn(origin, velocity, 1.25 + Math.random() * 0.8, 0x24272c, -1.5, 0.36);
       }
+      // Lingering column: slow dark smoke that keeps rising after the flash.
+      for (let i = 0; i < 9; i += 1) {
+        const origin = position.clone().addScaledVector(randomUnitVector(), Math.random() * 2.4 * scale);
+        const velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 4,
+          9 + Math.random() * 9,
+          (Math.random() - 0.5) * 4
+        );
+        smokeParticlePool.spawn(origin, velocity, 2.6 + Math.random() * 1.6, 0x2c3036, -2.2, 0.5);
+      }
 
       const group = new THREE.Group();
       group.position.copy(position);
@@ -5494,7 +5579,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       });
       const flash = new THREE.Mesh(geometry.flash, flashMaterial);
       flash.scale.setScalar(2.8 * scale);
-      group.add(sprite, flash);
+      const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xfff0c8,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const ring = new THREE.Mesh(geometry.shockRing, ringMaterial);
+      ring.scale.setScalar(3 * scale);
+      group.add(sprite, flash, ring);
       scene.add(group);
 
       effects.push({
@@ -5507,10 +5602,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           spriteMaterial.opacity = Math.max(0, (1 - t) * (1 - t * 0.35));
           flash.scale.setScalar((2.8 + t * 24) * scale);
           flashMaterial.opacity = Math.max(0, 1 - t * 5.2);
+          ring.quaternion.copy(camera.quaternion);
+          ring.scale.setScalar((3 + t * 68) * scale);
+          ringMaterial.opacity = Math.max(0, 0.85 - t * 2.1);
         },
         dispose() {
           spriteMaterial.dispose();
           flashMaterial.dispose();
+          ringMaterial.dispose();
         }
       });
     }
@@ -5952,6 +6051,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       nozzle.rotateX(Math.PI / 2);
       const flame = new THREE.ConeGeometry(0.5, 2.6, 10, 1, false);
       flame.rotateX(Math.PI / 2);
+      const shockRing = new THREE.RingGeometry(0.86, 1, 40);
       const enemyHitbox = new THREE.SphereGeometry(10.5, 10, 8);
       const flash = new THREE.IcosahedronGeometry(1, 1);
       const smoke = new THREE.SphereGeometry(1, 8, 6);
@@ -5969,7 +6069,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
         wingViper, wingEagle, wingPhantom, wingRaptor, stabRaptor, panel,
-        enemyHitbox, flash, smoke, spark, explosionChunk,
+        shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         missileBody, missileNose, missileFins, missileGlow
       };
     }
