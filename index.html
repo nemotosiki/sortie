@@ -59,6 +59,21 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Menu states own the screen. Everything flight-related lives inside
+       #hud (compass, tapes, reticle, radar, status, markers, warnings...),
+       so one rule covers it; #radioPanel is the only flight widget that sits
+       outside that container. display:none rather than opacity keeps them out
+       of layout and out of screenshots. Driven purely by the attribute
+       setState() writes -- no per-frame JS toggling.
+       playing / missionComplete / gameover are deliberately untouched: the
+       debrief still shows the HUD behind it, as before. */
+    body[data-game-state="missionSelect"] #hud,
+    body[data-game-state="missionSelect"] #radioPanel,
+    body[data-game-state="ready"] #hud,
+    body[data-game-state="ready"] #radioPanel {
+      display: none !important;
+    }
+
     .panel {
       position: absolute;
       border: 0;
@@ -1030,6 +1045,152 @@
 
     .screen.hidden { display: none; }
 
+    /* ---- AC-style menu screens (mission select + hangar) ---------------- */
+    .menuScreen {
+      align-items: stretch;
+      justify-content: stretch;
+      padding: 0;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(43, 111, 168, 0.18), transparent 52%),
+        radial-gradient(circle at 78% 80%, rgba(24, 84, 128, 0.14), transparent 46%),
+        linear-gradient(160deg, #030b18 0%, #051428 48%, #04101f 100%);
+    }
+
+    .menuScreen.hangarScreen {
+      /* Centre stays clear so the live 3D aircraft renders through. */
+      background:
+        linear-gradient(90deg, rgba(3, 10, 22, 0.92) 0%, rgba(3, 10, 22, 0.55) 24%, rgba(3, 10, 22, 0) 40%, rgba(3, 10, 22, 0) 60%, rgba(3, 10, 22, 0.55) 76%, rgba(3, 10, 22, 0.92) 100%),
+        linear-gradient(rgba(2, 8, 16, 0.55), rgba(2, 8, 16, 0.14) 30%, rgba(2, 8, 16, 0.14) 70%, rgba(2, 8, 16, 0.72));
+    }
+
+    .menuFrame {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: clamp(18px, 3.2vh, 34px) clamp(20px, 3.4vw, 46px);
+      font-family: "Courier New", "Lucida Console", monospace;
+      color: #cfeaff;
+    }
+
+    .menuHeader { display: flex; align-items: center; gap: 14px; margin-bottom: clamp(10px, 2.4vh, 26px); }
+
+    .menuHeader .menuTitle {
+      margin: 0;
+      font-size: clamp(22px, 3.4vw, 34px);
+      font-style: normal;
+      letter-spacing: 0.14em;
+      color: #dff3ff;
+      text-shadow: 0 0 18px rgba(80, 190, 255, 0.45);
+    }
+
+    .menuHeaderRule { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(120, 205, 255, 0.55), transparent); }
+    .menuMissionTag { font-size: 12px; letter-spacing: 0.2em; color: #8fd4ff; }
+
+    .menuLayout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(220px, 300px) 1fr minmax(250px, 310px);
+      gap: clamp(14px, 2vw, 30px);
+      min-height: 0;
+    }
+
+    .menuList { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+
+    .menuList li {
+      position: relative;
+      padding: 9px 10px 9px 20px;
+      font-size: clamp(13px, 1.25vw, 16px);
+      letter-spacing: 0.1em;
+      color: #9fc6e4;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .menuList li .listIcon { margin-right: 8px; color: #62b8ff; font-size: 11px; }
+    .menuList li.selected { color: #ffffff; background: linear-gradient(90deg, rgba(80, 170, 235, 0.16), transparent 78%); }
+
+    .menuList li.selected::before {
+      content: "";
+      position: absolute;
+      left: 4px;
+      top: 15%;
+      width: 4px;
+      height: 70%;
+      background: #ff9a3c;
+      box-shadow: 0 0 10px rgba(255, 154, 60, 0.8);
+    }
+
+    .menuList li.locked { color: rgba(120, 150, 175, 0.4); }
+    .menuList li.locked .listIcon { color: rgba(120, 150, 175, 0.4); }
+    .menuList li .listRank { margin-left: 8px; font-size: 11px; color: #7fb8dd; }
+    .menuList li.cleared .listRank { color: #ffd27a; }
+
+    #missionMapWrap { position: relative; min-width: 0; border: 1px solid rgba(110, 190, 255, 0.2); background: rgba(4, 14, 27, 0.5); }
+    #missionMap { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .menuSidePanel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 16px;
+      border: 1px solid rgba(110, 190, 255, 0.22);
+      background: rgba(4, 13, 25, 0.72);
+      min-height: 0;
+      overflow-y: auto;
+    }
+
+    .menuPanelTitle { margin: 0 0 2px; font-size: clamp(15px, 1.5vw, 19px); letter-spacing: 0.08em; color: #eaf7ff; }
+    .menuPanelKicker { font-size: 10px; letter-spacing: 0.18em; color: #74c2f2; }
+    .menuRecordHeader { margin-top: 8px; font-size: 10px; letter-spacing: 0.14em; color: #74c2f2; }
+    .menuRecordList { list-style: none; margin: 2px 0 0; padding: 0; font-size: 13px; }
+    .menuRecordList li { display: flex; justify-content: space-between; padding: 1px 2px; color: #cfe8fb; }
+    .menuRecordList li span:first-child { color: #7fb0d4; font-size: 11px; }
+    .menuRankBig { font-size: 34px; line-height: 1; color: #ffd27a; text-shadow: 0 0 16px rgba(255, 190, 90, 0.5); }
+    #missionThumb { width: 100%; height: 110px; border: 1px solid rgba(110, 190, 255, 0.18); background: rgba(6, 18, 34, 0.6); }
+
+    .specRow { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
+    .specRow span { font-size: 10.5px; letter-spacing: 0.1em; color: #a8d4f2; }
+    .specBarTrack { position: relative; height: 9px; background: rgba(90, 160, 215, 0.16); border: 1px solid rgba(120, 195, 255, 0.25); }
+
+    .specBarTrack i {
+      position: absolute;
+      inset: 1px auto 1px 1px;
+      width: calc(var(--v) * 100%);
+      background: linear-gradient(90deg, #3fa8e8, #8fe0ff);
+      box-shadow: 0 0 8px rgba(90, 200, 255, 0.55);
+    }
+
+    .ammoGrid { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 2px 0 0; font-size: 13px; }
+    .ammoGrid dt { color: #7fb0d4; letter-spacing: 0.12em; font-size: 11px; align-self: center; }
+    .ammoGrid dd { margin: 0; text-align: right; color: #eaf7ff; }
+
+    .menuBlurb {
+      margin: clamp(8px, 1.6vh, 16px) 0 0;
+      min-height: 2.6em;
+      font-size: clamp(12px, 1.15vw, 14px);
+      line-height: 1.7;
+      letter-spacing: 0.05em;
+      color: #d7ecfb;
+    }
+
+    .menuLegend {
+      display: flex;
+      gap: 22px;
+      margin-top: 6px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(110, 190, 255, 0.2);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      color: #8fc4e8;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .menuLegend .legendKey { color: #ffd27a; }
+    .menuLegend .actionButton { margin-left: auto; }
+    .hangarCenter { pointer-events: none; }
+
     .screenCard {
       width: min(820px, 92vw);
       padding: clamp(24px, 4vw, 48px);
@@ -1068,112 +1229,6 @@
       letter-spacing: 0.08em;
     }
 
-    .aircraftSelect { margin: 16px 0 20px; text-align: left; }
-
-    .aircraftSelectHeader {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 8px;
-    }
-
-    .aircraftSelectHint {
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      color: rgba(220, 247, 255, 0.5);
-    }
-
-    .aircraftCardRow {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .aircraftCard {
-      position: relative;
-      text-align: left;
-      padding: 12px;
-      border: 1px solid rgba(143, 239, 255, 0.2);
-      background: rgba(32, 119, 145, 0.08);
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-      transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-    }
-
-    .aircraftCard:hover,
-    .aircraftCard:focus-visible {
-      border-color: rgba(167, 246, 255, 0.55);
-      background: rgba(83, 217, 239, 0.14);
-    }
-
-    .aircraftCard.active {
-      border-color: #a7f6ff;
-      background: rgba(83, 217, 239, 0.2);
-      box-shadow: 0 0 18px rgba(106, 232, 255, 0.28), inset 0 0 18px rgba(83, 217, 239, 0.1);
-    }
-
-    .aircraftTag {
-      display: inline-block;
-      margin-bottom: 4px;
-      padding: 2px 6px;
-      font-size: 9px;
-      letter-spacing: 0.12em;
-      border: 1px solid var(--warning);
-      color: var(--warning);
-    }
-
-    .aircraftName {
-      display: block;
-      font-size: 15px;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      color: #ecfdff;
-    }
-
-    .aircraftRole {
-      display: block;
-      margin-top: 2px;
-      font-size: 10px;
-      letter-spacing: 0.08em;
-      color: #a8f4ff;
-    }
-
-    .aircraftBlurb {
-      margin: 8px 0;
-      min-height: 4.4em;
-      font-size: 10.5px;
-      line-height: 1.5;
-      color: rgba(220, 247, 255, 0.7);
-    }
-
-    .statRow {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin: 3px 0;
-      font-size: 9px;
-      letter-spacing: 0.08em;
-      color: rgba(220, 247, 255, 0.5);
-    }
-
-    .statRow span:first-child {
-      width: 58px;
-      flex-shrink: 0;
-      white-space: nowrap;
-      letter-spacing: 0.02em;
-      font-size: 8px;
-    }
-    .aircraftStatBar { flex: 1; height: 5px; }
-
-    .aircraftMissiles {
-      display: block;
-      margin-top: 6px;
-      font-size: 9px;
-      letter-spacing: 0.08em;
-      color: rgba(220, 247, 255, 0.55);
-    }
-
     .actionButton.secondary {
       min-width: 0;
       margin-top: 12px;
@@ -1181,35 +1236,6 @@
       border-color: rgba(143, 239, 255, 0.35);
       background: rgba(83, 217, 239, 0.04);
       font-size: 11px;
-    }
-
-    .controls {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin: 22px 0 28px;
-      text-align: left;
-    }
-
-    .controlItem {
-      min-height: 76px;
-      padding: 12px;
-      border: 1px solid rgba(143, 239, 255, 0.2);
-      background: rgba(32, 119, 145, 0.08);
-    }
-
-    .controlItem strong {
-      display: block;
-      margin-bottom: 6px;
-      color: #a8f4ff;
-      font-size: 11px;
-      letter-spacing: 0.16em;
-    }
-
-    .controlItem span {
-      color: rgba(220, 247, 255, 0.66);
-      font-size: 11px;
-      line-height: 1.5;
     }
 
     .actionButton {
@@ -1362,17 +1388,12 @@
       #controlModeStatus { top: 132px; }
       #statusPanel { transform: scale(0.88); transform-origin: right bottom; }
       #radarWrap { width: 150px; }
-      .controls { grid-template-columns: 1fr 1fr; }
-      .aircraftCardRow { grid-template-columns: 1fr 1fr; }
-      .controlItem:last-child { grid-column: 1 / -1; }
     }
 
     @media (max-height: 650px) {
       .screenCard { padding: 20px 28px; }
       h1 { font-size: 58px; }
       .subtitle { margin: 8px auto 12px; }
-      .controls { margin: 12px 0 16px; }
-      .controlItem { min-height: 58px; padding: 8px 10px; }
     }
   </style>
 
@@ -1494,44 +1515,69 @@
   <div id="gVignette"></div>
   <div id="damageFlash"></div>
 
-  <section id="startScreen" class="screen">
-    <div class="screenCard">
-      <div class="titleKicker">SINGLE MISSION / CALLSIGN RAVEN</div>
-      <h1>Sortie</h1>
-      <p class="subtitle">敵戦闘機6機を2波に分けて迎撃せよ。照準を重ねてミサイルをロックし、短距離では機銃で仕留める。</p>
-      <div class="aircraftSelect" id="aircraftSelect" role="radiogroup" aria-label="Select Aircraft">
-        <div class="aircraftSelectHeader">
-<span class="titleKicker">SELECT AIRCRAFT</span>
-<span class="aircraftSelectHint">A/D · ←/→ · D-PAD で切替</span>
-        </div>
-        <div class="aircraftCardRow" id="aircraftCardRow"></div>
+  <section id="missionScreen" class="screen menuScreen hidden">
+    <div class="menuFrame">
+      <header class="menuHeader"><h1 class="menuTitle">FREE MISSION</h1><span class="menuHeaderRule"></span><span class="menuMissionTag">SORTIE CAMPAIGN</span></header>
+      <div class="menuLayout">
+        <ul id="missionList" class="menuList" aria-label="Select Mission"></ul>
+        <div id="missionMapWrap"><canvas id="missionMap"></canvas></div>
+        <aside class="menuSidePanel">
+          <span class="menuPanelKicker" id="missionInfoNum">MISSION 01</span>
+          <h2 class="menuPanelTitle" id="missionInfoName">FIRST CONTACT</h2>
+          <canvas id="missionThumb"></canvas>
+          <div class="menuRecordHeader">[ HIGHEST RANK ACHIEVED ]</div>
+          <div class="menuRankBig" id="missionBestRank">—</div>
+          <div class="menuRecordHeader">[ HIGH SCORE ]</div>
+          <ol class="menuRecordList" id="missionScoreList"></ol>
+          <div class="menuRecordHeader">[ FASTEST COMPLETION TIME ]</div>
+          <ol class="menuRecordList" id="missionTimeList"></ol>
+        </aside>
       </div>
-      <div class="controls">
-        <div class="controlItem"><strong>W / S · ↑ / ↓</strong><span>ピッチ。NORMAL / EXPERTの両モードで機首を上下。</span></div>
-        <div class="controlItem"><strong>A / D · ← / →</strong><span>NORMALは目標バンク、EXPERTは直接ロール。</span></div>
-        <div class="controlItem"><strong>Q / E · L1 / R1</strong><span>NORMAL / EXPERTの両モードで左 / 右ヨー。</span></div>
-        <div class="controlItem"><strong>M / SHARE</strong><span>NORMALとEXPERTをいつでも切替。</span></div>
-        <div class="controlItem"><strong>SHIFT / CTRL</strong><span>全開減速は安全な格闘戦速度を維持。強く引き起こし続けると誘導抗力で失速。</span></div>
-        <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
-        <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全10発。</span></div>
-        <div class="controlItem"><strong>F / R3</strong><span>フレア放出。追尾中の敵ミサイルを全て引き剥がす。1出撃に2回だけ。</span></div>
-        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。L1/R1でヨー、L2加速、R2減速、R3フレア。</span></div>
-        <div class="controlItem"><strong>A/D · ←/→ · D-PAD</strong><span>スタート画面で機体を切替。</span></div>
-        <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>
+      <p class="menuBlurb" id="missionBlurb">ミッションを選択してください。</p>
+      <footer class="menuLegend">
+        <span><span class="legendKey">↑↓ / D-PAD</span> 選択</span>
+        <span><span class="legendKey">ENTER / ○</span> 決定</span>
+        <button id="missionConfirmBtn" class="actionButton" type="button">SELECT MISSION</button>
+      </footer>
+    </div>
+  </section>
+
+  <section id="startScreen" class="screen menuScreen hangarScreen">
+    <div class="menuFrame">
+      <header class="menuHeader"><h1 class="menuTitle">SELECT AIRCRAFT</h1><span class="menuHeaderRule"></span><span class="menuMissionTag" id="hangarMissionTag">01 FIRST CONTACT</span></header>
+      <div class="menuLayout">
+        <ul id="aircraftList" class="menuList" role="radiogroup" aria-label="Select Aircraft"></ul>
+        <div class="hangarCenter"></div>
+        <aside class="menuSidePanel">
+          <span class="menuPanelKicker" id="specRole">MULTIROLE FIGHTER</span>
+          <h2 class="menuPanelTitle" id="specName">F-16 FIGHTING FALCON</h2>
+          <div class="menuRecordHeader">[ AIRCRAFT SPECIFICATIONS ]</div>
+          <div id="specBars"></div>
+          <div class="menuRecordHeader">[ WEAPONS AMMO ]</div>
+          <dl class="ammoGrid" id="ammoGrid"></dl>
+        </aside>
       </div>
-      <button id="startBtn" class="actionButton" type="button">Launch Sortie</button>
+      <p class="menuBlurb" id="aircraftBlurbLine">—</p>
+      <footer class="menuLegend">
+        <span><span class="legendKey">↑↓ / D-PAD</span> 機体</span>
+        <span><span class="legendKey">ENTER / ○</span> 出撃</span>
+        <span><span class="legendKey">ESC / □</span> ミッション選択</span>
+        <span><span class="legendKey">SPACE</span>機銃 <span class="legendKey">ENTER</span>ミサイル <span class="legendKey">F</span>フレア <span class="legendKey">C</span>カメラ <span class="legendKey">M</span>操作モード <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速</span>
+        <button id="startBtn" class="actionButton" type="button">LAUNCH</button>
+      </footer>
     </div>
   </section>
 
   <section id="resultScreen" class="screen hidden">
     <div class="screenCard">
-      <div class="titleKicker">MISSION DEBRIEF</div>
+      <div class="titleKicker" id="resultMissionTag">MISSION DEBRIEF</div>
       <h2 id="resultTitle">MISSION COMPLETE</h2>
       <p id="resultMessage" class="subtitle">全ターゲットの撃墜を確認。</p>
       <div class="resultStats">
         <div class="resultStat"><span>FINAL SCORE</span><strong id="finalScore">0</strong></div>
         <div class="resultStat"><span>KILLS</span><strong id="finalKills">0</strong></div>
         <div class="resultStat"><span>HIGH SCORE</span><strong id="finalHighscore">0</strong></div>
+        <div class="resultStat"><span>RANK</span><strong id="finalRank">—</strong></div>
       </div>
       <div class="debriefIntel" id="debriefIntel">
         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
@@ -1539,12 +1585,14 @@
       </div>
       <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>
       <button id="changeAircraftBtn" class="actionButton secondary" type="button">◀ CHANGE AIRCRAFT</button>
+      <button id="changeMissionBtn" class="actionButton secondary" type="button">◀ CHANGE MISSION</button>
     </div>
   </section>
 
   <script type="module">
     import * as THREE from "three";
 
+    const STATE_MISSION_SELECT = "missionSelect";
     const STATE_READY = "ready";
     const STATE_PLAYING = "playing";
     const STATE_COMPLETE = "missionComplete";
@@ -1614,7 +1662,6 @@
     const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
     const LOCK_GRACE_TIME = 0.4;
     const LOCK_HYSTERESIS_BONUS = 0.15;
-    const TOTAL_ENEMIES = 9;
     const KILL_SCORE = 1000;
     const RADAR_RANGE = 1400;
     const MISSION_GRACE_TIME = 3.0;
@@ -2051,6 +2098,125 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       })
     });
 
+    // ---- Missions -------------------------------------------------------------
+    // A mission is an ordered list of wave entries; radio, banners, restock and
+    // the outro all key off the entry type and its position. parTime is the
+    // S-rank pace in seconds; records persist per mission key in localStorage.
+    const MISSIONS = Object.freeze([
+      {
+        key: "m01",
+        title: "FIRST CONTACT",
+        jp: "哨戒空域に敵編隊3機。全機撃墜し、制空権を確保せよ。",
+        sequence: ["air1"],
+        parTime: 95,
+        hasOutro: false,
+        map: { x: 0.27, y: 0.4 }
+      },
+      {
+        key: "m02",
+        title: "TWO-PRONGED",
+        jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
+        sequence: ["air1", "air2plain"],
+        parTime: 210,
+        hasOutro: false,
+        map: { x: 0.5, y: 0.27 }
+      },
+      {
+        key: "m03",
+        title: "FLEET DESTRUCTION",
+        jp: "敵機動部隊を捕捉した。空母1、護衛イージス艦2。対艦攻撃で殲滅せよ。",
+        sequence: ["naval"],
+        parTime: 200,
+        hasOutro: false,
+        map: { x: 0.71, y: 0.56 }
+      },
+      {
+        key: "m04",
+        title: "IRONBACK",
+        jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
+        sequence: ["air2"],
+        parTime: 135,
+        hasOutro: false,
+        map: { x: 0.42, y: 0.65 }
+      },
+      {
+        key: "m05",
+        title: "FINAL SORTIE",
+        jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
+        sequence: ["air1", "air2", "naval"],
+        parTime: 430,
+        hasOutro: true,
+        map: { x: 0.8, y: 0.34 }
+      }
+    ].map((mission) => Object.freeze({
+      ...mission,
+      totalTargets: mission.sequence.length * 3,
+      map: Object.freeze(mission.map)
+    })));
+
+    let currentMissionIndex = 0;
+    let missionWaveIndex = 0;
+    let lastMissionRank = null;
+    // Declared here rather than beside the menu functions: the boot sequence
+    // builds both menus, and a `let` further down the module body is still in
+    // its temporal dead zone at that point.
+    let missionCursor = 0;
+
+    // Hand-drawn archipelago for the tactical map, in normalised map space.
+    const MAP_LANDMASSES = [
+      [[0.10, 0.52], [0.16, 0.44], [0.24, 0.46], [0.30, 0.40], [0.34, 0.46], [0.30, 0.54], [0.22, 0.58], [0.14, 0.58]],
+      [[0.42, 0.22], [0.50, 0.18], [0.58, 0.22], [0.62, 0.30], [0.56, 0.36], [0.48, 0.34], [0.42, 0.28]],
+      [[0.62, 0.52], [0.70, 0.46], [0.80, 0.50], [0.84, 0.58], [0.78, 0.66], [0.68, 0.64], [0.62, 0.58]],
+      [[0.36, 0.66], [0.44, 0.62], [0.50, 0.68], [0.46, 0.76], [0.38, 0.74]],
+      [[0.76, 0.26], [0.84, 0.24], [0.88, 0.32], [0.82, 0.36], [0.76, 0.32]]
+    ];
+
+    const RANK_ORDER = { S: 4, A: 3, B: 2, C: 1 };
+
+    function computeMissionRank() {
+      const par = MISSIONS[currentMissionIndex].parTime;
+      const damageRatio = damageTaken / PLAYER_MAX_HEALTH;
+      if (missionElapsed <= par && damageRatio <= 0.25) return "S";
+      if (missionElapsed <= par * 1.35 && damageRatio <= 0.65) return "A";
+      if (missionElapsed <= par * 1.8) return "B";
+      return "C";
+    }
+
+    function readMissionRecords() {
+      try {
+        return JSON.parse(window.localStorage.getItem("sortieMissionRecords") || "{}") || {};
+      } catch {
+        return {};
+      }
+    }
+
+    const missionRecords = readMissionRecords();
+
+    function saveMissionRecords() {
+      try {
+        window.localStorage.setItem("sortieMissionRecords", JSON.stringify(missionRecords));
+      } catch {
+        // Storage can be unavailable; records simply don't persist.
+      }
+    }
+
+    function recordMissionResult(rank) {
+      const key = MISSIONS[currentMissionIndex].key;
+      const entry = missionRecords[key] || { rank: null, scores: [], times: [], cleared: false };
+      entry.cleared = true;
+      if (!entry.rank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[entry.rank] || 0)) entry.rank = rank;
+      entry.scores = [...entry.scores, score].sort((a, b) => b - a).slice(0, 3);
+      entry.times = [...entry.times, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
+      missionRecords[key] = entry;
+      saveMissionRecords();
+    }
+
+    // Campaign gating: clearing a mission unlocks the next one down the list.
+    function isMissionUnlocked(index) {
+      if (index <= 0) return true;
+      return Boolean(missionRecords[MISSIONS[index - 1].key]?.cleared);
+    }
+
     const RADIO_SPEAKERS = {
       command: { label: "COMMAND", toneFreq: 620, toneType: "square" },
       wingman: { label: "WINGMAN", toneFreq: 460, toneType: "sine" },
@@ -2158,8 +2324,26 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       altTape: document.getElementById("altTape"),
       shootCue: document.getElementById("shootCue"),
       damageSilhouette: document.getElementById("damageSilhouette"),
-      aircraftCardRow: document.getElementById("aircraftCardRow"),
       changeAircraftBtn: document.getElementById("changeAircraftBtn"),
+      missionScreen: document.getElementById("missionScreen"),
+      missionList: document.getElementById("missionList"),
+      missionMap: document.getElementById("missionMap"),
+      missionThumb: document.getElementById("missionThumb"),
+      missionInfoNum: document.getElementById("missionInfoNum"),
+      missionInfoName: document.getElementById("missionInfoName"),
+      missionBestRank: document.getElementById("missionBestRank"),
+      missionScoreList: document.getElementById("missionScoreList"),
+      missionTimeList: document.getElementById("missionTimeList"),
+      missionBlurb: document.getElementById("missionBlurb"),
+      missionConfirmBtn: document.getElementById("missionConfirmBtn"),
+      changeMissionBtn: document.getElementById("changeMissionBtn"),
+      aircraftList: document.getElementById("aircraftList"),
+      specRole: document.getElementById("specRole"),
+      specName: document.getElementById("specName"),
+      specBars: document.getElementById("specBars"),
+      ammoGrid: document.getElementById("ammoGrid"),
+      aircraftBlurbLine: document.getElementById("aircraftBlurbLine"),
+      hangarMissionTag: document.getElementById("hangarMissionTag"),
       state: document.getElementById("state"),
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
@@ -2205,6 +2389,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       finalScore: document.getElementById("finalScore"),
       finalKills: document.getElementById("finalKills"),
       finalHighscore: document.getElementById("finalHighscore"),
+      finalRank: document.getElementById("finalRank"),
+      resultMissionTag: document.getElementById("resultMissionTag"),
       debriefIntelLines: document.getElementById("debriefIntelLines")
     };
 
@@ -2282,6 +2468,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     let highscore = readHighscore();
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
+    let aircraftSpecBarCache = null;
+    let hangarOrbitAngle = 0.7;
     let missileCount = PLAYER_MISSILE_CAPACITY;
     // AC-style missile tubes: two loaded at any time, the rest of the stock
     // reloads one tube at a time on a timer.
@@ -2379,6 +2567,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       previousCamera: false,
       previousCycleLeft: false,
       previousCycleRight: false,
+      previousCycleUp: false,
+      previousCycleDown: false,
       targetPressedAt: 0,
       targetLong: false,
       targetFocus: false,
@@ -2535,6 +2725,28 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceDeployFlare: () => deployFlare(),
         forceSelectAircraft: (id) => selectAircraft(id),
+        forceSelectMission: (key) => {
+          if (gameState === STATE_PLAYING) return false;
+          const index = typeof key === "number" ? key : MISSIONS.findIndex((mission) => mission.key === key);
+          if (index < 0 || index >= MISSIONS.length) return false;
+          currentMissionIndex = index;
+          return true;
+        },
+        forceMissionCursor: (index) => {
+          if (gameState !== STATE_MISSION_SELECT) return false;
+          missionCursor = ((index % MISSIONS.length) + MISSIONS.length) % MISSIONS.length;
+          updateMissionScreen();
+          return true;
+        },
+        forceConfirmMission: () => {
+          confirmMissionSelection();
+          return gameState === STATE_READY;
+        },
+        clearMissionRecords: () => {
+          for (const key of Object.keys(missionRecords)) delete missionRecords[key];
+          saveMissionRecords();
+          return true;
+        },
         forceTeleport: (x, y, z) => {
           if (gameState !== STATE_PLAYING) return false;
           player.position.set(x, y, z);
@@ -2554,7 +2766,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           return true;
         },
         forceNavalWave: () => {
-          if (gameState !== STATE_PLAYING || waveNumber >= 3) return false;
+          if (gameState !== STATE_PLAYING) return false;
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
             enemy.alive = false;
@@ -2562,10 +2774,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             enemy.hitbox.visible = false;
             enemy.model.group.visible = false;
           }
-          kills = 6;
+          kills = missionWaveIndex * 3;
           resetLock();
           preferredTargetId = null;
-          spawnNavalWave();
+          spawnMissionWave("naval");
           return true;
         },
         forceStartOutro: () => {
@@ -2577,9 +2789,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             enemy.hitbox.visible = false;
             enemy.model.group.visible = false;
           }
-          kills = TOTAL_ENEMIES;
+          kills = MISSIONS[currentMissionIndex].totalTargets;
           aceDestroyed = true;
-          waveNumber = 3;
+          waveNumber = MISSIONS[currentMissionIndex].sequence.length;
+          missionWaveIndex = MISSIONS[currentMissionIndex].sequence.length;
           resetLock();
           preferredTargetId = null;
           startOutro();
@@ -2648,14 +2861,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     resetPlayerTransform();
     snapCamera();
-    setState(STATE_READY);
+    buildMissionList();
+    buildHangarUI();
+    {
+      const nextUp = MISSIONS.findIndex((mission, index) => isMissionUnlocked(index) && !missionRecords[mission.key]?.cleared);
+      currentMissionIndex = nextUp >= 0 ? nextUp : 0;
+    }
+    setState(STATE_MISSION_SELECT);
     resize();
     // Must precede the first updateHud(): it populates the node pools that the
     // compass and tape renderers index into.
     buildInstrumentNodes();
     updateHud();
     syncGameHook();
-    renderAircraftCards();
 
     ui.startBtn.addEventListener("click", () => {
       ensureAudio();
@@ -2668,6 +2886,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     ui.changeAircraftBtn.addEventListener("click", () => {
       ensureAudio();
       setState(STATE_READY);
+    });
+    ui.missionConfirmBtn.addEventListener("click", () => {
+      ensureAudio();
+      confirmMissionSelection();
+    });
+    ui.changeMissionBtn.addEventListener("click", () => {
+      ensureAudio();
+      setState(STATE_MISSION_SELECT);
     });
     window.addEventListener("pointerdown", ensureAudio, { passive: true });
 
@@ -2700,18 +2926,41 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return;
       }
 
-      if ((event.code === "ArrowLeft" || event.code === "KeyA") &&
-!event.repeat && gameState === STATE_READY) {
+      if ((event.code === "ArrowUp" || event.code === "KeyW") &&
+          !event.repeat && gameState === STATE_MISSION_SELECT) {
+        moveMissionCursor(-1);
+        return;
+      }
+      if ((event.code === "ArrowDown" || event.code === "KeyS") &&
+          !event.repeat && gameState === STATE_MISSION_SELECT) {
+        moveMissionCursor(1);
+        return;
+      }
+      if ((event.code === "ArrowLeft" || event.code === "KeyA" ||
+           event.code === "ArrowUp" || event.code === "KeyW") &&
+          !event.repeat && gameState === STATE_READY) {
         cycleAircraft(-1);
         return;
       }
-      if ((event.code === "ArrowRight" || event.code === "KeyD") &&
-!event.repeat && gameState === STATE_READY) {
+      if ((event.code === "ArrowRight" || event.code === "KeyD" ||
+           event.code === "ArrowDown" || event.code === "KeyS") &&
+          !event.repeat && gameState === STATE_READY) {
         cycleAircraft(1);
         return;
       }
 
+      if (event.code === "Escape" && !event.repeat) {
+        if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
+          setState(STATE_MISSION_SELECT);
+        }
+        return;
+      }
+
       if (event.code === "Enter" && !event.repeat) {
+        if (gameState === STATE_MISSION_SELECT) {
+          confirmMissionSelection();
+          return;
+        }
         if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
           startMission();
           return;
@@ -2818,13 +3067,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         }
       } else {
         animateIdle(dt);
+        if (gameState === STATE_MISSION_SELECT) {
+          renderMissionScreenFrame(performance.now() * 0.001);
+        }
       }
 
       updatePlayerDamageSmoke(dt);
       updateFlares(dt);
       updateParticlePools(dt);
       updateAudioCues(rawDt);
-      updateCamera(rawDt);
+      if (gameState === STATE_READY) updateHangarCamera(rawDt);
+      else updateCamera(rawDt);
       updateWorld(rawDt);
       updateFlightEffects(rawDt);
       updateVisualStatus(rawDt);
@@ -2892,6 +3145,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.previousCamera = false;
       gamepadInput.previousCycleLeft = false;
       gamepadInput.previousCycleRight = false;
+      gamepadInput.previousCycleUp = false;
+      gamepadInput.previousCycleDown = false;
       gamepadInput.targetPressedAt = 0;
       gamepadInput.targetLong = false;
       gamepadInput.targetFocus = false;
@@ -2937,6 +3192,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         (gamepadButtonPressed(selected, 12) ? 1 : 0);
       const dpadLeftPressed = gamepadButtonPressed(selected, 14);
       const dpadRightPressed = gamepadButtonPressed(selected, 15);
+      const dpadUpPressed = gamepadButtonPressed(selected, 12);
+      const dpadDownPressed = gamepadButtonPressed(selected, 13);
       const dpadRoll = (dpadLeftPressed ? 1 : 0) - (dpadRightPressed ? 1 : 0);
       const yawRight = gamepadButtonPressed(selected, 5) ? 1 : 0;
       const yawLeft = gamepadButtonPressed(selected, 4) ? 1 : 0;
@@ -2963,19 +3220,30 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const now = performance.now();
 
       if (modePressed && !gamepadInput.previousModeToggle) toggleControlMode();
-      if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
-      if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
+      if (!wasPlaying && startPressed && !gamepadInput.previousStart) {
+        if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
+        else startMission();
+      }
+      if (cameraPressed && !gamepadInput.previousCamera) {
+        if (wasPlaying) cycleCamera();
+        else if (gameState !== STATE_MISSION_SELECT) setState(STATE_MISSION_SELECT);
+      }
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
       if (wasPlaying && flarePressed && !gamepadInput.previousFlare) deployFlare();
       // Also allowed on the result screen: otherwise a gamepad-only player can
       // never change aircraft, because retry restarts with the current one and
       // #changeAircraftBtn is mouse-only.
-      if (gameState !== STATE_PLAYING) {
-        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) {
+      if (gameState === STATE_MISSION_SELECT) {
+        if (dpadUpPressed && !gamepadInput.previousCycleUp) moveMissionCursor(-1);
+        if (dpadDownPressed && !gamepadInput.previousCycleDown) moveMissionCursor(1);
+      } else if (gameState !== STATE_PLAYING) {
+        if ((dpadLeftPressed && !gamepadInput.previousCycleLeft) ||
+            (dpadUpPressed && !gamepadInput.previousCycleUp)) {
           if (gameState !== STATE_READY) setState(STATE_READY);
           cycleAircraft(-1);
         }
-        if (dpadRightPressed && !gamepadInput.previousCycleRight) {
+        if ((dpadRightPressed && !gamepadInput.previousCycleRight) ||
+            (dpadDownPressed && !gamepadInput.previousCycleDown)) {
           if (gameState !== STATE_READY) setState(STATE_READY);
           cycleAircraft(1);
         }
@@ -3009,6 +3277,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.previousCamera = cameraPressed;
       gamepadInput.previousCycleLeft = dpadLeftPressed;
       gamepadInput.previousCycleRight = dpadRightPressed;
+      gamepadInput.previousCycleUp = dpadUpPressed;
+      gamepadInput.previousCycleDown = dpadDownPressed;
     }
 
     function adoptNormalFlightFrame() {
@@ -3484,6 +3754,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       damageTaken = 0;
       playerNickname = null;
       waveNumber = 0;
+      missionWaveIndex = 0;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
       gunShots = 0;
@@ -3524,8 +3795,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       audioSystem.threatTimer = 0;
       audioSystem.lastLocked = false;
       setState(STATE_PLAYING);
-      spawnWave(1);
-      showBanner("WAVE 1 · ENGAGE", 2.1);
+      spawnMissionWave(MISSIONS[currentMissionIndex].sequence[0]);
       snapCamera();
       clock.getDelta();
     }
@@ -3533,8 +3803,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     function buildDebriefIntelLines(success) {
       const nickname = getPlayerNickname();
       const lines = [];
+      const missionHadAce = MISSIONS[currentMissionIndex].sequence.includes("air2");
       if (success) {
-        lines.push("IRONBACK撃墜を確認。繰り返す——IRONBACK、墜ちた。");
+        if (missionHadAce) lines.push("IRONBACK撃墜を確認。繰り返す——IRONBACK、墜ちた。");
+        else lines.push("派遣した部隊は全滅。何が起きたのか、まだ報告が上がってこない。");
         lines.push(`たった1機に${kills}機やられた。奴らは奴を『${nickname}』と呼んでいる。`);
         lines.push(gunKills >= missileKills
           ? "機銃だ。ほとんどが機銃による撃墜だった。二度とこの空域に近づくな。"
@@ -3543,7 +3815,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         lines.push("撃墜1。敵機は墜ちた。空はまた我々のものだ。");
         lines.push(aceDestroyed
           ? "IRONBACKも還らなかったがな。割に合わん取引だ。"
-          : "IRONBACKはもう「次は誰だ」と聞いている。");
+          : missionHadAce
+            ? "IRONBACKはもう「次は誰だ」と聞いている。"
+            : "敵は君の機体を覚えたそうだ。次は的にされる前に墜とせ。");
         if (kills > 0) lines.push(`落とされるまでに${kills}機持っていかれた。`);
       }
       return lines;
@@ -3551,12 +3825,25 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function setState(nextState) {
       gameState = nextState;
+      // Single source of truth for the CSS that hides the flight HUD in menu
+      // states (see the body[data-game-state] rules next to #hud).
+      document.body.dataset.gameState = nextState;
       ui.state.textContent = nextState;
+      ui.missionScreen.classList.toggle("hidden", nextState !== STATE_MISSION_SELECT);
       ui.startScreen.classList.toggle("hidden", nextState !== STATE_READY);
       ui.resultScreen.classList.toggle("hidden", nextState !== STATE_COMPLETE && nextState !== STATE_GAMEOVER);
 
-      if (nextState === STATE_READY) {
+      if (nextState === STATE_MISSION_SELECT) {
+        missionCursor = currentMissionIndex;
+        updateMissionScreen();
+      } else if (nextState === STATE_READY) {
+        playerModel.group.visible = true;
+        updateHangarScreen();
         queueMicrotask(() => ui.startBtn.focus({ preventScroll: true }));
+      } else if (nextState === STATE_PLAYING) {
+        // The HUD was display:none a moment ago, so the radar canvas has no
+        // usable box yet. Re-measure now that the rule no longer applies.
+        syncRadarCanvas();
       } else if (nextState === STATE_COMPLETE || nextState === STATE_GAMEOVER) {
         const success = nextState === STATE_COMPLETE;
         ui.resultTitle.textContent = success ? "MISSION COMPLETE" : "MISSION FAILED";
@@ -3566,6 +3853,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ui.finalScore.textContent = String(score);
         ui.finalKills.textContent = String(kills);
         ui.finalHighscore.textContent = String(highscore);
+        ui.finalRank.textContent = success && lastMissionRank ? lastMissionRank : "—";
+        ui.resultMissionTag.textContent =
+          `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
         const debriefLines = buildDebriefIntelLines(success);
         ui.debriefIntelLines.replaceChildren(...debriefLines.map((line) => {
           const item = document.createElement("li");
@@ -4203,9 +4493,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       lockGraceTimer = 0;
     }
 
-    function spawnWave(number) {
-      waveNumber = number;
-      waveClearTimer = -1;
+    function spawnWave(number, withAce = false) {
       const spawnForward = forwardOf(player, new THREE.Vector3());
       const spawnRight = rightOf(player, new THREE.Vector3());
       const spawnUp = upOf(player, new THREE.Vector3());
@@ -4221,7 +4509,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           .addScaledVector(spawnRight, lateralOffsets[i])
           .addScaledVector(spawnUp, altitudeOffsets[i]);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, number, i, waveTypes[i], number === 2 && i === 0);
+        spawnEnemy(position, number, i, waveTypes[i], withAce && i === 0);
       }
     }
 
@@ -4372,8 +4660,6 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function spawnNavalWave() {
-      waveNumber = 3;
-      waveClearTimer = -1;
 
       // The fleet sits on open water ~2.4km ahead of the player's heading,
       // clamped into the inner sea so it can never spawn inside the mountain
@@ -4416,7 +4702,64 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missileCount = PLAYER_MISSILE_CAPACITY;
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, missileCount);
       missileReloadTimers.length = 0;
-      showBanner("MISSILES RESTOCKED", 1.4, "success");
+      if (waveNumber > 1) showBanner("MISSILES RESTOCKED", 1.4, "success");
+    }
+
+    // One mission = an ordered list of wave entries. Each entry maps to a
+    // spawner and owns its inbound banner/radio, so any mission can compose
+    // air and naval waves in any order.
+    function spawnMissionWave(entry) {
+      missionWaveIndex += 1;
+      waveNumber = missionWaveIndex;
+      waveClearTimer = -1;
+      const first = missionWaveIndex === 1;
+      if (entry === "naval") {
+        spawnNavalWave();
+        if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
+        else showBanner(`WAVE ${missionWaveIndex} · ENEMY FLEET DETECTED`, 2.2, "danger");
+        triggerRadioLine(
+          "command",
+          "レーダーに水上反応。敵艦隊だ——空母1、護衛のイージス艦2。対艦攻撃に移れ。",
+          RADIO_PRIORITY.NORMAL,
+          "wave-naval-inbound"
+        );
+        triggerRadioLine(
+          "wingman",
+          first
+            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！"
+            : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
+          RADIO_PRIORITY.NORMAL,
+          "wave-naval-brief"
+        );
+      } else {
+        const withAce = entry === "air2";
+        spawnWave(entry === "air1" ? 1 : 2, withAce);
+        if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
+        else showBanner(`WAVE ${missionWaveIndex} · INBOUND`, 2.0, "danger");
+        if (withAce) {
+          triggerRadioLine(
+            "command",
+            first
+              ? "敵編隊を確認。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。"
+              : "第2波、接近中。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。",
+            RADIO_PRIORITY.NORMAL,
+            "wave-ace-inbound"
+          );
+          triggerRadioLine(
+            "wingman",
+            "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
+            RADIO_PRIORITY.NORMAL,
+            "ace-foreshadow-wingman"
+          );
+        } else if (!first) {
+          triggerRadioLine(
+            "command",
+            "増援を確認。次の波が接近中だ。迎撃を続行せよ。",
+            RADIO_PRIORITY.NORMAL,
+            "wave-air-inbound"
+          );
+        }
+      }
     }
 
     function updateEnemies(dt) {
@@ -4937,46 +5280,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return;
       }
 
+      const mission = MISSIONS[currentMissionIndex];
       if (waveClearTimer < 0) {
-        waveClearTimer = waveNumber < 3 ? 2.15 : 1.35;
-        showBanner(waveNumber < 3 ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
+        const isLast = missionWaveIndex >= mission.sequence.length;
+        waveClearTimer = isLast ? 1.35 : 2.15;
+        showBanner(isLast ? "ALL TARGETS DESTROYED" : `WAVE ${missionWaveIndex} CLEAR`, 1.35, "success");
       }
 
       waveClearTimer -= dt;
       if (waveClearTimer > 0) return;
 
-      if (waveNumber === 1) {
-        spawnWave(2);
-        showBanner("WAVE 2 · INBOUND", 2.0, "danger");
-        triggerRadioLine(
-          "command",
-          "第2波、接近中。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。",
-          RADIO_PRIORITY.NORMAL,
-          "wave2-inbound"
-        );
-        triggerRadioLine(
-          "wingman",
-          "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
-          RADIO_PRIORITY.NORMAL,
-          "ace-foreshadow-wingman"
-        );
-      } else if (waveNumber === 2) {
-        spawnNavalWave();
-        showBanner("WAVE 3 · ENEMY FLEET DETECTED", 2.2, "danger");
-        triggerRadioLine(
-          "command",
-          "レーダーに水上反応。敵艦隊だ——空母1、護衛のイージス艦2。対艦攻撃に移れ。",
-          RADIO_PRIORITY.NORMAL,
-          "wave3-inbound"
-        );
-        triggerRadioLine(
-          "wingman",
-          "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
-          RADIO_PRIORITY.NORMAL,
-          "wave3-brief"
-        );
-      } else if (kills >= TOTAL_ENEMIES) {
-        startOutro();
+      if (missionWaveIndex < mission.sequence.length) {
+        spawnMissionWave(mission.sequence[missionWaveIndex]);
+      } else if (kills >= mission.totalTargets) {
+        if (mission.hasOutro) startOutro();
+        else completeMission(true);
       }
     }
 
@@ -5037,6 +5355,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         highscore = score;
         saveHighscore();
       }
+      if (success) {
+        lastMissionRank = computeMissionRank();
+        recordMissionResult(lastMissionRank);
+      } else {
+        lastMissionRank = null;
+      }
       resetRadio();
       if (success) {
         radioSay(
@@ -5054,6 +5378,28 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         );
       }
       setState(success ? STATE_COMPLETE : STATE_GAMEOVER);
+    }
+
+    // Hangar beauty cam: slow orbit around the parked player aircraft while the
+    // select screen is up. Runs on rawDt so kill-cam timescale can't touch it.
+    function updateHangarCamera(dt) {
+      hangarOrbitAngle += dt * 0.28;
+      const radius = 26;
+      camera.position.set(
+        player.position.x + Math.sin(hangarOrbitAngle) * radius,
+        player.position.y + 6.5 + Math.sin(hangarOrbitAngle * 0.6) * 2.2,
+        player.position.z + Math.cos(hangarOrbitAngle) * radius
+      );
+      if (Math.abs(camera.fov - 42) > 0.01) {
+        camera.fov = 42;
+        currentCameraFov = 42;
+        camera.updateProjectionMatrix();
+      }
+      camera.up.copy(WORLD_UP);
+      tmpV1.copy(player.position);
+      tmpV1.y += 1.2;
+      camera.lookAt(tmpV1);
+      world.skyGroup.position.copy(camera.position);
     }
 
     function updateCamera(dt) {
@@ -5740,7 +6086,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
       ui.altitude.textContent = String(altitudeM);
-      ui.wave.textContent = `WAVE ${waveNumber} / 3`;
+      ui.wave.textContent = `WAVE ${waveNumber} / ${MISSIONS[currentMissionIndex].sequence.length}`;
 
       updateCompass(getPlayerHeadingDeg());
       updateTape(speedTapeNodes, speedKph, 100);
@@ -5885,6 +6231,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.debug.missileKills = missileKills;
       hook.debug.damageTaken = damageTaken;
       hook.debug.aceDestroyed = aceDestroyed;
+      hook.mission = {
+        index: currentMissionIndex,
+        key: MISSIONS[currentMissionIndex].key,
+        title: MISSIONS[currentMissionIndex].title,
+        wave: missionWaveIndex,
+        waves: MISSIONS[currentMissionIndex].sequence.length,
+        rank: lastMissionRank,
+        cursor: missionCursor,
+        unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index))
+      };
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
@@ -6096,6 +6452,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ctx.shadowBlur = 0;
     }
 
+    // Split out of resize() because the radar has no box while the HUD is
+    // display:none in menu states. Bailing on a zero measurement keeps the last
+    // good backing store instead of collapsing it to 1px for the rest of the
+    // session; setState() calls this again when the HUD comes back.
+    function syncRadarCanvas() {
+      const rect = ui.radar.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      radarCssSize = Math.max(1, rect.width);
+      radarDpr = Math.min(window.devicePixelRatio || 1, 2);
+      ui.radar.width = Math.max(1, Math.round(rect.width * radarDpr));
+      ui.radar.height = Math.max(1, Math.round(rect.height * radarDpr));
+    }
+
     function resize() {
       const width = Math.max(1, window.innerWidth);
       const height = Math.max(1, window.innerHeight);
@@ -6103,12 +6472,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       renderer.setSize(width, height, false);
-
-      const rect = ui.radar.getBoundingClientRect();
-      radarCssSize = Math.max(1, rect.width);
-      radarDpr = Math.min(window.devicePixelRatio || 1, 2);
-      ui.radar.width = Math.max(1, Math.round(rect.width * radarDpr));
-      ui.radar.height = Math.max(1, Math.round(rect.height * radarDpr));
+      syncRadarCanvas();
     }
 
     function forwardOf(object, out) {
@@ -7270,7 +7634,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (!AIRCRAFT_TYPES[id]) return false;
       selectedAircraftId = id;
       rebuildPlayerModel(id);
-      updateAircraftCardsUI();
+      updateHangarScreen();
       window.__game.selectedAircraft = selectedAircraftId;
       return true;
     }
@@ -7285,7 +7649,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return Math.round(20 + ((value - min) / (max - min)) * 80);
     }
 
-    function renderAircraftCards() {
+    // Scores every airframe against the fleet, so the bars are relative rather
+    // than absolute - only computed once, on boot.
+    function computeAircraftSpecBars() {
       const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
       // SPEED covers both top end and how fast it gets there (smaller response
       // constant = quicker), so a fast-but-sluggish jet doesn't read as best.
@@ -7318,52 +7684,240 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const stabilities = specs.map(stabilityScore);
       const firepowers = specs.map(firepowerScore);
 
-      ui.aircraftCardRow.replaceChildren(...specs.map((spec) => {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "aircraftCard";
-        card.dataset.aircraft = spec.id;
-        card.setAttribute("role", "radio");
-        card.setAttribute("aria-checked", String(spec.id === selectedAircraftId));
-        const speedPercent = statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100;
-        const turnPercent =
-          statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100;
-        const armorPercent = statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100;
-        const stabilityPercent =
-          statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100;
-        const firepowerPercent =
-          statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100;
-        card.innerHTML = `
-${spec.tag ? `<span class="aircraftTag">${spec.tag}</span>` : ""}
-<span class="aircraftName">${spec.label}</span>
-<span class="aircraftRole">${spec.role}</span>
-<p class="aircraftBlurb">${spec.blurb}</p>
-<div class="aircraftStats">
-  <div class="statRow"><span>SPEED</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${speedPercent})"></span></div></div>
-  <div class="statRow"><span>MOBILITY</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${turnPercent})"></span></div></div>
-  <div class="statRow"><span>STABILITY</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${stabilityPercent})"></span></div></div>
-  <div class="statRow"><span>AIR-TO-AIR</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${firepowerPercent})"></span></div></div>
-  <div class="statRow"><span>DEFENSE</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${armorPercent})"></span></div></div>
-</div>
-<span class="aircraftMissiles">MSL × ${spec.missileCapacity} · HP ${spec.maxHealth}</span>
-        `;
-        card.addEventListener("click", () => {
-ensureAudio();
-selectAircraft(spec.id);
-        });
-        return card;
-      }));
-      updateAircraftCardsUI();
-    }
-
-    function updateAircraftCardsUI() {
-      for (const card of ui.aircraftCardRow.children) {
-        const active = card.dataset.aircraft === selectedAircraftId;
-        card.classList.toggle("active", active);
-        card.setAttribute("aria-checked", String(active));
+      const bars = {};
+      for (const spec of specs) {
+        bars[spec.id] = {
+          speed: statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100,
+          mobility: statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100,
+          stability: statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100,
+          firepower: statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100,
+          defense: statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100
+        };
       }
+      return bars;
     }
 
+    function buildHangarUI() {
+      aircraftSpecBarCache = computeAircraftSpecBars();
+      ui.aircraftList.replaceChildren(...AIRCRAFT_ORDER.map((id) => {
+        const spec = AIRCRAFT_TYPES[id];
+        const item = document.createElement("li");
+        item.dataset.aircraft = id;
+        item.setAttribute("role", "radio");
+        item.innerHTML = `<span class="listIcon">✈</span>${spec.label}`;
+        item.addEventListener("click", () => {
+          ensureAudio();
+          selectAircraft(id);
+        });
+        return item;
+      }));
+      updateHangarScreen();
+    }
+
+    function updateHangarScreen() {
+      const spec = AIRCRAFT_TYPES[selectedAircraftId];
+      if (!spec) return;
+      for (const item of ui.aircraftList.children) {
+        const active = item.dataset.aircraft === selectedAircraftId;
+        item.classList.toggle("selected", active);
+        item.setAttribute("aria-checked", String(active));
+      }
+      ui.specRole.textContent = spec.role.toUpperCase();
+      ui.specName.textContent = spec.label;
+      const bars = (aircraftSpecBarCache || {})[spec.id] || {};
+      const rows = [
+        ["SPEED", "speed"],
+        ["MOBILITY", "mobility"],
+        ["STABILITY", "stability"],
+        ["AIR-TO-AIR", "firepower"],
+        ["DEFENSE", "defense"]
+      ];
+      ui.specBars.innerHTML = rows.map(([label, key]) =>
+        `<div class="specRow"><span>${label}</span><div class="specBarTrack"><i style="--v:${(bars[key] || 0).toFixed(2)}"></i></div></div>`
+      ).join("");
+      ui.ammoGrid.innerHTML =
+        `<dt>GUN</dt><dd>---</dd><dt>MSL</dt><dd>${String(spec.missileCapacity)}</dd><dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
+      ui.aircraftBlurbLine.textContent = spec.blurb;
+      ui.hangarMissionTag.textContent =
+        `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title}`;
+    }
+
+    // Backing store is in CSS pixels, so everything below draws in CSS space and
+    // the device-pixel ratio only shows up here.
+    function sizeMenuCanvas(canvas) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w <= 0 || h <= 0) return null;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, w, h, dpr };
+    }
+
+    // One drawing routine for both the big map and the thumbnail; `view` zooms
+    // in on a mission so the thumb can never drift out of sync with the map.
+    function drawTacticalMap(canvas, view, time) {
+      const sized = sizeMenuCanvas(canvas);
+      if (!sized) return;
+      const { ctx, w, h, dpr } = sized;
+      ctx.clearRect(0, 0, w, h);
+      if (view) {
+        ctx.translate(w / 2, h / 2);
+        ctx.scale(view.zoom, view.zoom);
+        ctx.translate(-view.x * w, -view.y * h);
+      }
+
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(110, 190, 255, 0.10)";
+      ctx.beginPath();
+      for (let i = 1; i < 12; i += 1) {
+        const x = (w / 12) * i;
+        ctx.moveTo(x, -h);
+        ctx.lineTo(x, h * 2);
+      }
+      for (let i = 1; i < 8; i += 1) {
+        const y = (h / 8) * i;
+        ctx.moveTo(-w, y);
+        ctx.lineTo(w * 2, y);
+      }
+      ctx.stroke();
+
+      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = "rgba(140, 220, 255, 0.5)";
+      ctx.fillStyle = "rgba(70, 150, 200, 0.07)";
+      for (const island of MAP_LANDMASSES) {
+        ctx.beginPath();
+        island.forEach(([x, y], index) => {
+          if (index === 0) ctx.moveTo(x * w, y * h);
+          else ctx.lineTo(x * w, y * h);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.font = '700 10px "Courier New", monospace';
+      ctx.textBaseline = "middle";
+      MISSIONS.forEach((mission, index) => {
+        const unlocked = isMissionUnlocked(index);
+        const selected = index === missionCursor;
+        const x = mission.map.x * w;
+        const y = mission.map.y * h;
+        ctx.globalAlpha = unlocked ? 1 : 0.3;
+
+        if (selected) {
+          const pulse = (time % 1.6) / 1.6;
+          ctx.strokeStyle = `rgba(255, 154, 60, ${0.55 * (1 - pulse)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y, 7 + pulse * 16, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = "#ff9a3c";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(x, y, 7, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = selected ? "#ff9a3c" : "#8fd4ff";
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        const rank = missionRecords[mission.key]?.rank;
+        ctx.fillStyle = selected ? "#ffd9a8" : "rgba(190, 225, 245, 0.85)";
+        ctx.fillText(`${String(index + 1).padStart(2, "0")}${rank ? `(${rank})` : ""}`, x + 10, y);
+        ctx.globalAlpha = 1;
+      });
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function renderMissionScreenFrame(time) {
+      drawTacticalMap(ui.missionMap, null, time);
+      const mission = MISSIONS[missionCursor];
+      drawTacticalMap(ui.missionThumb, { x: mission.map.x, y: mission.map.y, zoom: 3.1 }, time);
+    }
+
+    function buildMissionList() {
+      ui.missionList.replaceChildren(...MISSIONS.map((mission, index) => {
+        const item = document.createElement("li");
+        item.dataset.mission = mission.key;
+        item.addEventListener("click", () => {
+          ensureAudio();
+          missionCursor = index;
+          updateMissionScreen();
+        });
+        item.addEventListener("dblclick", () => {
+          ensureAudio();
+          confirmMissionSelection();
+        });
+        return item;
+      }));
+      updateMissionScreen();
+    }
+
+    function updateMissionScreen() {
+      const places = ["1ST", "2ND", "3RD"];
+      MISSIONS.forEach((mission, index) => {
+        const item = ui.missionList.children[index];
+        if (!item) return;
+        const unlocked = isMissionUnlocked(index);
+        const record = missionRecords[mission.key];
+        const num = String(index + 1).padStart(2, "0");
+        item.classList.toggle("selected", index === missionCursor);
+        item.classList.toggle("locked", !unlocked);
+        item.classList.toggle("cleared", Boolean(record?.cleared));
+        item.innerHTML = unlocked
+          ? `<span class="listIcon">▸</span>${num} ${mission.title}${record?.rank ? `<span class="listRank">${record.rank}</span>` : ""}`
+          : `<span class="listIcon">▸</span>${num} ?????<span class="listRank">LOCKED</span>`;
+      });
+
+      const mission = MISSIONS[missionCursor];
+      const unlocked = isMissionUnlocked(missionCursor);
+      const record = missionRecords[mission.key];
+      ui.missionInfoNum.textContent = `MISSION ${String(missionCursor + 1).padStart(2, "0")}`;
+      ui.missionInfoName.textContent = unlocked ? mission.title : "?????";
+      ui.missionBestRank.textContent = record?.rank || "—";
+      ui.missionScoreList.replaceChildren(...places.map((place, index) => {
+        const row = document.createElement("li");
+        const value = record?.scores?.[index];
+        const shown = typeof value === "number" ? value.toLocaleString("en-US") : "--------";
+        row.innerHTML = `<span>${place}</span><span>${shown}</span>`;
+        return row;
+      }));
+      ui.missionTimeList.replaceChildren(...places.map((place, index) => {
+        const row = document.createElement("li");
+        const value = record?.times?.[index];
+        const shown = typeof value === "number" ? formatMissionTime(value) : `--'--"--`;
+        row.innerHTML = `<span>${place}</span><span>${shown}</span>`;
+        return row;
+      }));
+      ui.missionBlurb.textContent = unlocked ? mission.jp : "前のミッションをクリアすると解禁される。";
+      ui.missionConfirmBtn.disabled = !unlocked;
+      renderMissionScreenFrame(performance.now() * 0.001);
+    }
+
+    function moveMissionCursor(delta) {
+      missionCursor = ((missionCursor + delta) % MISSIONS.length + MISSIONS.length) % MISSIONS.length;
+      updateMissionScreen();
+      playTone(760, 0.03, 0.03, "square");
+    }
+
+    function confirmMissionSelection() {
+      if (gameState !== STATE_MISSION_SELECT) return;
+      if (!isMissionUnlocked(missionCursor)) {
+        playTone(210, 0.09, 0.06, "square");
+        return;
+      }
+      currentMissionIndex = missionCursor;
+      playTone(980, 0.06, 0.05, "square");
+      setState(STATE_READY);
+    }
 
     function createWorld() {
       const skyCanvas = document.createElement("canvas");
