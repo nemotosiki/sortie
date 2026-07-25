@@ -2009,7 +2009,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f15", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "fa18", "f15", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2092,6 +2092,32 @@ primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
 canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         })
       }),
+      // F/A-18F: the carrier jet. Deliberately not "F-16 but better" - it gives
+      // up top speed to the land-based fighters and buys back pitch authority,
+      // roll damping and a low stall entry, which is what flying an approach at
+      // 140 kt onto a moving deck actually demands. Sits between the F-16 and
+      // the F-15 on aggregate, but not on every axis: pitch beats the Eagle,
+      // roll does not.
+      fa18: Object.freeze({
+        id: "fa18",
+        label: "F/A-18F SUPER HORNET",
+        role: "Carrier Multirole",
+        tag: "NAVY",
+        blurb: "空母運用を前提に鍛えられた複座の艦載機。最高速度は上位機に譲るが、中速域の機動と姿勢の安定は随一で、狙った位置に留まり続ける。",
+        cruiseSpeed: 200, boostSpeed: 390, brakeSpeed: 126,
+        pitchRateDeg: 47, rollRateDeg: 150, yawRateDeg: 13, maxBankAngleDeg: 57,
+        normalRollSpring: 42, rollRateLimitDeg: 145, turnRateDeg: 33,
+        rollDamping: 11.8, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.5, structuralG: 3.15,
+        gunDamage: 20, missileDamage: 98,
+        boostResponse: 0.52, brakeResponse: 0.5, cruiseResponse: 0.58,
+        missileCapacity: 12, maxHealth: 135,
+        spw: Object.freeze({ key: "qaam", capacity: 12 }),
+        tipSpan: 7.9, tipZ: 2.9,
+        theme: Object.freeze({
+primary: 0xb9c2ca, secondary: 0x707a85, accent: 0x2f4f75,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.02, variant: "hornet"
+        })
+      }),
       f15: Object.freeze({
         id: "f15",
         label: "F-15 EAGLE",
@@ -2117,7 +2143,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         label: "F-4 PHANTOM II",
         role: "Legacy Interceptor",
         tag: "LEGACY",
-        blurb: "1960年代の旧世代機。全性能で他機に劣る。これで戦果を挙げれば本物だ。",
+        blurb: "1960年代の旧世代機。速度も旋回も現代機には遠く及ばないが、無骨な機体は軽量機より打たれ強く、対地攻撃では全機中最良だ。",
         cruiseSpeed: 165, boostSpeed: 320, brakeSpeed: 152,
         pitchRateDeg: 30, rollRateDeg: 105, yawRateDeg: 8, maxBankAngleDeg: 40,
         normalRollSpring: 27, rollRateLimitDeg: 100, turnRateDeg: 21,
@@ -9968,7 +9994,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       // Per-airframe wing planforms ([span-x, fore-aft-z], +z aft), so each
       // silhouette reads at a glance: F-16 cropped delta with LERX strakes,
-      // F-15 big shoulder-mounted trapezoid, F-4 broad swept wing, F-22 diamond.
+      // F-15 big shoulder-mounted trapezoid, F/A-18 clipped low-sweep trapezoid,
+      // F-4 broad swept wing, F-22 diamond.
       const wingViper = extrudedSurface([
         [0, -5.0], [1.15, -2.2], [7.2, 2.9], [7.2, 3.9], [2.4, 4.5],
         [0, 4.5], [-2.4, 4.5], [-7.2, 3.9], [-7.2, 2.9], [-1.15, -2.2]
@@ -9977,6 +10004,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         [0, -3.4], [2.0, -2.6], [8.6, 2.2], [8.6, 3.2], [3.2, 3.8],
         [0, 3.8], [-3.2, 3.8], [-8.6, 3.2], [-8.6, 2.2], [-2.0, -2.6]
       ], 0.3);
+      // F/A-18F: trapezoid shoulder wing, less swept than the Eagle's and
+      // clipped to a wide tip chord so the wingtip AIM-9 rail has something to
+      // sit on. Half-span 7.9 matches the airframe's tipSpan, so the contrail
+      // leaves the geometric tip rather than floating inboard of it.
+      const wingHornet = extrudedSurface([
+        [0, -3.6], [1.9, -2.9], [7.9, 1.2], [7.9, 3.0], [3.0, 3.6],
+        [0, 3.6], [-3.0, 3.6], [-7.9, 3.0], [-7.9, 1.2], [-1.9, -2.9]
+      ], 0.28);
       const wingPhantom = extrudedSurface([
         [0, -3.2], [3.2, -1.5], [7.4, 1.8], [7.4, 2.8], [2.8, 3.4],
         [0, 3.7], [-2.8, 3.4], [-7.4, 2.8], [-7.4, 1.8], [-3.2, -1.5]
@@ -10022,7 +10057,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingEagle, wingPhantom, wingRaptor, stabRaptor, panel,
+        wingViper, wingEagle, wingHornet, wingPhantom, wingRaptor, stabRaptor, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -10222,6 +10257,44 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         add(geometry.panel, dark, 0, 1.12, -3.0, 0.92, 0.52, 0.16);
         add(geometry.canopy, navL, -9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "hornet") {
+        // F/A-18F: broad forebody with big LERX strakes running back into the
+        // wing root, twin outward-canted tails set wider and further forward
+        // than the F-22's, long tandem canopy, wingtip AIM-9 rails and a
+        // ventral arrestor hook. Twin engines, close-coupled.
+        add(geometry.fuselage, primary, 0, 0.04, -0.45, 1.1, 0.78, 1);
+        add(geometry.nose, primary, 0, 0.02, -8.1, 0.76, 0.66, 1);
+        add(geometry.canopy, canopy, 0, 0.92, -3.2, 0.72, 0.56, 2.1);
+        add(geometry.wingHornet, secondary, 0, 0.18, 0.8);
+        // The LERX is the Super Hornet's read-at-a-glance feature: a wide flat
+        // strake from the cockpit sides into the wing root, far broader than
+        // the F-16's thin fuselage strakes.
+        add(geometry.panel, secondary, -1.7, 0.14, -4.6, 1.1, 0.1, 3.8);
+        add(geometry.panel, secondary, 1.7, 0.14, -4.6, 1.1, 0.1, 3.8);
+        add(geometry.tailWing, primary, 0, -0.04, 6.2, 0.95, 1, 0.9);
+        add(geometry.fin, secondary, -1.95, 0.5, 4.35, 0.8, 1, 0.82, 0.36);
+        add(geometry.fin, secondary, 1.95, 0.5, 4.35, 0.8, 1, 0.82, -0.36);
+        add(geometry.rearBody, secondary, -0.82, -0.06, 6.4, 0.8, 0.8, 1.15);
+        add(geometry.rearBody, secondary, 0.82, -0.06, 6.4, 0.8, 0.8, 1.15);
+        add(geometry.intake, accent, -1.5, -0.16, -1.6, 0.75, 0.95, 1.15);
+        add(geometry.intake, accent, 1.5, -0.16, -1.6, 0.75, 0.95, 1.15);
+        add(geometry.nozzle, accent, -0.82, -0.06, 8.35, 0.95, 0.95, 1);
+        add(geometry.nozzle, accent, 0.82, -0.06, 8.35, 0.95, 0.95, 1);
+        addFlame(-0.82, -0.06, 9.7, 0.95, 0.95);
+        addFlame(0.82, -0.06, 9.7, 0.95, 0.95);
+        // Details: anti-glare strip, arrestor hook stowed under the tail, and
+        // wingtip rails with AIM-9s. The hook is the only part in this function
+        // that needs a pitch angle, so it sets rotation.x on the returned mesh.
+        add(geometry.panel, dark, 0, 0.66, -5.0, 0.66, 0.08, 2.0);
+        add(geometry.panel, dark, 0, -0.95, 6.9, 0.13, 0.13, 2.6).rotation.x = 0.34;
+        add(geometry.panel, dark, -7.9, 0.06, 2.8, 0.22, 0.16, 2.3);
+        add(geometry.panel, dark, 7.9, 0.06, 2.8, 0.22, 0.16, 2.3);
+        add(geometry.missileBody, light, -7.9, -0.18, 2.5, 0.8, 0.8, 0.75);
+        add(geometry.missileBody, light, 7.9, -0.18, 2.5, 0.8, 0.8, 0.75);
+        add(geometry.missileNose, dark, -7.9, -0.18, 0.7, 0.75, 0.75, 0.75);
+        add(geometry.missileNose, dark, 7.9, -0.18, 0.7, 0.75, 0.75, 0.75);
+        add(geometry.canopy, navL, -8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
