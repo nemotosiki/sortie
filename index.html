@@ -3431,6 +3431,33 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       rwr: "sfx/rwr.ogg"
     });
 
+    // CC0 music beds (see bgm/CREDITS.txt), every file normalised to -18 LUFS so
+    // one shared bus gain is enough. Same contract as the sfx above: a track that
+    // fails to load is simply silent, it never blocks a state change.
+    const MUSIC_SOURCES = Object.freeze({
+      menu: "bgm/menu.ogg",
+      briefing: "bgm/briefing.ogg",
+      combat: "bgm/combat.ogg",
+      ace: "bgm/ace.ogg",
+      debrief: "bgm/debrief.ogg",
+      victorySting: "bgm/victory_sting.ogg"
+    });
+    // Decode order, not just a slot list: the tracks a session reaches first come
+    // first, and the decodes run as a chain so six of them cannot pile onto one
+    // frame. Fetching still happens in parallel.
+    const MUSIC_DECODE_ORDER = Object.freeze([
+      "menu", "briefing", "combat", "ace", "victorySting", "debrief"
+    ]);
+    const MUSIC_STING_SLOT = "victorySting";
+    const MUSIC_VOLUME = 0.32;              // stays under the sfx on purpose
+    const MUSIC_CROSSFADE_TIME = 0.9;
+    const MUSIC_STING_DUCK_TIME = 0.4;      // bed clears out for the win sting
+    const MUSIC_GAMEOVER_FADE_TIME = 1.2;   // failure gets the drone, not a track
+    const MUSIC_DEBRIEF_DELAY = 0.6;        // gap between sting and debrief bed
+    // Pursuit flickers as the ace overshoots and re-acquires; the music only
+    // follows a condition that has held this long.
+    const ACE_MUSIC_HOLD_TIME = 3.0;
+
     const ENGINE_GAIN_IDLE = 0.10;
     const ENGINE_GAIN_BOOST = 0.30;
     const ENGINE_RATE_IDLE = 0.78;
@@ -3470,7 +3497,28 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       lockOsc: null,
       lockGain: null,
       rwrTimer: 0,
-      rwrBeeps: 0
+      rwrBeeps: 0,
+      // Music layer. Deliberately separate from the sfx fields above: it owns its
+      // own bus, its own sources and its own lifetime (see startMusicLayer).
+      music: {
+        bus: null,
+        buffers: Object.create(null),
+        fetches: Object.create(null),
+        requested: false,
+        decoding: false,
+        loaded: [],
+        failed: [],
+        layers: [],
+        track: null,        // slot currently playing / fading in
+        desired: null,      // slot the game state asks for
+        delayTimer: 0,      // debrief bed waiting behind the sting
+        volume: MUSIC_VOLUME,
+        override: null,     // debug.forceMusic
+        stingSource: null,
+        aceEngaged: false,  // raw condition this frame
+        aceActive: false,   // condition after the hold filter
+        aceHold: 0
+      }
     };
 
     let playerTargetedBy = 0;
@@ -3536,7 +3584,30 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         controlAuthority: 1
       },
       cameraFocus: { active: false, targetId: null, source: null },
-      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0, rwrBeeps: 0, targetedBy: 0 },
+      audio: {
+        lockBeeps: 0,
+        lockCompleteCues: 0,
+        threatBeeps: 0,
+        rwrBeeps: 0,
+        targetedBy: 0,
+        music: {
+          track: null,          // what is audible now
+          targetTrack: null,    // what the state machine wants
+          gain: 0,              // audible gain of `track`, bus included
+          prevTrack: null,      // loudest outgoing layer during a crossfade
+          prevGain: 0,
+          volume: MUSIC_VOLUME,
+          sources: 0,
+          loaded: [],
+          failed: [],
+          aceEngaged: false,
+          aceActive: false,
+          aceHold: 0,
+          delay: 0,
+          sting: false,
+          contextState: "none"
+        }
+      },
       radio: {
         active: false,
         speakerId: null,
@@ -3766,6 +3837,22 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           if (!outro.active) return false;
           outro.elapsed = OUTRO_COMPLETE_AT;
           return true;
+        },
+        // null hands the track choice back to the state machine. The sting is not
+        // a loop slot, so it is not selectable here.
+        forceMusic: (slot) => {
+          if (slot === null || slot === undefined) {
+            audioSystem.music.override = null;
+            return true;
+          }
+          if (!MUSIC_SOURCES[slot] || slot === MUSIC_STING_SLOT) return false;
+          audioSystem.music.override = slot;
+          return true;
+        },
+        setMusicVolume: (value) => {
+          const level = Number(value);
+          if (!Number.isFinite(level)) return false;
+          return setMusicVolume(THREE.MathUtils.clamp(level, 0, 1));
         }
       },
       world: { preset: null, label: null, mountains: 0 },
@@ -3841,6 +3928,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     buildInstrumentNodes();
     updateHud();
     syncGameHook();
+    // Network only - no AudioContext is touched here, so this cannot trip the
+    // autoplay policy and nothing downstream waits on it.
+    loadMusic();
 
     ui.startBtn.addEventListener("click", () => {
       ensureAudio();
@@ -4067,6 +4157,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateFlares(dt);
       updateParticlePools(dt);
       updateAudioCues(rawDt);
+      // rawDt: music follows wall-clock, never the kill-cam slowdown.
+      updateMusic(rawDt);
       if (gameState === STATE_READY) updateHangarCamera(rawDt);
       else updateCamera(rawDt);
       updateWorld(rawDt);
@@ -4426,6 +4518,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         void audioSystem.context.resume().catch(() => {});
       }
       loadSfx();
+      // Bytes are already in flight from boot; this is where they get decoded.
+      decodeMusicQueue();
     }
 
     function loadSfx() {
@@ -4607,6 +4701,310 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       audioSystem.activeSources.clear();
       stopEngineLoop();
       updateLockDroneAudio();
+      stopMusicSting();
+    }
+
+    // ---- music -------------------------------------------------------------
+    // Fetching starts at boot, before any AudioContext exists, so the first
+    // switch is not waiting on ~10 MB of network. Decoding needs a context and
+    // therefore waits for the first user gesture (see ensureAudio).
+    function loadMusic() {
+      const music = audioSystem.music;
+      if (music.requested) return;
+      music.requested = true;
+      for (const slot of MUSIC_DECODE_ORDER) {
+        music.fetches[slot] = fetch(MUSIC_SOURCES[slot])
+          .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(response.status)))
+          .catch(() => {
+            markMusicFailed(slot);
+            return null;
+          });
+      }
+    }
+
+    function markMusicFailed(slot) {
+      const failed = audioSystem.music.failed;
+      if (!failed.includes(slot)) failed.push(slot);
+    }
+
+    function decodeMusicQueue() {
+      const music = audioSystem.music;
+      if (music.decoding || !music.requested || !audioSystem.context) return;
+      music.decoding = true;
+      let chain = Promise.resolve();
+      for (const slot of MUSIC_DECODE_ORDER) {
+        chain = chain
+          .then(() => music.fetches[slot])
+          .then((data) => {
+            // decodeAudioData detaches the buffer, so each slot is decoded once.
+            if (!data || !audioSystem.context) return null;
+            return audioSystem.context.decodeAudioData(data);
+          })
+          .then((buffer) => {
+            if (!buffer) return;
+            music.buffers[slot] = buffer;
+            if (!music.loaded.includes(slot)) music.loaded.push(slot);
+          })
+          .catch(() => {
+            markMusicFailed(slot);
+          });
+      }
+    }
+
+    function ensureMusicBus() {
+      const music = audioSystem.music;
+      if (music.bus) return music.bus;
+      const context = audioSystem.context;
+      if (!context || !audioSystem.master) return null;
+      music.bus = context.createGain();
+      music.bus.gain.value = music.volume;
+      music.bus.connect(audioSystem.master);
+      return music.bus;
+    }
+
+    function setMusicVolume(level) {
+      const music = audioSystem.music;
+      music.volume = level;
+      if (music.bus && audioSystem.context) {
+        // Short ramp rather than a jump: a step on a running bed clicks.
+        const now = audioSystem.context.currentTime;
+        music.bus.gain.cancelScheduledValues(now);
+        music.bus.gain.setValueAtTime(music.bus.gain.value, now);
+        music.bus.gain.linearRampToValueAtTime(level, now + 0.08);
+      }
+      return level;
+    }
+
+    // One looping source per slot, each behind its own gain so a switch is a
+    // plain linear crossfade. Music stays out of audioSystem.activeSources on
+    // purpose: that set is flushed on mission cleanup (same reasoning as the
+    // engine loop), and these layers are owned by setMusicTrack instead.
+    function startMusicLayer(slot, fadeTime) {
+      const context = audioSystem.context;
+      const buffer = audioSystem.music.buffers[slot];
+      const bus = ensureMusicBus();
+      if (!context || !bus || !buffer || context.state !== "running") return null;
+
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(gain);
+      gain.connect(bus);
+      const now = context.currentTime;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(1, now + Math.max(0.01, fadeTime));
+      source.start();
+      const layer = { slot, source, gain, fadingOut: false, stopAt: 0 };
+      audioSystem.music.layers.push(layer);
+      return layer;
+    }
+
+    function rampMusicLayer(layer, target, fadeTime) {
+      const context = audioSystem.context;
+      if (!context) return;
+      const now = context.currentTime;
+      const end = now + Math.max(0.01, fadeTime);
+      layer.gain.gain.cancelScheduledValues(now);
+      layer.gain.gain.setValueAtTime(layer.gain.gain.value, now);
+      layer.gain.gain.linearRampToValueAtTime(target, end);
+      layer.fadingOut = target <= 0;
+      layer.stopAt = layer.fadingOut ? end : 0;
+    }
+
+    function stopMusicLayer(layer) {
+      try {
+        layer.source.stop();
+      } catch {
+        // Already ended; disconnecting below is still the right cleanup.
+      }
+      layer.source.disconnect();
+      layer.gain.disconnect();
+    }
+
+    // Retirement is polled instead of scheduled with source.stop(time): a
+    // scheduled stop cannot be taken back, and a layer caught mid-fade has to
+    // stay revivable for when the state flicks back to the track it was leaving.
+    function retireMusicLayers(now) {
+      const layers = audioSystem.music.layers;
+      for (let i = layers.length - 1; i >= 0; i -= 1) {
+        const layer = layers[i];
+        if (!layer.fadingOut || now < layer.stopAt) continue;
+        stopMusicLayer(layer);
+        layers.splice(i, 1);
+      }
+    }
+
+    // slot === null means "fade everything out". A slot whose buffer has not
+    // landed yet also lands here as silence - the old bed still leaves, because
+    // it belongs to a state the game is no longer in.
+    function setMusicTrack(slot, fadeTime) {
+      const music = audioSystem.music;
+      if (!audioSystem.context) return;
+      let next = null;
+      if (slot) {
+        for (const layer of music.layers) {
+          if (layer.slot !== slot) continue;
+          next = layer;
+          break;
+        }
+        if (next) rampMusicLayer(next, 1, fadeTime);
+        else next = startMusicLayer(slot, fadeTime);
+      }
+      for (const layer of music.layers) {
+        if (layer === next || layer.fadingOut) continue;
+        rampMusicLayer(layer, 0, fadeTime);
+      }
+      music.track = next ? next.slot : null;
+    }
+
+    // One-shot, no loop, straight onto the music bus. The bed always ducks out
+    // even when the sting itself failed to load.
+    function playMusicSting() {
+      const music = audioSystem.music;
+      const context = audioSystem.context;
+      const bus = ensureMusicBus();
+      setMusicTrack(null, MUSIC_STING_DUCK_TIME);
+      music.desired = null;
+      music.delayTimer = 0;
+      const buffer = music.buffers[MUSIC_STING_SLOT];
+      if (!context || !bus || !buffer || context.state !== "running") return false;
+      stopMusicSting();
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(bus);
+      source.start();
+      music.stingSource = source;
+      source.addEventListener("ended", () => {
+        source.disconnect();
+        if (music.stingSource === source) music.stingSource = null;
+      }, { once: true });
+      return true;
+    }
+
+    function stopMusicSting() {
+      const music = audioSystem.music;
+      const source = music.stingSource;
+      music.stingSource = null;
+      if (!source) return;
+      try {
+        source.stop();
+      } catch {
+        // Already finished; the ended handler did the disconnect.
+      }
+    }
+
+    function resetMusicCombatState() {
+      const music = audioSystem.music;
+      music.aceEngaged = false;
+      music.aceActive = false;
+      music.aceHold = 0;
+    }
+
+    function aceEngagedNow() {
+      if (gameState !== STATE_PLAYING) return false;
+      for (const enemy of enemies) {
+        if (enemy.alive && enemy.isAce && enemy.mode === "pursuit") return true;
+      }
+      return false;
+    }
+
+    function updateAceMusicState(dt) {
+      const music = audioSystem.music;
+      const engaged = aceEngagedNow();
+      music.aceEngaged = engaged;
+      if (engaged === music.aceActive) {
+        music.aceHold = 0;
+        return;
+      }
+      music.aceHold += dt;
+      if (music.aceHold < ACE_MUSIC_HOLD_TIME) return;
+      music.aceActive = engaged;
+      music.aceHold = 0;
+    }
+
+    function desiredMusicSlot() {
+      const music = audioSystem.music;
+      if (music.override) return music.override;
+      if (gameState === STATE_MISSION_SELECT || gameState === STATE_READY) return "menu";
+      if (gameState === STATE_BRIEFING) return "briefing";
+      if (gameState === STATE_COMPLETE) return "debrief";
+      if (gameState === STATE_GAMEOVER) return null;
+      if (gameState === STATE_PLAYING) {
+        // The ACCOMPLISHED band belongs to the victory sting.
+        if (outcomePending.active) return null;
+        // The fake third wave is a radio scene: whatever is playing rides on.
+        if (outro.active) return music.desired;
+        return music.aceActive ? "ace" : "combat";
+      }
+      return null;
+    }
+
+    function updateMusic(dt) {
+      const music = audioSystem.music;
+      const context = audioSystem.context;
+      // The hold filter runs even with no audio at all, so the probe reads the
+      // same numbers whether or not the player has clicked yet.
+      updateAceMusicState(dt);
+      if (!context || context.state !== "running") return;
+      retireMusicLayers(context.currentTime);
+
+      const desired = desiredMusicSlot();
+      if (desired !== music.desired) {
+        const fade = desired === null && gameState === STATE_GAMEOVER
+          ? MUSIC_GAMEOVER_FADE_TIME
+          : MUSIC_CROSSFADE_TIME;
+        music.desired = desired;
+        music.delayTimer = desired === "debrief" ? MUSIC_DEBRIEF_DELAY : 0;
+        setMusicTrack(music.delayTimer > 0 ? null : desired, fade);
+        return;
+      }
+      if (music.delayTimer > 0) {
+        music.delayTimer -= dt;
+        if (music.delayTimer > 0) return;
+        music.delayTimer = 0;
+        setMusicTrack(desired, MUSIC_CROSSFADE_TIME);
+        return;
+      }
+      // A track that was still downloading when it was asked for gets picked up
+      // as soon as it lands - but only while the game still wants it and nothing
+      // else is holding the slot, so this can never double a running bed.
+      if (desired && music.track !== desired && music.buffers[desired]) {
+        setMusicTrack(desired, MUSIC_CROSSFADE_TIME);
+      }
+    }
+
+    // Allocation-free: the arrays are the ones the loader mutates, and layer
+    // gains are read straight off the live AudioParams so a probe can sample a
+    // crossfade mid-flight.
+    function syncMusicHook(hook) {
+      const music = audioSystem.music;
+      const probe = hook.audio.music;
+      const busGain = music.bus ? music.bus.gain.value : 0;
+      probe.track = music.track;
+      probe.targetTrack = music.desired;
+      probe.gain = 0;
+      probe.prevTrack = null;
+      probe.prevGain = 0;
+      for (const layer of music.layers) {
+        const level = layer.gain.gain.value * busGain;
+        if (layer.slot === music.track) {
+          probe.gain = level;
+        } else if (level > probe.prevGain) {
+          probe.prevGain = level;
+          probe.prevTrack = layer.slot;
+        }
+      }
+      probe.volume = music.volume;
+      probe.sources = music.layers.length;
+      probe.loaded = music.loaded;
+      probe.failed = music.failed;
+      probe.aceEngaged = music.aceEngaged;
+      probe.aceActive = music.aceActive;
+      probe.aceHold = music.aceHold;
+      probe.delay = music.delayTimer;
+      probe.sting = Boolean(music.stingSource);
+      probe.contextState = audioSystem.context ? audioSystem.context.state : "none";
     }
 
     // How many living enemies currently have us inside their firing cone. Mirrors
@@ -4825,6 +5223,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       audioSystem.lockTimer = 0;
       audioSystem.threatTimer = 0;
       audioSystem.lastLocked = false;
+      resetMusicCombatState();
       outcomePending.active = false;
       outcomePending.timer = 0;
       pendingBanner = null;
@@ -7098,6 +7497,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (success) return;
         outcomePending.active = false;
         outcomePending.timer = 0;
+        // The win sting is already ringing out; it must not play over FAILED.
+        stopMusicSting();
       }
       keys.clear();
       resetLock();
@@ -7129,6 +7530,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         playTone(523.25, 0.55, 0.1, "triangle");
         playTone(659.25, 0.55, 0.09, "triangle", 0.13);
         playTone(783.99, 0.85, 0.11, "triangle", 0.26);
+        // Bed out, sting in. The debrief bed picks up MUSIC_DEBRIEF_DELAY after
+        // the state actually flips (see updateMusic).
+        playMusicSting();
         return;
       }
 
@@ -8168,6 +8572,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.audio.threatBeeps = audioSystem.threatBeeps;
       hook.audio.rwrBeeps = audioSystem.rwrBeeps;
       hook.audio.targetedBy = playerTargetedBy;
+      syncMusicHook(hook);
       hook.radio.active = radioState.active;
       hook.radio.speakerId = radioState.speakerId;
       hook.radio.lineId = radioState.lineId;
