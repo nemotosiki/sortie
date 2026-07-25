@@ -2058,7 +2058,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "mig31", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2259,12 +2259,45 @@ primary: 0xb0b8c0, secondary: 0x5c6c7c, accent: 0x2b3a49,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         })
       }),
+      // MiG-31B: the one airframe that trades away the dogfight entirely. Its
+      // boostSpeed of 530 is not a round number picked for flavour - SPEED is
+      // scored as `boostSpeed - boostResponse * 320`, so the deliberately
+      // sluggish 0.62 response (a 46-tonne interceptor does not accelerate like
+      // a Tomcat) costs it 198 points. 530 is the smallest top end that still
+      // clears the Raptor's 325.6 and lets the fastest jet actually own the
+      // SPEED bar; at 490 it would read second-fastest and the blurb would lie.
+      //
+      // It is also the new floor under MOBILITY - turn 18 / pitch 26 / yaw 7 all
+      // sit below the Phantom - which is why every other airframe's mobility bar
+      // moves when this one joins. That is the intended reading: "nothing else
+      // in the hangar is this bad at turning", and it hands the F-4 back some
+      // dignity it never earned on its own.
+      mig31: Object.freeze({
+        id: "mig31",
+        label: "MiG-31B FOXHOUND",
+        role: "High-Speed Interceptor",
+        tag: "INTERCEPTOR",
+        blurb: "全機中最速の大型迎撃機。ひとたび加速しきれば誰にも追いつかれないが、加速は緩慢で旋回半径は絶望的に大きい。格闘戦を捨て、長射程ミサイルで遠距離から仕留める機体だ。",
+        cruiseSpeed: 250, boostSpeed: 530, brakeSpeed: 150,
+        pitchRateDeg: 26, rollRateDeg: 98, yawRateDeg: 7, maxBankAngleDeg: 42,
+        normalRollSpring: 26, rollRateLimitDeg: 94, turnRateDeg: 18,
+        rollDamping: 8.2, stallWarnSpeed: 108, stallEntrySpeed: 96, stallAuthorityLoss: 0.8, structuralG: 2.5,
+        gunDamage: 20, missileDamage: 98,
+        boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.66,
+        missileCapacity: 12, maxHealth: 150,
+        spw: Object.freeze({ key: "xlaa", capacity: 16 }),
+        tipSpan: 9.4, tipZ: 2.2,
+        theme: Object.freeze({
+primary: 0x9aa4ad, secondary: 0x646d76, accent: 0x8c2f2f,
+canopy: 0x8fe0ff, exhaust: 0xbfd4ff, scale: 1.16, variant: "foxhound"
+        })
+      }),
       f4: Object.freeze({
         id: "f4",
         label: "F-4 PHANTOM II",
         role: "Legacy Interceptor",
         tag: "LEGACY",
-        blurb: "1960年代の旧世代機。速度も旋回も現代機には遠く及ばないが、無骨な機体は軽量機より打たれ強く、対地攻撃では全機中最良だ。",
+        blurb: "1960年代の旧世代機。速度は現代機に遠く及ばず旋回も鈍いが、無骨な機体は軽量機より打たれ強く、対地攻撃では全機中最良だ。",
         cruiseSpeed: 165, boostSpeed: 320, brakeSpeed: 152,
         pitchRateDeg: 30, rollRateDeg: 105, yawRateDeg: 8, maxBankAngleDeg: 40,
         normalRollSpring: 27, rollRateLimitDeg: 100, turnRateDeg: 21,
@@ -2284,7 +2317,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         label: "F-22 RAPTOR",
         role: "Stealth Air Superiority",
         tag: "TOP TIER",
-        blurb: "全性能で他を圧倒する最強のステルス戦闘機。速度・旋回・火力・装甲すべて最高。",
+        blurb: "全性能で他を圧倒する最強のステルス戦闘機。旋回・火力・装甲は全機中最高で、速度も最速機に次ぐ。",
         cruiseSpeed: 240, boostSpeed: 460, brakeSpeed: 118,
         pitchRateDeg: 51, rollRateDeg: 190, yawRateDeg: 14, maxBankAngleDeg: 65,
         normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
@@ -11037,6 +11070,62 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.panel, secondary, 0, 0.42, 3.4, 0.34, 0.2, 5.0);
         add(geometry.canopy, navL, -3.3, 0.24, -1.6, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 3.3, 0.24, -1.6, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "foxhound") {
+        // MiG-31B: the longest, most rectilinear airframe a player can fly. The
+        // real jet is 22.6 m of welded steel slab sides, and that is exactly the
+        // read here - where every other fighter in the hangar is a spindle, this
+        // is a box. Three features carry the silhouette:
+        //   1. a long slab fuselage built from stretched `panel` plates rather
+        //      than the tapered `fuselage` cylinder every other variant uses,
+        //   2. big rectangular side intakes (MiG-25 inheritance) - the others
+        //      all have small or round inlets,
+        //   3. a tandem two-seat canopy on a body that reads as twice as long.
+        // At theme scale 1.16 it is also the largest fighter in the list.
+        add(geometry.fuselage, primary, 0, 0, -0.8, 0.9, 0.82, 1.35);
+        // Slab sides: flat vertical plates down the length of the body. These
+        // are what square off the cylinder's silhouette from any side angle.
+        add(geometry.panel, primary, -1.12, 0.0, -0.4, 0.16, 1.5, 13.0);
+        add(geometry.panel, primary, 1.12, 0.0, -0.4, 0.16, 1.5, 13.0);
+        // Flat top deck and belly - the box closed off top and bottom.
+        add(geometry.panel, secondary, 0, 0.86, -0.4, 2.2, 0.16, 12.4);
+        add(geometry.panel, secondary, 0, -0.86, -0.4, 2.2, 0.16, 12.4);
+        add(geometry.nose, primary, 0, 0.02, -9.6, 0.94, 0.86, 1.25);
+        // Tandem canopy: long enough to read as two seats, with a frame between.
+        add(geometry.canopy, canopy, 0, 0.95, -4.6, 0.74, 0.54, 2.25);
+        add(geometry.panel, dark, 0, 1.02, -4.4, 0.5, 0.16, 0.18);
+        // Shoulder wing: mounted high on the body, modest span for the size.
+        add(geometry.wingEagle, secondary, 0, 0.5, 1.2, 0.94, 1, 0.92);
+        // Rectangular side intakes - the decisive difference from every other
+        // airframe. Wide flat boxes on the flanks with a raked outer lip.
+        add(geometry.panel, accent, -1.62, -0.1, -2.4, 0.62, 1.5, 5.2);
+        add(geometry.panel, accent, 1.62, -0.1, -2.4, 0.62, 1.5, 5.2);
+        add(geometry.panel, dark, -1.95, -0.1, -4.7, 0.12, 1.45, 0.7, 0.22);
+        add(geometry.panel, dark, 1.95, -0.1, -4.7, 0.12, 1.45, 0.7, -0.22);
+        // Twin engines, closely spaced (unlike the F-14's wide tunnel).
+        add(geometry.rearBody, secondary, -1.0, -0.06, 6.6, 0.92, 0.92, 1.35);
+        add(geometry.rearBody, secondary, 1.0, -0.06, 6.6, 0.92, 0.92, 1.35);
+        add(geometry.nozzle, accent, -1.0, -0.06, 8.9, 1.1, 1.1, 1.15);
+        add(geometry.nozzle, accent, 1.0, -0.06, 8.9, 1.1, 1.1, 1.15);
+        addFlame(-1.0, -0.06, 10.4, 1.1, 1.1);
+        addFlame(1.0, -0.06, 10.4, 1.1, 1.1);
+        // Twin fins, canted slightly outward, plus ventral strakes.
+        add(geometry.fin, secondary, -1.35, 0.62, 5.4, 0.88, 1.2, 0.9, 0.14);
+        add(geometry.fin, secondary, 1.35, 0.62, 5.4, 0.88, 1.2, 0.9, -0.14);
+        add(geometry.panel, dark, -1.15, -0.95, 7.0, 0.16, 0.8, 2.0, 0.28);
+        add(geometry.panel, dark, 1.15, -0.95, 7.0, 0.16, 0.8, 2.0, -0.28);
+        add(geometry.tailWing, primary, 0, -0.06, 7.6, 1.1, 1, 0.98);
+        // Details: big Zaslon radome, anti-glare strip, dorsal spine, and the
+        // long-range rounds on underwing rails (R-33s are carried recessed, so
+        // they sit tight under the wing root rather than out at the tips).
+        add(geometry.nose, dark, 0, 0.02, -11.4, 0.4, 0.36, 0.42);
+        add(geometry.panel, dark, 0, 0.72, -6.6, 0.66, 0.08, 2.2);
+        add(geometry.panel, secondary, 0, 0.94, 3.2, 0.3, 0.2, 5.4);
+        add(geometry.missileBody, light, -2.6, -0.62, 1.6, 0.9, 0.9, 1.05);
+        add(geometry.missileBody, light, 2.6, -0.62, 1.6, 0.9, 0.9, 1.05);
+        add(geometry.missileNose, dark, -2.6, -0.62, -0.9, 0.85, 0.85, 0.9);
+        add(geometry.missileNose, dark, 2.6, -0.62, -0.9, 0.85, 0.85, 0.9);
+        add(geometry.canopy, navL, -8.6, 0.5, 3.2, 0.13, 0.13, 0.13);
+        add(geometry.canopy, navR, 8.6, 0.5, 3.2, 0.13, 0.13, 0.13);
       } else if (theme.variant === "bomber") {
         // B-52H: long slab-sided fuselage, high-aspect swept wing, four
         // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
