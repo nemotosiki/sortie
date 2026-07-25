@@ -886,6 +886,16 @@
       to { transform: translateX(-50%) scale(1.04); }
     }
 
+    #cloudVeil {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      opacity: 0;
+      background: radial-gradient(circle at 50% 46%, rgba(238, 245, 247, 0.94) 0%, rgba(225, 236, 240, 0.99) 70%);
+      will-change: opacity;
+    }
+
     #damageFlash {
       position: fixed;
       inset: 0;
@@ -1366,6 +1376,7 @@
 
   <div id="radioPanel"><span id="radioSpeaker"></span><span id="radioText"></span></div>
 
+  <div id="cloudVeil"></div>
   <div id="damageFlash"></div>
 
   <section id="startScreen" class="screen">
@@ -1986,6 +1997,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadStatus: document.getElementById("gamepadStatus"),
       controlModeStatus: document.getElementById("controlModeStatus"),
       damageFlash: document.getElementById("damageFlash"),
+      cloudVeil: document.getElementById("cloudVeil"),
       radar: document.getElementById("radar"),
       resultTitle: document.getElementById("resultTitle"),
       resultMessage: document.getElementById("resultMessage"),
@@ -2283,6 +2295,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         damageTaken: 0,
         aceDestroyed: false,
         forceSelectAircraft: (id) => selectAircraft(id),
+        forceTeleport: (x, y, z) => {
+          if (gameState !== STATE_PLAYING) return false;
+          player.position.set(x, y, z);
+          snapCamera();
+          return true;
+        },
+        worldProbe: () => ({
+          cloud: world.cloudVolumes.reduce((a, b) => (b.r > a.r ? b : a)),
+          mountain: world.mountains[0],
+          cloudVeil: cloudVeilLevel
+        }),
         forceDamageEnemy: (id, amount = 200) => {
           if (gameState !== STATE_PLAYING) return false;
           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
@@ -2530,6 +2553,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateParticlePools(dt);
       updateAudioCues(rawDt);
       updateCamera(rawDt);
+      updateWorld(rawDt);
       updateVisualStatus(rawDt);
       updateRadio(rawDt);
       updateHud();
@@ -3414,6 +3438,16 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (player.position.y <= 4) {
         player.position.y = 4;
         applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+      } else {
+        // Mountains are solid: flying into one below its summit is a crash.
+        for (const mountain of world.mountains) {
+          const dx = player.position.x - mountain.x;
+          const dz = player.position.z - mountain.z;
+          if (dx * dx + dz * dz < mountain.r * mountain.r && player.position.y < mountain.h) {
+            applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+            break;
+          }
+        }
       }
 
       gunCooldown = Math.max(0, gunCooldown - dt);
@@ -4287,6 +4321,28 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       camera.quaternion.setFromRotationMatrix(tmpM1);
       world.skyGroup.position.copy(camera.position);
+    }
+
+    let cloudVeilLevel = 0;
+    function updateWorld(dt) {
+      // Slow wave drift; the plane's own motion over the fixed pattern is the
+      // real speed cue.
+      world.oceanTexture.offset.x += dt * 0.0045;
+      world.oceanTexture.offset.y += dt * 0.0018;
+
+      // White-out while the camera is inside a cloud volume. Vertical distance
+      // is weighted up because the puff clusters are much flatter than wide.
+      let veil = 0;
+      for (const volume of world.cloudVolumes) {
+        const dx = camera.position.x - volume.x;
+        const dy = camera.position.y - volume.y;
+        const dz = camera.position.z - volume.z;
+        const dist = Math.sqrt(dx * dx + dy * dy * 3.2 + dz * dz);
+        if (dist < volume.r) veil = Math.max(veil, 1 - dist / volume.r);
+      }
+      const target = THREE.MathUtils.clamp(veil * 1.5, 0, 0.86);
+      cloudVeilLevel = THREE.MathUtils.lerp(cloudVeilLevel, target, damping(0.0012, dt));
+      ui.cloudVeil.style.opacity = cloudVeilLevel < 0.01 ? "0" : cloudVeilLevel.toFixed(3);
     }
 
     function updateVisualStatus(dt) {
@@ -6232,25 +6288,67 @@ selectAircraft(spec.id);
       );
       sun.position.set(-1150, 1180, -2600);
       skyGroup.add(sun);
+
+      // Layered additive glare makes the sun read as a light source instead of
+      // a yellow ball - the AC games lean hard on this.
+      const glareTexture = makeGlareTexture();
+      const glareWide = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glareTexture, color: 0xfff2cd, transparent: true, opacity: 0.55,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
+      }));
+      glareWide.scale.set(1500, 1500, 1);
+      glareWide.position.copy(sun.position);
+      const glareCore = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: glareTexture, color: 0xfffbe8, transparent: true, opacity: 0.95,
+        blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
+      }));
+      glareCore.scale.set(430, 430, 1);
+      glareCore.position.copy(sun.position);
+      skyGroup.add(glareWide, glareCore);
       scene.add(skyGroup);
 
+      // Ocean with a scrolling wave-noise texture (replaces the dev grid as the
+      // low-altitude speed cue) plus an additive sun-glint road toward the sun.
+      const oceanCanvas = document.createElement("canvas");
+      oceanCanvas.width = 256;
+      oceanCanvas.height = 256;
+      const oceanCtx = oceanCanvas.getContext("2d");
+      const oceanRng = mulberry32(0x0cea11);
+      oceanCtx.fillStyle = "#16506a";
+      oceanCtx.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 900; i += 1) {
+        const bright = oceanRng() > 0.45;
+        oceanCtx.fillStyle = bright
+          ? `rgba(140, 214, 228, ${0.05 + oceanRng() * 0.1})`
+          : `rgba(10, 48, 66, ${0.06 + oceanRng() * 0.1})`;
+        const w = 4 + oceanRng() * 22;
+        oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
+      }
+      const oceanTexture = new THREE.CanvasTexture(oceanCanvas);
+      oceanTexture.wrapS = THREE.RepeatWrapping;
+      oceanTexture.wrapT = THREE.RepeatWrapping;
+      oceanTexture.repeat.set(26, 26);
+      oceanTexture.colorSpace = THREE.SRGBColorSpace;
       const oceanGeometry = new THREE.PlaneGeometry(12000, 12000, 1, 1);
       oceanGeometry.rotateX(-Math.PI / 2);
       const oceanMaterial = new THREE.MeshStandardMaterial({
-        color: 0x174f67,
-        roughness: 0.36,
-        metalness: 0.18
+        map: oceanTexture,
+        roughness: 0.4,
+        metalness: 0.2
       });
       const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
       ocean.position.y = 0;
       scene.add(ocean);
 
-      const grid = new THREE.GridHelper(12000, 120, 0x78d7dc, 0x286c7c);
-      grid.position.y = 0.18;
-      grid.material.transparent = true;
-      grid.material.opacity = 0.15;
-      grid.material.depthWrite = false;
-      scene.add(grid);
+      const sunRoadGeometry = new THREE.PlaneGeometry(560, 3400);
+      sunRoadGeometry.rotateX(-Math.PI / 2);
+      const sunRoad = new THREE.Mesh(sunRoadGeometry, new THREE.MeshBasicMaterial({
+        map: glareTexture, color: 0xffd98a, transparent: true, opacity: 0.3,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+      }));
+      sunRoad.rotation.y = Math.atan2(1150, 2600);
+      sunRoad.position.set(-700, 0.4, -1580);
+      scene.add(sunRoad);
 
       const hemi = new THREE.HemisphereLight(0xc9efff, 0x152839, 2.25);
       scene.add(hemi);
@@ -6262,13 +6360,38 @@ selectAircraft(spec.id);
       scene.add(fill);
 
       const rng = mulberry32(0x50a71e);
+
+      // Noise-displaced mountain islands with height-banded vertex colors.
+      // They double as terrain hazards - updatePlayer treats them as solid.
+      const mountainMaterial = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.94, metalness: 0
+      });
+      const mountains = [];
+      for (let i = 0; i < 7; i += 1) {
+        const radius = 130 + rng() * 150;
+        const height = 80 + rng() * 110;
+        const snowy = height > 150;
+        const mountain = new THREE.Mesh(buildMountainGeometry(rng, snowy), mountainMaterial);
+        const depth = radius * (0.75 + rng() * 0.35);
+        mountain.scale.set(radius, height, depth);
+        mountain.rotation.y = rng() * Math.PI * 2;
+        const angle = rng() * Math.PI * 2;
+        const distance = 2400 + rng() * 1500;
+        mountain.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+        scene.add(mountain);
+        mountains.push({
+          x: mountain.position.x, z: mountain.position.z,
+          r: Math.max(radius, depth) * 0.85, h: height * 0.92
+        });
+      }
+
       const islandStone = new THREE.MeshStandardMaterial({ color: 0x53675d, roughness: 0.96, metalness: 0 });
       const islandGreen = new THREE.MeshStandardMaterial({ color: 0x527951, roughness: 0.92, metalness: 0 });
       const islandGeometry = new THREE.CylinderGeometry(1, 1.18, 1, 9, 1, false);
-      for (let i = 0; i < 18; i += 1) {
+      for (let i = 0; i < 10; i += 1) {
         const island = new THREE.Group();
-        const radius = 25 + rng() * 72;
-        const height = 6 + rng() * 24;
+        const radius = 22 + rng() * 40;
+        const height = 4 + rng() * 10;
         const base = new THREE.Mesh(islandGeometry, islandStone);
         base.scale.set(radius, height, radius * (0.55 + rng() * 0.5));
         base.position.y = height * 0.43;
@@ -6280,36 +6403,127 @@ selectAircraft(spec.id);
         cap.rotateY(rng() * Math.PI);
         island.add(cap);
         const angle = rng() * Math.PI * 2;
-        const distance = 480 + rng() * 4400;
+        const distance = 700 + rng() * 2900;
         island.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
         scene.add(island);
       }
 
+      // Three cloud layers: low cumulus you dogfight through, taller mid deck,
+      // stretched cirrus far above. Volumes feed the fly-through white-out.
+      const cloudVolumes = [];
       const cloudMaterial = new THREE.MeshLambertMaterial({
-        color: 0xf1f7f7,
-        transparent: true,
-        opacity: 0.68,
-        depthWrite: false
+        color: 0xf4f8f9, transparent: true, opacity: 0.72, depthWrite: false
+      });
+      const cirrusMaterial = new THREE.MeshLambertMaterial({
+        color: 0xeef6f8, transparent: true, opacity: 0.3, depthWrite: false
       });
       const cloudGeometry = new THREE.SphereGeometry(1, 9, 7);
-      for (let i = 0; i < 19; i += 1) {
+      const buildCluster = (y, size, pieces, squash, at) => {
         const cloud = new THREE.Group();
-        const pieces = 4 + Math.floor(rng() * 4);
         for (let j = 0; j < pieces; j += 1) {
           const puff = new THREE.Mesh(cloudGeometry, cloudMaterial);
-          puff.position.set((j - pieces / 2) * (18 + rng() * 10), rng() * 10, (rng() - 0.5) * 25);
-          const puffScale = 15 + rng() * 24;
-          puff.scale.set(puffScale * (1.2 + rng() * 0.9), puffScale * (0.55 + rng() * 0.35), puffScale);
+          puff.position.set(
+            (j - pieces / 2) * size * 0.55 + (rng() - 0.5) * size * 0.4,
+            (rng() - 0.35) * size * 0.3,
+            (rng() - 0.5) * size * 0.9
+          );
+          const s = size * (0.45 + rng() * 0.5);
+          puff.scale.set(s * (1.15 + rng() * 0.7), s * squash, s);
           cloud.add(puff);
         }
         const angle = rng() * Math.PI * 2;
-        const distance = 550 + rng() * 3000;
-        cloud.position.set(Math.cos(angle) * distance, 300 + rng() * 720, Math.sin(angle) * distance);
+        const distance = 500 + rng() * 2900;
+        cloud.position.set(
+          at ? at.x : Math.cos(angle) * distance,
+          y,
+          at ? at.z : Math.sin(angle) * distance
+        );
         cloud.rotateY(rng() * Math.PI);
         scene.add(cloud);
+        cloudVolumes.push({
+          x: cloud.position.x, y: cloud.position.y, z: cloud.position.z,
+          r: size * (1.2 + pieces * 0.12)
+        });
+      };
+      for (let i = 0; i < 13; i += 1) buildCluster(300 + rng() * 380, 32 + rng() * 24, 6 + Math.floor(rng() * 4), 0.5);
+      for (let i = 0; i < 9; i += 1) buildCluster(900 + rng() * 480, 36 + rng() * 26, 5 + Math.floor(rng() * 4), 0.42);
+      // Hero cumulus near the arena - big enough to actually disappear into
+      // mid-dogfight, the way AC7 uses its one big cloud bank.
+      buildCluster(470, 95, 11, 0.5, { x: 620, z: -420 });
+      buildCluster(520, 80, 9, 0.5, { x: -900, z: 1050 });
+      for (let i = 0; i < 7; i += 1) {
+        const streak = new THREE.Mesh(cloudGeometry, cirrusMaterial);
+        const angle = rng() * Math.PI * 2;
+        const distance = 900 + rng() * 2600;
+        streak.position.set(Math.cos(angle) * distance, 1750 + rng() * 550, Math.sin(angle) * distance);
+        streak.scale.set(200 + rng() * 140, 4 + rng() * 4, 50 + rng() * 40);
+        streak.rotation.y = rng() * Math.PI;
+        scene.add(streak);
       }
 
-      return { skyGroup };
+      return { skyGroup, oceanTexture, cloudVolumes, mountains };
+    }
+
+    function makeGlareTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+      const gradient = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+      gradient.addColorStop(0, "rgba(255,255,255,1)");
+      gradient.addColorStop(0.25, "rgba(255,245,215,0.55)");
+      gradient.addColorStop(0.6, "rgba(255,240,200,0.16)");
+      gradient.addColorStop(1, "rgba(255,240,200,0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    }
+
+    // Cone displaced by angular harmonics - reads as a rocky volcanic island.
+    // Vertex colors band by height: green shore, scrub, rock, then snow on the
+    // tallest peaks.
+    function buildMountainGeometry(rng, snowy) {
+      const geo = new THREE.CylinderGeometry(0.08, 1, 1, 16, 5, false);
+      geo.translate(0, 0.5, 0);
+      const position = geo.attributes.position;
+      const phase1 = rng() * Math.PI * 2;
+      const phase2 = rng() * Math.PI * 2;
+      const amp1 = 0.15 + rng() * 0.12;
+      const amp2 = 0.07 + rng() * 0.09;
+      for (let i = 0; i < position.count; i += 1) {
+        const x = position.getX(i);
+        const y = position.getY(i);
+        const z = position.getZ(i);
+        const radius = Math.hypot(x, z);
+        if (radius > 1e-5) {
+          const theta = Math.atan2(z, x);
+          const shape = 1 + amp1 * Math.sin(3 * theta + phase1) +
+            amp2 * Math.sin(7 * theta + phase2) +
+            0.05 * Math.sin(11 * theta + y * 9);
+          position.setX(i, x * shape);
+          position.setZ(i, z * shape);
+        }
+      }
+      const colors = new Float32Array(position.count * 3);
+      const low = new THREE.Color(0x46603f);
+      const mid = new THREE.Color(0x5d6b52);
+      const rock = new THREE.Color(0x716f63);
+      const peak = new THREE.Color(snowy ? 0xe9eff2 : 0x7d7a6e);
+      const scratch = new THREE.Color();
+      for (let i = 0; i < position.count; i += 1) {
+        const t = THREE.MathUtils.clamp(position.getY(i), 0, 1);
+        if (t < 0.35) scratch.copy(low).lerp(mid, t / 0.35);
+        else if (t < 0.7) scratch.copy(mid).lerp(rock, (t - 0.35) / 0.35);
+        else scratch.copy(rock).lerp(peak, (t - 0.7) / 0.3);
+        colors[i * 3] = scratch.r;
+        colors[i * 3 + 1] = scratch.g;
+        colors[i * 3 + 2] = scratch.b;
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+      return geo;
     }
 
     function mulberry32(seed) {
