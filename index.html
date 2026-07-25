@@ -1043,7 +1043,13 @@
       color: rgba(220, 247, 255, 0.5);
     }
 
-    .statRow span:first-child { width: 34px; flex-shrink: 0; }
+    .statRow span:first-child {
+      width: 58px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+      font-size: 8px;
+    }
     .aircraftStatBar { flex: 1; height: 5px; }
 
     .aircraftMissiles {
@@ -1431,11 +1437,18 @@
     let BRAKE_SPEED = 128;
     const BRAKE_HIGH_G_SPEED_DROP = 52;
     // Damping uses 1 - Math.pow(k, dt): larger k values create slower, weightier response.
-    const BOOST_SPEED_RESPONSE_K = 0.22;
-    const BRAKE_SPEED_RESPONSE_K = 0.16;
-    const CRUISE_SPEED_RESPONSE_K = 0.32;
-    const STALL_WARNING_SPEED = 96;
-    const STALL_ENTRY_SPEED = 84;
+    // Throttle response, per-aircraft. These feed damping(k, dt) = 1 - k^dt, so a
+    // SMALLER k reaches the target speed sooner, i.e. snappier acceleration.
+    let BOOST_SPEED_RESPONSE_K = 0.22;
+    let BRAKE_SPEED_RESPONSE_K = 0.16;
+    let CRUISE_SPEED_RESPONSE_K = 0.32;
+    // Per-aircraft from here (see AIRCRAFT_TYPES / applyAircraftLoadout).
+    let STALL_WARNING_SPEED = 96;
+    let STALL_ENTRY_SPEED = 84;
+    let GUN_DAMAGE = 16;
+    let MISSILE_DAMAGE = 130;
+    let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
+    let ROLL_SETTLE = 1;               // stability multiplier on roll damping
     const STALL_DEEP_SPEED = 62;
     const STALL_RECOVERY_SPEED = 114;
     const BASE_CAMERA_FOV = 64;
@@ -1519,11 +1532,14 @@
         label: "F-16 FIGHTING FALCON",
         role: "Multirole Dogfighter",
         tag: "RECOMMENDED",
-        blurb: "軽量・俊敏。旋回性能は4機中最速。まず乗るならこの一機。",
-        cruiseSpeed: 170, boostSpeed: 340, brakeSpeed: 128,
-        pitchRateDeg: 58, rollRateDeg: 102, yawRateDeg: 16, maxBankAngleDeg: 68,
-        normalRollSpring: 22, rollRateLimitDeg: 125, turnRateDeg: 42,
-        missileCapacity: 10, maxHealth: 100,
+        blurb: "軽量・俊敏。旋回は4機中最速だが、装甲は薄く高速では暴れやすい。",
+        cruiseSpeed: 170, boostSpeed: 330, brakeSpeed: 128,
+        pitchRateDeg: 64, rollRateDeg: 118, yawRateDeg: 18, maxBankAngleDeg: 72,
+        normalRollSpring: 26, rollRateLimitDeg: 142, turnRateDeg: 48,
+        rollDamping: 5.4, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.86,
+        gunDamage: 15, missileDamage: 120,
+        boostResponse: 0.2, brakeResponse: 0.14, cruiseResponse: 0.3,
+        missileCapacity: 10, maxHealth: 92,
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
 canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
@@ -1534,11 +1550,14 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         label: "F-15 EAGLE",
         role: "Air Superiority Fighter",
         tag: "",
-        blurb: "全4機中最速。旋回性能も十分に高く、隙のない万能重戦闘機。",
-        cruiseSpeed: 210, boostSpeed: 420, brakeSpeed: 158,
-        pitchRateDeg: 51, rollRateDeg: 90, yawRateDeg: 14, maxBankAngleDeg: 60,
-        normalRollSpring: 19, rollRateLimitDeg: 110, turnRateDeg: 37,
-        missileCapacity: 12, maxHealth: 115,
+        blurb: "全4機中最速。旋回も安定性も高水準で隙がない万能重戦闘機。",
+        cruiseSpeed: 215, boostSpeed: 440, brakeSpeed: 158,
+        pitchRateDeg: 52, rollRateDeg: 92, yawRateDeg: 14, maxBankAngleDeg: 62,
+        normalRollSpring: 19, rollRateLimitDeg: 112, turnRateDeg: 38,
+        rollDamping: 7.4, stallWarnSpeed: 92, stallEntrySpeed: 80, stallAuthorityLoss: 0.7,
+        gunDamage: 18, missileDamage: 140,
+        boostResponse: 0.17, brakeResponse: 0.19, cruiseResponse: 0.32,
+        missileCapacity: 12, maxHealth: 118,
         theme: Object.freeze({
 primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
@@ -1549,11 +1568,14 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         label: "F-4 PHANTOM II",
         role: "Heavy Interceptor",
         tag: "HEAVY",
-        blurb: "旧世代の重装甲機。旋回は4機中最も鈍いが、耐久力と搭載弾数は随一。",
-        cruiseSpeed: 185, boostSpeed: 370, brakeSpeed: 139,
-        pitchRateDeg: 41, rollRateDeg: 72, yawRateDeg: 11, maxBankAngleDeg: 48,
-        normalRollSpring: 16, rollRateLimitDeg: 89, turnRateDeg: 30,
-        missileCapacity: 14, maxHealth: 130,
+        blurb: "旧世代の重装甲機。旋回は4機中最も鈍いが、最も安定していて頑丈。",
+        cruiseSpeed: 185, boostSpeed: 375, brakeSpeed: 139,
+        pitchRateDeg: 36, rollRateDeg: 62, yawRateDeg: 9, maxBankAngleDeg: 44,
+        normalRollSpring: 14, rollRateLimitDeg: 78, turnRateDeg: 25,
+        rollDamping: 9.2, stallWarnSpeed: 84, stallEntrySpeed: 70, stallAuthorityLoss: 0.5,
+        gunDamage: 20, missileDamage: 150,
+        boostResponse: 0.36, brakeResponse: 0.3, cruiseResponse: 0.42,
+        missileCapacity: 14, maxHealth: 145,
         theme: Object.freeze({
 primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
@@ -1564,11 +1586,14 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         label: "F-22 RAPTOR",
         role: "Stealth Air Superiority",
         tag: "ADVANCED",
-        blurb: "アフターバーナー無しで巡航できる高速機。搭載弾数は4機中最少、装甲も控えめ。乗りこなせば強い。",
-        cruiseSpeed: 239, boostSpeed: 385, brakeSpeed: 145,
-        pitchRateDeg: 55, rollRateDeg: 83, yawRateDeg: 13, maxBankAngleDeg: 55,
-        normalRollSpring: 18, rollRateLimitDeg: 101, turnRateDeg: 34,
-        missileCapacity: 6, maxHealth: 105,
+        blurb: "巡航速度は4機中最速。一撃の火力は随一だが搭載弾数は最少。上級者向け。",
+        cruiseSpeed: 245, boostSpeed: 395, brakeSpeed: 145,
+        pitchRateDeg: 58, rollRateDeg: 96, yawRateDeg: 15, maxBankAngleDeg: 62,
+        normalRollSpring: 21, rollRateLimitDeg: 118, turnRateDeg: 40,
+        rollDamping: 6.6, stallWarnSpeed: 96, stallEntrySpeed: 84, stallAuthorityLoss: 0.74,
+        gunDamage: 24, missileDamage: 175,
+        boostResponse: 0.12, brakeResponse: 0.13, cruiseResponse: 0.26,
+        missileCapacity: 6, maxHealth: 104,
         theme: Object.freeze({
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
 canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
@@ -2573,9 +2598,18 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
       if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
-      if (gameState === STATE_READY) {
-        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) cycleAircraft(-1);
-        if (dpadRightPressed && !gamepadInput.previousCycleRight) cycleAircraft(1);
+      // Also allowed on the result screen: otherwise a gamepad-only player can
+      // never change aircraft, because retry restarts with the current one and
+      // #changeAircraftBtn is mouse-only.
+      if (gameState !== STATE_PLAYING) {
+        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) {
+          if (gameState !== STATE_READY) setState(STATE_READY);
+          cycleAircraft(-1);
+        }
+        if (dpadRightPressed && !gamepadInput.previousCycleRight) {
+          if (gameState !== STATE_READY) setState(STATE_READY);
+          cycleAircraft(1);
+        }
       }
 
       if (targetPressed && !gamepadInput.previousTarget) {
@@ -3207,7 +3241,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       stallSeverity = THREE.MathUtils.clamp(stallSeverity, 0, 1);
       stalling = stallSeverity > 0.24;
 
-      playerControlAuthority = THREE.MathUtils.clamp(1 - stallSeverity * 0.82, 0.18, 1);
+      playerControlAuthority = THREE.MathUtils.clamp(1 - stallSeverity * STALL_AUTHORITY_LOSS, 0.18, 1);
       const rawTurnFactor = THREE.MathUtils.clamp(
         Math.pow(CRUISE_SPEED / Math.max(playerSpeed, STALL_DEEP_SPEED), 1.18),
         0.58,
@@ -3224,7 +3258,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const targetBank = rollInput * MAX_BANK_ANGLE;
         const bankError = targetBank - playerBank;
         const rollAcceleration = bankError * NORMAL_ROLL_SPRING * playerControlAuthority -
-          rollRate * NORMAL_ROLL_DAMPING;
+          rollRate * ROLL_SETTLE;
         rollRate += rollAcceleration * dt;
         rollRate = THREE.MathUtils.clamp(
           rollRate,
@@ -3336,7 +3370,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const enemy = enemies.find((candidate) => candidate.id === hit.object.userData.enemyId);
         if (enemy && enemy.alive) {
           end = hit.point.clone();
-          damageEnemy(enemy, 16, false);
+          damageEnemy(enemy, GUN_DAMAGE, false);
           createImpactBurst(end, 0x9df8ff, 0.7);
         }
       }
@@ -3397,7 +3431,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           missile.mesh.quaternion.rotateTowards(tmpQ1, THREE.MathUtils.degToRad(190) * dt);
 
           if (distance < 16) {
-            damageEnemy(target, 130, true);
+            damageEnemy(target, MISSILE_DAMAGE, true);
             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
             removeMissile(i);
             continue;
@@ -5895,6 +5929,18 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
       PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
       PLAYER_MAX_HEALTH = spec.maxHealth;
+      // STABILITY: how little the aircraft wanders when banked or slow.
+      ROLL_SETTLE = spec.rollDamping;
+      STALL_WARNING_SPEED = spec.stallWarnSpeed;
+      STALL_ENTRY_SPEED = spec.stallEntrySpeed;
+      STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
+      // AIR-TO-AIR: per-aircraft weapon punch.
+      GUN_DAMAGE = spec.gunDamage;
+      MISSILE_DAMAGE = spec.missileDamage;
+      // Throttle response (smaller k = reaches target speed sooner).
+      BOOST_SPEED_RESPONSE_K = spec.boostResponse;
+      BRAKE_SPEED_RESPONSE_K = spec.brakeResponse;
+      CRUISE_SPEED_RESPONSE_K = spec.cruiseResponse;
       rebuildPlayerModel(spec.id);
     }
 
@@ -5920,9 +5966,21 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function renderAircraftCards() {
       const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
-      const speeds = specs.map((spec) => spec.boostSpeed);
+      // SPEED covers both top end and how fast it gets there (smaller response
+      // constant = quicker), so a fast-but-sluggish jet doesn't read as best.
+      const speedScore = (spec) => spec.boostSpeed - spec.boostResponse * 320;
+      const speeds = specs.map(speedScore);
       const turns = specs.map((spec) => spec.turnRateDeg);
       const armors = specs.map((spec) => spec.maxHealth);
+      // STABILITY: heavy roll damping, a low stall entry speed and a small
+      // control loss when stalling all mean "stays where you point it".
+      const stabilityScore = (spec) =>
+        spec.rollDamping * 10 - spec.stallEntrySpeed * 0.3 - spec.stallAuthorityLoss * 30;
+      // AIR-TO-AIR: per-shot punch weighted with how much ordnance it carries.
+      const firepowerScore = (spec) =>
+        spec.missileDamage * 0.35 + spec.gunDamage * 5 + spec.missileCapacity * 3;
+      const stabilities = specs.map(stabilityScore);
+      const firepowers = specs.map(firepowerScore);
 
       ui.aircraftCardRow.replaceChildren(...specs.map((spec) => {
         const card = document.createElement("button");
@@ -5931,20 +5989,26 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         card.dataset.aircraft = spec.id;
         card.setAttribute("role", "radio");
         card.setAttribute("aria-checked", String(spec.id === selectedAircraftId));
-        const speedPercent = statPercent(spec.boostSpeed, Math.min(...speeds), Math.max(...speeds)) / 100;
+        const speedPercent = statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100;
         const turnPercent = statPercent(spec.turnRateDeg, Math.min(...turns), Math.max(...turns)) / 100;
         const armorPercent = statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100;
+        const stabilityPercent =
+          statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100;
+        const firepowerPercent =
+          statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100;
         card.innerHTML = `
 ${spec.tag ? `<span class="aircraftTag">${spec.tag}</span>` : ""}
 <span class="aircraftName">${spec.label}</span>
 <span class="aircraftRole">${spec.role}</span>
 <p class="aircraftBlurb">${spec.blurb}</p>
 <div class="aircraftStats">
-  <div class="statRow"><span>SPD</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${speedPercent})"></span></div></div>
-  <div class="statRow"><span>TURN</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${turnPercent})"></span></div></div>
-  <div class="statRow"><span>ARMOR</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${armorPercent})"></span></div></div>
+  <div class="statRow"><span>SPEED</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${speedPercent})"></span></div></div>
+  <div class="statRow"><span>MOBILITY</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${turnPercent})"></span></div></div>
+  <div class="statRow"><span>STABILITY</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${stabilityPercent})"></span></div></div>
+  <div class="statRow"><span>AIR-TO-AIR</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${firepowerPercent})"></span></div></div>
+  <div class="statRow"><span>DEFENSE</span><div class="bar aircraftStatBar"><span style="transform:scaleX(${armorPercent})"></span></div></div>
 </div>
-<span class="aircraftMissiles">MSL × ${spec.missileCapacity}</span>
+<span class="aircraftMissiles">MSL × ${spec.missileCapacity} · HP ${spec.maxHealth}</span>
         `;
         card.addEventListener("click", () => {
 ensureAudio();
