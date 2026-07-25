@@ -3456,7 +3456,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         label: "ARCHIPELAGO DAY",
         clearColor: 0x6698b2,
         sky: [[0, "#06172f"], [0.32, "#174f7a"], [0.62, "#79b7d1"], [0.74, "#d7d5c0"], [1, "#305d75"]],
-        fog: { color: 0x7ba8ba, near: 650, far: 3350 },
+        // near pushed out and far extended (M9): the fleet-safety fence puts
+        // scenery islands past 2500m, and at the old far=3350 they dissolved
+        // into haze before they could read as land. Visibility only increases.
+        fog: { color: 0x7ba8ba, near: 1100, far: 4600 },
         sun: {
           position: [-1150, 1180, -2600], color: 0xfff1bd, radius: 74,
           glare: [
@@ -3497,6 +3500,32 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         clouds: {
           scale: 1, hero: true, color: 0xf4f8f9, opacity: 0.72,
           cirrusColor: 0xeef6f8, cirrusOpacity: 0.3
+        },
+        decor: {
+          seed: 0x1d3a01,
+          // m05 runs a naval wave on this map, and spawnNavalWave only steers
+          // ships around `world.mountains` - decoration is not in that list.
+          // Fencing the fleet disc is what guarantees no carrier can ever
+          // spawn buried inside a scenery island. Same reasoning as sunset.
+          keepClear: [{ x: 0, z: 0, r: 2400 }],
+          // The base map's ten islands are 22-62m across and sit 700-3600m
+          // out, which is under a pixel of silhouette from cruise altitude -
+          // the reason the archipelago read as open water. These are the real
+          // landmass: big enough to see, near enough to fly around, and still
+          // pure decoration (never added to `mountains`, so collision and
+          // surfaceHeightAt are untouched).
+          extraIslands: {
+            count: 18, radius: [130, 360], height: [30, 92], distance: [2500, 3500]
+          },
+          shore: { sand: 0xd8cda4, shallow: 0x5fb0c2, opacity: 0.9, width: 1.3 },
+          trees: { perIsland: 22, color: 0x2f5a35, trunk: 0x4a3a28, height: [12, 26] },
+          lighthouse: { tower: 0xf2f2ec, band: 0xc0392b, lamp: 0xffe9a8, height: 74 },
+          rocks: { count: 26, color: 0x4a5a52, scale: [8, 26] },
+          extraClouds: {
+            towers: 5, towerSize: [70, 120], towerBase: 620,
+            stratus: 9, stratusSize: [190, 320], stratusBase: 1450,
+            distance: [1100, 3400]
+          }
         }
       },
 
@@ -3508,7 +3537,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         clearColor: 0x9a6a52,
         // Horizon is stop 0.5 - the ember band has to sit just above it.
         sky: [[0, "#101a3d"], [0.26, "#2d2657"], [0.4, "#7b3450"], [0.47, "#cc6238"], [0.5, "#ffb96e"], [0.58, "#8e3a49"], [1, "#3a1c33"]],
-        fog: { color: 0x9a6a52, near: 650, far: 3350 },
+        // Same reasoning as the day map: the fleet fence pushes land out, so
+        // the haze has to start later and reach further for it to be visible.
+        fog: { color: 0x9a6a52, near: 1000, far: 4600 },
         sun: {
           position: [-300, 260, -3000], color: 0xffb36b, radius: 150,
           glare: [
@@ -3541,6 +3572,39 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         clouds: {
           scale: 1.5, hero: true, color: 0xffb894, opacity: 0.78,
           cirrusColor: 0xff9f7a, cirrusOpacity: 0.36
+        },
+        // Dusk map: the shore catches the last warm light, the water beside it
+        // stays cold, and a small harbour village gives the fleet something to
+        // be attacking past.
+        decor: {
+          seed: 0x2c5f02,
+          // spawnNavalWave clamps the fleet centre to 1500m from origin and
+          // spreads escorts ~430m per rank off the beam. It nudges ships clear
+          // of `world.mountains` - which decoration is deliberately NOT part
+          // of - so the only way to guarantee no ship ever spawns inside a
+          // scenery island is to keep decoration out of the fleet's disc
+          // entirely. 2400m covers the clamp plus the widest escort rank.
+          keepClear: [{ x: 0, z: 0, r: 2400 }],
+          // Deliberately fewer and further out than the day map: this is the
+          // fleet mission, and the carrier group has to stay the silhouette
+          // the eye goes to. The land is framing, not subject.
+          extraIslands: {
+            count: 10, radius: [150, 380], height: [34, 104], distance: [2600, 3600]
+          },
+          // Low opacity on purpose: against this map's near-black water a
+          // solid sand band reads as an opaque slab floating on the surface
+          // rather than as a beach catching the last of the light.
+          shore: { sand: 0x7d5744, shallow: 0x2c4652, opacity: 0.42, width: 1.2 },
+          trees: { perIsland: 12, color: 0x24202a, trunk: 0x1d1820, height: [12, 24] },
+          harbour: { hut: 0x4b3630, roof: 0x2e2026, light: 0xffb066, huts: 11 },
+          rocks: { count: 18, color: 0x2b2026, scale: [8, 24] },
+          // Big anvils sell the dusk sky - they catch the ember light along
+          // their tops, which is the whole look of this map.
+          extraClouds: {
+            towers: 6, towerSize: [90, 150], towerBase: 560,
+            stratus: 10, stratusSize: [220, 380], stratusBase: 1400,
+            distance: [1200, 3500]
+          }
         }
       },
 
@@ -3551,7 +3615,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         label: "GLACIER CANYON",
         clearColor: 0xcfe0ea,
         sky: [[0, "#1d3f6b"], [0.28, "#4d80ad"], [0.44, "#a8cfe4"], [0.5, "#e6f2f8"], [0.62, "#9dbccb"], [1, "#7fa3b5"]],
-        fog: { color: 0xcfe0ea, near: 500, far: 2900 },
+        // Kept the tightest of the four - this map's whole point is the walls
+        // looming out of the murk - but opened enough that the far spires in
+        // the slalom read as a receding ladder instead of a grey wall.
+        fog: { color: 0xcfe0ea, near: 800, far: 3900 },
         sun: {
           position: [-900, 420, -2900], color: 0xf4fbff, radius: 92,
           glare: [
@@ -3584,10 +3651,40 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           },
           plateau: null
         },
-        islands: { count: 4, stone: 0x8ea7b6, green: 0xd7e7f0 },
+        // Stone darkened a shade from 0x8ea7b6: at the old value the ice
+        // islands were nearly the same luminance as the pale sky and water, so
+        // the terrace steps had no edge to catch and read as flat white blobs.
+        islands: { count: 4, stone: 0x7d97a8, green: 0xdfeef5 },
         clouds: {
           scale: 0.8, hero: true, color: 0xeaf4fa, opacity: 0.7,
           cirrusColor: 0xdfeaf2, cirrusOpacity: 0.3
+        },
+        // Ice, not sand: the "shore" ring is pale meltwater, and drifting floes
+        // fill the corridor floor so a low run past the spires has scale cues.
+        decor: {
+          seed: 0x3a7c03,
+          // keepClear fences the slalom corridor itself (x within ~620 of the
+          // centreline, the full run from +1000 to -5800). Ice and islands
+          // build the walls of the valley; nothing is allowed to grow into the
+          // lane the player actually flies.
+          keepClear: [{ box: { x: 700, z0: -6000, z1: 1200 } }],
+          extraIslands: {
+            count: 12, radius: [130, 300], height: [40, 130], distance: [1400, 3400]
+          },
+          shore: { sand: 0xd7e8f0, shallow: 0x76b3cc, opacity: 0.75, width: 1.34 },
+          trees: null,
+          floes: { count: 70, color: 0xe4f1f7, scale: [18, 62], along: { x: 640, z: [800, -5800] } },
+          rocks: { count: 16, color: 0x7e9aab, scale: [9, 24] },
+          // High thin overcast. stratusBase has to stay well above the spires
+          // (they top out around 560m): a shelf at canyon height passes close
+          // to the camera, where its silhouette resolves as a hard-edged slab
+          // instead of haze. Small and high reads as cloud; big and low does
+          // not.
+          extraClouds: {
+            towers: 2, towerSize: [60, 90], towerBase: 900,
+            stratus: 12, stratusSize: [180, 300], stratusBase: 1500,
+            distance: [1400, 3400]
+          }
         }
       },
 
@@ -3597,7 +3694,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         label: "NIGHT BASE",
         clearColor: 0x05080f,
         sky: [[0, "#01030a"], [0.3, "#040a18"], [0.44, "#0d1830"], [0.5, "#17243f"], [0.62, "#0a1220"], [1, "#050a14"]],
-        fog: { color: 0x0a1220, near: 400, far: 2600 },
+        // Opened up so the distant city glow is not swallowed before it can be
+        // seen. Still by far the shortest visibility of the four - it is the
+        // night map, and the dark is doing the work.
+        fog: { color: 0x0a1220, near: 700, far: 3400 },
         sun: null,
         moon: {
           position: [1100, 900, -2600], color: 0xf3f7ff, radius: 66,
@@ -3632,6 +3732,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         clouds: {
           scale: 0.5, hero: true, color: 0x27324a, opacity: 0.5,
           cirrusColor: 0x1c2436, cirrusOpacity: 0.22
+        },
+        // Night map: no shore band (there is no light to catch it), just cold
+        // moon-rim on the waterline plus distant civilian light. `keepClear`
+        // fences the mission plateau at (900,-1200) so no decoration can ever
+        // land on the base or hide a ground target.
+        decor: {
+          seed: 0x4b1d04,
+          // Faint cold rim only. A visible sand band at night reads as a flat
+          // dark disc punched into the water rather than a beach, so this is
+          // pulled right down - just enough moon-rim to separate land from sea.
+          shore: { sand: 0x35455e, shallow: 0x223047, opacity: 0.22, width: 1.16 },
+          trees: null,
+          keepClear: [{ x: 900, z: -1200, r: 620 }],
+          extraIslands: {
+            count: 9, radius: [130, 300], height: [30, 86], distance: [1300, 3200]
+          },
+          cityLights: {
+            clusters: 5, perCluster: 26, spread: 210, color: 0xffcf8a,
+            cold: 0x9fc4ff, size: 6.5, minDistance: 1500, maxDistance: 3100
+          },
+          rocks: { count: 12, color: 0x0e141d, scale: [6, 16] },
+          // Sparse and low: cloud on the night map exists to occasionally black
+          // out the moon-rim, not to be looked at.
+          extraClouds: {
+            towers: 2, towerSize: [70, 110], towerBase: 600,
+            stratus: 6, stratusSize: [200, 340], stratusBase: 1400,
+            distance: [1200, 3000]
+          }
         }
       }
     });
@@ -13763,27 +13891,124 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         });
       }
 
+      // Small scenery islands. Four silhouettes instead of one so a look down
+      // at the water reads as an archipelago rather than a field of identical
+      // lozenges: a low sand bar, a stepped terrace, a twin-peak pair, and the
+      // original single mound. The archetype is derived from values this loop
+      // already draws - the per-island draw count is unchanged at 8, so island
+      // placement and every later RNG consumer (clouds) stay bit-identical to
+      // the pre-polish build. These are decoration only: they are not added to
+      // `mountains`, so they never affect surfaceHeightAt or collision.
       const islandStone = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.stone, roughness: 0.96, metalness: 0 }));
       const islandGreen = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.green, roughness: 0.92, metalness: 0 }));
       const islandGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1.18, 1, 9, 1, false));
-      for (let i = 0; i < preset.islands.count; i += 1) {
+      const islandAnchors = [];
+
+      // Builds one scenery island of the given archetype at the given spot and
+      // records an anchor for the decoration pass. Shared by the original
+      // island loop and by the extra islands the decoration pass adds, so both
+      // sets get identical silhouettes, shore rings and vegetation.
+      const buildIsland = (x, z, radius, height, squash, capSquash, baseSpin, capSpin, shape) => {
         const island = new THREE.Group();
+        if (shape === 1) {
+          // Sand bar: wide, low, mostly beach - but with a scrub patch inland
+          // so a big one is not just a bare slab when seen from above.
+          const bar = new THREE.Mesh(islandGeometry, islandStone);
+          const barH = height * 0.3;
+          bar.scale.set(radius * 1.45, barH, radius * squash * 1.15);
+          bar.position.y = barH * 0.43;
+          bar.rotateY(baseSpin);
+          island.add(bar);
+          const scrub = new THREE.Mesh(islandGeometry, islandGreen);
+          scrub.scale.set(radius * 0.82, barH * 0.5, radius * squash * 0.66);
+          scrub.position.y = barH * 0.82;
+          scrub.rotateY(capSpin);
+          island.add(scrub);
+          const spit = new THREE.Mesh(islandGeometry, islandStone);
+          spit.scale.set(radius * 0.7, barH * 0.72, radius * squash * 0.5);
+          spit.position.set(radius * 0.95, barH * 0.3, radius * squash * 0.35);
+          spit.rotateY(capSpin);
+          island.add(spit);
+        } else if (shape === 2) {
+          // Terrace: two stacked steps, so the profile has a shoulder. Each
+          // step gets its own green shelf - seen from above (which is most of
+          // the time in this game) a bare stone step reads as a flat brown
+          // polygon, so the vegetation has to cover the tread, not just perch
+          // on the summit.
+          const lower = new THREE.Mesh(islandGeometry, islandStone);
+          lower.scale.set(radius, height * 0.62, radius * squash);
+          lower.position.y = height * 0.27;
+          lower.rotateY(baseSpin);
+          island.add(lower);
+          const shelf = new THREE.Mesh(islandGeometry, islandGreen);
+          shelf.scale.set(radius * 0.94, height * 0.1, radius * squash * 0.94);
+          shelf.position.y = height * 0.6;
+          shelf.rotateY(baseSpin);
+          island.add(shelf);
+          const upper = new THREE.Mesh(islandGeometry, islandStone);
+          upper.scale.set(radius * 0.62, height * 0.55, radius * squash * 0.6);
+          upper.position.y = height * 0.78;
+          upper.rotateY(capSpin);
+          island.add(upper);
+          const cap = new THREE.Mesh(islandGeometry, islandGreen);
+          cap.scale.set(radius * 0.58, height * 0.14, radius * capSquash * 0.6);
+          cap.position.y = height * 1.02;
+          cap.rotateY(baseSpin);
+          island.add(cap);
+        } else if (shape === 3) {
+          // Twin peaks: two mounds sharing one shelf, with a saddle between.
+          for (let t = 0; t < 2; t += 1) {
+            const lobeR = radius * (t === 0 ? 0.68 : 0.5);
+            const lobeH = height * (t === 0 ? 1.15 : 0.8);
+            const lobe = new THREE.Mesh(islandGeometry, islandStone);
+            lobe.scale.set(lobeR, lobeH, lobeR * squash);
+            lobe.position.set((t === 0 ? -1 : 1) * radius * 0.45, lobeH * 0.43, 0);
+            lobe.rotateY(t === 0 ? baseSpin : capSpin);
+            island.add(lobe);
+            const green = new THREE.Mesh(islandGeometry, islandGreen);
+            green.scale.set(lobeR * 0.88, lobeH * 0.16, lobeR * capSquash);
+            green.position.set(lobe.position.x, lobeH * 0.95, 0);
+            green.rotateY(capSpin);
+            island.add(green);
+          }
+        } else {
+          // Original single mound.
+          const base = new THREE.Mesh(islandGeometry, islandStone);
+          base.scale.set(radius, height, radius * squash);
+          base.position.y = height * 0.43;
+          base.rotateY(baseSpin);
+          island.add(base);
+          const cap = new THREE.Mesh(islandGeometry, islandGreen);
+          cap.scale.set(radius * 0.91, height * 0.18, radius * capSquash);
+          cap.position.y = height * 0.95;
+          cap.rotateY(capSpin);
+          island.add(cap);
+        }
+
+        island.position.set(x, 0, z);
+        addRoot(island);
+        // Handed to the decoration pass so shore rings and props can find the
+        // islands without re-deriving their placement.
+        islandAnchors.push({ x, z, radius, height, squash, shape });
+        return island;
+      };
+
+      for (let i = 0; i < preset.islands.count; i += 1) {
         const radius = 22 + rng() * 40;
         const height = 4 + rng() * 10;
-        const base = new THREE.Mesh(islandGeometry, islandStone);
-        base.scale.set(radius, height, radius * (0.55 + rng() * 0.5));
-        base.position.y = height * 0.43;
-        base.rotateY(rng() * Math.PI);
-        island.add(base);
-        const cap = new THREE.Mesh(islandGeometry, islandGreen);
-        cap.scale.set(radius * 0.91, height * 0.18, radius * (0.48 + rng() * 0.42));
-        cap.position.y = height * 0.95;
-        cap.rotateY(rng() * Math.PI);
-        island.add(cap);
+        const squash = 0.55 + rng() * 0.5;
+        const baseSpin = rng() * Math.PI;
+        const capSquash = 0.48 + rng() * 0.42;
+        const capSpin = rng() * Math.PI;
         const angle = rng() * Math.PI * 2;
         const distance = 700 + rng() * 2900;
-        island.position.set(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
-        addRoot(island);
+        // Archetype from the draws above, not a new one - the per-island draw
+        // count stays 8, so clouds and everything downstream are unaffected.
+        buildIsland(
+          Math.cos(angle) * distance, Math.sin(angle) * distance,
+          radius, height, squash, capSquash, baseSpin, capSpin,
+          Math.floor(squash * 4) % 4
+        );
       }
 
       // Three cloud layers: low cumulus you dogfight through, taller mid deck,
@@ -13843,6 +14068,435 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         streak.scale.set(200 + rng() * 140, 4 + rng() * 4, 50 + rng() * 40);
         streak.rotation.y = rng() * Math.PI;
         addRoot(streak);
+      }
+
+      // ---- Decoration pass (M9 map polish) ------------------------------
+      // Everything below is scenery: shore rings, vegetation, landmarks. It
+      // runs on its OWN rng stream (`decorRng`) and strictly after every draw
+      // above, so adding, tuning or removing any of it cannot shift where a
+      // mountain, island or cloud lands. Nothing here is pushed into
+      // `mountains`, so surfaceHeightAt, terrain collision and every mission's
+      // spawn contract are untouched by design, not by luck.
+      const decor = preset.decor;
+      if (decor) {
+        const decorRng = mulberry32(decor.seed);
+        const keepClear = decor.keepClear || [];
+        // Exclusion zones. Circles fence a point of interest (the night map's
+        // mission plateau); boxes fence a lane (the glacier slalom corridor).
+        // Anything a mission depends on is fenced here, so decoration can
+        // never land on a ground target or grow into the flown line.
+        const blocked = (x, z, pad = 0) => keepClear.some((zone) => {
+          if (zone.box) {
+            return Math.abs(x) < zone.box.x + pad &&
+              z > zone.box.z0 - pad && z < zone.box.z1 + pad;
+          }
+          const dx = x - zone.x;
+          const dz = z - zone.z;
+          const r = zone.r + pad;
+          return dx * dx + dz * dz < r * r;
+        });
+        // Shared build-time scratch for the InstancedMesh loops below. This all
+        // runs once per world build, never per frame.
+        const decorEuler = new THREE.Euler();
+
+        // Extra scenery islands, at a size the eye can actually resolve from
+        // altitude. They go through the same buildIsland() as the base set, so
+        // they pick up the same four silhouettes and land in islandAnchors -
+        // which means the shore rings, trees and landmarks below decorate the
+        // new islands and the old ones without knowing the difference.
+        if (decor.extraIslands) {
+          const cfg = decor.extraIslands;
+          for (let i = 0; i < cfg.count; i += 1) {
+            const radius = cfg.radius[0] + decorRng() * (cfg.radius[1] - cfg.radius[0]);
+            const height = cfg.height[0] + decorRng() * (cfg.height[1] - cfg.height[0]);
+            const squash = 0.55 + decorRng() * 0.5;
+            const capSquash = 0.48 + decorRng() * 0.42;
+            const baseSpin = decorRng() * Math.PI;
+            const capSpin = decorRng() * Math.PI;
+            const angle = decorRng() * Math.PI * 2;
+            const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
+            const shape = Math.floor(decorRng() * 4) % 4;
+            const x = Math.cos(angle) * distance;
+            const z = Math.sin(angle) * distance;
+            // Padded by the island's own radius so nothing overhangs a fence.
+            if (blocked(x, z, radius * 1.6)) continue;
+            buildIsland(x, z, radius, height, squash, capSquash, baseSpin, capSpin, shape);
+          }
+        }
+
+        // Waterline rings. Two flat discs just above the ocean plane: a wet
+        // sand/ice band hugging the island and a wider shallow-water halo
+        // outside it. depthWrite off + renderOrder keeps them from z-fighting
+        // the ocean, and they are unlit basic material so they cost nothing.
+        if (decor.shore && islandAnchors.length > 0) {
+          const ringGeometry = keepGeometry(new THREE.CircleGeometry(1, 22));
+          ringGeometry.rotateX(-Math.PI / 2);
+          // Unlit and additive-free, but blended low: these have to read as the
+          // water changing colour as it shoals, not as slabs laid on top of it.
+          const sandMaterial = keepMaterial(new THREE.MeshBasicMaterial({
+            color: decor.shore.sand, transparent: true, opacity: decor.shore.opacity * 0.72,
+            depthWrite: false
+          }));
+          const shallowMaterial = keepMaterial(new THREE.MeshBasicMaterial({
+            color: decor.shore.shallow, transparent: true, opacity: decor.shore.opacity * 0.32,
+            depthWrite: false
+          }));
+          for (const anchor of islandAnchors) {
+            if (blocked(anchor.x, anchor.z)) continue;
+            // The island cylinder flares to 1.18x its radius at the waterline,
+            // and the sand-bar archetype is wider still, so both rings have to
+            // clear that footprint or the disc saws through the hillside.
+            const foot = anchor.radius * (anchor.shape === 1 ? 1.5 : 1.18);
+            const shallow = new THREE.Mesh(ringGeometry, shallowMaterial);
+            const shallowR = foot * (decor.shore.width + 0.5);
+            shallow.scale.set(shallowR, 1, shallowR * anchor.squash);
+            shallow.position.set(anchor.x, 0.25, anchor.z);
+            shallow.renderOrder = 1;
+            addRoot(shallow);
+
+            const sand = new THREE.Mesh(ringGeometry, sandMaterial);
+            const sandR = foot * decor.shore.width;
+            sand.scale.set(sandR, 1, sandR * anchor.squash);
+            sand.position.set(anchor.x, 0.5, anchor.z);
+            sand.renderOrder = 2;
+            addRoot(sand);
+          }
+        }
+
+        // Vegetation. One InstancedMesh for all foliage and one for all trunks
+        // across the whole map - two draw calls total no matter how many trees,
+        // which is what keeps this affordable at 60fps.
+        if (decor.trees && islandAnchors.length > 0) {
+          const spots = [];
+          for (const anchor of islandAnchors) {
+            if (blocked(anchor.x, anchor.z)) continue;
+            // Sand bars are low and mostly beach, so they get a thinner stand
+            // clustered on the inland scrub patch rather than a full canopy.
+            const count = anchor.shape === 1
+              ? Math.max(2, Math.round(decor.trees.perIsland * 0.35))
+              : decor.trees.perIsland;
+            // Where the green actually is differs per archetype: the sand bar
+            // has a low scrub patch, the terrace has shelves partway up, the
+            // others cap out near the summit. Planting at the wrong height is
+            // what makes trees float or sink into the hillside.
+            const spread = anchor.shape === 1 ? 0.6 : 0.82;
+            const baseY = anchor.shape === 1
+              ? anchor.height * 0.3 * 0.95
+              : anchor.height * (anchor.shape === 3 ? 0.95 : 0.9);
+            for (let t = 0; t < count; t += 1) {
+              // Sqrt keeps the scatter area-uniform instead of centre-heavy.
+              const rr = Math.sqrt(decorRng()) * spread;
+              const theta = decorRng() * Math.PI * 2;
+              spots.push({
+                x: anchor.x + Math.cos(theta) * anchor.radius * rr,
+                z: anchor.z + Math.sin(theta) * anchor.radius * rr * anchor.squash,
+                y: baseY,
+                h: decor.trees.height[0] + decorRng() * (decor.trees.height[1] - decor.trees.height[0]),
+                spin: decorRng() * Math.PI
+              });
+            }
+          }
+          if (spots.length > 0) {
+            const coneGeometry = keepGeometry(new THREE.ConeGeometry(1, 1, 5));
+            const trunkGeometry = keepGeometry(new THREE.CylinderGeometry(0.14, 0.2, 1, 4));
+            const foliage = new THREE.InstancedMesh(
+              coneGeometry,
+              keepMaterial(new THREE.MeshLambertMaterial({ color: decor.trees.color })),
+              spots.length
+            );
+            const trunks = new THREE.InstancedMesh(
+              trunkGeometry,
+              keepMaterial(new THREE.MeshLambertMaterial({ color: decor.trees.trunk })),
+              spots.length
+            );
+            const m = new THREE.Matrix4();
+            const q = new THREE.Quaternion();
+            const pos = new THREE.Vector3();
+            const scl = new THREE.Vector3();
+            for (let i = 0; i < spots.length; i += 1) {
+              const s = spots[i];
+              q.setFromAxisAngle(WORLD_UP, s.spin);
+              pos.set(s.x, s.y + s.h * 0.62, s.z);
+              scl.set(s.h * 0.34, s.h * 0.78, s.h * 0.34);
+              foliage.setMatrixAt(i, m.compose(pos, q, scl));
+              pos.set(s.x, s.y + s.h * 0.16, s.z);
+              scl.set(s.h * 0.3, s.h * 0.34, s.h * 0.3);
+              trunks.setMatrixAt(i, m.compose(pos, q, scl));
+            }
+            foliage.instanceMatrix.needsUpdate = true;
+            trunks.instanceMatrix.needsUpdate = true;
+            addRoot(foliage);
+            addRoot(trunks);
+          }
+        }
+
+        // Sea stacks: small rocks in open water between the islands. Pure
+        // silhouette filler for the middle distance, which is the band that
+        // read as empty before.
+        if (decor.rocks) {
+          const rockGeometry = keepGeometry(new THREE.DodecahedronGeometry(1, 0));
+          const rockMesh = new THREE.InstancedMesh(
+            rockGeometry,
+            keepMaterial(new THREE.MeshLambertMaterial({ color: decor.rocks.color, flatShading: true })),
+            decor.rocks.count
+          );
+          const m = new THREE.Matrix4();
+          const q = new THREE.Quaternion();
+          const pos = new THREE.Vector3();
+          const scl = new THREE.Vector3();
+          let placed = 0;
+          for (let i = 0; i < decor.rocks.count; i += 1) {
+            const angle = decorRng() * Math.PI * 2;
+            const distance = 900 + decorRng() * 2400;
+            const x = Math.cos(angle) * distance;
+            const z = Math.sin(angle) * distance;
+            const s = decor.rocks.scale[0] + decorRng() * (decor.rocks.scale[1] - decor.rocks.scale[0]);
+            const spin = decorRng() * Math.PI * 2;
+            const tilt = (decorRng() - 0.5) * 0.5;
+            if (blocked(x, z, 120)) continue;
+            q.setFromEuler(decorEuler.set(tilt, spin, tilt * 0.6));
+            pos.set(x, s * 0.28, z);
+            scl.set(s, s * (0.7 + decorRng() * 0.6), s);
+            rockMesh.setMatrixAt(placed, m.compose(pos, q, scl));
+            placed += 1;
+          }
+          rockMesh.count = placed;
+          rockMesh.instanceMatrix.needsUpdate = true;
+          if (placed > 0) addRoot(rockMesh);
+        }
+
+        // Lighthouse: one hand-placed landmark on the biggest island that is
+        // tall enough to hold it. Gives the archipelago a point of reference
+        // the player can navigate by, which a field of anonymous mounds cannot.
+        if (decor.lighthouse) {
+          let host = null;
+          for (const anchor of islandAnchors) {
+            if (anchor.shape === 1 || blocked(anchor.x, anchor.z)) continue;
+            if (!host || anchor.radius > host.radius) host = anchor;
+          }
+          if (host) {
+            const group = new THREE.Group();
+            const h = decor.lighthouse.height;
+            const tower = new THREE.Mesh(
+              keepGeometry(new THREE.CylinderGeometry(2.6, 4.4, h, 10)),
+              keepMaterial(new THREE.MeshLambertMaterial({ color: decor.lighthouse.tower }))
+            );
+            tower.position.y = h * 0.5;
+            group.add(tower);
+            const band = new THREE.Mesh(
+              keepGeometry(new THREE.CylinderGeometry(3.3, 3.7, h * 0.17, 10)),
+              keepMaterial(new THREE.MeshLambertMaterial({ color: decor.lighthouse.band }))
+            );
+            band.position.y = h * 0.62;
+            group.add(band);
+            const lamp = new THREE.Mesh(
+              keepGeometry(new THREE.SphereGeometry(3.1, 10, 8)),
+              keepMaterial(new THREE.MeshBasicMaterial({ color: decor.lighthouse.lamp }))
+            );
+            lamp.position.y = h * 1.02;
+            group.add(lamp);
+            group.position.set(host.x + host.radius * 0.3, host.height * 0.92, host.z);
+            addRoot(group);
+          }
+        }
+
+        // Harbour village: a huddle of huts with warm windows on a shoreline.
+        // Sells the sunset map as inhabited water rather than open ocean.
+        if (decor.harbour) {
+          let host = null;
+          for (const anchor of islandAnchors) {
+            if (blocked(anchor.x, anchor.z)) continue;
+            if (!host || anchor.radius > host.radius) host = anchor;
+          }
+          if (host) {
+            const hutGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const roofGeometry = keepGeometry(new THREE.ConeGeometry(0.82, 0.6, 4));
+            const hutMaterial = keepMaterial(new THREE.MeshLambertMaterial({ color: decor.harbour.hut }));
+            const roofMaterial = keepMaterial(new THREE.MeshLambertMaterial({ color: decor.harbour.roof }));
+            const lightMaterial = keepMaterial(new THREE.MeshBasicMaterial({ color: decor.harbour.light }));
+            const village = new THREE.Group();
+            for (let i = 0; i < decor.harbour.huts; i += 1) {
+              const size = 7 + decorRng() * 6;
+              const rr = Math.sqrt(decorRng()) * host.radius * 0.7;
+              const theta = decorRng() * Math.PI * 2;
+              const hx = Math.cos(theta) * rr;
+              const hz = Math.sin(theta) * rr * host.squash;
+              const spin = decorRng() * Math.PI;
+              const hut = new THREE.Mesh(hutGeometry, hutMaterial);
+              hut.scale.set(size, size * 0.7, size * 0.85);
+              hut.position.set(hx, size * 0.35, hz);
+              hut.rotation.y = spin;
+              village.add(hut);
+              const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+              roof.scale.set(size * 1.15, size * 0.62, size * 1.15);
+              roof.position.set(hx, size * 0.86, hz);
+              roof.rotation.y = spin + Math.PI * 0.25;
+              village.add(roof);
+              const window_ = new THREE.Mesh(hutGeometry, lightMaterial);
+              window_.scale.set(size * 0.2, size * 0.16, size * 0.06);
+              window_.position.set(
+                hx + Math.sin(spin) * size * 0.44,
+                size * 0.4,
+                hz + Math.cos(spin) * size * 0.44
+              );
+              window_.rotation.y = spin;
+              village.add(window_);
+            }
+            village.position.set(host.x, host.height * 0.9, host.z);
+            addRoot(village);
+          }
+        }
+
+        // Ice floes down the canyon floor. Flat, slightly tilted slabs on the
+        // water either side of the corridor centreline: at 150m altitude they
+        // are the thing that tells you how fast you are actually moving.
+        if (decor.floes) {
+          const floeGeometry = keepGeometry(new THREE.CylinderGeometry(1, 0.86, 0.22, 7));
+          const floeMesh = new THREE.InstancedMesh(
+            floeGeometry,
+            keepMaterial(new THREE.MeshLambertMaterial({ color: decor.floes.color, flatShading: true })),
+            decor.floes.count
+          );
+          const m = new THREE.Matrix4();
+          const q = new THREE.Quaternion();
+          const pos = new THREE.Vector3();
+          const scl = new THREE.Vector3();
+          const [z0, z1] = decor.floes.along.z;
+          let placed = 0;
+          for (let i = 0; i < decor.floes.count; i += 1) {
+            const x = (decorRng() - 0.5) * 2 * decor.floes.along.x;
+            const z = z0 + decorRng() * (z1 - z0);
+            const s = decor.floes.scale[0] + decorRng() * (decor.floes.scale[1] - decor.floes.scale[0]);
+            const spin = decorRng() * Math.PI * 2;
+            const tilt = (decorRng() - 0.5) * 0.12;
+            // Floes are floating surface detail lying flat on the water, so
+            // they are exempt from the corridor fence on purpose - they ARE
+            // the corridor floor. They rise ~2m and are never solid, so they
+            // cannot block the lane the way an island would.
+            q.setFromEuler(decorEuler.set(tilt, spin, tilt * 0.7));
+            pos.set(x, 1.1, z);
+            scl.set(s, 1 + decorRng() * 2.4, s * (0.6 + decorRng() * 0.6));
+            floeMesh.setMatrixAt(placed, m.compose(pos, q, scl));
+            placed += 1;
+          }
+          floeMesh.count = placed;
+          floeMesh.instanceMatrix.needsUpdate = true;
+          if (placed > 0) addRoot(floeMesh);
+        }
+
+        // Cloud variety (spec item 4). The base build makes three even decks of
+        // near-identical puffs; these are the outliers that break the pattern -
+        // a few towering build-ups and a low shelf of flat stratus - added on
+        // the decoration stream so the existing decks keep their exact
+        // placement. They are visual only and are deliberately NOT pushed into
+        // cloudVolumes, so the fly-through white-out still triggers on exactly
+        // the same clouds it did before.
+        if (decor.extraClouds && cloudGeometry && cloudMaterial) {
+          const cfg = decor.extraClouds;
+          for (let i = 0; i < cfg.towers; i += 1) {
+            const angle = decorRng() * Math.PI * 2;
+            const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
+            const x = Math.cos(angle) * distance;
+            const z = Math.sin(angle) * distance;
+            const tower = new THREE.Group();
+            const stacks = 4 + Math.floor(decorRng() * 3);
+            const base = cfg.towerSize[0] + decorRng() * (cfg.towerSize[1] - cfg.towerSize[0]);
+            for (let s = 0; s < stacks; s += 1) {
+              // Narrowing as it climbs gives the anvil profile that reads as a
+              // build-up instead of another lozenge.
+              const t = s / (stacks - 1);
+              const w = base * (1 - t * 0.55);
+              for (let p = 0; p < 3; p += 1) {
+                const puff = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                puff.position.set(
+                  (decorRng() - 0.5) * w * 1.1,
+                  s * base * 0.62,
+                  (decorRng() - 0.5) * w * 1.1
+                );
+                const sc = w * (0.5 + decorRng() * 0.4);
+                puff.scale.set(sc * 1.25, sc * (0.72 + decorRng() * 0.4), sc);
+                tower.add(puff);
+              }
+            }
+            tower.position.set(x, cfg.towerBase + decorRng() * 220, z);
+            tower.rotateY(decorRng() * Math.PI);
+            addRoot(tower);
+          }
+          // Stratus shelves. Built from several overlapping lozenges rather
+          // than one big flattened sphere: a single stretched sphere at this
+          // size reads as a solid grey slab hanging in the sky, because its
+          // silhouette is one hard convex outline. Breaking it into offset
+          // pieces gives the ragged edge that makes it read as cloud.
+          for (let i = 0; i < cfg.stratus; i += 1) {
+            const angle = decorRng() * Math.PI * 2;
+            const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
+            const w = cfg.stratusSize[0] + decorRng() * (cfg.stratusSize[1] - cfg.stratusSize[0]);
+            const shelf = new THREE.Group();
+            const pieces = 3 + Math.floor(decorRng() * 3);
+            for (let p = 0; p < pieces; p += 1) {
+              const slab = new THREE.Mesh(cloudGeometry, cirrusMaterial);
+              const pw = w * (0.4 + decorRng() * 0.42);
+              slab.position.set(
+                (p - (pieces - 1) / 2) * w * 0.34 + (decorRng() - 0.5) * w * 0.16,
+                (decorRng() - 0.5) * 16,
+                (decorRng() - 0.5) * w * 0.3
+              );
+              slab.scale.set(pw, 5 + decorRng() * 6, pw * (0.34 + decorRng() * 0.3));
+              slab.rotation.y = decorRng() * Math.PI;
+              shelf.add(slab);
+            }
+            shelf.position.set(
+              Math.cos(angle) * distance,
+              cfg.stratusBase + decorRng() * 160,
+              Math.sin(angle) * distance
+            );
+            shelf.rotation.y = decorRng() * Math.PI;
+            addRoot(shelf);
+          }
+        }
+
+        // Distant civilian light for the night map. Points, not meshes, and
+        // fenced away from the mission plateau so they can never be confused
+        // with - or hide - a ground target.
+        if (decor.cityLights) {
+          const cfg = decor.cityLights;
+          const total = cfg.clusters * cfg.perCluster;
+          const positions = new Float32Array(total * 3);
+          const colors = new Float32Array(total * 3);
+          const tint = new THREE.Color();
+          let n = 0;
+          for (let c = 0; c < cfg.clusters; c += 1) {
+            const angle = decorRng() * Math.PI * 2;
+            const distance = cfg.minDistance + decorRng() * (cfg.maxDistance - cfg.minDistance);
+            const cx = Math.cos(angle) * distance;
+            const cz = Math.sin(angle) * distance;
+            if (blocked(cx, cz, cfg.spread)) continue;
+            for (let i = 0; i < cfg.perCluster; i += 1) {
+              const x = cx + (decorRng() - 0.5) * cfg.spread;
+              const z = cz + (decorRng() - 0.5) * cfg.spread;
+              positions[n * 3] = x;
+              positions[n * 3 + 1] = 6 + decorRng() * 16;
+              positions[n * 3 + 2] = z;
+              tint.setHex(decorRng() > 0.78 ? cfg.cold : cfg.color);
+              const shade = 0.45 + decorRng() * 0.55;
+              colors[n * 3] = tint.r * shade;
+              colors[n * 3 + 1] = tint.g * shade;
+              colors[n * 3 + 2] = tint.b * shade;
+              n += 1;
+            }
+          }
+          if (n > 0) {
+            const lightGeometry = keepGeometry(new THREE.BufferGeometry());
+            lightGeometry.setAttribute("position", new THREE.BufferAttribute(positions.subarray(0, n * 3), 3));
+            lightGeometry.setAttribute("color", new THREE.BufferAttribute(colors.subarray(0, n * 3), 3));
+            const cityLights = new THREE.Points(lightGeometry, keepMaterial(new THREE.PointsMaterial({
+              size: cfg.size, sizeAttenuation: false, vertexColors: true,
+              transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending,
+              depthWrite: false
+            })));
+            addRoot(cityLights);
+          }
+        }
       }
 
       return {
