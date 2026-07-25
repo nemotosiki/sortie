@@ -2177,6 +2177,34 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
 canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         })
+      }),
+      // Enemy-only airframe. ENEMY_TYPES is built from every ENEMY_AI_PROFILES
+      // key, while the hangar and the spec bars only ever walk AIRCRAFT_ORDER -
+      // so an entry that is in this table but not in that list is flyable by the
+      // AI and invisible to the player. `enemyOnly` states that contract for a
+      // reader; selectAircraft() enforces it against AIRCRAFT_ORDER.
+      //
+      // No `spw`: a special weapon is a player affordance, and applyAircraftSpec
+      // is the only thing that reads it.
+      bomber: Object.freeze({
+        id: "bomber",
+        label: "B-52H STRATOFORTRESS",
+        role: "Strategic Bomber",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の戦略爆撃機。鈍重だが極めて頑丈で、尾部に後方防御銃座を備える。",
+        cruiseSpeed: 150, boostSpeed: 175, brakeSpeed: 130,
+        pitchRateDeg: 12, rollRateDeg: 34, yawRateDeg: 4, maxBankAngleDeg: 18,
+        normalRollSpring: 12, rollRateLimitDeg: 30, turnRateDeg: 8,
+        rollDamping: 6.0, stallWarnSpeed: 90, stallEntrySpeed: 78, stallAuthorityLoss: 0.9, structuralG: 1.6,
+        gunDamage: 12, missileDamage: 98,
+        boostResponse: 0.9, brakeResponse: 0.85, cruiseResponse: 0.92,
+        missileCapacity: 0, maxHealth: 290,
+        tipSpan: 12.5, tipZ: 1.2,
+        theme: Object.freeze({
+primary: 0x4c5550, secondary: 0x333b38, accent: 0x20262a,
+canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
+        })
       })
     });
 
@@ -2184,6 +2212,78 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       Object.freeze(["f16", "f15", "f4"]),
       Object.freeze(["f22", "f4", "f16"])
     ]);
+
+    // ---- Wave composition -----------------------------------------------------
+    // A mission's `sequence` is an ordered list of wave entries. An entry is
+    // either a preset name - the four the campaign shipped with - or an inline
+    // `{ types: [...], ace?: bool }` object, which lets a mission field a mixed
+    // wave (bombers with a fighter escort, say) of any size without inventing a
+    // preset for it. Every consumer downstream reads the resolved descriptor, so
+    // "one wave = three aircraft" is no longer wired into target totals, target
+    // ids, briefing markers or the spawn layout.
+    //
+    // `band` is the wave's identity for spawn geometry and for the small speed
+    // bonus later waves get; it is deliberately NOT the sequence index, because
+    // m04 flies "air2" as its only wave and its enemies have always been band 2.
+    //
+    // `idBase` pins the HUD target numbers each preset has always produced (air
+    // waves 1-3 and 4-6, the fleet 7-9) so every existing mission keeps its
+    // numbering; an inline entry takes the next free block instead. Ground
+    // installations own ids 21 and up, which is the ceiling on this allocator.
+    const WAVE_PRESETS = Object.freeze({
+      air1: Object.freeze({
+        kind: "air", types: ENEMY_TYPE_ORDER[0], fleet: null,
+        band: 1, ace: false, idBase: 0, radio: null
+      }),
+      air2: Object.freeze({
+        kind: "air", types: ENEMY_TYPE_ORDER[1], fleet: null,
+        band: 2, ace: true, idBase: 3, radio: null
+      }),
+      air2plain: Object.freeze({
+        kind: "air", types: ENEMY_TYPE_ORDER[1], fleet: null,
+        band: 2, ace: false, idBase: 3, radio: null
+      }),
+      naval: Object.freeze({
+        kind: "naval", types: null, fleet: Object.freeze(["carrier", "aegis", "aegis"]),
+        band: 3, ace: false, idBase: 6, radio: null
+      })
+    });
+
+    // A preset name resolves to its shared frozen descriptor; an inline entry is
+    // normalised once, when MISSIONS is frozen, and never again.
+    function normalizeWaveEntry(entry) {
+      if (typeof entry === "string") return WAVE_PRESETS[entry] || WAVE_PRESETS.air1;
+      const kind = entry.kind === "naval" ? "naval" : "air";
+      return Object.freeze({
+        kind,
+        types: kind === "air" ? Object.freeze([...(entry.types || [])]) : null,
+        fleet: kind === "naval" ? Object.freeze([...(entry.fleet || WAVE_PRESETS.naval.fleet)]) : null,
+        // null = "take the next free id block", filled in at spawn time.
+        band: entry.band || null,
+        ace: Boolean(entry.ace),
+        idBase: null,
+        radio: entry.radio ? Object.freeze(entry.radio.map(Object.freeze)) : null
+      });
+    }
+
+    function waveSizeOf(wave) {
+      return wave.kind === "naval" ? wave.fleet.length : wave.types.length;
+    }
+
+    // Spawn geometry per band. Bands beyond 2 reuse the second set - the numbers
+    // are a formation, not a per-wave identity.
+    const WAVE_LAYOUTS = Object.freeze({
+      1: Object.freeze({
+        distance: 820, distanceStep: 65,
+        lateral: Object.freeze([-190, 0, 190]), lateralStep: 190,
+        altitude: Object.freeze([35, -20, 80])
+      }),
+      2: Object.freeze({
+        distance: 1030, distanceStep: 65,
+        lateral: Object.freeze([-260, 40, 260]), lateralStep: 220,
+        altitude: Object.freeze([90, 20, -55])
+      })
+    });
 
     // Enemies fly the same four airframes as the player and inherit their
     // performance from AIRCRAFT_TYPES: HP, cruise/boost speed and turn rate all
@@ -2335,6 +2435,60 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           scale: 0.82,
           variant: "raptor"
         })
+      }),
+      // The bomber needs no new behaviour string: "armored" is the default
+      // branch (it only picks the exhaust scale), and everything that makes an
+      // aircraft a dogfighter is a number. Zero engage/disengage range means it
+      // never leaves patrol, and zero evasion means it never jinks - so it flies
+      // its line and the player's problem is the escort and the tail gun, not
+      // the interception.
+      bomber: Object.freeze({
+        behavior: "armored",
+        // Enemy display name. Without this ENEMY_TYPES would take the first word
+        // of the airframe label ("B-52H"); the HUD wants the class.
+        label: "BOMBER",
+        hitboxScale: 2.6,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 0.3,
+        // Never pursues. At 8 deg/s the turn radius is ~1km anyway, so the
+        // patrol legs read as a bomber stream holding its heading.
+        engageRange: 0,
+        disengageRange: 0,
+        pursuitBack: 0,
+        verticalBias: 30,
+        verticalAmplitude: 6,
+        verticalFrequency: 0.3,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.06,
+        // Tail turret: see attemptEnemyAttack. `aimThreshold` is measured
+        // against the REVERSED nose vector, so 0.4 is the dot < -0.4 rear cone.
+        rearGun: true,
+        // Local z of the turret (10.8) times the model scale (2.2).
+        rearGunOffset: 24,
+        fireMin: 1.4,
+        fireSpread: 0.9,
+        attackRange: 900,
+        aimThreshold: 0.4,
+        hitChanceScale: 0.46,
+        maxHitChance: 0.25,
+        damageMin: 7,
+        damageMax: 7,
+        // Twice the span of a fighter, so the fireball is scaled to match.
+        explosionScale: 1.4,
+        radarColor: "#ff7a4f",
+        tracerColor: 0xffa04a,
+        explosionColor: 0xffb648,
+        theme: Object.freeze({
+          primary: 0x4c5550,
+          secondary: 0x333b38,
+          accent: 0x20262a,
+          canopy: 0x8fe0ff,
+          exhaust: 0x9fb0b8,
+          scale: 2.2,
+          variant: "bomber"
+        })
       })
     });
 
@@ -2408,7 +2562,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return [id, Object.freeze({
           ...ai,
           key: id,
-          label: air.label.split(" ")[0],
+          label: ai.label || air.label.split(" ")[0],
           role: air.role,
           hp: air.maxHealth,
           patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
@@ -2964,18 +3118,51 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         hasOutro: true,
         map: { x: 0.8, y: 0.34 },
         briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n途中、補給ラインでミサイルを再装填できる。\nこの空と海を取り戻せ。幸運を祈る。"
+      },
+      {
+        key: "m-intercept",
+        world: "archipelagoDay",
+        title: "BOMBER STREAM",
+        jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
+        // First mission with mixed waves: two bombers and one escort fighter per
+        // wave, written as inline type lists rather than a preset.
+        sequence: [
+          { types: ["bomber", "bomber", "f15"] },
+          { types: ["bomber", "bomber", "f16"] }
+        ],
+        // No time limit - the bombers do not run. Par carries the pressure, the
+        // way AC7's own bomber-stream scoring missions do.
+        parTime: 260,
+        hasOutro: false,
+        map: { x: 0.34, y: 0.16 },
+        briefing: "高高度に大型機の反応——敵の重爆撃編隊が本土へ向かっている。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。",
+        introRadio: [
+          { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
+          { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
+        ]
       }
-    ].map((mission) => Object.freeze({
-      ...mission,
-      totalTargets: mission.sequence.length * 3 + (mission.groundUnits ? mission.groundUnits.length : 0),
-      groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
-      floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
-      introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
-      map: Object.freeze(mission.map)
-    })));
+    ].map((mission) => {
+      const waves = Object.freeze(mission.sequence.map(normalizeWaveEntry));
+      return Object.freeze({
+        ...mission,
+        // Resolved once, here. `sequence` stays exactly as authored so the
+        // definitions above remain the readable version of the truth.
+        waves,
+        totalTargets: waves.reduce((sum, wave) => sum + waveSizeOf(wave), 0)
+          + (mission.groundUnits ? mission.groundUnits.length : 0),
+        groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
+        floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
+        introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
+        map: Object.freeze(mission.map)
+      });
+    }));
 
     let currentMissionIndex = 0;
     let missionWaveIndex = 0;
+    // Next free HUD target id block, and how many wave targets the sortie has
+    // put on the board so far. Both are per-sortie and reset in startMission.
+    let waveIdCursor = 0;
+    let waveTargetsSpawned = 0;
     let lastMissionRank = null;
     // Declared here rather than beside the menu functions: the boot sequence
     // builds both menus, and a `let` further down the module body is still in
@@ -3467,6 +3654,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     };
     const outro = { active: false, elapsed: 0, retreatBannerFired: false };
     let aceDestroyed = false;
+    // One-shot: the "first one down" call belongs to the first bomber of the
+    // sortie, and RADIO_LINE_COOLDOWN alone would let it fire again 25s later.
+    let bomberFirstKillFired = false;
     let preferredTargetId = null;
     let lockGraceTimer = 0;
     let cameraFocusActive = false;
@@ -3935,10 +4125,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             enemy.hitbox.visible = false;
             enemy.model.group.visible = false;
           }
-          kills = missionWaveIndex * 3;
+          kills = waveTargetsSpawned;
           resetLock();
           preferredTargetId = null;
-          spawnMissionWave("naval");
+          spawnMissionWave(WAVE_PRESETS.naval);
           return true;
         },
         forceSpawnGroundBase: () => {
@@ -5346,6 +5536,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       playerNickname = null;
       waveNumber = 0;
       missionWaveIndex = 0;
+      waveIdCursor = 0;
+      waveTargetsSpawned = 0;
+      bomberFirstKillFired = false;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
       gunShots = 0;
@@ -5397,7 +5590,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       // Ahead of the wave spawn so its own banner sees the band already up and
       // queues itself behind it.
       showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
-      spawnMissionWave(MISSIONS[currentMissionIndex].sequence[0]);
+      spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
       spawnMissionGround(MISSIONS[currentMissionIndex]);
       snapCamera();
       clock.getDelta();
@@ -6623,29 +6816,34 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return true;
     }
 
-    function spawnWave(number, withAce = false) {
+    // An air wave is a list of airframe keys, not a count. The three-ship
+    // formation the campaign was built around is still spelled out slot by slot
+    // in WAVE_LAYOUTS so those missions spawn on exactly the coordinates they
+    // always have; any other size falls back to an even spread about the
+    // player's nose, using the same spacing.
+    function spawnWave(wave, band, idBase) {
       const spawnForward = forwardOf(player, new THREE.Vector3());
       const spawnRight = rightOf(player, new THREE.Vector3());
       const spawnUp = upOf(player, new THREE.Vector3());
-      const waveTypes = ENEMY_TYPE_ORDER[number - 1] || ENEMY_TYPE_ORDER[0];
+      const waveTypes = wave.types;
+      const count = waveTypes.length;
+      const layout = WAVE_LAYOUTS[Math.min(band, 2)] || WAVE_LAYOUTS[1];
 
-      const baseDistance = number === 1 ? 820 : 1030;
-      const altitudeOffsets = number === 1 ? [35, -20, 80] : [90, 20, -55];
-      const lateralOffsets = number === 1 ? [-190, 0, 190] : [-260, 40, 260];
-
-      for (let i = 0; i < 3; i += 1) {
+      for (let i = 0; i < count; i += 1) {
+        const lateral = count === 3 ? layout.lateral[i] : (i - (count - 1) / 2) * layout.lateralStep;
+        const altitude = count === 3 ? layout.altitude[i] : layout.altitude[i % layout.altitude.length];
         const position = new THREE.Vector3().copy(player.position)
-          .addScaledVector(spawnForward, baseDistance + i * 65)
-          .addScaledVector(spawnRight, lateralOffsets[i])
-          .addScaledVector(spawnUp, altitudeOffsets[i]);
+          .addScaledVector(spawnForward, layout.distance + i * layout.distanceStep)
+          .addScaledVector(spawnRight, lateral)
+          .addScaledVector(spawnUp, altitude);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, number, i, waveTypes[i], withAce && i === 0);
+        spawnEnemy(position, band, i, waveTypes[i], wave.ace && i === 0, idBase);
       }
     }
 
-    function spawnEnemy(position, wave, slot, typeKey, isAce = false) {
+    function spawnEnemy(position, wave, slot, typeKey, isAce = false, idBase = 0) {
       enemySerial += 1;
-      const id = (wave - 1) * 3 + slot + 1;
+      const id = idBase + slot + 1;
       const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
       // The ace flies the same airframe, just sharper - never a different
       // physics table. ACE_TURN_SCALE is the only stat bonus it gets.
@@ -6683,7 +6881,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ];
       for (const waypoint of waypoints) waypoint.y = Math.max(90, waypoint.y);
 
-      const formationLeaderId = (wave - 1) * 3 + 1;
+      const formationLeaderId = idBase + 1;
       enemies.push({
         id,
         serial: enemySerial,
@@ -6736,9 +6934,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       });
     }
 
-    function spawnShip(position, headingRad, slot, typeKey) {
+    function spawnShip(position, headingRad, slot, typeKey, idBase = 6) {
       enemySerial += 1;
-      const id = 6 + slot + 1;
+      const id = idBase + slot + 1;
       const spec = SHIP_TYPES[typeKey];
       const root = new THREE.Group();
       root.position.set(position.x, 0, position.z);
@@ -6793,7 +6991,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         hitFlash: 0,
         smokeTimer: 0,
         seed: Math.random() * Math.PI * 2,
-        formationLeaderId: 7,
+        formationLeaderId: idBase + 1,
         formationSide: slot === 1 ? -1 : 1,
         formationActive: false,
         targetPoint: new THREE.Vector3(),
@@ -6951,7 +7149,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return id;
     }
 
-    function spawnNavalWave() {
+    function spawnNavalWave(wave = WAVE_PRESETS.naval, idBase = 6) {
+      const fleet = wave.fleet || WAVE_PRESETS.naval.fleet;
 
       // The fleet sits on open water ~2.4km ahead of the player's heading,
       // clamped into the inner sea so it can never spawn inside the mountain
@@ -6967,11 +7166,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const across = new THREE.Vector3(-tmpV1.z, 0, tmpV1.x);
       const fleetHeading = Math.atan2(tmpV1.x, -tmpV1.z) + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
 
-      const positions = [
-        center.clone(),
-        center.clone().addScaledVector(across, -430).addScaledVector(tmpV1, 150),
-        center.clone().addScaledVector(across, 430).addScaledVector(tmpV1, -170)
-      ];
+      // Escorts ride alternating beams, one rank further out each pair, so a
+      // fleet of any size stays a screen around the capital ship. The first
+      // three positions are identical to the hand-written ones this replaced.
+      const positions = [];
+      for (let i = 0; i < fleet.length; i += 1) {
+        if (i === 0) {
+          positions.push(center.clone());
+          continue;
+        }
+        const side = i % 2 === 1 ? -1 : 1;
+        const rank = Math.ceil(i / 2);
+        positions.push(center.clone()
+          .addScaledVector(across, side * 430 * rank)
+          .addScaledVector(tmpV1, (side < 0 ? 150 : -170) * rank));
+      }
       for (const position of positions) {
         for (const mountain of world.mountains) {
           tmpV2.set(position.x - mountain.x, 0, position.z - mountain.z);
@@ -6985,9 +7194,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         }
       }
 
-      spawnShip(positions[0], fleetHeading, 0, "carrier");
-      spawnShip(positions[1], fleetHeading, 1, "aegis");
-      spawnShip(positions[2], fleetHeading, 2, "aegis");
+      for (let i = 0; i < fleet.length; i += 1) spawnShip(positions[i], fleetHeading, i, fleet[i], idBase);
 
       // AC-style checkpoint resupply: the anti-ship leg starts with full tubes
       // and a full SP.W launcher - the leg the UGB exists for.
@@ -7001,14 +7208,23 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     // One mission = an ordered list of wave entries. Each entry maps to a
     // spawner and owns its inbound banner/radio, so any mission can compose
-    // air and naval waves in any order.
-    function spawnMissionWave(entry) {
+    // air and naval waves in any order. Takes a resolved descriptor
+    // (mission.waves[i] or a WAVE_PRESETS member), never a raw string.
+    function spawnMissionWave(wave) {
       missionWaveIndex += 1;
       waveNumber = missionWaveIndex;
       waveClearTimer = -1;
       const first = missionWaveIndex === 1;
-      if (entry === "naval") {
-        spawnNavalWave();
+      const size = waveSizeOf(wave);
+      // Presets keep their historic id block; an inline wave takes the next
+      // free one. Either way the cursor ends past this wave, so a mission that
+      // mixes the two can never hand out the same target number twice.
+      const idBase = wave.idBase === null || wave.idBase === undefined ? waveIdCursor : wave.idBase;
+      waveIdCursor = Math.max(waveIdCursor, idBase + size);
+      waveTargetsSpawned += size;
+      const band = wave.band || missionWaveIndex;
+      if (wave.kind === "naval") {
+        spawnNavalWave(wave, idBase);
         if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
         else showBanner(`WAVE ${missionWaveIndex} · ENEMY FLEET DETECTED`, 2.2, "danger");
         triggerRadioLine(
@@ -7026,11 +7242,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           "wave-naval-brief"
         );
       } else {
-        const withAce = entry === "air2";
-        spawnWave(entry === "air1" ? 1 : 2, withAce);
+        const withAce = wave.ace;
+        spawnWave(wave, band, idBase);
         if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
         else showBanner(`WAVE ${missionWaveIndex} · INBOUND`, 2.0, "danger");
-        if (withAce) {
+        if (wave.radio) {
+          for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+        } else if (withAce) {
           triggerRadioLine(
             "command",
             first
@@ -7769,8 +7987,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       const behindPlayer = playerToEnemy.multiplyScalar(1 / distanceToPlayer).dot(playerForward) < -0.28;
       const enemyToPlayer = player.position.clone().sub(enemy.group.position).normalize();
-      const aimAlignment = enemyForward.dot(enemyToPlayer);
-      if (!behindPlayer || aimAlignment < spec.aimThreshold) return;
+      // A tail turret is the mirror image of a fighter's guns. A fighter needs
+      // to be on the player's six with its own nose on the player; a turret
+      // needs only the player inside its own rear cone, whichever way the
+      // player happens to be pointing - so the "behind the player" gate is
+      // dropped and the aim vector is the aircraft's nose reversed. With
+      // aimThreshold 0.4 that is exactly the rear cone dot < -0.4.
+      const rearGun = Boolean(spec.rearGun);
+      const gunForward = rearGun ? enemyForward.clone().negate() : enemyForward;
+      const aimAlignment = gunForward.dot(enemyToPlayer);
+      if (aimAlignment < spec.aimThreshold) return;
+      if (!rearGun && !behindPlayer) return;
 
       const hitChance = THREE.MathUtils.clamp(
         (1 - distanceToPlayer / (spec.attackRange + 120)) * spec.hitChanceScale * aimAlignment,
@@ -7778,7 +8005,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         spec.maxHitChance
       );
       const hit = Math.random() < hitChance;
-      const start = enemy.group.position.clone().addScaledVector(enemyForward, 7);
+      // Tracers leave the turret, not the nose: aft along the fuselage by the
+      // length the model actually occupies at its own scale.
+      const start = enemy.group.position.clone()
+        .addScaledVector(gunForward, rearGun ? (spec.rearGunOffset || 7) : 7);
       const end = player.position.clone();
 
       if (!hit) {
@@ -7857,7 +8087,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       } else {
         enemy.deadTimer = 2.4;
         enemy.model.group.visible = false;
-        createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, missileHit ? 1.15 : 0.95);
+        // Scaled by airframe: a bomber is twice the span of a fighter, so its
+        // fireball is too. Undefined = 1, which is every fighter.
+        const blast = (missileHit ? 1.15 : 0.95) * (enemy.spec.explosionScale || 1);
+        createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, blast);
       }
       kills += 1;
       if (missileHit) missileKills += 1;
@@ -7875,6 +8108,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
       if (enemy.type === "carrier") startAceKillCam(enemy);
+      if (enemy.type === "bomber" && !bomberFirstKillFired) {
+        bomberFirstKillFired = true;
+        triggerRadioLine(
+          "command",
+          "1機撃墜を確認。残りを頼む、時間が無い。",
+          RADIO_PRIORITY.NORMAL,
+          "bomber-first-down"
+        );
+      }
       if (enemy.isAce) {
         aceDestroyed = true;
         startAceKillCam(enemy);
@@ -7940,7 +8182,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       const mission = MISSIONS[currentMissionIndex];
       if (waveClearTimer < 0) {
-        const isLast = missionWaveIndex >= mission.sequence.length;
+        const isLast = missionWaveIndex >= mission.waves.length;
         waveClearTimer = isLast ? 1.35 : 2.15;
         showBanner(isLast ? "ALL TARGETS DESTROYED" : `WAVE ${missionWaveIndex} CLEAR`, 1.35, "success");
       }
@@ -7948,8 +8190,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       waveClearTimer -= dt;
       if (waveClearTimer > 0) return;
 
-      if (missionWaveIndex < mission.sequence.length) {
-        spawnMissionWave(mission.sequence[missionWaveIndex]);
+      if (missionWaveIndex < mission.waves.length) {
+        spawnMissionWave(mission.waves[missionWaveIndex]);
       } else if (kills >= mission.totalTargets) {
         if (mission.hasOutro) startOutro();
         else completeMission(true);
@@ -10016,6 +10258,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         [0, -3.2], [3.2, -1.5], [7.4, 1.8], [7.4, 2.8], [2.8, 3.4],
         [0, 3.7], [-2.8, 3.4], [-7.4, 2.8], [-7.4, 1.8], [-3.2, -1.5]
       ], 0.34);
+      // B-52H: the only high-aspect wing in the set. Half-span 12.5 against a
+      // root chord of 6 - roughly twice the slenderness of any fighter here -
+      // with a real 35 deg sweep. The silhouette is carried by aspect ratio and
+      // the four underwing pods, not by planform shape.
+      const wingBomber = extrudedSurface([
+        [0, -3.0], [1.6, -2.7], [12.5, 5.4], [12.5, 6.6], [3.0, 3.2],
+        [0, 3.2], [-3.0, 3.2], [-12.5, 6.6], [-12.5, 5.4], [-1.6, -2.7]
+      ], 0.26);
       const wingRaptor = extrudedSurface([
         [0, -4.4], [6.9, 2.4], [6.9, 3.0], [2.4, 4.6],
         [0, 4.6], [-2.4, 4.6], [-6.9, 3.0], [-6.9, 2.4]
@@ -10057,7 +10307,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingEagle, wingHornet, wingPhantom, wingRaptor, stabRaptor, panel,
+        wingViper, wingEagle, wingHornet, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -10295,6 +10545,40 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         add(geometry.missileNose, dark, 7.9, -0.18, 0.7, 0.75, 0.75, 0.75);
         add(geometry.canopy, navL, -8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "bomber") {
+        // B-52H: long slab-sided fuselage, high-aspect swept wing, four
+        // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
+        // it is over twice a fighter's span, which is the whole point - it has
+        // to read as a heavy from any range the player can lock it at.
+        add(geometry.fuselage, primary, 0, 0, -1.2, 1.0, 0.94, 1.7);
+        add(geometry.fuselage, primary, 0, 0, 7.4, 0.86, 0.82, 0.85);
+        add(geometry.nose, primary, 0, 0.02, -12.4, 0.92, 0.86, 1.5);
+        add(geometry.canopy, canopy, 0, 0.86, -9.4, 0.6, 0.5, 1.2);
+        add(geometry.wingBomber, secondary, 0, 0.62, 0.4);
+        // Four pods slung below and ahead of the wing. Fighters carry their
+        // engines inside the fuselage, so this is the read-at-a-glance feature.
+        for (const side of [-1, 1]) {
+          add(geometry.rearBody, accent, side * 5.1, -1.5, -0.4, 0.78, 0.78, 1.5);
+          add(geometry.rearBody, accent, side * 8.4, -1.2, 2.2, 0.72, 0.72, 1.4);
+          add(geometry.nozzle, dark, side * 5.1, -1.5, 1.9, 0.85, 0.85, 1);
+          add(geometry.nozzle, dark, side * 8.4, -1.2, 4.4, 0.8, 0.8, 1);
+          addFlame(side * 5.1, -1.5, 3.0, 0.7, 0.7);
+          addFlame(side * 8.4, -1.2, 5.5, 0.66, 0.66);
+        }
+        add(geometry.tailWing, primary, 0, 0.5, 8.6, 1.25, 1, 1.05);
+        // One tall fin - no twin tails anywhere on this airframe.
+        add(geometry.fin, secondary, 0, 0.85, 7.4, 1.15, 1.85, 1.2);
+        // Tail turret at z 10.8: the tracer origin in attemptEnemyAttack is the
+        // same point, so the guns are visibly where the rounds come from.
+        add(geometry.panel, dark, 0, 0.15, 10.2, 1.05, 0.85, 1.3);
+        add(geometry.missileBody, dark, -0.32, 0.15, 11.3, 0.55, 0.55, 0.5);
+        add(geometry.missileBody, dark, 0.32, 0.15, 11.3, 0.55, 0.55, 0.5);
+        // Details: dorsal spine along the long back, anti-glare strip, nav
+        // lights out at the geometric tips.
+        add(geometry.panel, secondary, 0, 0.78, 2.2, 0.3, 0.22, 9.0);
+        add(geometry.panel, dark, 0, 0.7, -10.6, 0.6, 0.08, 2.0);
+        add(geometry.canopy, navL, -12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
+        add(geometry.canopy, navR, 12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
@@ -10627,7 +10911,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function selectAircraft(id) {
       if (gameState === STATE_PLAYING) return false;
-      if (!AIRCRAFT_TYPES[id]) return false;
+      // AIRCRAFT_ORDER, not AIRCRAFT_TYPES: the table also holds enemy-only
+      // airframes, and the hangar is defined by the order list. Checking the
+      // table would let the debug hook put the player in a bomber.
+      if (!AIRCRAFT_ORDER.includes(id)) return false;
       selectedAircraftId = id;
       rebuildPlayerModel(id);
       updateHangarScreen();
@@ -10829,6 +11116,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             ctx.lineTo(x, y - 6 * s);
             ctx.lineTo(x + 8 * s, y + 5.5 * s);
             ctx.stroke();
+          } else if (marker.kind === "bomber") {
+            // Heavy: a wider, shallower chevron with a span bar through it, so
+            // a bomber stream reads differently from a fighter wave at a glance.
+            ctx.strokeStyle = "#ff9a52";
+            ctx.beginPath();
+            ctx.moveTo(x - 12 * s, y + 4.5 * s);
+            ctx.lineTo(x, y - 5 * s);
+            ctx.lineTo(x + 12 * s, y + 4.5 * s);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x - 9 * s, y + 0.5 * s);
+            ctx.lineTo(x + 9 * s, y + 0.5 * s);
+            ctx.stroke();
           } else if (marker.kind === "naval") {
             ctx.strokeStyle = "#ffb347";
             ctx.strokeRect(x - 7.5 * s, y - 3 * s, 15 * s, 6 * s);
@@ -11002,8 +11302,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           phase: random() * Math.PI * 2
         });
       };
-      mission.sequence.forEach((entry) => {
-        for (let i = 0; i < 3; i += 1) place(entry === "naval" ? "naval" : "air", 0.055);
+      mission.waves.forEach((wave) => {
+        if (wave.kind === "naval") {
+          for (let i = 0; i < wave.fleet.length; i += 1) place("naval", 0.055);
+          return;
+        }
+        // Per type, not per wave: a mixed wave shows what is actually in it,
+        // and the heavies get their own glyph.
+        for (const type of wave.types) place(type === "bomber" ? "bomber" : "air", 0.055);
       });
       if (mission.groundUnits) {
         // Tighter ring than the air/naval contacts - a base is one footprint -
@@ -11023,12 +11329,18 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       briefing.complete = false;
       briefing.markers = buildBriefingMarkers(mission);
 
-      const airWaves = mission.sequence.filter((entry) => entry !== "naval").length;
-      const navalWaves = mission.sequence.length - airWaves;
+      // Counted from the resolved waves rather than multiplied out, so a mixed
+      // or off-size wave can never advertise a total its spawner will not meet.
+      let airCount = 0;
+      let navalCount = 0;
+      for (const wave of mission.waves) {
+        if (wave.kind === "naval") navalCount += wave.fleet.length;
+        else airCount += wave.types.length;
+      }
       const groundCount = mission.groundUnits ? mission.groundUnits.length : 0;
       const objectives = [];
-      if (airWaves > 0) objectives.push(["objAir", "◤", "AIR TARGETS", String(airWaves * 3)]);
-      if (navalWaves > 0) objectives.push(["objNaval", "▭", "NAVAL TARGETS", String(navalWaves * 3)]);
+      if (airCount > 0) objectives.push(["objAir", "◤", "AIR TARGETS", String(airCount)]);
+      if (navalCount > 0) objectives.push(["objNaval", "▭", "NAVAL TARGETS", String(navalCount)]);
       if (groundCount > 0) objectives.push(["objGround", "◆", "GROUND TARGETS", String(groundCount)]);
       objectives.push(["objTotal", "·", "TOTAL", String(mission.totalTargets)]);
       ui.briefingObjectives.replaceChildren(...objectives.map(([cls, glyph, label, value]) => {
