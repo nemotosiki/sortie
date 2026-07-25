@@ -1352,6 +1352,7 @@
 
     <section id="statusPanel" class="panel">
       <div class="hudRow"><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
+      <div class="hudRow"><span class="hudBox">FLR</span><strong class="hudVal" id="flares">2</strong></div>
       <div class="hudRow"><span class="hudBox">HP</span><span class="bar hudHpBar"><span id="healthBar"></span></span><strong class="hudVal" id="health">100</strong></div>
     </section>
 
@@ -1427,7 +1428,8 @@
         <div class="controlItem"><strong>SHIFT / CTRL</strong><span>全開減速は安全な格闘戦速度を維持。強く引き起こし続けると誘導抗力で失速。</span></div>
         <div class="controlItem"><strong>SPACE</strong><span>機銃。弾数無制限、押しっぱなしで連射。</span></div>
         <div class="controlItem"><strong>ENTER</strong><span>ロック完了時にミサイル発射。全10発。</span></div>
-        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。L1/R1でヨー、L2加速、R2減速。</span></div>
+        <div class="controlItem"><strong>F / R3</strong><span>フレア放出。追尾中の敵ミサイルを全て引き剥がす。1出撃に2回だけ。</span></div>
+        <div class="controlItem"><strong>GAMEPAD · TYPE A</strong><span>× 機銃、○ ミサイル、△短押しでターゲット・長押しで注視、□カメラ。L1/R1でヨー、L2加速、R2減速、R3フレア。</span></div>
         <div class="controlItem"><strong>A/D · ←/→ · D-PAD</strong><span>スタート画面で機体を切替。</span></div>
         <div class="controlItem"><strong>C KEY</strong><span>短押しでカメラ切替、長押し中はロック対象を注視。HPを保ち全機撃墜せよ。</span></div>
       </div>
@@ -2006,6 +2008,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       highscore: document.getElementById("highscore"),
       health: document.getElementById("health"),
       missiles: document.getElementById("missiles"),
+      flares: document.getElementById("flares"),
       kills: document.getElementById("kills"),
       healthBar: document.getElementById("healthBar"),
       statusPanel: document.getElementById("statusPanel"),
@@ -2121,6 +2124,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let missileCount = PLAYER_MISSILE_CAPACITY;
+    const FLARE_CAPACITY = 2;
+    let flareCount = FLARE_CAPACITY;
+    let flareCooldown = 0;
+    const activeFlares = [];
     let kills = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
@@ -2200,6 +2207,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gun: false,
       missile: false,
       previousMissile: false,
+      previousFlare: false,
       previousStart: false,
       previousModeToggle: false,
       previousTarget: false,
@@ -2359,6 +2367,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         aceDestroyed: false,
         activeContrailParticles: () => contrailParticlePool.activeCount,
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
+        forceDeployFlare: () => deployFlare(),
         forceSelectAircraft: (id) => selectAircraft(id),
         forceTeleport: (x, y, z) => {
           if (gameState !== STATE_PLAYING) return false;
@@ -2436,6 +2445,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       additive: false
     });
     const explosionSpriteTexture = createParticleTexture("explosion");
+    const flareTexture = makeGlareTexture();
     // Wingtip vortex contrails - white puffs dropped at the tips every frame
     // during hard turns or full boost blend into a smooth AC-style trail.
     const contrailParticlePool = createParticlePool(220, {
@@ -2486,6 +2496,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       if (event.code === "KeyM" && !event.repeat) {
         toggleControlMode();
+        return;
+      }
+
+      if (event.code === "KeyF" && !event.repeat) {
+        if (gameState === STATE_PLAYING) deployFlare();
         return;
       }
 
@@ -2624,6 +2639,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
 
       updatePlayerDamageSmoke(dt);
+      updateFlares(dt);
       updateParticlePools(dt);
       updateAudioCues(rawDt);
       updateCamera(rawDt);
@@ -2638,7 +2654,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function isControlKey(code) {
-      return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD" ||
+      return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD" || code === "KeyF" ||
         code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight" ||
         code === "ShiftLeft" || code === "ShiftRight" || code === "ControlLeft" || code === "ControlRight" ||
         code === "KeyQ" || code === "KeyE" || code === "KeyM" || code === "KeyC" || code === "Tab" ||
@@ -2685,6 +2701,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.boost = false;
       gamepadInput.brake = false;
       gamepadInput.gun = false;
+      gamepadInput.previousFlare = false;
       gamepadInput.missile = false;
       gamepadInput.previousMissile = false;
       gamepadInput.previousStart = false;
@@ -2755,6 +2772,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.gun = gamepadButtonPressed(selected, 0);
 
       const missilePressed = gamepadButtonPressed(selected, 1);
+      const flarePressed = gamepadButtonPressed(selected, 11);
       const cameraPressed = gamepadButtonPressed(selected, 2);
       const targetPressed = gamepadButtonPressed(selected, 3);
       const startPressed = gamepadButtonPressed(selected, 9) || missilePressed;
@@ -2766,6 +2784,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) startMission();
       if (cameraPressed && !gamepadInput.previousCamera) cycleCamera();
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
+      if (wasPlaying && flarePressed && !gamepadInput.previousFlare) deployFlare();
       // Also allowed on the result screen: otherwise a gamepad-only player can
       // never change aircraft, because retry restarts with the current one and
       // #changeAircraftBtn is mouse-only.
@@ -2801,6 +2820,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       gamepadInput.missile = missilePressed;
       gamepadInput.previousMissile = missilePressed;
+      gamepadInput.previousFlare = flarePressed;
       gamepadInput.previousStart = startPressed;
       gamepadInput.previousModeToggle = modePressed;
       gamepadInput.previousTarget = targetPressed;
@@ -3270,6 +3290,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       score = 0;
       health = PLAYER_MAX_HEALTH;
       missileCount = PLAYER_MISSILE_CAPACITY;
+      flareCount = FLARE_CAPACITY;
+      flareCooldown = 0;
+      clearFlares();
       kills = 0;
       fearStageReached = 0;
       gunKills = 0;
@@ -3709,15 +3732,104 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return true;
     }
 
+    // Flares: two per sortie. One press ejects a burning decoy that every
+    // missile currently in flight bites and never lets go of - AC rules.
+    function deployFlare() {
+      if (gameState !== STATE_PLAYING || flareCount <= 0 || flareCooldown > 0) return false;
+      flareCount -= 1;
+      flareCooldown = 0.5;
+      const material = new THREE.SpriteMaterial({
+        map: flareTexture,
+        color: 0xffc86e,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(material);
+      forwardOf(player, tmpV1);
+      const flare = {
+        active: true,
+        life: 0,
+        duration: 2.6,
+        position: player.position.clone().addScaledVector(tmpV1, -7),
+        velocity: tmpV1.clone().multiplyScalar(playerSpeed * 0.45),
+        sprite,
+        material,
+        sparkTimer: 0
+      };
+      flare.velocity.y -= 24;
+      sprite.position.copy(flare.position);
+      sprite.scale.setScalar(9);
+      scene.add(sprite);
+      activeFlares.push(flare);
+      for (const missile of enemyMissiles) missile.decoy = flare;
+      if (!playSfx("missile", 0.34, 1.65)) playTone(1350, 0.12, 0.1, "square");
+      playTone(320, 0.3, 0.12, "sawtooth", 0.02);
+      showBanner("FLARE · FLARE · FLARE", 0.9, "success");
+      return true;
+    }
+
+    function updateFlares(dt) {
+      flareCooldown = Math.max(0, flareCooldown - dt);
+      for (let i = activeFlares.length - 1; i >= 0; i -= 1) {
+        const flare = activeFlares[i];
+        flare.life += dt;
+        if (flare.life >= flare.duration) {
+          flare.active = false;
+          scene.remove(flare.sprite);
+          flare.material.dispose();
+          activeFlares.splice(i, 1);
+          continue;
+        }
+        flare.velocity.y -= 42 * dt;
+        flare.velocity.multiplyScalar(Math.pow(0.4, dt));
+        flare.position.addScaledVector(flare.velocity, dt);
+        if (flare.position.y < 2) flare.position.y = 2;
+        flare.sprite.position.copy(flare.position);
+        const fade = 1 - flare.life / flare.duration;
+        const flicker = 0.75 + Math.random() * 0.45;
+        flare.sprite.scale.setScalar((5 + fade * 5) * flicker);
+        flare.material.opacity = Math.min(1, fade * 1.6);
+        flare.sparkTimer -= dt;
+        if (flare.sparkTimer <= 0) {
+          tmpV9.set((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+          sparkParticlePool.spawn(flare.position, tmpV9, 0.3 + Math.random() * 0.25, 0xffd27a, 6, 0.25);
+          tmpV9.multiplyScalar(0.2);
+          smokeParticlePool.spawn(flare.position, tmpV9, 1.1, 0x9aa0a4, -0.4, 0.5);
+          flare.sparkTimer += 0.05;
+        }
+      }
+    }
+
+    function clearFlares() {
+      for (const flare of activeFlares) {
+        flare.active = false;
+        scene.remove(flare.sprite);
+        flare.material.dispose();
+      }
+      activeFlares.length = 0;
+    }
+
     function updateEnemyMissiles(dt) {
       for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) {
         const missile = enemyMissiles[i];
         missile.life += dt;
         missile.trailTimer -= dt;
 
-        tmpV1.copy(player.position).sub(missile.mesh.position);
+        // A decoyed missile chases its flare and never re-acquires the player;
+        // once the flare burns out it just flies straight until timeout.
+        const decoyed = Boolean(missile.decoy);
+        const decoyAlive = decoyed && missile.decoy.active;
+        const aimPoint = decoyAlive ? missile.decoy.position : player.position;
+        tmpV1.copy(aimPoint).sub(missile.mesh.position);
         const distance = tmpV1.length();
-        if (distance < 13) {
+        if (decoyAlive && distance < 15) {
+          createExplosion(missile.mesh.position, 0xffb45e, 0.55);
+          removeEnemyMissile(i);
+          continue;
+        }
+        if (!decoyed && distance < 13) {
           createExplosion(missile.mesh.position, 0xff4d45, 0.72);
           applyPlayerDamage(missile.damage);
           removeEnemyMissile(i);
@@ -3725,7 +3837,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           continue;
         }
 
-        if (distance > 0.001) {
+        if ((!decoyed || decoyAlive) && distance > 0.001) {
           tmpV1.multiplyScalar(1 / distance);
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
           missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
@@ -3778,6 +3890,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       let nearest = null;
       let bestDistance = Infinity;
       for (const missile of enemyMissiles) {
+        if (missile.decoy) continue;
         tmpV10.copy(missile.mesh.position).sub(player.position);
         const distance = tmpV10.length();
         if (distance < bestDistance) {
@@ -5015,6 +5128,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ui.highscore.textContent = String(Math.round(highscore));
       ui.health.textContent = String(Math.round(health));
       ui.missiles.textContent = String(Math.round(missileCount));
+      ui.flares.textContent = String(flareCount);
       ui.kills.textContent = String(Math.round(kills));
       const speedKph = Math.round(playerSpeed * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
@@ -5097,6 +5211,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
       hook.loadout.gunDamage = GUN_DAMAGE;
+      hook.flares = flareCount;
       hook.loadout.missileDamage = MISSILE_DAMAGE;
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
