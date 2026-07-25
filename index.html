@@ -1884,8 +1884,17 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gun: "sfx/gun.ogg",
       missile: "sfx/missile.ogg",
       explosion: "sfx/explosion.ogg",
-      hit: "sfx/hit.ogg"
+      hit: "sfx/hit.ogg",
+      engine: "sfx/engine.ogg"
     });
+
+    const ENGINE_GAIN_IDLE = 0.10;
+    const ENGINE_GAIN_BOOST = 0.30;
+    const ENGINE_RATE_IDLE = 0.78;
+    const ENGINE_RATE_BOOST = 1.45;
+    const LOCK_DRONE_GAIN = 0.05;
+    // Radar-warning-receiver: an enemy has its nose on us and is in firing range.
+    const RWR_BEEP_INTERVAL = 0.62;
 
     const audioSystem = {
       context: null,
@@ -1898,8 +1907,18 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       threatBeeps: 0,
       activeSources: new Set(),
       buffers: Object.create(null),
-      sfxRequested: false
+      sfxRequested: false,
+      engineSource: null,
+      engineGain: null,
+      lockOsc: null,
+      lockGain: null,
+      rwrTimer: 0,
+      rwrBeeps: 0
     };
+
+    let playerTargetedBy = 0;
+    const tmpAudioA = new THREE.Vector3();
+    const tmpAudioB = new THREE.Vector3();
 
     const lock = {
       targetId: null,
@@ -1945,7 +1964,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         controlAuthority: 1
       },
       cameraFocus: { active: false, targetId: null, source: null },
-      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0 },
+      audio: { lockBeeps: 0, lockCompleteCues: 0, threatBeeps: 0, rwrBeeps: 0, targetedBy: 0 },
       radio: {
         active: false,
         speakerId: null,
@@ -2581,6 +2600,109 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }, { once: true });
     }
 
+    // Continuous engine rumble. Kept out of activeSources on purpose: that set is
+    // for one-shot cues and gets flushed on mission cleanup, whereas this loop is
+    // owned explicitly by start/stopEngineLoop.
+    function startEngineLoop() {
+      const context = audioSystem.context;
+      const master = audioSystem.master;
+      const buffer = audioSystem.buffers.engine;
+      if (!context || !master || !buffer || audioSystem.engineSource) return;
+      if (context.state !== "running") return;
+
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      source.loop = true;
+      gain.gain.value = 0;
+      source.connect(gain);
+      gain.connect(master);
+      source.start();
+      audioSystem.engineSource = source;
+      audioSystem.engineGain = gain;
+    }
+
+    function stopEngineLoop() {
+      const source = audioSystem.engineSource;
+      const gain = audioSystem.engineGain;
+      audioSystem.engineSource = null;
+      audioSystem.engineGain = null;
+      if (!source) return;
+      try {
+        source.stop();
+      } catch {
+        // Already stopped.
+      }
+      source.disconnect();
+      if (gain) gain.disconnect();
+    }
+
+    function updateEngineAudio() {
+      const context = audioSystem.context;
+      if (gameState !== STATE_PLAYING) {
+        stopEngineLoop();
+        return;
+      }
+      if (!audioSystem.engineSource) startEngineLoop();
+      const source = audioSystem.engineSource;
+      const gain = audioSystem.engineGain;
+      if (!source || !gain || !context) return;
+
+      // Map throttle range onto pitch + volume so the engine swells with speed.
+      const blend = THREE.MathUtils.clamp(
+        (playerSpeed - BRAKE_SPEED) / Math.max(1, BOOST_SPEED - BRAKE_SPEED),
+        0,
+        1
+      );
+      const targetRate = THREE.MathUtils.lerp(ENGINE_RATE_IDLE, ENGINE_RATE_BOOST, blend);
+      const targetGain = THREE.MathUtils.lerp(ENGINE_GAIN_IDLE, ENGINE_GAIN_BOOST, blend);
+      const now = context.currentTime;
+      source.playbackRate.setTargetAtTime(targetRate, now, 0.12);
+      gain.gain.setTargetAtTime(targetGain, now, 0.12);
+    }
+
+    // Lock-on drone: a held tone that rises with lock progress and goes steady
+    // once locked. Synthesised rather than sampled so it can track progress
+    // continuously instead of being cut into fixed clips.
+    function updateLockDroneAudio() {
+      const context = audioSystem.context;
+      const master = audioSystem.master;
+      const wanted = gameState === STATE_PLAYING && lock.targetId !== null;
+
+      if (!context || !master || context.state !== "running" || !wanted) {
+        if (audioSystem.lockOsc) {
+          try {
+            audioSystem.lockOsc.stop();
+          } catch {
+            // Already stopped.
+          }
+          audioSystem.lockOsc.disconnect();
+          if (audioSystem.lockGain) audioSystem.lockGain.disconnect();
+          audioSystem.lockOsc = null;
+          audioSystem.lockGain = null;
+        }
+        return;
+      }
+
+      if (!audioSystem.lockOsc) {
+        const osc = context.createOscillator();
+        const gain = context.createGain();
+        osc.type = "sawtooth";
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(master);
+        osc.start();
+        audioSystem.lockOsc = osc;
+        audioSystem.lockGain = gain;
+      }
+
+      const now = context.currentTime;
+      const freq = lock.locked ? 320 : 150 + lock.progress * 120;
+      const level = lock.locked ? LOCK_DRONE_GAIN * 1.5 : LOCK_DRONE_GAIN * (0.35 + lock.progress * 0.65);
+      audioSystem.lockOsc.frequency.setTargetAtTime(freq, now, 0.05);
+      audioSystem.lockGain.gain.setTargetAtTime(level, now, 0.06);
+    }
+
     function stopActiveAudioSources() {
       for (const source of audioSystem.activeSources) {
         try {
@@ -2590,14 +2712,39 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         }
       }
       audioSystem.activeSources.clear();
+      stopEngineLoop();
+      updateLockDroneAudio();
+    }
+
+    // How many living enemies currently have us inside their firing cone. Mirrors
+    // the same geometry attemptEnemyMissile() uses to decide it may shoot, so the
+    // warning means "someone can take the shot", not merely "someone is nearby".
+    function countEnemiesTargetingPlayer() {
+      if (gameState !== STATE_PLAYING) return 0;
+      let count = 0;
+      for (const enemy of enemies) {
+        if (!enemy.alive || enemy.mode !== "pursuit") continue;
+        tmpAudioA.copy(player.position).sub(enemy.group.position);
+        const distance = tmpAudioA.length();
+        if (!Number.isFinite(distance) || distance < 25 || distance > enemy.spec.attackRange) continue;
+        tmpAudioA.multiplyScalar(1 / distance);
+        forwardOf(enemy.group, tmpAudioB);
+        if (tmpAudioB.dot(tmpAudioA) >= enemy.spec.aimThreshold) count += 1;
+      }
+      return count;
     }
 
     function updateAudioCues(dt) {
       nearestMissileThreat = gameState === STATE_PLAYING ? getNearestEnemyMissileThreat() : null;
+      playerTargetedBy = countEnemiesTargetingPlayer();
+
+      updateEngineAudio();
+      updateLockDroneAudio();
 
       if (gameState !== STATE_PLAYING) {
         audioSystem.lockTimer = 0;
         audioSystem.threatTimer = 0;
+        audioSystem.rwrTimer = 0;
         audioSystem.lastLocked = false;
         return;
       }
@@ -2620,16 +2767,34 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
       audioSystem.lastLocked = lock.locked;
 
+      // Incoming-missile alarm: a hard two-tone stab that tightens as it closes.
+      // Deliberately harsher and lower than the RWR so the two never blur together.
       if (nearestMissileThreat) {
         audioSystem.threatTimer -= dt;
         if (audioSystem.threatTimer <= 0) {
           audioSystem.threatBeeps += 1;
           const urgency = THREE.MathUtils.clamp(1 - nearestMissileThreat.distance / 900, 0, 1);
-          playTone(250 + urgency * 220, 0.085, 0.09, "sawtooth");
+          const base = 250 + urgency * 220;
+          playTone(base, 0.075, 0.1 + urgency * 0.05, "sawtooth");
+          playTone(base * 1.5, 0.06, 0.07 + urgency * 0.05, "square", 0.075);
           audioSystem.threatTimer = THREE.MathUtils.lerp(0.5, 0.14, urgency);
         }
       } else {
         audioSystem.threatTimer = 0;
+      }
+
+      // Radar warning receiver: steady mid-range chirp while an enemy holds us in
+      // its firing cone. Fires faster when more than one of them is lined up.
+      if (playerTargetedBy > 0 && !nearestMissileThreat) {
+        audioSystem.rwrTimer -= dt;
+        if (audioSystem.rwrTimer <= 0) {
+          audioSystem.rwrBeeps += 1;
+          playTone(1560, 0.05, 0.055, "square");
+          playTone(1560, 0.05, 0.045, "square", 0.1);
+          audioSystem.rwrTimer = RWR_BEEP_INTERVAL / Math.min(3, playerTargetedBy);
+        }
+      } else {
+        audioSystem.rwrTimer = 0;
       }
     }
 
@@ -4326,6 +4491,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.audio.lockBeeps = audioSystem.lockBeeps;
       hook.audio.lockCompleteCues = audioSystem.lockCompleteCues;
       hook.audio.threatBeeps = audioSystem.threatBeeps;
+      hook.audio.rwrBeeps = audioSystem.rwrBeeps;
+      hook.audio.targetedBy = playerTargetedBy;
       hook.radio.active = radioState.active;
       hook.radio.speakerId = radioState.speakerId;
       hook.radio.lineId = radioState.lineId;
