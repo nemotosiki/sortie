@@ -131,6 +131,22 @@
       box-shadow: 0 0 8px rgba(255, 226, 111, 0.3);
     }
 
+    /* Designated targets outstanding. Red, matching the TGT frame colour, so
+       the counter and the boxes on screen read as the same thing. */
+    .hudBox.tgtBox {
+      border-color: rgba(255, 89, 104, 0.85);
+      color: #ff5968;
+    }
+
+    #tgtRemainRow .hudVal { color: #ff5968; }
+
+    #tgtRemainRow.cleared .hudBox.tgtBox {
+      border-color: rgba(120, 255, 157, 0.8);
+      color: #78ff9d;
+    }
+
+    #tgtRemainRow.cleared .hudVal { color: #78ff9d; }
+
     #flightData {
       left: max(24px, 20vw);
       top: 50%;
@@ -673,6 +689,42 @@
       letter-spacing: 0.11em;
     }
 
+    /* Same layout as the enemy markers, so the locked contact does not change
+       shape when the lock box takes over from its marker. */
+    #targetBoxTgt,
+    #targetBoxName {
+      position: absolute;
+      white-space: nowrap;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      line-height: 1.25;
+    }
+
+    #targetBoxTgt {
+      right: calc(100% + 7px);
+      top: 50%;
+      transform: translateY(-50%);
+      color: #ff4454;
+      display: none;
+    }
+
+    #targetBox.tgt #targetBoxTgt { display: block; }
+
+    #targetBoxName {
+      left: calc(100% + 7px);
+      top: 2px;
+      color: currentColor;
+    }
+
+    #targetBoxName b { display: block; font-weight: 700; }
+    #targetBoxName i { display: block; font-style: normal; font-weight: 400; opacity: 0.8; }
+
+    /* The old range readout above the frame is retired: the range now lives
+       under the name tag, and showing it twice was the reported defect. */
+    #targetRange { display: none; }
+
     #lockMeter {
       position: absolute;
       left: 0;
@@ -725,6 +777,59 @@
       visibility: visible;
     }
 
+    /* AC04 target box layout:
+     *
+     *        TGT   [ box ]   F-4
+     *                        188
+     *
+     * "TGT" is a separate element hard left of the frame, red, and only ever
+     * present on a designated target. The airframe name is hard right on one
+     * line, with the range directly beneath it. No glow, no background chip,
+     * no second range readout - the HUD's own small monospace, nothing added.
+     */
+    .enemyMarkerTgt,
+    .enemyMarkerName {
+      position: absolute;
+      white-space: nowrap;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      line-height: 1.25;
+      opacity: 0;
+    }
+
+    .enemyMarkerTgt {
+      right: calc(100% + 6px);
+      top: 50%;
+      transform: translateY(-50%);
+      color: #ff4454;
+    }
+
+    /* Anchored to the frame's top edge so the name sits beside the box and the
+       range hangs under it, exactly as in the reference. */
+    .enemyMarkerName {
+      left: calc(100% + 6px);
+      top: 2px;
+      color: currentColor;
+      text-align: left;
+    }
+
+    .enemyMarkerName b {
+      display: block;
+      font-weight: 700;
+    }
+
+    .enemyMarkerName i {
+      display: block;
+      font-style: normal;
+      font-weight: 400;
+      opacity: 0.8;
+    }
+
+    .enemyMarker.active .enemyMarkerName { opacity: 0.92; }
+    .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
+
     .enemyMarker.selected {
       width: 43px;
       height: 43px;
@@ -738,16 +843,40 @@
       border-color: currentColor;
     }
 
-    .enemyMarkerLabel {
+    /* Retired: the range moved under the name tag, and keeping this would show
+       the same distance twice. Left as a no-op so the node can stay in the
+       pool without being rebuilt. */
+    .enemyMarkerLabel { display: none; }
+
+    /* Friendly airbase. Blue, so it can never be confused with a contact, and
+       a diamond rather than a box because it is a place, not a target. */
+    #baseMarker {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      border: 1px solid rgba(104, 190, 255, 0.95);
+      transform: rotate(45deg);
+      display: none;
+      pointer-events: none;
+    }
+
+    #baseMarker.visible { display: block; }
+
+    #baseMarkerLabel {
       position: absolute;
       left: 50%;
-      top: calc(100% + 5px);
-      transform: translateX(-50%);
-      color: currentColor;
+      top: calc(100% + 6px);
+      transform: translate(-50%, 0) rotate(-45deg);
+      transform-origin: center top;
       white-space: nowrap;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: 0.1em;
+      color: #68beff;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
     }
 
     /* 8AAM multi-lock: every round in the salvo lights its own box, so the
@@ -1312,6 +1441,11 @@
     #briefingObjectives li.objNaval i,
     #briefingObjectives li.objGround i { color: #ffb347; }
 
+    /* Contacts that are not on the objective list: dimmed, so the eye stops at
+       TOTAL and reads this as a footnote. */
+    #briefingObjectives li.objBonus { color: rgba(207, 232, 251, 0.6); }
+    #briefingObjectives li.objBonus i { color: #ffa64a; }
+
     .briefingBody {
       margin: clamp(10px, 1.6vh, 18px) 0 0;
       min-height: clamp(70px, 11vh, 100px);
@@ -1550,6 +1684,11 @@
 
     .resultBreakdown span:first-child { color: rgba(197, 245, 255, 0.55); }
 
+    /* A penalty, not a score: red on both halves so it cannot be misread as
+       something the player earned. */
+    #breakdownBaseRow span { color: #ff6b6b; }
+    #breakdownBaseRow span:first-child { color: rgba(255, 107, 107, 0.7); }
+
     .debriefIntel {
       max-width: 680px;
       margin: 24px auto 28px;
@@ -1638,6 +1777,36 @@
       box-shadow: none;
     }
 
+    /* Gamepad input is not a user gesture as far as the autoplay policy is
+       concerned, so a pad-only player can fly a whole sortie in silence with no
+       idea why. The pad cannot unlock audio - only telling them can. Sits above
+       the menus because that is where a pad-only player starts. */
+    #audioHint {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      transform: translateX(-50%) translateY(8px);
+      z-index: 90;
+      padding: 8px 16px;
+      border: 1px solid rgba(255, 196, 65, 0.55);
+      background: rgba(10, 16, 26, 0.86);
+      color: #ffc441;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 260ms ease, transform 260ms ease, visibility 260ms;
+    }
+
+    #audioHint.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
     @keyframes targetSpin { to { transform: rotate(360deg); } }
     @keyframes lockPulse { to { transform: translate(-50%, -50%) scale(0.92); } }
 
@@ -1715,6 +1884,7 @@
       <div class="hudRow"><span class="hudBox">PTS</span><strong class="hudVal" id="score">0</strong></div>
       <div class="hudRow"><span class="hudBox">HI</span><strong class="hudVal" id="highscore">0</strong></div>
       <div class="hudRow"><span class="hudBox">KILLS</span><strong class="hudVal" id="kills">0</strong></div>
+      <div class="hudRow" id="tgtRemainRow"><span class="hudBox tgtBox">TGT</span><strong class="hudVal" id="tgtRemain">0</strong></div>
     </section>
 
     <section id="statusPanel" class="panel">
@@ -1748,11 +1918,14 @@
     </div>
 
     <div id="enemyMarkers"></div>
+    <div id="baseMarker"><span id="baseMarkerLabel">ALLIED AIRBASE</span></div>
     <div id="combatPopups"></div>
     <div id="hitConfirm">HIT</div>
 
     <div id="targetBox">
-      <span id="targetRange">0M</span>
+      <span id="targetBoxTgt">TGT</span>
+      <span id="targetBoxName"><b></b><i></i></span>
+      <span id="targetRange"></span>
       <span id="lockLabel">LOCK 0%</span>
       <span id="lockMeter"><span id="lockMeterFill"></span></span>
     </div>
@@ -1877,6 +2050,8 @@
         <div><span>TIME</span><span id="breakdownTime">0'00"00 (PAR 0'00")</span></div>
         <div><span>DAMAGE TAKEN</span><span id="breakdownDamage">0%</span></div>
         <div><span>KILLS</span><span id="breakdownKills">0/0</span></div>
+        <div id="breakdownBonusRow"><span>BONUS KILLS</span><span id="breakdownBonusKills">0</span></div>
+        <div id="breakdownBaseRow"><span>BASE DAMAGED</span><span id="breakdownBaseDamage">0</span></div>
       </div>
       <div class="debriefIntel" id="debriefIntel">
         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
@@ -1887,6 +2062,8 @@
       <button id="changeMissionBtn" class="actionButton secondary" type="button">◀ CHANGE MISSION</button>
     </div>
   </section>
+
+  <div id="audioHint">PRESS ANY KEY / CLICK FOR AUDIO</div>
 
   <script type="module">
     import * as THREE from "three";
@@ -1963,7 +2140,18 @@
     const LOCK_GRACE_TIME = 0.4;
     const LOCK_HYSTERESIS_BONUS = 0.15;
     const KILL_SCORE = 1000;
+    // Non-designated contacts pay half. Enough that clearing the sky is worth
+    // doing, not enough that farming escorts beats flying the mission fast.
+    const BONUS_KILL_SCORE_FACTOR = 0.5;
     const RADAR_RANGE = 1400;
+    // Selected-contact blink on the radar scope, in milliseconds per cycle.
+    const RADAR_BLINK_PERIOD_MS = 430;
+    // Fraction of cruise a loaded bomber flies its run at. Sets the length of
+    // the intercept window, so it is the difficulty dial for a strike mission.
+    const STRIKE_RUN_SPEED_SCALE = 0.7;
+    // Charged once per bomber that reaches its release point. One kill's worth
+    // of score, i.e. about one rank - the sortie continues either way.
+    const BASE_BOMB_PENALTY = 1000;
     const MISSION_GRACE_TIME = 3.0;
     const PLAYER_HIT_COOLDOWN = 0.55;
     const GAMEPAD_DEADZONE = 0.18;
@@ -2301,13 +2489,41 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // null = "take the next free id block", filled in at spawn time.
         band: entry.band || null,
         ace: Boolean(entry.ace),
-        idBase: null,
+        // null = "take the next free id block". An entry may pin its own block
+        // instead, which is how a rewritten mission keeps the HUD target
+        // numbers its players already know.
+        idBase: Number.isInteger(entry.idBase) ? entry.idBase : null,
+        // Designated-target flag, AC style. Omitted = true, so every wave
+        // authored before this existed still counts toward ACCOMPLISHED.
+        tgt: entry.tgt !== false,
+        label: entry.label || null,
+        // Spawns together with the wave before it instead of waiting for that
+        // wave to be cleared. Escorts and CAP have to be on the board while
+        // their charges are, or they are not escorting anything.
+        concurrent: Boolean(entry.concurrent),
         radio: entry.radio ? Object.freeze(entry.radio.map(Object.freeze)) : null
       });
     }
 
     function waveSizeOf(wave) {
       return wave.kind === "naval" ? wave.fleet.length : wave.types.length;
+    }
+
+    // Anything without an explicit `tgt: false` is a designated target. One
+    // reader for waves, ground units and live enemies keeps the default in a
+    // single place.
+    function isTgtEntry(entry) {
+      return !entry || entry.tgt !== false;
+    }
+
+    // What the HUD writes beside the target box. `label` is already the short
+    // form for every table (ENEMY_TYPES takes the first word of the airframe
+    // name, ships and installations are authored short), and a named pilot
+    // appends their callsign - "F-22 IRONBACK".
+    function enemyDisplayName(enemy) {
+      if (!enemy) return "";
+      const base = enemy.shortName || enemy.label || "";
+      return enemy.name ? `${base} ${enemy.name}` : base;
     }
 
     // Spawn geometry per band. Bands beyond 2 reuse the second set - the numbers
@@ -2891,7 +3107,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           count: 7, radius: [130, 280], height: [80, 190], distance: [2400, 3900],
           snowyAbove: 150, snowLine: 0.7, roughness: 0.94,
           palette: { low: 0x46603f, mid: 0x5d6b52, rock: 0x716f63, peak: 0x7d7a6e, snow: 0xe9eff2 },
-          corridor: null, plateau: null
+          corridor: null,
+          // Flat-topped island the allied airfield stands on - the same device
+          // the night map uses for its base, sized to take a 900m runway and
+          // sited on the bombers' inbound track. Low and wide so the strip
+          // reads as a coastal field rather than a mesa.
+          plateau: {
+            radius: [900, 900], height: [26, 26], topRadius: 0.88,
+            at: [120, -19800], snowyAbove: 9999
+          }
         },
         islands: { count: 10, stone: 0x53675d, green: 0x527951 },
         clouds: {
@@ -3043,19 +3267,56 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         key: "m01",
         world: "archipelagoDay",
         title: "FIRST CONTACT",
-        jp: "哨戒空域に敵編隊3機。全機撃墜し、制空権を確保せよ。",
-        sequence: ["air1"],
-        parTime: 95,
+        jp: "敵爆撃編隊が本基地へ直行中。護衛は旧式のF-4。爆撃機を撃墜し、基地を守れ。",
+        // The traditional Ace Combat first sortie: a bomber intercept. The
+        // bombers never turn to fight (engageRange 0) and the escort is the
+        // weakest airframe in the game, so the tutorial teaches "hit the
+        // designated targets, ignore the rest" without being able to punish
+        // a first-time player for taking the lesson literally.
+        sequence: [
+          { types: ["bomber", "bomber"], band: 1, label: "BOMBER" },
+          {
+            types: ["f4", "f4"], tgt: false, band: 2, label: "ESCORT", concurrent: true,
+            radio: [
+              { speaker: "wingman", text: "護衛のF-4が2機！ 旧式だ、無理に相手をするな——爆撃機を先に落とせ！", id: "m01-escort-inbound" }
+            ]
+          }
+        ],
+        // A tail chase, so par has to cover closing the gap as well as killing:
+        // ~40s to overhaul the formation plus two bomber kills at 3 missiles
+        // each, well inside the ~3min the bombers need to reach the field.
+        parTime: 165,
         hasOutro: false,
         map: { x: 0.27, y: 0.4 },
-        briefing: "哨戒空域レーダーに国籍不明機3。応答なし——交戦規定アルファを許可する。\n全機撃墜し、制空権を確保せよ。"
+        // Tail chase: the player starts at +Z facing -Z, the bombers are ~800m
+        // ahead on the same heading, and the field they are running at is far
+        // beyond them at -Z. So the opening shot is the formation's tail, not a
+        // head-on pass, and the player closes from behind at their own speed.
+        // The bombers start ~19km out and fly the run at 105 m/s, which is a
+        // ~3min window before the first load goes down.
+        //
+        // x/z must match archipelagoDay's `plateau.at`: the field stands on
+        // that island, and its y comes from surfaceHeightAt so the strip sits
+        // on the terrain rather than hovering over the sea.
+        friendlyBase: { x: 120, z: -19800, heading: 0.12, label: "ALLIED AIRBASE", failRadius: 400 },
+        briefing: "敵爆撃編隊が本基地へ向かっている——大型機2、護衛は旧式のF-4が2。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標は爆撃機のみ。護衛のF-4は無視して構わない。",
+        introRadio: [
+          { speaker: "command", text: "初任務だ。敵爆撃編隊、本基地へ直行中——投弾される前に叩き落とせ。", id: "m01-brief" },
+          { speaker: "wingman", text: "護衛のF-4は放っておいていい。爆撃機は逃げも隠れもしない、狙って撃つだけだ。", id: "m01-brief-wing" }
+        ]
       },
       {
         key: "m02",
         world: "archipelagoDay",
         title: "TWO-PRONGED",
         jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
-        sequence: ["air1", "air2plain"],
+        // The first fighters the player ever dogfights. F-4 throughout, with a
+        // single F-16 leading the second wave as the step up - the difficulty
+        // curve starts at the weakest airframe and climbs from here.
+        sequence: [
+          { types: ["f4", "f4", "f4"], band: 1, idBase: 0 },
+          { types: ["f16", "f4", "f4"], band: 2, idBase: 3 }
+        ],
         parTime: 210,
         hasOutro: false,
         map: { x: 0.5, y: 0.27 },
@@ -3066,11 +3327,22 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         world: "sunsetOcean",
         title: "FLEET DESTRUCTION",
         jp: "敵機動部隊を捕捉した。空母1、護衛イージス艦2。対艦攻撃で殲滅せよ。",
-        sequence: ["naval"],
+        // The fleet is the objective; its CAP is not. Both are on the board from
+        // the first second - a task force with no air cover was the thing that
+        // read as wrong - but only the hulls gate ACCOMPLISHED.
+        sequence: [
+          "naval",
+          {
+            types: ["f16", "f16"], tgt: false, band: 1, label: "CAP", concurrent: true,
+            radio: [
+              { speaker: "wingman", text: "艦隊上空にCAPだ！ 相手をしなくてもいい——狙いは艦隊だぞ！", id: "m03-cap-inbound" }
+            ]
+          }
+        ],
         parTime: 200,
         hasOutro: false,
         map: { x: 0.71, y: 0.56 },
-        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。"
+        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2。\n艦隊上空にはCAPが張り付いている——交戦は任意だ、目標はあくまで艦隊。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。"
       },
       {
         key: "m-glacier",
@@ -3153,11 +3425,19 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         world: "archipelagoDay",
         title: "FINAL SORTIE",
         jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
-        sequence: ["air1", "air2", "naval"],
+        // Late-campaign difficulty: an ace in the second wave (as it always
+        // had) and a second one leading the fleet's CAP, so the last leg is
+        // not a pure ground-attack run any more.
+        sequence: [
+          "air1",
+          "air2",
+          "naval",
+          { types: ["f22", "f15"], ace: true, tgt: false, band: 2, label: "FLEET CAP", concurrent: true }
+        ],
         parTime: 430,
         hasOutro: true,
         map: { x: 0.8, y: 0.34 },
-        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n途中、補給ラインでミサイルを再装填できる。\nこの空と海を取り戻せ。幸運を祈る。"
+        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\nこの空と海を取り戻せ。幸運を祈る。"
       },
       {
         key: "m-intercept",
@@ -3188,8 +3468,18 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // Resolved once, here. `sequence` stays exactly as authored so the
         // definitions above remain the readable version of the truth.
         waves,
-        totalTargets: waves.reduce((sum, wave) => sum + waveSizeOf(wave), 0)
+        // Designated targets only. Non-TGT contacts are bonus kills, so they are
+        // absent from TGT REMAIN, from the briefing count and from ACCOMPLISHED.
+        totalTargets: waves.reduce((sum, wave) => sum + (isTgtEntry(wave) ? waveSizeOf(wave) : 0), 0)
+          + (mission.groundUnits ? mission.groundUnits.filter(isTgtEntry).length : 0),
+        // Every contact the sortie will put on the board, TGT or not - the
+        // briefing's roster line and the marker layout still show the whole
+        // picture, because the player has to fly through all of it.
+        totalContacts: waves.reduce((sum, wave) => sum + waveSizeOf(wave), 0)
           + (mission.groundUnits ? mission.groundUnits.length : 0),
+        // Waves the player is actually made to clear - the WAVE n / N readout's
+        // denominator. Concurrent entries ride in on one of these.
+        waveCount: waves.filter((wave) => !wave.concurrent).length,
         groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
         floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
         introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
@@ -3203,6 +3493,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // put on the board so far. Both are per-sortie and reset in startMission.
     let waveIdCursor = 0;
     let waveTargetsSpawned = 0;
+    // Set for the duration of one spawnMissionWave call and read by the four
+    // spawners it fans out to. Ground units set their own flag per unit.
+    let spawningTgt = true;
     let lastMissionRank = null;
     // Declared here rather than beside the menu functions: the boot sequence
     // builds both menus, and a `let` further down the module body is still in
@@ -3415,6 +3708,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       missiles: document.getElementById("missiles"),
       flares: document.getElementById("flares"),
       kills: document.getElementById("kills"),
+      tgtRemain: document.getElementById("tgtRemain"),
+      tgtRemainRow: document.getElementById("tgtRemainRow"),
       statusPanel: document.getElementById("statusPanel"),
       missilePips: document.getElementById("missilePips"),
       flarePips: document.getElementById("flarePips"),
@@ -3424,9 +3719,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       altitude: document.getElementById("altitudeValue"),
       wave: document.getElementById("waveReadout"),
       enemyMarkers: document.getElementById("enemyMarkers"),
+      baseMarker: document.getElementById("baseMarker"),
+      baseMarkerLabel: document.getElementById("baseMarkerLabel"),
       combatPopups: document.getElementById("combatPopups"),
       hitConfirm: document.getElementById("hitConfirm"),
       targetBox: document.getElementById("targetBox"),
+      targetBoxTgt: document.getElementById("targetBoxTgt"),
+      targetBoxName: document.getElementById("targetBoxName"),
       targetRange: document.getElementById("targetRange"),
       lockLabel: document.getElementById("lockLabel"),
       lockMeterFill: document.getElementById("lockMeterFill"),
@@ -3443,6 +3742,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       missileWarning: document.getElementById("missileWarning"),
       cameraFocusStatus: document.getElementById("cameraFocusStatus"),
       gamepadStatus: document.getElementById("gamepadStatus"),
+      audioHint: document.getElementById("audioHint"),
       controlModeStatus: document.getElementById("controlModeStatus"),
       damageFlash: document.getElementById("damageFlash"),
       cloudVeil: document.getElementById("cloudVeil"),
@@ -3459,6 +3759,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       breakdownTime: document.getElementById("breakdownTime"),
       breakdownDamage: document.getElementById("breakdownDamage"),
       breakdownKills: document.getElementById("breakdownKills"),
+      breakdownBonusKills: document.getElementById("breakdownBonusKills"),
+      breakdownBonusRow: document.getElementById("breakdownBonusRow"),
+      breakdownBaseDamage: document.getElementById("breakdownBaseDamage"),
+      breakdownBaseRow: document.getElementById("breakdownBaseRow"),
       bigBanner: document.getElementById("bigBanner"),
       bigBannerText: document.getElementById("bigBannerText"),
       bigBannerSub: document.getElementById("bigBannerSub")
@@ -3534,6 +3838,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     const surfaceRayOrigin = new THREE.Vector3();
     const SURFACE_RAY_DOWN = new THREE.Vector3(0, -1, 0);
     let floodlightTexture = null;
+    // The airfield a strike mission is defending, when the mission has one.
+    // Null on every other sortie, and every reader checks for that.
+    let friendlyBase = null;
     const combatPopups = [];
     const enemyMarkerElements = new Map();
     const enemyMarkerScreenState = [];
@@ -3638,6 +3945,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     const bombImpact = new THREE.Vector3();
     const tmpBallistic = new THREE.Vector3();
     let kills = 0;
+    // Non-designated contacts destroyed. Deliberately separate from `kills`:
+    // `kills` is the objective counter that TGT REMAIN and ACCOMPLISHED read.
+    let bonusKills = 0;
+    // Total score docked for bombers that got their loads off. Tracked on its
+    // own so the debrief can show what the sortie cost the base.
+    let baseDamagePenalty = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     let gunCooldown = 0;
@@ -3833,6 +4146,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     const compassTickNodes = [];
     const speedTapeNodes = [];
     const altTapeNodes = [];
+    // Shown at most once per page load: it is a one-time piece of information,
+    // and a banner that keeps reappearing reads as a fault.
+    let audioHintShown = false;
+    // Which phase of the radar selection blink the last drawn frame was in.
+    let radarBlinkOn = true;
+    // Test hook: pins the blink to one phase so a screenshot is reproducible.
+    let radarBlinkOverride = null;
 
     const audioSystem = {
       context: null,
@@ -4154,6 +4474,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           mountain: world.mountains[0],
           cloudVeil: cloudVeilLevel
         }),
+        // Terrain height under a world-space point, so a placement check can
+        // prove a prop is standing on land rather than hovering over water.
+        surfaceHeightAt: (x, z) => surfaceHeightAt(x, z),
+        // null restores the free-running blink; true/false pin a phase so a
+        // screenshot gate can capture both halves of the cycle.
+        setRadarBlinkPhase: (phase) => {
+          radarBlinkOverride = phase === null || phase === undefined ? null : Boolean(phase);
+          return radarBlinkOverride;
+        },
         forceDamageEnemy: (id, amount = 200) => {
           if (gameState !== STATE_PLAYING) return false;
           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
@@ -4685,6 +5014,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       gamepadInput.boost = gamepadButtonValue(selected, 6) > 0.22;
       gamepadInput.brake = gamepadButtonValue(selected, 7) > 0.22;
 
+      // Deliberately keyed on real input, not on the pad merely being present:
+      // a connected-but-idle controller is not evidence anyone is using it.
+      if (!audioHintShown && !audioIsUnlocked() &&
+          (axisX !== 0 || axisY !== 0 || selected.buttons?.some((button) => button && button.pressed))) {
+        showAudioHint();
+      }
+
       // Standard Gamepad mapping / Ace Combat 7 Type A:
       // 0 = Cross/A (gun), 1 = Circle/B (missile), 2 = Square/X (camera),
       // 3 = Triangle/Y (short target cycle, long target view), 4/5 = L1/R1 yaw,
@@ -4894,6 +5230,23 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return target;
     }
 
+    // The autoplay policy only counts keyboard, pointer and touch as gestures.
+    // Gamepad buttons are not on that list, so a pad-only player never unlocks
+    // the AudioContext no matter how much they press - the fix is to say so.
+    function audioIsUnlocked() {
+      return Boolean(audioSystem.context) && audioSystem.context.state === "running";
+    }
+
+    function showAudioHint() {
+      if (audioHintShown || audioIsUnlocked()) return;
+      audioHintShown = true;
+      ui.audioHint.classList.add("visible");
+    }
+
+    function hideAudioHint() {
+      ui.audioHint.classList.remove("visible");
+    }
+
     function ensureAudio() {
       const AudioCtor = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtor) return;
@@ -4910,7 +5263,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         }
       }
       if (audioSystem.context.state === "suspended") {
-        void audioSystem.context.resume().catch(() => {});
+        void audioSystem.context.resume().then(hideAudioHint).catch(() => {});
+      } else {
+        hideAudioHint();
       }
       loadSfx();
       // Bytes are already in flight from boot; this is where they get decoded.
@@ -5574,6 +5929,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       clearMultiLock();
       clearFlares();
       kills = 0;
+      bonusKills = 0;
+      baseDamagePenalty = 0;
       fearStageReached = 0;
       gunKills = 0;
       missileKills = 0;
@@ -5583,6 +5940,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       missionWaveIndex = 0;
       waveIdCursor = 0;
       waveTargetsSpawned = 0;
+      spawningTgt = true;
       bomberFirstKillFired = false;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
@@ -5635,8 +5993,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // Ahead of the wave spawn so its own banner sees the band already up and
       // queues itself behind it.
       showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
-      spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
+      // Scenery and installations first: a strike wave lays its run in against
+      // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
+      spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
       snapCamera();
       clock.getDelta();
     }
@@ -5714,6 +6074,16 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           `${formatMissionTime(missionElapsed)} (PAR ${formatParTime(mission.parTime)})`;
         ui.breakdownDamage.textContent = `${damagePercent}%`;
         ui.breakdownKills.textContent = `${kills}/${mission.totalTargets}`;
+        // Hidden when the mission fields no bonus contacts at all, so a
+        // pure-TGT sortie's debrief reads exactly as it always did.
+        const bonusScore = Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR) * bonusKills;
+        ui.breakdownBonusKills.textContent = `${bonusKills} (+${bonusScore})`;
+        ui.breakdownBonusRow.style.display =
+          mission.totalContacts > mission.totalTargets ? "" : "none";
+        // Only on missions that were defending something, and only when the
+        // player actually let a load through.
+        ui.breakdownBaseDamage.textContent = `-${baseDamagePenalty}`;
+        ui.breakdownBaseRow.style.display = baseDamagePenalty > 0 ? "" : "none";
         ui.resultMissionTag.textContent =
           `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
         const debriefLines = buildDebriefIntelLines(success);
@@ -6904,7 +7274,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       root.position.copy(position);
       root.userData.enemyType = spec.key;
 
-      tmpV1.copy(player.position).sub(position).normalize();
+      // Fighters spawn nose-on to the player. A bomber already on a strike run
+      // does not: it is pointed at the field it is attacking, which is what
+      // puts the player behind it looking at its tail.
+      const strikeSpawn = spec.key === "bomber" && friendlyBase;
+      if (strikeSpawn) tmpV1.set(friendlyBase.x, position.y, friendlyBase.z).sub(position).normalize();
+      else tmpV1.copy(player.position).sub(position).normalize();
       root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
 
       const model = createAircraftModel(spec.theme);
@@ -6934,8 +7309,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         slot,
         type: spec.key,
         label: spec.label,
+        // Airframe designation for the HUD name tag, plus the individual
+        // callsign a named pilot flies under. Only the ace has one.
+        shortName: spec.label,
+        name: isAce ? ACE_CALLSIGN : null,
         role: spec.role,
         behavior: spec.behavior,
+        tgt: spawningTgt,
         isAce,
         aceEngageLineFired: false,
         aceHalfLineFired: false,
@@ -6964,6 +7344,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         acePostStallLineFired: false,
         waypoints,
         waypointIndex: 0,
+        // Set below for bombers when the mission is defending an airfield.
+        strikeTarget: null,
+        bombRunFired: false,
         fireCooldown: spec.fireMin + Math.random() * spec.fireSpread,
         missileCooldown: 1.4 + slot * 0.9 + Math.random() * 0.4,
         deadTimer: 0,
@@ -6977,6 +7360,19 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+
+      // A bomber flown against a mission that is defending an airfield is on a
+      // strike run: it aims at the field and holds that line until it is shot
+      // down. Slot spreads the aim points so the pair arrives line abreast
+      // rather than stacked on one pixel.
+      if (spec.key === "bomber" && friendlyBase) {
+        const bomber = enemies[enemies.length - 1];
+        bomber.strikeTarget = new THREE.Vector3(
+          friendlyBase.x + (slot - 0.5) * 120,
+          friendlyBase.y,
+          friendlyBase.z
+        );
+      }
     }
 
     function spawnShip(position, headingRad, slot, typeKey, idBase = 6) {
@@ -7005,8 +7401,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         slot,
         type: typeKey,
         label: spec.label,
+        shortName: spec.label,
+        name: null,
         role: spec.role,
         behavior: "fleet",
+        tgt: spawningTgt,
         surface: true,
         isAce: false,
         aceEngageLineFired: true,
@@ -7087,10 +7486,102 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       missionProps.push({ node: sprite, material, scale, seed: Math.random() * Math.PI * 2 });
     }
 
+    // The friendly airfield the m01 bombers are flying at. Scenery, not an
+    // entity: it has no hitbox, takes no damage and is never a target. Its only
+    // mechanical role is to be a position the bombers can reach.
+    //
+    // It stands on the map's plateau island. The deck height is the LOWEST
+    // terrain height sampled across the field's own footprint, not the height
+    // at its centre: sampling only the centre of a 900m strip on a domed top
+    // leaves the ends hanging in the air, which is exactly how the first
+    // version ended up floating over the sea.
+    function spawnFriendlyBase(config) {
+      const group = new THREE.Group();
+      const heading = config.heading || 0;
+      const cos = Math.cos(heading);
+      const sin = Math.sin(heading);
+      let baseY = Infinity;
+      let highest = -Infinity;
+      // Corners and mid-points of the footprint the meshes below occupy.
+      for (const [lx, lz] of [
+        [0, 0], [0, -460], [0, 460], [70, -300], [70, 300],
+        [120, 0], [-40, -460], [-40, 460], [120, -260], [120, 260]
+      ]) {
+        const wx = config.x + lx * cos + lz * sin;
+        const wz = config.z - lx * sin + lz * cos;
+        const h = surfaceHeightAt(wx, wz);
+        if (h < baseY) baseY = h;
+        if (h > highest) highest = h;
+      }
+      if (!Number.isFinite(baseY)) baseY = surfaceHeightAt(config.x, config.z);
+      // Sunk a little into the ground so no seam of daylight shows under the
+      // strip where the plateau top is not perfectly level.
+      const deckY = baseY - 1.5;
+      group.position.set(config.x, deckY, config.z);
+      group.rotation.y = heading;
+
+      const geometries = [];
+      const materials = [];
+      const concrete = makeAircraftMaterial(0x9aa2a8, 0.12, 0.88);
+      const asphalt = makeAircraftMaterial(0x3d4348, 0.08, 0.94);
+      const roof = makeAircraftMaterial(0x5d6b63, 0.14, 0.82);
+      const wall = makeAircraftMaterial(0xb9c0c4, 0.1, 0.8);
+      const stripe = new THREE.MeshBasicMaterial({ color: 0xeef4f7 });
+      materials.push(concrete, asphalt, roof, wall, stripe);
+
+      const add = (material, x, y, z, sx, sy, sz) => {
+        const mesh = new THREE.Mesh(geometry.panel, material);
+        mesh.position.set(x, y, z);
+        mesh.scale.set(sx, sy, sz);
+        group.add(mesh);
+        return mesh;
+      };
+
+      // Runway strip, 900m x 70m, with a dashed centreline and two aprons.
+      add(asphalt, 0, 0.6, 0, 70, 1.2, 900);
+      for (let i = -6; i <= 6; i += 1) {
+        add(stripe, 0, 1.3, i * 62, 3.2, 0.4, 30);
+      }
+      add(concrete, 66, 0.8, -150, 60, 1.4, 220);
+
+      // A short row of hangars and a control tower along the apron, so the
+      // field reads as inhabited from the air rather than as a painted strip.
+      for (let i = 0; i < 3; i += 1) {
+        const z = -230 + i * 78;
+        add(wall, 66, 8, z, 44, 16, 52);
+        add(roof, 66, 17, z, 47, 3, 55);
+      }
+      add(wall, 108, 13, 20, 16, 26, 16);
+      add(roof, 108, 27.5, 20, 22, 3, 22);
+      add(wall, 108, 24, 20, 18, 7, 18);
+
+      scene.add(group);
+      missionProps.push({ node: group, geometries, materials });
+      friendlyBase = {
+        x: config.x,
+        z: config.z,
+        y: deckY,
+        // Kept for the placement probe: terrain spread across the footprint,
+        // and whether the field ended up above water at all.
+        terrainMin: baseY,
+        terrainMax: highest,
+        label: config.label || "ALLIED AIRBASE",
+        failRadius: config.failRadius || 400,
+        group,
+        breached: false,
+        hits: 0,
+        warnedFar: false,
+        warnedClose: false
+      };
+      return friendlyBase;
+    }
+
     function updateMissionProps() {
       if (missionProps.length === 0) return;
       const time = performance.now() * 0.001;
       for (const prop of missionProps) {
+        // Static scenery (the friendly airbase) has no flicker state.
+        if (!prop.material || prop.scale === undefined) continue;
         const flicker = 1 + Math.sin(time * 7.3 + prop.seed) * 0.05 + Math.sin(time * 17.1 + prop.seed * 2) * 0.03;
         prop.node.scale.set(prop.scale * flicker, prop.scale * flicker, 1);
         prop.material.opacity = 0.82 * flicker;
@@ -7100,9 +7591,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     function clearMissionProps() {
       for (const prop of missionProps) {
         scene.remove(prop.node);
-        prop.material.dispose();
+        if (prop.material) prop.material.dispose();
+        // Multi-mesh props own a list of each instead of a single material.
+        if (prop.geometries) for (const geo of prop.geometries) geo.dispose();
+        if (prop.materials) for (const mat of prop.materials) mat.dispose();
       }
       missionProps.length = 0;
+      friendlyBase = null;
       if (floodlightTexture) {
         floodlightTexture.dispose();
         floodlightTexture = null;
@@ -7114,11 +7609,16 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // target total, so the sortie only ends once the base is flat too.
     function spawnMissionGround(mission) {
       if (mission.groundUnits) {
-        for (const unit of mission.groundUnits) spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id);
+        for (const unit of mission.groundUnits) {
+          spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id, isTgtEntry(unit));
+        }
       }
       if (mission.floodlights) {
         for (const light of mission.floodlights) spawnFloodlight(light.x, light.z);
       }
+      // Must precede the first wave: the bombers read friendlyBase to lay in
+      // their run, and a bomber with no field to hit would just fly a patrol.
+      if (mission.friendlyBase) spawnFriendlyBase(mission.friendlyBase);
       if (mission.introRadio) {
         for (const line of mission.introRadio) radioSay(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
       }
@@ -7126,7 +7626,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
     // Ids are chosen by the caller (mission definitions own the numbering), so
     // a base always reads the same way in the HUD from one sortie to the next.
-    function spawnGroundUnit(typeKey, x, z, headingRad, id) {
+    function spawnGroundUnit(typeKey, x, z, headingRad, id, tgt = true) {
       const spec = GROUND_TYPES[typeKey];
       if (!spec) return null;
       enemySerial += 1;
@@ -7152,8 +7652,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         slot: 0,
         type: typeKey,
         label: spec.label,
+        shortName: spec.label,
+        name: null,
         role: spec.role,
         behavior: "static",
+        tgt,
         surface: true,
         ground: true,
         isAce: false,
@@ -7257,21 +7760,30 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // (mission.waves[i] or a WAVE_PRESETS member), never a raw string.
     function spawnMissionWave(wave) {
       missionWaveIndex += 1;
-      waveNumber = missionWaveIndex;
+      // The readout counts waves the player has to clear, so a concurrent
+      // escort does not advance it - it arrived with the wave already showing.
+      if (!wave.concurrent) waveNumber += 1;
       waveClearTimer = -1;
-      const first = missionWaveIndex === 1;
+      const first = waveNumber === 1;
       const size = waveSizeOf(wave);
+      // Read by the spawners below, which push it onto every enemy they create.
+      // A module-level relay rather than another parameter on four spawn
+      // functions, and it is consumed synchronously inside this call.
+      spawningTgt = isTgtEntry(wave);
       // Presets keep their historic id block; an inline wave takes the next
       // free one. Either way the cursor ends past this wave, so a mission that
       // mixes the two can never hand out the same target number twice.
       const idBase = wave.idBase === null || wave.idBase === undefined ? waveIdCursor : wave.idBase;
       waveIdCursor = Math.max(waveIdCursor, idBase + size);
-      waveTargetsSpawned += size;
-      const band = wave.band || missionWaveIndex;
+      // Designated targets only - the dev hooks below equate this with `kills`
+      // to fast-forward a mission, and a bonus contact must not satisfy the
+      // objective counter.
+      if (spawningTgt) waveTargetsSpawned += size;
+      const band = wave.band || waveNumber;
       if (wave.kind === "naval") {
         spawnNavalWave(wave, idBase);
         if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
-        else showBanner(`WAVE ${missionWaveIndex} · ENEMY FLEET DETECTED`, 2.2, "danger");
+        else showBanner(`WAVE ${waveNumber} · ENEMY FLEET DETECTED`, 2.2, "danger");
         triggerRadioLine(
           "command",
           "レーダーに水上反応。敵艦隊だ——空母1、護衛のイージス艦2。対艦攻撃に移れ。",
@@ -7289,8 +7801,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       } else {
         const withAce = wave.ace;
         spawnWave(wave, band, idBase);
-        if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
-        else showBanner(`WAVE ${missionWaveIndex} · INBOUND`, 2.0, "danger");
+        // A concurrent escort rides in on the wave it protects, so it announces
+        // itself as a contact - not as a new wave the player has to clear.
+        if (wave.concurrent) showBanner(`${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
+        else if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
+        else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
         if (wave.radio) {
           for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
         } else if (withAce) {
@@ -7308,6 +7823,16 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             RADIO_PRIORITY.NORMAL,
             "ace-foreshadow-wingman"
           );
+        } else if (wave.concurrent) {
+          // Authored per wave via `radio` when a mission wants something
+          // specific; this is the generic fallback and must not name a target
+          // type the mission may not field.
+          triggerRadioLine(
+            "wingman",
+            "護衛機だ！ 相手をする必要はない——指定目標を優先しろ！",
+            RADIO_PRIORITY.NORMAL,
+            `wave-escort-inbound-${missionWaveIndex}`
+          );
         } else if (!first) {
           triggerRadioLine(
             "command",
@@ -7317,6 +7842,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           );
         }
       }
+      spawningTgt = true;
+
+      // Any entries flagged `concurrent` immediately after this one join the
+      // same engagement. Recursion is bounded by the sequence length, and each
+      // pass advances missionWaveIndex, so it always terminates.
+      const mission = MISSIONS[currentMissionIndex];
+      const next = mission.waves[missionWaveIndex];
+      if (next && next.concurrent) spawnMissionWave(next);
     }
 
     function updateEnemies(dt) {
@@ -7471,6 +8004,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             .addScaledVector(WORLD_UP, 14);
           enemy.targetSpeed = Math.min(spec.maxSpeed, leader.speed + 3);
           enemy.formationActive = true;
+        } else if (enemy.strikeTarget) {
+          // A bomber on a strike run flies the line, and only the line. No
+          // patrol circuit, no evasion, no reaction to being shot at - the
+          // pressure on the player is that it simply keeps going.
+          targetPoint = enemy.targetPoint.copy(enemy.strikeTarget);
+          targetPoint.y = Math.max(enemy.strikeTarget.y + 260, 300);
+          // Loaded and holding formation, not transiting: the run is flown at
+          // 70% of cruise, which is what makes the intercept window a window.
+          enemy.targetSpeed = spec.patrolSpeed * STRIKE_RUN_SPEED_SCALE;
         } else {
           targetPoint = enemy.waypoints[enemy.waypointIndex];
           if (enemy.group.position.distanceToSquared(targetPoint) < 85 * 85) {
@@ -8137,15 +8679,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const blast = (missileHit ? 1.15 : 0.95) * (enemy.spec.explosionScale || 1);
         createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, blast);
       }
-      kills += 1;
+      // A designated target counts toward the objective; anything else is a
+      // bonus kill worth half, which keeps a mission that is generous with
+      // non-TGT contacts from handing out ranks the player did not fly for.
+      const isTgtKill = isTgtEntry(enemy);
+      const killScore = isTgtKill ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR);
+      if (isTgtKill) kills += 1;
+      else bonusKills += 1;
       if (missileHit) missileKills += 1;
       else gunKills += 1;
-      score = kills * KILL_SCORE;
+      score += killScore;
       if (score > highscore) {
         highscore = score;
         saveHighscore();
       }
-      createDestroyedPopup(enemy.group.position, enemy.label, KILL_SCORE);
+      createDestroyedPopup(enemy.group.position, enemy.label, killScore);
       playSfx("explosion", 0.75, 0.9 + Math.random() * 0.2);
       playTone(150, 0.18, 0.1, "sawtooth");
       playTone(760, 0.12, 0.08, "square", 0.06);
@@ -8210,6 +8758,69 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return true;
     }
 
+    // Watches the strike bombers close on the field they are aiming at, warns
+    // as the range collapses, and charges a score penalty for each one that
+    // reaches its release point. Letting a bomber through costs the player a
+    // rank, not the sortie: the objective is still to shoot every bomber down,
+    // and a mission that ended the moment one got past would just be a timer.
+    function updateStrikeThreat() {
+      if (!friendlyBase) return;
+
+      let closest = -1;
+      for (const enemy of enemies) {
+        if (!enemy.alive || !enemy.strikeTarget || enemy.bombRunFired) continue;
+        const distance = Math.hypot(
+          enemy.group.position.x - friendlyBase.x,
+          enemy.group.position.z - friendlyBase.z
+        );
+        if (closest < 0 || distance < closest) closest = distance;
+        if (distance > friendlyBase.failRadius) continue;
+
+        // Release point. The bomber drops, the field takes damage, and the
+        // bomber turns for home - still a designated target, now a fleeing one.
+        enemy.bombRunFired = true;
+        friendlyBase.breached = true;
+        friendlyBase.hits += 1;
+        baseDamagePenalty += BASE_BOMB_PENALTY;
+        score = Math.max(0, score - BASE_BOMB_PENALTY);
+        for (let i = 0; i < 5; i += 1) {
+          tmpV9.set(
+            friendlyBase.x + (Math.random() - 0.5) * 260,
+            friendlyBase.y + 6,
+            friendlyBase.z + (Math.random() - 0.5) * 620
+          );
+          createExplosion(tmpV9, 0xffb648, 1.6 + Math.random() * 0.7);
+        }
+        playSfx("explosion", 0.95, 0.68);
+        playTone(52, 1.1, 0.2, "sawtooth");
+        cameraShake = Math.min(1.8, cameraShake + 0.9);
+        showBanner(`BASE DAMAGED · -${BASE_BOMB_PENALTY} PTS`, 2.0, "danger");
+        radioSay("command", "基地被弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！",
+          RADIO_PRIORITY.URGENT, `base-hit-${friendlyBase.hits}`);
+
+        // Egress: hold the run heading and keep going, away from the field.
+        tmpV9.copy(enemy.group.position).sub(enemy.strikeTarget);
+        tmpV9.y = 0;
+        if (tmpV9.lengthSq() < 1) tmpV9.set(0, 0, 1);
+        tmpV9.normalize();
+        enemy.strikeTarget.copy(enemy.group.position).addScaledVector(tmpV9, 9000);
+        enemy.strikeTarget.y = enemy.group.position.y;
+      }
+
+      // Two warnings on the way in, each fired once, so the player can hear the
+      // clock running without the radio nagging every frame.
+      if (closest >= 0) {
+        if (closest < 1100 && !friendlyBase.warnedClose) {
+          friendlyBase.warnedClose = true;
+          showBanner("WARNING · BOMBERS NEARING AIRBASE", 1.8, "danger");
+          radioSay("command", "爆撃機が基地に迫っている！ 投弾される前に落とせ！", RADIO_PRIORITY.URGENT, "base-warn-close");
+        } else if (closest < 2600 && !friendlyBase.warnedFar) {
+          friendlyBase.warnedFar = true;
+          radioSay("command", "敵爆撃編隊、本基地へ直行中。進路上に何もない——君だけだ。", RADIO_PRIORITY.NORMAL, "base-warn-far");
+        }
+      }
+    }
+
     function updateMission(dt) {
       if (gameState !== STATE_PLAYING) return;
       // The sortie is already decided during the ACCOMPLISHED hold - re-running
@@ -8219,23 +8830,35 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         updateOutro(dt);
         return;
       }
-      const living = enemies.some((enemy) => enemy.alive);
+      updateStrikeThreat();
+      // Only designated targets hold the mission open. A surviving escort or
+      // CAP keeps fighting - and keeps being worth bonus points - but it can
+      // never stall the next wave or deny the player the mission.
+      const living = enemies.some((enemy) => enemy.alive && isTgtEntry(enemy));
       if (living) {
         waveClearTimer = -1;
         return;
       }
 
       const mission = MISSIONS[currentMissionIndex];
+      // A trailing run of non-TGT entries is not a wave the player must wait
+      // for, so "last" means "no designated targets left to spawn".
+      const tgtRemaining = mission.waves.slice(missionWaveIndex).some(isTgtEntry);
       if (waveClearTimer < 0) {
-        const isLast = missionWaveIndex >= mission.waves.length;
-        waveClearTimer = isLast ? 1.35 : 2.15;
-        showBanner(isLast ? "ALL TARGETS DESTROYED" : `WAVE ${missionWaveIndex} CLEAR`, 1.35, "success");
+        waveClearTimer = tgtRemaining ? 2.15 : 1.35;
+        showBanner(tgtRemaining ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
       }
 
       waveClearTimer -= dt;
       if (waveClearTimer > 0) return;
 
-      if (missionWaveIndex < mission.waves.length) {
+      if (tgtRemaining) {
+        // spawnMissionWave chains its own concurrent followers, so anything
+        // still flagged `concurrent` here was skipped past rather than spawned
+        // (its principal was the wave that just cleared). Step over it.
+        while (missionWaveIndex < mission.waves.length && mission.waves[missionWaveIndex].concurrent) {
+          missionWaveIndex += 1;
+        }
         spawnMissionWave(mission.waves[missionWaveIndex]);
       } else if (kills >= mission.totalTargets) {
         if (mission.hasOutro) startOutro();
@@ -8871,9 +9494,23 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       marker = document.createElement("div");
       marker.className = "enemyMarker";
       marker.dataset.enemyId = String(enemy.id);
+      // Three fixed children, matching the AC target box: "TGT" hard left of
+      // the frame, the aircraft name hard right, the range underneath. The
+      // update path only ever writes their text, never rebuilds them.
+      const tgtTag = document.createElement("span");
+      tgtTag.className = "enemyMarkerTgt";
+      tgtTag.textContent = "TGT";
+      marker.appendChild(tgtTag);
       const label = document.createElement("span");
       label.className = "enemyMarkerLabel";
       marker.appendChild(label);
+      // Two stacked lines: airframe name over range. Built once; the update
+      // path writes only the two text nodes.
+      const nameTag = document.createElement("span");
+      nameTag.className = "enemyMarkerName";
+      nameTag.appendChild(document.createElement("b"));
+      nameTag.appendChild(document.createElement("i"));
+      marker.appendChild(nameTag);
       ui.enemyMarkers.appendChild(marker);
       enemyMarkerElements.set(enemy.id, marker);
       return marker;
@@ -8991,7 +9628,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       targetArrowState.mode = "edge";
     }
 
+    // Blue diamond over the friendly airfield, with the range to it. Only ever
+    // drawn when the field is actually in front of the camera - it is context,
+    // not an off-screen arrow competing with the target cue.
+    function updateBaseMarker() {
+      if (!friendlyBase || gameState !== STATE_PLAYING) {
+        ui.baseMarker.classList.remove("visible");
+        return;
+      }
+      tmpV8.set(friendlyBase.x, friendlyBase.y + 40, friendlyBase.z);
+      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+      tmpV7.copy(tmpV8).project(camera);
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.0)) {
+        ui.baseMarker.classList.remove("visible");
+        return;
+      }
+      const distance = Math.round(Math.hypot(
+        player.position.x - friendlyBase.x,
+        player.position.z - friendlyBase.z
+      ));
+      ui.baseMarker.classList.add("visible");
+      ui.baseMarker.style.left = `${(tmpV7.x * 0.5 + 0.5) * window.innerWidth}px`;
+      ui.baseMarker.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
+      const text = `${friendlyBase.label} ${distance}`;
+      if (ui.baseMarkerLabel.textContent !== text) ui.baseMarkerLabel.textContent = text;
+    }
+
     function updateEnemyHudMarkers() {
+      updateBaseMarker();
       enemyMarkerScreenState.length = 0;
 
       if (gameState !== STATE_PLAYING) {
@@ -9009,7 +9673,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         aliveIds.add(enemy.id);
 
         const marker = getOrCreateEnemyMarker(enemy);
-        const label = marker.firstElementChild;
+        const nameTag = marker.children[2];
         tmpV6.copy(enemy.group.position).applyMatrix4(camera.matrixWorldInverse);
         tmpV7.copy(enemy.group.position).project(camera);
         const onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.04);
@@ -9021,19 +9685,33 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const selected = selectedId === enemy.id;
         const locked = lock.locked && lock.targetId === enemy.id;
 
+        // AC target-box layout: red "TGT" to the left of the frame on
+        // designated targets only, the aircraft's name to the right on every
+        // contact, range underneath. The frame colour itself is left to the
+        // existing selected/locked states.
+        const isTgt = isTgtEntry(enemy);
         marker.classList.toggle("active", active);
         marker.classList.toggle("selected", selected);
         marker.classList.toggle("locked", locked);
         marker.classList.toggle("multiLocked", multiLocked);
+        marker.classList.toggle("tgt", isTgt);
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
-        label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;
+        const displayName = enemyDisplayName(enemy);
+        const nameLine = nameTag.firstElementChild;
+        const rangeLine = nameTag.lastElementChild;
+        if (nameLine.textContent !== displayName) nameLine.textContent = displayName;
+        const rangeText = String(distance);
+        if (rangeLine.textContent !== rangeText) rangeLine.textContent = rangeText;
 
         if (active) {
           const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
           const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
           marker.style.left = `${x}px`;
           marker.style.top = `${y}px`;
-          enemyMarkerScreenState.push({ id: enemy.id, x, y, selected, locked, multiLocked });
+          enemyMarkerScreenState.push({
+            id: enemy.id, x, y, selected, locked, multiLocked,
+            tgt: isTgt, name: displayName
+          });
         }
       }
 
@@ -9068,7 +9746,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       ui.lockLabel.textContent = lock.locked ? "LOCKED" : `LOCK ${Math.round(lock.progress * 100)}%`;
       ui.lockMeterFill.style.width = `${Math.round(lock.progress * 100)}%`;
       const distance = Math.round(player.position.distanceTo(target.group.position));
-      ui.targetRange.textContent = `TGT ${target.id} · ${target.label} · ${distance}M`;
+      ui.targetBox.classList.toggle("tgt", isTgtEntry(target));
+      const lockedName = enemyDisplayName(target);
+      const lockedNameLine = ui.targetBoxName.firstElementChild;
+      const lockedRangeLine = ui.targetBoxName.lastElementChild;
+      if (lockedNameLine.textContent !== lockedName) lockedNameLine.textContent = lockedName;
+      const lockedRange = String(distance);
+      if (lockedRangeLine.textContent !== lockedRange) lockedRangeLine.textContent = lockedRange;
     }
 
     // ---- AC-style instruments -------------------------------------------------
@@ -9162,11 +9846,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       ui.missiles.textContent = String(Math.round(missileCount));
       ui.flares.textContent = String(flareCount);
       ui.kills.textContent = String(Math.round(kills));
+      const remaining = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
+      ui.tgtRemain.textContent = String(remaining);
+      ui.tgtRemainRow.classList.toggle("cleared", remaining === 0);
       const speedKph = Math.round(playerSpeed * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
       ui.altitude.textContent = String(altitudeM);
-      ui.wave.textContent = `WAVE ${waveNumber} / ${MISSIONS[currentMissionIndex].sequence.length}`;
+      ui.wave.textContent = `WAVE ${waveNumber} / ${MISSIONS[currentMissionIndex].waveCount}`;
 
       updateCompass(getPlayerHeadingDeg());
       updateTape(speedTapeNodes, speedKph, 100);
@@ -9277,6 +9964,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.health = Math.round(health);
       hook.missiles = Math.round(missileCount);
       hook.kills = Math.round(kills);
+      hook.bonusKills = bonusKills;
+      hook.baseDamagePenalty = baseDamagePenalty;
+      hook.audioHint = {
+        visible: ui.audioHint.classList.contains("visible"),
+        shown: audioHintShown,
+        unlocked: audioIsUnlocked()
+      };
+      hook.tgtRemain = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
       hook.controlMode = controlMode;
       hook.cameraMode = cameraMode;
       hook.cameraFov = currentCameraFov;
@@ -9333,6 +10028,36 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.cameraFocus.targetId = cameraFocusTargetId;
       hook.cameraFocus.source = cameraFocusSource;
       hook.hud.visibleEnemyMarkers = enemyMarkerScreenState.map((marker) => ({ ...marker }));
+      hook.hud.radarBlinkOn = radarBlinkOn;
+      hook.friendlyBase = friendlyBase
+        ? {
+            x: friendlyBase.x,
+            z: friendlyBase.z,
+            label: friendlyBase.label,
+            failRadius: friendlyBase.failRadius,
+            y: friendlyBase.y,
+            terrainMin: friendlyBase.terrainMin,
+            terrainMax: friendlyBase.terrainMax,
+            breached: friendlyBase.breached,
+            hits: friendlyBase.hits,
+            markerVisible: ui.baseMarker.classList.contains("visible"),
+            // Range from the nearest inbound bomber, which is the number the
+            // strike-threat gate is actually about.
+            closestStrike: (() => {
+              let best = -1;
+              for (const enemy of enemies) {
+                if (!enemy.alive || !enemy.strikeTarget) continue;
+                const d = Math.hypot(
+                  enemy.group.position.x - friendlyBase.x,
+                  enemy.group.position.z - friendlyBase.z
+                );
+                if (best < 0 || d < best) best = d;
+              }
+              // -1 = no strike aircraft left alive.
+              return best;
+            })()
+          }
+        : null;
       hook.hud.targetArrow.active = targetArrowState.active;
       hook.hud.targetArrow.targetId = targetArrowState.targetId;
       hook.hud.targetArrow.x = targetArrowState.x;
@@ -9362,13 +10087,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         index: currentMissionIndex,
         key: MISSIONS[currentMissionIndex].key,
         title: MISSIONS[currentMissionIndex].title,
-        wave: missionWaveIndex,
-        waves: MISSIONS[currentMissionIndex].sequence.length,
+        // The player-facing wave number (concurrent escorts do not advance it),
+        // with the raw sequence cursor kept alongside for diagnostics.
+        wave: waveNumber,
+        waveCursor: missionWaveIndex,
+        waves: MISSIONS[currentMissionIndex].waveCount,
         rank: lastMissionRank,
         cursor: missionCursor,
         elapsed: missionElapsed,
         parTime: MISSIONS[currentMissionIndex].parTime,
         totalTargets: MISSIONS[currentMissionIndex].totalTargets,
+        totalContacts: MISSIONS[currentMissionIndex].totalContacts,
+        waveCount: MISSIONS[currentMissionIndex].waveCount,
+        enemies: enemies.filter((enemy) => enemy.alive)
+          .map((enemy) => ({ id: enemy.id, type: enemy.type, tgt: isTgtEntry(enemy), isAce: enemy.isAce })),
         unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index))
       };
       hook.briefing.active = gameState === STATE_BRIEFING;
@@ -9461,6 +10193,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     function drawRadar() {
       const ctx = ui.radar.getContext("2d");
       if (!ctx) return;
+      // Selection blink, ~2.3 Hz. Driven off the clock rather than a counter so
+      // it stays the same speed regardless of frame rate, and exported to the
+      // hook so a probe can catch either phase deterministically.
+      radarBlinkOn = radarBlinkOverride === null
+        ? (performance.now() % RADAR_BLINK_PERIOD_MS) < RADAR_BLINK_PERIOD_MS * 0.55
+        : radarBlinkOverride;
       const size = radarCssSize;
       const center = size / 2;
       const radius = size * 0.42;
@@ -9538,25 +10276,29 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const headingForward = tmpV4.dot(lastRadarForward);
         const headingAngle = Math.atan2(headingRight, headingForward);
 
+        // Two independent readings, so a blip can carry both at once:
+        //   ring  = designated target
+        //   blink = the contact the player currently has selected
+        const isTgt = isTgtEntry(enemy);
+        const blipColor = isTgt ? "#ff5968" : "#f4f7fa";
+        // Half the blink cycle the selected blip is dimmed rather than gone -
+        // a blip that vanishes outright reads as a dropped contact.
+        const blipAlpha = isTarget && !radarBlinkOn ? 0.28 : 1;
+
         ctx.save();
+        ctx.globalAlpha = blipAlpha;
         ctx.translate(px, py);
         // Installations have no meaningful heading, so their blip never rotates.
         if (!enemy.ground) ctx.rotate(headingAngle);
+        ctx.fillStyle = blipColor;
+        ctx.shadowColor = blipColor;
+        ctx.shadowBlur = isTarget ? 8 : 5;
         if (enemy.ground) {
-          ctx.fillStyle = "#ffc47a";
-          ctx.shadowColor = "#ffc47a";
-          ctx.shadowBlur = isTarget ? 8 : 5;
           ctx.fillRect(-2.25, -2.25, 4.5, 4.5);
         } else if (enemy.surface) {
           const shipScale = enemy.type === "carrier" ? 1.35 : 1;
-          ctx.fillStyle = "#ffc47a";
-          ctx.shadowColor = "#ffc47a";
-          ctx.shadowBlur = isTarget ? 8 : 5;
           ctx.fillRect(-2.1 * shipScale, -4.6 * shipScale, 4.2 * shipScale, 9.2 * shipScale);
         } else {
-          ctx.fillStyle = "#f4f7fa";
-          ctx.shadowColor = "#f4f7fa";
-          ctx.shadowBlur = isTarget ? 8 : 5;
           ctx.beginPath();
           ctx.moveTo(0, -4.5);
           ctx.lineTo(-3, 3);
@@ -9568,14 +10310,17 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         ctx.restore();
         ctx.shadowBlur = 0;
 
-        if (isTarget) {
-          ctx.strokeStyle = lock.locked ? "#ff4f5e" : "#ffe66f";
+        if (isTgt) {
+          ctx.save();
+          ctx.globalAlpha = blipAlpha;
+          ctx.strokeStyle = lock.locked && isTarget ? "#ff4f5e" : "#ff5968";
           ctx.shadowColor = ctx.strokeStyle;
           ctx.shadowBlur = 9;
           ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.arc(px, py, 7, 0, Math.PI * 2);
           ctx.stroke();
+          ctx.restore();
           ctx.shadowBlur = 0;
         }
       }
@@ -11445,7 +12190,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           phase: random() * Math.PI * 2
         });
       };
+      // Designated targets only. The briefing map is the objective list, so a
+      // CAP or an escort must not pad it - the player would count markers and
+      // plan for a longer sortie than the mission actually asks for.
       mission.waves.forEach((wave) => {
+        if (!isTgtEntry(wave)) return;
         if (wave.kind === "naval") {
           for (let i = 0; i < wave.fleet.length; i += 1) place("naval", 0.055);
           return;
@@ -11457,7 +12206,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       if (mission.groundUnits) {
         // Tighter ring than the air/naval contacts - a base is one footprint -
         // but still clear of the mission dot's own halo and label.
-        for (let i = 0; i < mission.groundUnits.length; i += 1) place("ground", 0.04);
+        for (const unit of mission.groundUnits) {
+          if (isTgtEntry(unit)) place("ground", 0.04);
+        }
       }
       return markers;
     }
@@ -11477,15 +12228,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       let airCount = 0;
       let navalCount = 0;
       for (const wave of mission.waves) {
+        // Designated targets only, matching the markers and TGT REMAIN.
+        if (!isTgtEntry(wave)) continue;
         if (wave.kind === "naval") navalCount += wave.fleet.length;
         else airCount += wave.types.length;
       }
-      const groundCount = mission.groundUnits ? mission.groundUnits.length : 0;
+      const groundCount = mission.groundUnits ? mission.groundUnits.filter(isTgtEntry).length : 0;
+      const bonusCount = mission.totalContacts - mission.totalTargets;
       const objectives = [];
       if (airCount > 0) objectives.push(["objAir", "◤", "AIR TARGETS", String(airCount)]);
       if (navalCount > 0) objectives.push(["objNaval", "▭", "NAVAL TARGETS", String(navalCount)]);
       if (groundCount > 0) objectives.push(["objGround", "◆", "GROUND TARGETS", String(groundCount)]);
       objectives.push(["objTotal", "·", "TOTAL", String(mission.totalTargets)]);
+      // Listed after the total, deliberately: it is intelligence about the
+      // airspace, not part of the objective count.
+      if (bonusCount > 0) objectives.push(["objBonus", "○", "NON-TARGET", String(bonusCount)]);
       ui.briefingObjectives.replaceChildren(...objectives.map(([cls, glyph, label, value]) => {
         const row = document.createElement("li");
         row.className = cls;
