@@ -2043,6 +2043,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         damage: 98,
         life: 10.5,
         launchDot: -1
+      }),
+      // SAM site: a big cold-launched round on the same VLS idiom as the Aegis
+      // - straight up out of the pack, then it tips over. Slower off the rail,
+      // longer legged and lazier to turn than anything airborne.
+      samSite: Object.freeze({
+        cooldownMin: 9.5,
+        cooldownSpread: 4.0,
+        range: 1500,
+        minRange: 220,
+        speed: 165,
+        maxSpeed: 520,
+        turnRate: THREE.MathUtils.degToRad(52),
+        damage: 98,
+        life: 10,
+        launchDot: -1
       })
     });
 
@@ -2099,6 +2114,102 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         radarColor: "#ff8a6a",
         tracerColor: 0xff9a52,
         explosionColor: 0xffb648
+      })
+    });
+
+    // M3 ground installations. They live in enemies[] exactly like the ships, so
+    // lock-on, the gun raycast, missile guidance, the radar and the whole kill
+    // flow come for free - `surface` keeps them off the flight AI and `ground`
+    // switches the handful of places that differ. They never move, and a killed
+    // one does not sink or vanish: the wreck burns where it stood until the
+    // mission ends.
+    const GROUND_WRECK_FOREVER = 9999;
+    const GROUND_TYPES = Object.freeze({
+      samSite: Object.freeze({
+        key: "samSite",
+        surface: true,
+        ground: true,
+        label: "SAM SITE",
+        role: "Surface-to-Air Missile Site",
+        hp: 90,
+        hitRadius: 26,
+        crash: Object.freeze({ halfLen: 9, halfBeam: 9, top: 10 }),
+        hitBox: Object.freeze({ x: 16, y: 11, z: 16 }),
+        smokeHeight: 7,
+        aa: null,
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      aaGun: Object.freeze({
+        key: "aaGun",
+        surface: true,
+        ground: true,
+        label: "AA GUN",
+        role: "Anti-Aircraft Battery",
+        hp: 60,
+        hitRadius: 20,
+        crash: Object.freeze({ halfLen: 9, halfBeam: 6, top: 7 }),
+        hitBox: Object.freeze({ x: 10, y: 8, z: 14 }),
+        smokeHeight: 4,
+        aaMounts: Object.freeze([-3.2, 3.2]),
+        aaHeight: 4.2,
+        aa: Object.freeze({ range: 560, cooldownMin: 0.7, cooldownSpread: 0.6, damage: 7, maxHitChance: 0.14, tracers: 2 }),
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      radarSite: Object.freeze({
+        key: "radarSite",
+        surface: true,
+        ground: true,
+        label: "RADAR",
+        role: "Search Radar",
+        hp: 70,
+        hitRadius: 22,
+        crash: Object.freeze({ halfLen: 7, halfBeam: 7, top: 11 }),
+        hitBox: Object.freeze({ x: 12, y: 12, z: 12 }),
+        smokeHeight: 7,
+        aa: null,
+        dishSpin: 0.6,
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      fuelTank: Object.freeze({
+        key: "fuelTank",
+        surface: true,
+        ground: true,
+        label: "FUEL TANK",
+        role: "Fuel Depot",
+        hp: 50,
+        hitRadius: 24,
+        crash: Object.freeze({ halfLen: 7, halfBeam: 12, top: 12 }),
+        hitBox: Object.freeze({ x: 22, y: 11, z: 11 }),
+        smokeHeight: 8,
+        aa: null,
+        // Tank farms are stored close together: killing one cooks off whatever
+        // is still standing nearby, which can cascade down the whole row.
+        chain: Object.freeze({ radius: 90, damage: 55 }),
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffb648
+      }),
+      bunker: Object.freeze({
+        key: "bunker",
+        surface: true,
+        ground: true,
+        label: "BUNKER",
+        role: "Hardened Shelter",
+        hp: 120,
+        hitRadius: 34,
+        crash: Object.freeze({ halfLen: 12, halfBeam: 10, top: 10 }),
+        hitBox: Object.freeze({ x: 18, y: 9, z: 22 }),
+        smokeHeight: 6,
+        aa: null,
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
       })
     });
 
@@ -2995,6 +3106,40 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           preferredTargetId = null;
           spawnMissionWave("naval");
           return true;
+        },
+        forceSpawnGroundBase: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          const preset = WORLD_PRESETS[world.preset];
+          const at = preset && preset.mountains && preset.mountains.plateau
+            ? preset.mountains.plateau.at
+            : null;
+          if (!at) return false;
+          let base = null;
+          let bestDistance = Infinity;
+          for (const mountain of world.mountains) {
+            const distance = Math.hypot(mountain.x - at[0], mountain.z - at[1]);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              base = mountain;
+            }
+          }
+          if (!base) return false;
+          const layout = [
+            ["samSite", -80, -70, 0.3, 21],
+            ["samSite", 80, -70, -0.3, 22],
+            ["aaGun", -110, 15, 1.2, 23],
+            ["aaGun", 110, 15, -1.2, 24],
+            ["radarSite", 0, -110, 0.6, 25],
+            ["fuelTank", -45, 105, 0, 26],
+            ["fuelTank", -5, 108, 0, 27],
+            ["bunker", 25, 20, 0.15, 28]
+          ];
+          const spawned = [];
+          for (const [type, dx, dz, heading, id] of layout) {
+            if (enemies.some((enemy) => enemy.id === id)) continue;
+            spawned.push(spawnGroundUnit(type, base.x + dx, base.z + dz, heading, id));
+          }
+          return spawned;
         },
         forceStartOutro: () => {
           if (gameState !== STATE_PLAYING || outro.active) return false;
@@ -4461,9 +4606,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         // VLS cold launch: straight up out of the fore/aft cell field with an
         // efflux cloud on deck - guidance then tips it over toward the player.
         enemy.vlsSide = -enemy.vlsSide;
-        root.position.copy(enemy.group.position)
-          .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
-          .addScaledVector(WORLD_UP, 13);
+        if (enemy.ground) {
+          // An installation launches from its own canister pack: the pad is the
+          // group origin, so the round leaves 6m up instead of off a deck.
+          root.position.copy(enemy.group.position).addScaledVector(WORLD_UP, 6);
+        } else {
+          root.position.copy(enemy.group.position)
+            .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
+            .addScaledVector(WORLD_UP, 13);
+        }
         root.quaternion.setFromUnitVectors(LOCAL_FORWARD, WORLD_UP);
         for (let puff = 0; puff < 7; puff += 1) {
           tmpV9.set((Math.random() - 0.5) * 14, Math.random() * 5, (Math.random() - 0.5) * 14);
@@ -4480,7 +4631,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       enemyMissileSerial += 1;
       enemyMissilesLaunched += 1;
-      if (enemy.surface) {
+      if (enemy.ground) {
+        triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
+      } else if (enemy.surface) {
         triggerRadioLine("wingman", "敵艦からミサイル発射！ 垂直発射だ——見えたらブレイクしろ！", RADIO_PRIORITY.NORMAL, "ship-sam");
       } else {
         triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
@@ -4899,6 +5052,89 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       });
     }
 
+    // Installations stand on whatever the map puts under them: inside a
+    // mountain footprint that is its summit (the night map's flat plateau),
+    // anywhere else it is the sea plane.
+    function groundHeightAt(x, z) {
+      let height = 0;
+      for (const mountain of world.mountains) {
+        const dx = x - mountain.x;
+        const dz = z - mountain.z;
+        if (dx * dx + dz * dz < mountain.r * mountain.r) height = Math.max(height, mountain.h);
+      }
+      return height;
+    }
+
+    // Ids are chosen by the caller (mission definitions own the numbering), so
+    // a base always reads the same way in the HUD from one sortie to the next.
+    function spawnGroundUnit(typeKey, x, z, headingRad, id) {
+      const spec = GROUND_TYPES[typeKey];
+      if (!spec) return null;
+      enemySerial += 1;
+      const root = new THREE.Group();
+      root.position.set(x, groundHeightAt(x, z), z);
+      root.rotation.y = headingRad;
+      root.userData.enemyType = typeKey;
+
+      const model = createGroundModel(typeKey);
+      root.add(model.group);
+
+      const hitbox = new THREE.Mesh(geometry.panel, shared.hitbox);
+      hitbox.userData.enemyId = id;
+      hitbox.scale.set(spec.hitBox.x, spec.hitBox.y, spec.hitBox.z);
+      hitbox.position.y = spec.hitBox.y * 0.5;
+      root.add(hitbox);
+      scene.add(root);
+
+      enemies.push({
+        id,
+        serial: enemySerial,
+        wave: 3,
+        slot: 0,
+        type: typeKey,
+        label: spec.label,
+        role: spec.role,
+        behavior: "static",
+        surface: true,
+        ground: true,
+        isAce: false,
+        aceEngageLineFired: true,
+        aceHalfLineFired: true,
+        spec,
+        group: root,
+        model,
+        hitbox,
+        alive: true,
+        maxHp: spec.hp,
+        hp: spec.hp,
+        speed: 0,
+        targetSpeed: 0,
+        mode: "static",
+        baseHeading: headingRad,
+        vlsSide: 1,
+        waypoints: [],
+        waypointIndex: 0,
+        fireCooldown: 999,
+        missileCooldown: 3 + Math.random() * 3,
+        aaCooldown: 1 + Math.random(),
+        wakeTimer: 0,
+        sinkBoomTimer: 0,
+        sinkRoll: 0,
+        sinkPitch: 0,
+        deadTimer: 0,
+        hitFlash: 0,
+        smokeTimer: 0,
+        seed: Math.random() * Math.PI * 2,
+        formationLeaderId: null,
+        formationSide: 1,
+        formationActive: false,
+        targetPoint: new THREE.Vector3(),
+        formationPoint: new THREE.Vector3(),
+        safeTarget: new THREE.Vector3()
+      });
+      return id;
+    }
+
     function spawnNavalWave() {
 
       // The fleet sits on open water ~2.4km ahead of the player's heading,
@@ -5012,7 +5248,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const enemy = enemies[i];
         if (!enemy.alive) {
           enemy.deadTimer -= dt;
-          if (enemy.surface) updateShipSinking(enemy, dt);
+          if (enemy.ground) updateGroundWreck(enemy, dt);
+          else if (enemy.surface) updateShipSinking(enemy, dt);
           if (enemy.deadTimer <= 0) {
             scene.remove(enemy.group);
             disposeAircraftMaterials(enemy.model);
@@ -5027,7 +5264,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         enemy.formationActive = false;
 
         if (enemy.surface) {
-          updateShip(enemy, dt, time);
+          if (enemy.ground) updateGroundUnit(enemy, dt, time);
+          else updateShip(enemy, dt, time);
           continue;
         }
 
@@ -5359,6 +5597,102 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
     }
 
+    // ---- Ground installations -------------------------------------------------
+    // Static surface targets. No steering, no wake, no sinking: they burn as
+    // they take damage, work whatever weapon they own, and leave a wreck.
+
+    function updateGroundUnit(enemy, dt, time) {
+      const spec = enemy.spec;
+
+      // Same damage thresholds as the ships: grey smoke under half HP, black
+      // smoke and embers under a quarter.
+      const hpRatio = enemy.hp / spec.hp;
+      if (hpRatio < 0.5) {
+        enemy.smokeTimer -= dt;
+        if (enemy.smokeTimer <= 0) {
+          const burning = hpRatio < 0.25;
+          tmpV8.copy(enemy.group.position);
+          tmpV8.x += (Math.random() - 0.5) * spec.crash.halfBeam;
+          tmpV8.z += (Math.random() - 0.5) * spec.crash.halfLen;
+          tmpV8.y += spec.smokeHeight;
+          tmpV2.set((Math.random() - 0.5) * 4, 5 + Math.random() * 4, (Math.random() - 0.5) * 4);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 2.4 + Math.random() * 1.2, burning ? 0x17181c : 0x3a3f45, -0.7, 1.4);
+          if (burning) {
+            tmpV2.set((Math.random() - 0.5) * 8, 3 + Math.random() * 6, (Math.random() - 0.5) * 8);
+            sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.2, 0xffab4a, 2, 0.34);
+          }
+          enemy.smokeTimer += burning ? 0.05 : 0.09;
+        }
+      }
+
+      // The search radar keeps sweeping for as long as it is alive.
+      if (enemy.model.dish) enemy.model.dish.rotation.y = time * spec.dishSpin;
+
+      if (spec.aa) {
+        enemy.aaCooldown -= dt;
+        if (enemy.aaCooldown <= 0) {
+          shipAaBurst(enemy);
+          enemy.aaCooldown = spec.aa.cooldownMin + Math.random() * spec.aa.cooldownSpread;
+        }
+      }
+
+      if (ENEMY_MISSILE_PROFILES[enemy.type]) {
+        enemy.missileCooldown -= dt;
+        if (enemy.missileCooldown <= 0) {
+          const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+          const launched = attemptEnemyMissile(enemy);
+          enemy.missileCooldown = launched
+            ? profile.cooldownMin + Math.random() * profile.cooldownSpread
+            : 1.3 + Math.random() * 0.9;
+        }
+      }
+    }
+
+    // A dead installation is scenery from here on: the model stays put and
+    // burns, with the odd secondary cooking off, until clearMissionObjects
+    // disposes it at the end of the sortie.
+    function updateGroundWreck(enemy, dt) {
+      const spec = enemy.spec;
+      enemy.smokeTimer -= dt;
+      if (enemy.smokeTimer <= 0) {
+        tmpV8.copy(enemy.group.position);
+        tmpV8.x += (Math.random() - 0.5) * spec.crash.halfBeam * 1.4;
+        tmpV8.z += (Math.random() - 0.5) * spec.crash.halfLen * 1.4;
+        tmpV8.y += spec.smokeHeight * 0.6;
+        tmpV2.set((Math.random() - 0.5) * 5, 6 + Math.random() * 5, (Math.random() - 0.5) * 5);
+        smokeParticlePool.spawn(tmpV8, tmpV2, 2.8 + Math.random() * 1.4, 0x15161a, -0.75, 1.9);
+        tmpV2.set((Math.random() - 0.5) * 8, 2 + Math.random() * 7, (Math.random() - 0.5) * 8);
+        sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.25, 0xffa54e, 3, 0.36);
+        enemy.smokeTimer += 0.06;
+      }
+      enemy.sinkBoomTimer -= dt;
+      if (enemy.sinkBoomTimer <= 0) {
+        tmpV8.copy(enemy.group.position);
+        tmpV8.x += (Math.random() - 0.5) * spec.crash.halfBeam;
+        tmpV8.z += (Math.random() - 0.5) * spec.crash.halfLen;
+        tmpV8.y += spec.smokeHeight * (0.3 + Math.random() * 0.6);
+        createImpactBurst(tmpV8, 0xffa54e, 0.85);
+        playSfx("explosion", 0.2, 1.25 + Math.random() * 0.35);
+        enemy.sinkBoomTimer += 1.5 + Math.random();
+      }
+    }
+
+    // Fuel is stored in rows: a tank going up takes its neighbours with it, and
+    // each secondary kill runs this again, so a farm can zipper itself.
+    function detonateGroundChain(source, chain) {
+      const victims = [];
+      for (const other of enemies) {
+        if (!other.alive || !other.ground || other === source) continue;
+        const dx = other.group.position.x - source.group.position.x;
+        const dz = other.group.position.z - source.group.position.z;
+        if (dx * dx + dz * dz > chain.radius * chain.radius) continue;
+        victims.push(other);
+      }
+      if (victims.length === 0) return;
+      triggerRadioLine("wingman", "誘爆した！ 燃料庫が吹き飛んだぞ！", RADIO_PRIORITY.NORMAL, "ground-chain");
+      for (const victim of victims) damageEnemy(victim, chain.damage, false);
+    }
+
     function attemptEnemyAttack(enemy) {
       if (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0) return;
 
@@ -5420,7 +5754,18 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       enemy.alive = false;
       enemy.hitbox.visible = false;
-      if (enemy.surface) {
+      let chainBlast = null;
+      if (enemy.ground) {
+        // Installations neither sink nor pop out of existence: one big blast,
+        // then the burning hulk stays on the map (updateGroundWreck plays it).
+        enemy.deadTimer = GROUND_WRECK_FOREVER;
+        enemy.smokeTimer = 0;
+        enemy.sinkBoomTimer = 0.6;
+        chainBlast = enemy.spec.chain || null;
+        tmpV9.copy(enemy.group.position);
+        tmpV9.y += enemy.spec.smokeHeight * 0.6;
+        createExplosion(tmpV9, chainBlast ? 0xffd97a : 0xffd35f, chainBlast ? 1.8 : 1.3);
+      } else if (enemy.surface) {
         // Ships do not vanish in a fireball - they burn, list and go down over
         // ~11s, so keep the model visible and let updateShipSinking play it out.
         enemy.deadTimer = SHIP_SINK_DURATION;
@@ -5472,6 +5817,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         );
       }
       onKillRadio(kills);
+      if (chainBlast) detonateGroundChain(enemy, chainBlast);
     }
 
     function applyPlayerDamage(amount, bypassCooldown = false) {
@@ -6519,6 +6865,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         role: enemy.role,
         behavior: enemy.behavior,
         surface: Boolean(enemy.surface),
+        ground: Boolean(enemy.ground),
         hp: Math.max(0, Math.round(enemy.hp)),
         maxHp: enemy.maxHp,
         speed: enemy.speed,
@@ -6627,8 +6974,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
         ctx.save();
         ctx.translate(px, py);
-        ctx.rotate(headingAngle);
-        if (enemy.surface) {
+        // Installations have no meaningful heading, so their blip never rotates.
+        if (!enemy.ground) ctx.rotate(headingAngle);
+        if (enemy.ground) {
+          ctx.fillStyle = "#ffc47a";
+          ctx.shadowColor = "#ffc47a";
+          ctx.shadowBlur = isTarget ? 8 : 5;
+          ctx.fillRect(-2.25, -2.25, 4.5, 4.5);
+        } else if (enemy.surface) {
           const shipScale = enemy.type === "carrier" ? 1.35 : 1;
           ctx.fillStyle = "#ffc47a";
           ctx.shadowColor = "#ffc47a";
@@ -7788,6 +8141,93 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         standardMaterials: [hull, deck, house, dark, light],
         flameMaterial: markings,
         extraMaterials
+      };
+    }
+
+    // Ground installations, built to the same contract as the ships so the hit
+    // flash and the dispose path work unchanged. `dish` is the one extra: a
+    // pivot the updater spins. Military grey-green - readable at a kilometre.
+    function createGroundModel(kind) {
+      const root = new THREE.Group();
+      const steel = makeAircraftMaterial(0x8b9198, 0.3, 0.62);
+      const olive = makeAircraftMaterial(0x6e7568, 0.16, 0.86);
+      const dark = makeAircraftMaterial(0x272b31, 0.32, 0.6);
+      const light = makeAircraftMaterial(0xd6dde2, 0.3, 0.45);
+      const markings = new THREE.MeshBasicMaterial({ color: 0xf0f5f8 });
+      const extraMaterials = [];
+      let dish = null;
+
+      const parts = [];
+      const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+        const m = new THREE.Mesh(geo, material);
+        m.position.set(x, y, z);
+        m.scale.set(sx, sy, sz);
+        m.rotation.set(rx, ry, rz);
+        parts.push(m);
+        return m;
+      };
+
+      if (kind === "samSite") {
+        // Concrete pad, turntable, a canted four-cell canister pack and the
+        // battery's own little guidance panel off one corner.
+        add(geometry.panel, olive, 0, 0.5, 0, 14, 1, 14);
+        add(geometry.shipCylinder, steel, 0, 1.9, 0, 3.4, 1.8, 3.4);
+        for (let cell = 0; cell < 4; cell += 1) {
+          const level = cell < 2 ? 0 : 1;
+          add(geometry.panel, level ? steel : dark,
+            cell % 2 === 0 ? -1.15 : 1.15, 3.6 + level * 2.2, level * -0.7,
+            2, 2, 9, -0.35);
+        }
+        add(geometry.shipCylinder, dark, -5.4, 2.4, -4.6, 0.45, 3.8, 0.45);
+        add(geometry.panel, light, -5.4, 4.9, -4.6, 3.4, 3.2, 0.35, -0.5);
+        add(geometry.panel, dark, 5.2, 1.9, 4.6, 3.6, 1.8, 2.6);
+      } else if (kind === "aaGun") {
+        // Low pad, squat turret, twin barrels already at elevation.
+        add(geometry.panel, olive, 0, 0.5, 0, 8, 1, 8);
+        add(geometry.shipCylinder, steel, 0, 2.25, 0, 2.5, 2.5, 2.5);
+        add(geometry.panel, dark, -0.7, 3.6, -3.2, 0.5, 0.5, 7, -0.25);
+        add(geometry.panel, dark, 0.7, 3.6, -3.2, 0.5, 0.5, 7, -0.25);
+        add(geometry.panel, steel, 0, 3.2, 2.2, 3.4, 2.2, 1.6);
+      } else if (kind === "radarSite") {
+        // Mast with a tilted octagonal dish on a pivot - see updateGroundUnit.
+        add(geometry.panel, olive, 0, 0.5, 0, 10, 1, 10);
+        add(geometry.panel, steel, 0, 4, 0, 2, 6, 2);
+        add(geometry.panel, dark, 0, 1.7, 3.4, 4.4, 2.4, 2.6);
+        const pivot = new THREE.Group();
+        pivot.position.set(0, 7.4, 0);
+        const plate = new THREE.Mesh(geometry.shipOctPlate, light);
+        plate.scale.set(5, 0.6, 5);
+        plate.rotation.x = -0.5;
+        pivot.add(plate);
+        const arm = new THREE.Mesh(geometry.panel, dark);
+        arm.scale.set(0.6, 0.6, 2.4);
+        arm.position.set(0, -0.7, 0.9);
+        pivot.add(arm);
+        root.add(pivot);
+        dish = pivot;
+      } else if (kind === "fuelTank") {
+        // Two horizontal tanks side by side on a bund, joined by pipework.
+        add(geometry.panel, olive, 0, 0.4, 0, 22, 0.8, 14);
+        add(geometry.shipCylinder, steel, -5.6, 5.2, 0, 4.5, 9, 4.5, Math.PI / 2);
+        add(geometry.shipCylinder, steel, 5.6, 5.2, 0, 4.5, 9, 4.5, Math.PI / 2);
+        add(geometry.panel, dark, 0, 9.2, 0, 11.5, 1.1, 1.1);
+        add(geometry.panel, dark, 0, 4.6, 5.6, 1.4, 1.4, 2.4);
+      } else {
+        // Hardened shelter: heavy box, sloped cap, one dark doorway.
+        add(geometry.panel, olive, 0, 3, 0, 16, 6, 20);
+        add(geometry.panel, steel, 0, 6.6, 0, 17.4, 1.6, 21.4, 0.09);
+        add(geometry.panel, dark, 0, 2.1, -10.2, 4.4, 4.2, 0.8);
+        add(geometry.panel, dark, -6.2, 6.9, 6.4, 2.6, 2.2, 2.6);
+      }
+
+      root.add(...parts);
+      return {
+        group: root,
+        flames: [],
+        standardMaterials: [steel, olive, dark, light],
+        flameMaterial: markings,
+        extraMaterials,
+        dish
       };
     }
 
