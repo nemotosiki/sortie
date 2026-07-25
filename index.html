@@ -1449,6 +1449,12 @@
     let MISSILE_DAMAGE = 130;
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
+    let STRUCTURAL_G = 3;              // max load factor; sets the corner speed
+    // Slowing down tightens the turn, but only down to the corner speed. Below it
+    // the wing cannot generate the lift for that much G and the turn opens back
+    // up, so there is a sweet spot rather than "slower is always better".
+    const TURN_GAIN_CEILING = 1.45;    // best-case turn multiplier at corner speed
+    const TURN_GAIN_FLOOR = 0.25;      // worst case when far too slow or too fast
     const STALL_DEEP_SPEED = 62;
     const STALL_RECOVERY_SPEED = 114;
     const BASE_CAMERA_FOV = 64;
@@ -1535,7 +1541,7 @@
         cruiseSpeed: 190, boostSpeed: 375, brakeSpeed: 138,
         pitchRateDeg: 40, rollRateDeg: 74, yawRateDeg: 11, maxBankAngleDeg: 52,
         normalRollSpring: 17, rollRateLimitDeg: 89, turnRateDeg: 29,
-        rollDamping: 6.4, stallWarnSpeed: 94, stallEntrySpeed: 82, stallAuthorityLoss: 0.7,
+        rollDamping: 6.4, stallWarnSpeed: 94, stallEntrySpeed: 82, stallAuthorityLoss: 0.7, structuralG: 3.0,
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
         missileCapacity: 10, maxHealth: 100,
@@ -1553,7 +1559,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         cruiseSpeed: 215, boostSpeed: 425, brakeSpeed: 128,
         pitchRateDeg: 45, rollRateDeg: 84, yawRateDeg: 13, maxBankAngleDeg: 58,
         normalRollSpring: 19, rollRateLimitDeg: 101, turnRateDeg: 34,
-        rollDamping: 7.6, stallWarnSpeed: 86, stallEntrySpeed: 74, stallAuthorityLoss: 0.55,
+        rollDamping: 7.6, stallWarnSpeed: 86, stallEntrySpeed: 74, stallAuthorityLoss: 0.55, structuralG: 3.1,
         gunDamage: 22, missileDamage: 98,
         boostResponse: 0.48, brakeResponse: 0.48, cruiseResponse: 0.56,
         missileCapacity: 12, maxHealth: 150,
@@ -1571,7 +1577,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         cruiseSpeed: 165, boostSpeed: 320, brakeSpeed: 152,
         pitchRateDeg: 30, rollRateDeg: 53, yawRateDeg: 8, maxBankAngleDeg: 40,
         normalRollSpring: 12, rollRateLimitDeg: 63, turnRateDeg: 21,
-        rollDamping: 5.0, stallWarnSpeed: 104, stallEntrySpeed: 92, stallAuthorityLoss: 0.88,
+        rollDamping: 5.0, stallWarnSpeed: 104, stallEntrySpeed: 92, stallAuthorityLoss: 0.88, structuralG: 2.6,
         gunDamage: 14, missileDamage: 98,
         boostResponse: 0.66, brakeResponse: 0.62, cruiseResponse: 0.7,
         missileCapacity: 8, maxHealth: 125,
@@ -1589,7 +1595,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         cruiseSpeed: 240, boostSpeed: 460, brakeSpeed: 118,
         pitchRateDeg: 51, rollRateDeg: 96, yawRateDeg: 14, maxBankAngleDeg: 65,
         normalRollSpring: 22, rollRateLimitDeg: 113, turnRateDeg: 39,
-        rollDamping: 8.8, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42,
+        rollDamping: 8.8, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
         missileCapacity: 14, maxHealth: 200,
@@ -3106,6 +3112,28 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return 1 - Math.pow(k, dt);
     }
 
+    // Instantaneous turn rate of a banked turn: omega = sqrt(n^2 - 1) / v.
+    // Below the corner speed the load factor n is capped by the lift the wing can
+    // make at that speed, (v / vStall)^2; above it, by the airframe's structural
+    // limit. That crossover is the corner speed, vStall * sqrt(G), and it is where
+    // the turn rate peaks.
+    function turnRateAt(speed) {
+      const vStall = Math.max(1, STALL_ENTRY_SPEED);
+      const v = Math.max(speed, 1);
+      const liftLimitedG = Math.pow(v / vStall, 2);
+      const n = Math.min(liftLimitedG, STRUCTURAL_G);
+      return Math.sqrt(Math.max(n * n - 1, 0)) / v;
+    }
+
+    // Normalised against cruise speed, so 1.0 is "the turn you get while
+    // cruising", above 1 is the reward for bleeding speed toward the corner, and
+    // below 1 is the penalty for going slower than the wing can carry.
+    function cornerTurnGain(speed) {
+      const reference = turnRateAt(CRUISE_SPEED);
+      if (reference <= 0) return 1;
+      return turnRateAt(speed) / reference;
+    }
+
     function readHighscore() {
       try {
         const value = Number.parseInt(window.localStorage.getItem("sortieHighscore") || "0", 10);
@@ -3306,15 +3334,17 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       playerControlAuthority = THREE.MathUtils.clamp(1 - stallSeverity * STALL_AUTHORITY_LOSS, 0.18, 1);
       const rawTurnFactor = THREE.MathUtils.clamp(
-        Math.pow(CRUISE_SPEED / Math.max(playerSpeed, STALL_DEEP_SPEED), 1.18),
-        0.58,
-        1.92
+        cornerTurnGain(playerSpeed),
+        TURN_GAIN_FLOOR,
+        TURN_GAIN_CEILING
       );
       playerTurnFactor = rawTurnFactor * (1 - stallSeverity * 0.78);
+      // Pitch follows the same curve but with the swing compressed, so nosing
+      // around still feels usable at the extremes of the speed range.
       const pitchManeuverFactor = THREE.MathUtils.clamp(
-        Math.pow(CRUISE_SPEED / Math.max(playerSpeed, STALL_ENTRY_SPEED * 0.9), 0.62),
-        0.72,
-        1.46
+        Math.sqrt(rawTurnFactor),
+        0.55,
+        1.25
       );
 
       if (controlMode === CONTROL_NORMAL) {
@@ -5999,6 +6029,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       STALL_WARNING_SPEED = spec.stallWarnSpeed;
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
+      STRUCTURAL_G = spec.structuralG;
       // AIR-TO-AIR: per-aircraft weapon punch.
       GUN_DAMAGE = spec.gunDamage;
       MISSILE_DAMAGE = spec.missileDamage;
