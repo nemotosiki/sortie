@@ -112,6 +112,25 @@
       gap: 8px;
     }
 
+    /* Which row the trigger fires. The caret keeps its 9px column on every row
+       so the stack does not shift when the selection moves. */
+    .wpnSel {
+      width: 9px;
+      color: #ffe66f;
+      font-size: 10px;
+      line-height: 1;
+      opacity: 0;
+      text-shadow: 0 0 6px rgba(255, 226, 111, 0.85);
+    }
+
+    .hudRow.wpnActive .wpnSel { opacity: 1; }
+
+    .hudRow.wpnActive .hudBox {
+      border-color: #ffe66f;
+      color: #ffe66f;
+      box-shadow: 0 0 8px rgba(255, 226, 111, 0.3);
+    }
+
     #flightData {
       left: max(24px, 20vw);
       top: 50%;
@@ -731,6 +750,75 @@
       letter-spacing: 0.1em;
     }
 
+    /* 8AAM multi-lock: every round in the salvo lights its own box, so the
+       player can count the shots before pulling the trigger. */
+    .enemyMarker.multiLocked {
+      color: #ff9f4a;
+      border-color: currentColor;
+      opacity: 0.95;
+      visibility: visible;
+    }
+
+    .enemyMarker.multiLocked::after {
+      content: "LOCK";
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 3px);
+      transform: translateX(-50%);
+      color: currentColor;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+    }
+
+    /* CCIP: where an unguided bomb released this instant would land. */
+    #ccipMarker {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 34px;
+      height: 34px;
+      margin: -17px 0 0 -17px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      color: #78ff9d;
+      opacity: 0;
+      visibility: hidden;
+      filter: drop-shadow(0 0 6px rgba(65, 255, 126, 0.6));
+    }
+
+    #ccipMarker.active {
+      opacity: 0.95;
+      visibility: visible;
+    }
+
+    #ccipMarker::before,
+    #ccipMarker::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 24px;
+      height: 1px;
+      background: currentColor;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    #ccipMarker::before { transform: translate(-50%, -50%) rotate(45deg); }
+    #ccipMarker::after { transform: translate(-50%, -50%) rotate(-45deg); }
+
+    #ccipLabel {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 4px);
+      transform: translateX(-50%);
+      color: currentColor;
+      white-space: nowrap;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+    }
+
     #targetDirectionArrow {
       position: absolute;
       left: 50%;
@@ -1266,7 +1354,7 @@
     .menuRankBig { font-size: 34px; line-height: 1; color: #ffd27a; text-shadow: 0 0 16px rgba(255, 190, 90, 0.5); }
     #missionThumb { width: 100%; height: 110px; border: 1px solid rgba(110, 190, 255, 0.18); background: rgba(6, 18, 34, 0.6); }
 
-    .specRow { display: grid; grid-template-columns: 92px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
+    .specRow { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
     .specRow span { font-size: 10.5px; letter-spacing: 0.1em; color: #a8d4f2; }
     .specBarTrack { position: relative; height: 9px; background: rgba(90, 160, 215, 0.16); border: 1px solid rgba(120, 195, 255, 0.25); }
 
@@ -1630,10 +1718,11 @@
     </section>
 
     <section id="statusPanel" class="panel">
-      <div class="hudRow"><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
-      <div class="hudRow"><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
-      <div class="hudRow"><span class="hudPlain">FLR</span><span id="flarePips"></span><strong class="hudVal" id="flares">2</strong></div>
-      <div class="hudRow"><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
+      <div class="hudRow wpnActive" id="mslRow"><span class="wpnSel">▶</span><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
+      <div class="hudRow" id="spwRow"><span class="wpnSel">▶</span><span class="hudBox" id="spwLabel">SP.W</span><span id="spwPips"></span><strong class="hudVal" id="spwCount">0</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudPlain">FLR</span><span id="flarePips"></span><strong class="hudVal" id="flares">2</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
     </section>
 
     <section id="radarWrap" class="panel">
@@ -1667,6 +1756,8 @@
       <span id="lockLabel">LOCK 0%</span>
       <span id="lockMeter"><span id="lockMeterFill"></span></span>
     </div>
+
+    <div id="ccipMarker"><span id="ccipLabel">CCIP</span></div>
 
     <div id="targetDirectionArrow">
       <span id="targetDirectionGlyph"></span>
@@ -1765,7 +1856,7 @@
         <span><span class="legendKey">↑↓ / D-PAD</span> 機体</span>
         <span><span class="legendKey">ENTER / ○</span> 出撃</span>
         <span><span class="legendKey">ESC / □</span> ミッション選択</span>
-        <span><span class="legendKey">SPACE</span>機銃 <span class="legendKey">ENTER</span>ミサイル <span class="legendKey">F</span>フレア <span class="legendKey">C</span>カメラ <span class="legendKey">M</span>操作モード <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速</span>
+        <span><span class="legendKey">SPACE</span>機銃 <span class="legendKey">ENTER</span>ミサイル <span class="legendKey">X</span>兵装切替 <span class="legendKey">F</span>フレア <span class="legendKey">C</span>カメラ <span class="legendKey">M</span>操作モード <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速</span>
         <button id="startBtn" class="actionButton" type="button">LAUNCH</button>
       </footer>
     </div>
@@ -1921,6 +2012,65 @@
     const AIRCRAFT_ORDER = Object.freeze(["f16", "f15", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
+    // ---- Special weapons (SP.W) ---------------------------------------------
+    // One slot per airframe, following AC7's real loadout for each aircraft.
+    // These sit OUTSIDE the two missile tubes: a dedicated launcher with no
+    // reload timer, refilled by the same checkpoint resupply that tops up the
+    // tubes. `multi` is how many targets one trigger pull can engage, `kind`
+    // picks the launch path (guided round vs free-fall bomb).
+    const SPW_TYPES = Object.freeze({
+      // F-16: dogfight round. Turns hard enough to follow a break.
+      qaam: Object.freeze({
+        key: "qaam",
+        label: "QAAM",
+        kind: "aam",
+        damage: 98,
+        turnRateDeg: 300,
+        maxSpeed: 520,
+        life: 9.5,
+        multi: 1,
+        lockRange: null
+      }),
+      // F-15: BVR sniper. Sees past the standard 1200 m seeker, but flies
+      // almost straight once it is off the rail.
+      xlaa: Object.freeze({
+        key: "xlaa",
+        label: "XLAA",
+        kind: "aam",
+        damage: 98,
+        turnRateDeg: 90,
+        maxSpeed: 640,
+        life: 12,
+        multi: 1,
+        lockRange: 2000
+      }),
+      // F-22: one trigger, up to eight targets, at 78 damage a round.
+      aam8: Object.freeze({
+        key: "aam8",
+        label: "8AAM",
+        kind: "aam",
+        damage: 78,
+        turnRateDeg: 200,
+        maxSpeed: 520,
+        life: 9.5,
+        multi: 8,
+        multiLockTime: 0.45,
+        lockRange: null
+      }),
+      // F-4: free-fall bomb, no lock at all - the CCIP marker is the sight.
+      ugb: Object.freeze({
+        key: "ugb",
+        label: "UGB",
+        kind: "bomb",
+        damage: 220,
+        blastRadius: 60,
+        directRadius: 14,
+        dropSpeed: 9,
+        multi: 1,
+        lockRange: null
+      })
+    });
+
     const AIRCRAFT_TYPES = Object.freeze({
       f16: Object.freeze({
         id: "f16",
@@ -1935,6 +2085,7 @@
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
         missileCapacity: 10, maxHealth: 100,
+        spw: Object.freeze({ key: "qaam", capacity: 12 }),
         tipSpan: 7.3, tipZ: 3.3,
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
@@ -1954,6 +2105,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         gunDamage: 22, missileDamage: 98,
         boostResponse: 0.48, brakeResponse: 0.48, cruiseResponse: 0.56,
         missileCapacity: 12, maxHealth: 150,
+        spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 8.55, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
@@ -1973,6 +2125,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         gunDamage: 14, missileDamage: 98,
         boostResponse: 0.66, brakeResponse: 0.62, cruiseResponse: 0.7,
         missileCapacity: 8, maxHealth: 125,
+        spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 9.1, tipZ: 2.4,
         theme: Object.freeze({
 primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
@@ -1992,6 +2145,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
         missileCapacity: 14, maxHealth: 200,
+        spw: Object.freeze({ key: "aam8", capacity: 24 }),
         tipSpan: 6.85, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
@@ -2938,6 +3092,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       specRole: document.getElementById("specRole"),
       specName: document.getElementById("specName"),
       specBars: document.getElementById("specBars"),
+      mslRow: document.getElementById("mslRow"),
+      spwRow: document.getElementById("spwRow"),
+      spwLabel: document.getElementById("spwLabel"),
+      spwPips: document.getElementById("spwPips"),
+      spwCount: document.getElementById("spwCount"),
+      ccipMarker: document.getElementById("ccipMarker"),
+      ccipLabel: document.getElementById("ccipLabel"),
       ammoGrid: document.getElementById("ammoGrid"),
       aircraftBlurbLine: document.getElementById("aircraftBlurbLine"),
       hangarMissionTag: document.getElementById("hangarMissionTag"),
@@ -3085,12 +3246,46 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // reloads one tube at a time on a timer.
     const MISSILE_TUBE_COUNT = 2;
     const MISSILE_RELOAD_TIME = 5;
+    const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(190);
+    const MISSILE_MAX_SPEED = 520;
+    const MISSILE_LIFE = 9.5;
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
     const FLARE_CAPACITY = 2;
     let flareCount = FLARE_CAPACITY;
     let flareCooldown = 0;
     const activeFlares = [];
+    // SP.W: a second, independent launcher. `selectedWeapon` only decides what
+    // the missile trigger sends - the gun and the flares never change.
+    let PLAYER_SPW = SPW_TYPES[AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].spw.key];
+    let PLAYER_SPW_CAPACITY = AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].spw.capacity;
+    let selectedWeapon = "msl";
+    let spwAmmo = PLAYER_SPW_CAPACITY;
+    let spwLaunched = 0;
+    let spwHits = 0;
+    let missileHits = 0;
+    let bombsDropped = 0;
+    let lastBombImpact = null;
+    const bombsInFlight = [];
+    // 8AAM acquisition: one more target latched every multiLockTime, nearest
+    // first, all inside the same cone the single lock uses.
+    const multiLock = { ids: [], timer: 0 };
+    const SPW_PIP_MAX = 6;
+    const BOMB_GRAVITY = 110;
+    const BOMB_MAX_FLIGHT = 14;
+    const BOMB_PREDICT_STEP = 0.1;
+    const ccip = {
+      active: false,
+      onScreen: false,
+      screenX: 0,
+      screenY: 0,
+      distance: 0,
+      point: new THREE.Vector3()
+    };
+    const ccipOrigin = new THREE.Vector3();
+    const ccipVelocity = new THREE.Vector3();
+    const bombImpact = new THREE.Vector3();
+    const tmpBallistic = new THREE.Vector3();
     let kills = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
@@ -3199,6 +3394,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missile: false,
       previousMissile: false,
       previousFlare: false,
+      previousWeaponToggle: false,
       previousStart: false,
       previousModeToggle: false,
       previousTarget: false,
@@ -3315,12 +3511,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         maxHealth: PLAYER_MAX_HEALTH,
         missileCapacity: PLAYER_MISSILE_CAPACITY,
         gunDamage: GUN_DAMAGE,
-        missileDamage: MISSILE_DAMAGE
+        missileDamage: MISSILE_DAMAGE,
+        spw: { key: null, label: null, kind: null, capacity: 0, ammo: 0 }
       },
       selectedTargetId: null,
       weapons: {
+        selected: "msl",
         gunShots: 0,
         missilesLaunched: 0,
+        missileHits: 0,
+        spwLaunched: 0,
+        spwHits: 0,
+        bombsDropped: 0,
+        multiLock: [],
+        ccip: { active: false, onScreen: false, x: 0, y: 0, z: 0, screenX: 0, screenY: 0, distance: 0 },
+        lastBombImpact: null,
         enemyMissilesLaunched: 0
       },
       flight: {
@@ -3368,6 +3573,66 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceDeployFlare: () => deployFlare(),
         forceSelectAircraft: (id) => selectAircraft(id),
+        forceSelectWeapon: (key) => {
+          const next = key === "spw" || key === "msl" ? key : null;
+          if (!next || gameState !== STATE_PLAYING) return false;
+          if (next === "spw" && !PLAYER_SPW) return false;
+          if (selectedWeapon !== next) toggleWeapon();
+          return selectedWeapon === next;
+        },
+        forceFireWeapon: () => fireWeapon(),
+        forceSpwAmmo: (rounds) => {
+          if (gameState !== STATE_PLAYING) return false;
+          spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
+          return spwAmmo;
+        },
+        // Test affordance: point the nose straight at a target so an automated
+        // run can reach a lock without flying the intercept by hand.
+        forceAimAt: (id) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy) return false;
+          tmpV1.copy(enemy.group.position).sub(player.position);
+          if (tmpV1.lengthSq() < 1) return false;
+          playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
+          playerBank = 0;
+          syncPlayerOrientation();
+          return true;
+        },
+        forceAim: (yawDeg, pitchDeg = 0) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const yaw = THREE.MathUtils.degToRad(yawDeg);
+          const pitch = THREE.MathUtils.degToRad(pitchDeg);
+          tmpV1.set(
+            Math.sin(yaw) * Math.cos(pitch),
+            Math.sin(pitch),
+            -Math.cos(yaw) * Math.cos(pitch)
+          );
+          playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
+          playerBank = 0;
+          syncPlayerOrientation();
+          return true;
+        },
+        forceSetEnemyHp: (id, hp) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy) return false;
+          enemy.hp = hp;
+          enemy.maxHp = Math.max(enemy.maxHp, hp);
+          return enemy.hp;
+        },
+        bombProbe: () => bombsInFlight.map((bomb) => ({
+          x: bomb.mesh.position.x,
+          y: bomb.mesh.position.y,
+          z: bomb.mesh.position.z,
+          life: bomb.life,
+          predicted: bomb.predicted
+        })),
+        predictBombImpact: () => {
+          bombReleaseState(ccipOrigin, ccipVelocity);
+          const hit = predictImpact(ccipOrigin, ccipVelocity, tmpBallistic);
+          return hit ? { x: hit.x, y: hit.y, z: hit.z, time: hit.time } : null;
+        },
         forceSelectMission: (key) => {
           if (gameState === STATE_PLAYING) return false;
           const index = typeof key === "number" ? key : MISSIONS.findIndex((mission) => mission.key === key);
@@ -3617,6 +3882,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         return;
       }
 
+      if (event.code === "KeyX" && !event.repeat) {
+        if (gameState === STATE_PLAYING) toggleWeapon();
+        return;
+      }
+
       if (event.code === "Tab" && !event.repeat) {
         if (gameState === STATE_PLAYING) cycleTarget();
         return;
@@ -3676,7 +3946,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           startMission();
           return;
         }
-        if (gameState === STATE_PLAYING) launchMissile();
+        if (gameState === STATE_PLAYING) fireWeapon();
       }
 
       keys.add(event.code);
@@ -3777,6 +4047,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           updateLock(dt);
           updateMissileReload(dt);
           updateMissiles(dt);
+          updateBombs(dt);
           updateEnemyMissiles(dt);
           updateMission(dt);
         }
@@ -3810,6 +4081,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function isControlKey(code) {
       return code === "KeyW" || code === "KeyA" || code === "KeyS" || code === "KeyD" || code === "KeyF" ||
+        code === "KeyX" ||
         code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight" ||
         code === "ShiftLeft" || code === "ShiftRight" || code === "ControlLeft" || code === "ControlRight" ||
         code === "KeyQ" || code === "KeyE" || code === "KeyM" || code === "KeyC" || code === "Tab" ||
@@ -3859,6 +4131,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.previousFlare = false;
       gamepadInput.missile = false;
       gamepadInput.previousMissile = false;
+      gamepadInput.previousWeaponToggle = false;
       gamepadInput.previousStart = false;
       gamepadInput.previousModeToggle = false;
       gamepadInput.previousTarget = false;
@@ -3928,11 +4201,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       // Standard Gamepad mapping / Ace Combat 7 Type A:
       // 0 = Cross/A (gun), 1 = Circle/B (missile), 2 = Square/X (camera),
       // 3 = Triangle/Y (short target cycle, long target view), 4/5 = L1/R1 yaw,
-      // 6 = L2 boost, 7 = R2 brake, 8 = Share/View (NORMAL/EXPERT).
+      // 6 = L2 boost, 7 = R2 brake, 8 = Share/View (NORMAL/EXPERT),
+      // 10 = L3 (SP.W select - the only stick click the game did not use),
+      // 11 = R3 flare.
       gamepadInput.gun = gamepadButtonPressed(selected, 0);
 
       const missilePressed = gamepadButtonPressed(selected, 1);
       const flarePressed = gamepadButtonPressed(selected, 11);
+      const weaponTogglePressed = gamepadButtonPressed(selected, 10);
       const cameraPressed = gamepadButtonPressed(selected, 2);
       const targetPressed = gamepadButtonPressed(selected, 3);
       const startPressed = gamepadButtonPressed(selected, 9) || missilePressed;
@@ -3950,8 +4226,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (wasPlaying) cycleCamera();
         else if (gameState !== STATE_MISSION_SELECT) setState(STATE_MISSION_SELECT);
       }
-      if (wasPlaying && missilePressed && !gamepadInput.previousMissile) launchMissile();
+      if (wasPlaying && missilePressed && !gamepadInput.previousMissile) fireWeapon();
       if (wasPlaying && flarePressed && !gamepadInput.previousFlare) deployFlare();
+      if (wasPlaying && weaponTogglePressed && !gamepadInput.previousWeaponToggle) toggleWeapon();
       // Also allowed on the result screen: otherwise a gamepad-only player can
       // never change aircraft, because retry restarts with the current one and
       // #changeAircraftBtn is mouse-only.
@@ -4015,6 +4292,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       gamepadInput.missile = missilePressed;
       gamepadInput.previousMissile = missilePressed;
       gamepadInput.previousFlare = flarePressed;
+      gamepadInput.previousWeaponToggle = weaponTogglePressed;
       gamepadInput.previousStart = startPressed;
       gamepadInput.previousModeToggle = modePressed;
       gamepadInput.previousTarget = targetPressed;
@@ -4491,6 +4769,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       flareCooldown = 0;
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, PLAYER_MISSILE_CAPACITY);
       missileReloadTimers.length = 0;
+      selectedWeapon = "msl";
+      spwAmmo = PLAYER_SPW_CAPACITY;
+      spwLaunched = 0;
+      spwHits = 0;
+      missileHits = 0;
+      bombsDropped = 0;
+      lastBombImpact = null;
+      clearMultiLock();
       clearFlares();
       kills = 0;
       fearStageReached = 0;
@@ -4875,15 +5161,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function launchMissile() {
-      if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return;
+      if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return false;
       if (loadedMissiles <= 0) {
         playTone(240, 0.07, 0.05, "square");
-        return;
+        return false;
       }
       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
       if (!target) {
         resetLock();
-        return;
+        return false;
       }
 
       playSfx("missile", 0.5);
@@ -4919,6 +5205,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missilesLaunched += 1;
       showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
       resetLock();
+      return true;
     }
 
     function updateMissileReload(dt) {
@@ -4944,17 +5231,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           const distance = tmpV1.length();
           tmpV1.normalize();
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
-          missile.mesh.quaternion.rotateTowards(tmpQ1, THREE.MathUtils.degToRad(190) * dt);
+          missile.mesh.quaternion.rotateTowards(tmpQ1, (missile.turnRate ?? MISSILE_TURN_RATE) * dt);
 
           if (distance < (target.surface ? target.spec.hitRadius * 0.35 : 16)) {
-            damageEnemy(target, MISSILE_DAMAGE, true);
+            damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+            if (missile.spw) spwHits += 1;
+            else missileHits += 1;
             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
             removeMissile(i);
             continue;
           }
         }
 
-        missile.speed = THREE.MathUtils.lerp(missile.speed, 520, damping(0.012, dt));
+        missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed ?? MISSILE_MAX_SPEED, damping(0.012, dt));
         forwardOf(missile.mesh, tmpV2);
         missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
 
@@ -4964,7 +5253,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           missile.trailTimer += 0.03;
         }
 
-        if (missile.life > 9.5 || missile.mesh.position.y < 0) {
+        if (missile.life > (missile.lifeLimit ?? MISSILE_LIFE) || missile.mesh.position.y < 0) {
           createImpactBurst(missile.mesh.position, 0xffca70, 0.5);
           removeMissile(i);
         }
@@ -4975,6 +5264,366 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const missile = missilesInFlight[index];
       scene.remove(missile.mesh);
       missilesInFlight.splice(index, 1);
+    }
+
+    // ---- Special weapons ----------------------------------------------------
+
+    // The trigger fires whichever weapon is selected; everything else about the
+    // aircraft (gun, flares, tubes) is unaffected by the choice.
+    function fireWeapon() {
+      if (selectedWeapon === "spw") return launchSpWeapon();
+      return launchMissile();
+    }
+
+    // SP.W has no tube/reload gate: the launcher is either loaded or dry.
+    function launchSpWeapon() {
+      if (gameState !== STATE_PLAYING || !PLAYER_SPW) return false;
+      if (spwAmmo <= 0) {
+        playTone(240, 0.07, 0.05, "square");
+        return false;
+      }
+      if (PLAYER_SPW.kind === "bomb") return dropBomb();
+      if (PLAYER_SPW.multi > 1) return launchSpSalvo();
+      return launchSpSingle();
+    }
+
+    function launchSpSingle() {
+      if (!lock.locked) return false;
+      const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
+      if (!target) {
+        resetLock();
+        return false;
+      }
+      spawnSpMissile(target, 0);
+      playSfx("missile", 0.5);
+      showBanner(`FOX THREE · ${PLAYER_SPW.label} · TARGET ${target.id}`, 1.15);
+      resetLock();
+      return true;
+    }
+
+    // 8AAM: one round per latched target, all in the same frame. Short stock is
+    // spent nearest-first rather than refusing the shot.
+    function launchSpSalvo() {
+      const targets = [];
+      for (const id of multiLock.ids) {
+        if (targets.length >= spwAmmo) break;
+        const target = enemies.find((enemy) => enemy.id === id && enemy.alive);
+        if (target) targets.push(target);
+      }
+      if (targets.length === 0) return false;
+      targets.forEach((target, index) => spawnSpMissile(target, index));
+      playSfx("missile", 0.5);
+      showBanner(`FOX THREE · ${PLAYER_SPW.label} · ${targets.length} TARGETS`, 1.3);
+      clearMultiLock();
+      resetLock();
+      return true;
+    }
+
+    function spawnSpMissile(target, index) {
+      forwardOf(player, tmpV1);
+      rightOf(player, tmpV2);
+      upOf(player, tmpV3);
+
+      const root = createMissileModel();
+      // A salvo leaves in pairs, each pair a little further out on the rail and
+      // a little further aft, so eight rounds do not spawn inside each other.
+      const rank = Math.floor(index / 2);
+      const side = index % 2 === 0 ? missileSide : -missileSide;
+      root.position.copy(player.position)
+        .addScaledVector(tmpV1, 5.5 - rank * 1.1)
+        .addScaledVector(tmpV2, side * (4.2 + rank * 1.4))
+        .addScaledVector(tmpV3, -1.2);
+      root.quaternion.copy(player.quaternion);
+      scene.add(root);
+
+      missilesInFlight.push({
+        mesh: root,
+        targetId: target.id,
+        speed: Math.max(playerSpeed + 120, 300),
+        maxSpeed: PLAYER_SPW.maxSpeed,
+        turnRate: THREE.MathUtils.degToRad(PLAYER_SPW.turnRateDeg),
+        damage: PLAYER_SPW.damage,
+        lifeLimit: PLAYER_SPW.life,
+        spw: PLAYER_SPW.key,
+        life: 0,
+        trailTimer: 0
+      });
+
+      missileSide *= -1;
+      spwAmmo -= 1;
+      spwLaunched += 1;
+    }
+
+    // ---- Unguided bombs -----------------------------------------------------
+    // Release state is read once and then never touched again: the round follows
+    // the closed-form parabola from that state, and CCIP predicts with the exact
+    // same function, so the marker is not an approximation of a different model.
+    function bombReleaseState(originOut, velocityOut) {
+      forwardOf(player, tmpV1);
+      upOf(player, tmpV3);
+      const dropSpeed = PLAYER_SPW ? PLAYER_SPW.dropSpeed : 9;
+      originOut.copy(player.position).addScaledVector(tmpV3, -2.2);
+      velocityOut.copy(tmpV1).multiplyScalar(playerSpeed).addScaledVector(tmpV3, -dropSpeed);
+    }
+
+    function ballisticPoint(origin, velocity, t, out) {
+      out.copy(origin).addScaledVector(velocity, t);
+      out.y -= 0.5 * BOMB_GRAVITY * t * t;
+      return out;
+    }
+
+    // Cheap upper bound on the ground under (x, z): only a mountain can lift it,
+    // and never above its own summit. Lets the impact search skip the per-point
+    // raycast everywhere the trajectory is still over open water.
+    function reliefCeilingAt(x, z) {
+      let ceiling = 0;
+      for (const mountain of world.mountains) {
+        const dx = x - mountain.x;
+        const dz = z - mountain.z;
+        if (dx * dx + dz * dz > mountain.r * mountain.r * 3.24) continue;
+        if (mountain.h > ceiling) ceiling = mountain.h;
+      }
+      return ceiling;
+    }
+
+    // Coarse march against the cheap ceiling, then the real surface inside the
+    // one window that can contain the crossing, then bisection. Returns null if
+    // the round is still airborne after BOMB_MAX_FLIGHT.
+    function predictImpact(origin, velocity, out) {
+      let previousT = 0;
+      for (let t = BOMB_PREDICT_STEP; t <= BOMB_MAX_FLIGHT; t += BOMB_PREDICT_STEP) {
+        ballisticPoint(origin, velocity, t, tmpBallistic);
+        if (tmpBallistic.y > reliefCeilingAt(tmpBallistic.x, tmpBallistic.z)) {
+          previousT = t;
+          continue;
+        }
+        const hit = refineImpact(origin, velocity, previousT, t, out);
+        if (hit) return hit;
+        previousT = t;
+      }
+      return null;
+    }
+
+    function refineImpact(origin, velocity, tLow, tHigh, out) {
+      let low = tLow;
+      for (let i = 1; i <= 8; i += 1) {
+        const t = tLow + ((tHigh - tLow) * i) / 8;
+        ballisticPoint(origin, velocity, t, tmpBallistic);
+        if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) {
+          low = t;
+          continue;
+        }
+        let high = t;
+        for (let k = 0; k < 16; k += 1) {
+          const mid = (low + high) * 0.5;
+          ballisticPoint(origin, velocity, mid, tmpBallistic);
+          if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) low = mid;
+          else high = mid;
+        }
+        ballisticPoint(origin, velocity, high, out);
+        return { time: high, x: out.x, y: out.y, z: out.z };
+      }
+      return null;
+    }
+
+    function dropBomb() {
+      bombReleaseState(ccipOrigin, ccipVelocity);
+      const root = createBombModel();
+      root.position.copy(ccipOrigin);
+      root.quaternion.copy(player.quaternion);
+      scene.add(root);
+
+      const predicted = predictImpact(ccipOrigin, ccipVelocity, tmpBallistic);
+      bombsInFlight.push({
+        mesh: root,
+        origin: ccipOrigin.clone(),
+        velocity: ccipVelocity.clone(),
+        weapon: PLAYER_SPW,
+        life: 0,
+        predicted: predicted ? { x: predicted.x, y: predicted.y, z: predicted.z, time: predicted.time } : null,
+        // What the pilot was actually looking at when the pickle went in.
+        marker: ccip.active ? { x: ccip.point.x, y: ccip.point.y, z: ccip.point.z } : null
+      });
+
+      spwAmmo -= 1;
+      spwLaunched += 1;
+      bombsDropped += 1;
+      if (!playSfx("missile", 0.4, 0.7)) playTone(180, 0.16, 0.08, "square");
+      playTone(140, 0.22, 0.07, "sawtooth", 0.02);
+      showBanner(`BOMBS AWAY · ${PLAYER_SPW.label}`, 1.0);
+      return true;
+    }
+
+    function removeBomb(index) {
+      scene.remove(bombsInFlight[index].mesh);
+      bombsInFlight.splice(index, 1);
+    }
+
+    function updateBombs(dt) {
+      for (let i = bombsInFlight.length - 1; i >= 0; i -= 1) {
+        const bomb = bombsInFlight[i];
+        const previousT = bomb.life;
+        bomb.life += dt;
+        ballisticPoint(bomb.origin, bomb.velocity, bomb.life, tmpV1);
+
+        // A bomb is not a proximity round: an aircraft only counts if the body
+        // passes through it.
+        let struck = null;
+        for (const enemy of enemies) {
+          if (!enemy.alive || enemy.surface) continue;
+          if (enemy.group.position.distanceTo(tmpV1) <= bomb.weapon.directRadius) {
+            struck = enemy;
+            break;
+          }
+        }
+
+        if (!struck && tmpV1.y > surfaceHeightAt(tmpV1.x, tmpV1.z)) {
+          bomb.mesh.position.copy(tmpV1);
+          // Nose tips over toward the velocity vector as it falls.
+          tmpV2.copy(bomb.velocity);
+          tmpV2.y -= BOMB_GRAVITY * bomb.life;
+          if (tmpV2.lengthSq() > 0.001) {
+            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV2.normalize());
+            bomb.mesh.quaternion.slerp(tmpQ1, Math.min(1, dt * 6));
+          }
+          if (bomb.life > BOMB_MAX_FLIGHT) removeBomb(i);
+          continue;
+        }
+
+        if (!struck) {
+          // Detonate on the surface, not wherever the frame happened to end.
+          let low = previousT;
+          let high = bomb.life;
+          for (let k = 0; k < 14; k += 1) {
+            const mid = (low + high) * 0.5;
+            ballisticPoint(bomb.origin, bomb.velocity, mid, tmpV2);
+            if (tmpV2.y > surfaceHeightAt(tmpV2.x, tmpV2.z)) low = mid;
+            else high = mid;
+          }
+          ballisticPoint(bomb.origin, bomb.velocity, high, tmpV1);
+        }
+
+        detonateBomb(bomb, tmpV1);
+        removeBomb(i);
+      }
+    }
+
+    function detonateBomb(bomb, position) {
+      bombImpact.copy(position);
+      const weapon = bomb.weapon;
+      const ground = surfaceHeightAt(bombImpact.x, bombImpact.z);
+      const water = ground <= 0.01 && bombImpact.y <= 1;
+
+      createExplosion(bombImpact, water ? 0xbfe6ff : 0xffb95a, 2.2);
+      createImpactBurst(bombImpact, water ? 0xdff4ff : 0xffc98a, 1.6);
+      // Column: a 220kg bomb throws up far more than a missile warhead does -
+      // spray over water, dirt over land.
+      for (let i = 0; i < 22; i += 1) {
+        tmpV9.set((Math.random() - 0.5) * 46, 8 + Math.random() * 32, (Math.random() - 0.5) * 46);
+        smokeParticlePool.spawn(
+          bombImpact,
+          tmpV9,
+          1.8 + Math.random() * 1.4,
+          water ? 0xb9cdd6 : 0x6b5a44,
+          -3.5,
+          0.55
+        );
+      }
+
+      // Blast: everything on the surface inside the radius, aircraft only on a
+      // direct pass-through. Ships are measured from the hull, not the centre
+      // of a 340m flight deck, using the same contact radius missiles use.
+      const victims = [];
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const centreDistance = enemy.group.position.distanceTo(bombImpact);
+        if (enemy.surface) {
+          const hull = (enemy.spec.hitRadius || 0) * 0.35;
+          const distance = Math.max(0, centreDistance - hull);
+          if (distance > weapon.blastRadius) continue;
+          victims.push({
+            enemy,
+            amount: weapon.damage * (1 - (distance / weapon.blastRadius) * 0.5)
+          });
+        } else if (centreDistance <= weapon.directRadius) {
+          victims.push({ enemy, amount: weapon.damage });
+        }
+      }
+      for (const victim of victims) {
+        if (!victim.enemy.alive) continue;
+        damageEnemy(victim.enemy, victim.amount, true);
+      }
+
+      const playerDistance = player.position.distanceTo(bombImpact);
+      if (playerDistance < 320) {
+        cameraShake = Math.min(1.8, cameraShake + 0.5 * (1 - playerDistance / 320));
+      }
+      playSfx("explosion", 0.8, 0.72);
+
+      lastBombImpact = {
+        x: bombImpact.x,
+        y: bombImpact.y,
+        z: bombImpact.z,
+        predicted: bomb.predicted,
+        marker: bomb.marker,
+        predictedError: bomb.predicted
+          ? Math.hypot(bombImpact.x - bomb.predicted.x, bombImpact.z - bomb.predicted.z)
+          : null,
+        markerError: bomb.marker
+          ? Math.hypot(bombImpact.x - bomb.marker.x, bombImpact.z - bomb.marker.z)
+          : null,
+        victims: victims.map((victim) => ({
+          id: victim.enemy.id,
+          label: victim.enemy.label,
+          amount: Math.round(victim.amount)
+        }))
+      };
+    }
+
+    // The bomb reads as falling ordnance rather than a missile: same body, no
+    // motor glow, stubbier proportions.
+    function createBombModel() {
+      const root = new THREE.Group();
+      const body = new THREE.Mesh(geometry.missileBody, shared.missileBody);
+      const nose = new THREE.Mesh(geometry.missileNose, shared.missileNose);
+      const fins = new THREE.Mesh(geometry.missileFins, shared.missileFin);
+      nose.position.z = -2.35;
+      fins.position.z = 1.25;
+      root.add(body, nose, fins);
+      root.scale.set(1.2, 1.2, 0.78);
+      return root;
+    }
+
+    function updateCcip() {
+      const armed = gameState === STATE_PLAYING && selectedWeapon === "spw" &&
+        Boolean(PLAYER_SPW) && PLAYER_SPW.kind === "bomb";
+      if (!armed) {
+        if (ccip.active) ui.ccipMarker.classList.remove("active");
+        ccip.active = false;
+        ccip.onScreen = false;
+        return;
+      }
+
+      bombReleaseState(ccipOrigin, ccipVelocity);
+      const hit = predictImpact(ccipOrigin, ccipVelocity, ccip.point);
+      ccip.active = Boolean(hit);
+      if (!hit) {
+        ccip.onScreen = false;
+        ui.ccipMarker.classList.remove("active");
+        return;
+      }
+
+      ccip.distance = player.position.distanceTo(ccip.point);
+      tmpV6.copy(ccip.point).applyMatrix4(camera.matrixWorldInverse);
+      tmpV7.copy(ccip.point).project(camera);
+      ccip.onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.0);
+      ui.ccipMarker.classList.toggle("active", ccip.onScreen);
+      if (!ccip.onScreen) return;
+      ccip.screenX = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
+      ccip.screenY = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
+      ui.ccipMarker.style.left = `${ccip.screenX}px`;
+      ui.ccipMarker.style.top = `${ccip.screenY}px`;
+      ui.ccipLabel.textContent = `CCIP · ${Math.round(ccip.distance)}M`;
     }
 
     function attemptEnemyMissile(enemy) {
@@ -5220,11 +5869,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       return nearest;
     }
 
+    // How far the seeker sees. Only the selected weapon changes it - the cone
+    // itself (LOCK_DOT) is the same for every round.
+    function currentLockRange() {
+      return selectedWeapon === "spw" && PLAYER_SPW && PLAYER_SPW.lockRange
+        ? PLAYER_SPW.lockRange
+        : LOCK_RANGE;
+    }
+
     function updateLock(dt) {
       forwardOf(player, tmpV1);
       let candidate = null;
       let preferredCandidate = null;
       let bestScore = -Infinity;
+      const lockRange = currentLockRange();
+      const inCone = [];
 
       const preferred = enemies.find((enemy) => enemy.id === preferredTargetId && enemy.alive);
       if (preferredTargetId !== null && !preferred) preferredTargetId = null;
@@ -5233,12 +5892,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (!enemy.alive) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
-        if (distance > LOCK_RANGE || distance < 1) continue;
+        if (distance > lockRange || distance < 1) continue;
         tmpV2.multiplyScalar(1 / distance);
         const dot = tmpV1.dot(tmpV2);
         if (dot < LOCK_DOT) continue;
 
-        let selectionScore = dot * 4 - distance / LOCK_RANGE;
+        inCone.push({ id: enemy.id, distance });
+        let selectionScore = dot * 4 - distance / lockRange;
         if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
         if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
         if (selectionScore > bestScore) {
@@ -5246,6 +5906,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           candidate = enemy;
         }
       }
+
+      updateMultiLock(dt, inCone);
 
       // A manually selected target wins only while it is actually inside the lock cone.
       // Otherwise the best visible candidate remains available instead of producing no lock.
@@ -5274,6 +5936,45 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       lock.progress = 0;
       lock.locked = false;
       lockGraceTimer = 0;
+    }
+
+    // 8AAM: the cone fills a target list instead of a single lock, nearest
+    // first, one more every multiLockTime. Any other weapon empties it.
+    function updateMultiLock(dt, candidates) {
+      const weapon = selectedWeapon === "spw" ? PLAYER_SPW : null;
+      if (!weapon || weapon.multi <= 1 || candidates.length === 0) {
+        clearMultiLock();
+        return;
+      }
+      multiLock.timer += dt;
+      candidates.sort((a, b) => a.distance - b.distance);
+      const step = weapon.multiLockTime || 0.45;
+      const count = Math.min(
+        weapon.multi,
+        candidates.length,
+        Math.floor(multiLock.timer / step)
+      );
+      multiLock.ids.length = 0;
+      for (let i = 0; i < count; i += 1) multiLock.ids.push(candidates[i].id);
+    }
+
+    function clearMultiLock() {
+      multiLock.ids.length = 0;
+      multiLock.timer = 0;
+    }
+
+    // Weapon select. Only the missile trigger is affected: gun and flares stay
+    // where they are, exactly like AC.
+    function toggleWeapon() {
+      if (gameState !== STATE_PLAYING || !PLAYER_SPW) return false;
+      selectedWeapon = selectedWeapon === "msl" ? "spw" : "msl";
+      clearMultiLock();
+      playTone(1240, 0.05, 0.05, "square");
+      showBanner(
+        selectedWeapon === "spw" ? `SP.W ▶ ${PLAYER_SPW.label}` : "WPN ▶ MSL",
+        0.7
+      );
+      return true;
     }
 
     function spawnWave(number, withAce = false) {
@@ -5629,11 +6330,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       spawnShip(positions[1], fleetHeading, 1, "aegis");
       spawnShip(positions[2], fleetHeading, 2, "aegis");
 
-      // AC-style checkpoint resupply: the anti-ship leg starts with full tubes.
+      // AC-style checkpoint resupply: the anti-ship leg starts with full tubes
+      // and a full SP.W launcher - the leg the UGB exists for.
       // Flares deliberately do NOT restock - two per sortie is the contract.
       missileCount = PLAYER_MISSILE_CAPACITY;
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, missileCount);
       missileReloadTimers.length = 0;
+      spwAmmo = PLAYER_SPW_CAPACITY;
       if (waveNumber > 1) showBanner("MISSILES RESTOCKED", 1.4, "success");
     }
 
@@ -6712,6 +7415,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       camera.updateMatrixWorld();
       updateEnemyHudMarkers();
       updateTargetBox();
+      updateCcip();
       updateCombatPopups(dt);
     }
 
@@ -7083,7 +7787,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         tmpV6.copy(enemy.group.position).applyMatrix4(camera.matrixWorldInverse);
         tmpV7.copy(enemy.group.position).project(camera);
         const onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.04);
-        const coveredByLockBox = onScreen && lock.targetId === enemy.id;
+        const multiLocked = multiLock.ids.includes(enemy.id);
+        // The single-lock box normally hides the marker under it, but a salvo
+        // target has to keep its own LOCK frame or the count is unreadable.
+        const coveredByLockBox = onScreen && lock.targetId === enemy.id && !multiLocked;
         const active = onScreen && !coveredByLockBox;
         const selected = selectedId === enemy.id;
         const locked = lock.locked && lock.targetId === enemy.id;
@@ -7091,6 +7798,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         marker.classList.toggle("active", active);
         marker.classList.toggle("selected", selected);
         marker.classList.toggle("locked", locked);
+        marker.classList.toggle("multiLocked", multiLocked);
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
         label.textContent = `TGT ${enemy.id} · ${enemy.label} · ${distance}M`;
 
@@ -7099,7 +7807,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
           marker.style.left = `${x}px`;
           marker.style.top = `${y}px`;
-          enemyMarkerScreenState.push({ id: enemy.id, x, y, selected, locked });
+          enemyMarkerScreenState.push({ id: enemy.id, x, y, selected, locked, multiLocked });
         }
       }
 
@@ -7303,6 +8011,29 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
       ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
 
+      // SP.W row: the launcher name, a six-diamond gauge (one diamond can stand
+      // for several rounds when the magazine is deep) and the count. The lit row
+      // is the one the trigger will fire.
+      const spwSelected = selectedWeapon === "spw";
+      ui.mslRow.classList.toggle("wpnActive", !spwSelected);
+      ui.spwRow.classList.toggle("wpnActive", spwSelected);
+      ui.spwLabel.textContent = PLAYER_SPW ? PLAYER_SPW.label : "SP.W";
+      ui.spwCount.textContent = String(spwAmmo);
+      const spwPipUnit = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / SPW_PIP_MAX));
+      const spwPipCount = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / spwPipUnit));
+      if (ui.spwPips.childElementCount !== spwPipCount) {
+        ui.spwPips.replaceChildren(...Array.from({ length: spwPipCount }, () => {
+          const pip = document.createElement("span");
+          pip.className = "missilePip";
+          pip.textContent = "\u25c6";
+          return pip;
+        }));
+      }
+      Array.from(ui.spwPips.children).forEach((pip, index) => {
+        const full = (index + 1) * spwPipUnit;
+        pip.style.opacity = spwAmmo >= full ? "1" : spwAmmo > index * spwPipUnit ? "0.5" : "0.12";
+      });
+
       forwardOf(player, tmpV1);
       rightOf(player, tmpV2);
       upOf(player, tmpV3);
@@ -7332,6 +8063,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
       hook.loadout.gunDamage = GUN_DAMAGE;
+      hook.loadout.spw.key = PLAYER_SPW ? PLAYER_SPW.key : null;
+      hook.loadout.spw.label = PLAYER_SPW ? PLAYER_SPW.label : null;
+      hook.loadout.spw.kind = PLAYER_SPW ? PLAYER_SPW.kind : null;
+      hook.loadout.spw.capacity = PLAYER_SPW_CAPACITY;
+      hook.loadout.spw.ammo = spwAmmo;
       hook.flares = flareCount;
       hook.missilesLoaded = loadedMissiles;
       hook.missileReloads = missileReloadTimers.length;
@@ -7343,8 +8079,23 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.outro.elapsed = outro.elapsed;
       hook.outro.retreatBannerFired = outro.retreatBannerFired;
       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
+      hook.weapons.selected = selectedWeapon;
       hook.weapons.gunShots = gunShots;
       hook.weapons.missilesLaunched = missilesLaunched;
+      hook.weapons.missileHits = missileHits;
+      hook.weapons.spwLaunched = spwLaunched;
+      hook.weapons.spwHits = spwHits;
+      hook.weapons.bombsDropped = bombsDropped;
+      hook.weapons.multiLock = [...multiLock.ids];
+      hook.weapons.ccip.active = ccip.active;
+      hook.weapons.ccip.onScreen = ccip.onScreen;
+      hook.weapons.ccip.x = ccip.point.x;
+      hook.weapons.ccip.y = ccip.point.y;
+      hook.weapons.ccip.z = ccip.point.z;
+      hook.weapons.ccip.screenX = ccip.screenX;
+      hook.weapons.ccip.screenY = ccip.screenY;
+      hook.weapons.ccip.distance = ccip.distance;
+      hook.weapons.lastBombImpact = lastBombImpact;
       hook.weapons.enemyMissilesLaunched = enemyMissilesLaunched;
       hook.flight.stalling = stalling;
       hook.flight.stallSeverity = stallSeverity;
@@ -7675,6 +8426,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       for (const missile of missilesInFlight) scene.remove(missile.mesh);
       missilesInFlight.length = 0;
+
+      for (const bomb of bombsInFlight) scene.remove(bomb.mesh);
+      bombsInFlight.length = 0;
+      clearMultiLock();
 
       for (const missile of enemyMissiles) scene.remove(missile.mesh);
       enemyMissiles.length = 0;
@@ -8877,6 +9632,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
       PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
       PLAYER_MAX_HEALTH = spec.maxHealth;
+      // SP.W is part of the airframe, so picking a jet picks the special weapon
+      // with it - and always hands the pilot the standard missile first.
+      PLAYER_SPW = SPW_TYPES[spec.spw.key];
+      PLAYER_SPW_CAPACITY = spec.spw.capacity;
+      spwAmmo = PLAYER_SPW_CAPACITY;
+      selectedWeapon = "msl";
+      clearMultiLock();
       // STABILITY: how little the aircraft wanders when banked or slow.
       ROLL_SETTLE = spec.rollDamping;
       STALL_WARNING_SPEED = spec.stallWarnSpeed;
@@ -8945,8 +9707,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const stabilityScore = (spec) =>
         spec.rollDamping * 10 - spec.stallEntrySpeed * 0.3 - spec.stallAuthorityLoss * 30;
       // AIR-TO-AIR: per-shot punch weighted with how much ordnance it carries.
+      // Deliberately blind to SP.W: feeding special-weapon damage into this sum
+      // would move all four existing bars, and an SP.W is not what a jet fights
+      // with by default.
       const firepowerScore = (spec) =>
         spec.missileDamage * 0.35 + spec.gunDamage * 5 + spec.missileCapacity * 3;
+      // AIR-TO-GROUND is absolute, not fleet-relative: it answers "can this jet
+      // attack a surface target", and the answer must not change when a new
+      // airframe joins the hangar. Guns and AAMs do scratch installations, hence
+      // a floor rather than a zero, but only a bomb makes it an attack role.
+      const groundScore = (spec) => {
+        const weapon = SPW_TYPES[spec.spw && spec.spw.key];
+        return weapon && weapon.kind === "bomb" ? 0.95 : 0.25;
+      };
       const stabilities = specs.map(stabilityScore);
       const firepowers = specs.map(firepowerScore);
 
@@ -8957,6 +9730,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           mobility: statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100,
           stability: statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100,
           firepower: statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100,
+          ground: groundScore(spec),
           defense: statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100
         };
       }
@@ -8996,13 +9770,17 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ["MOBILITY", "mobility"],
         ["STABILITY", "stability"],
         ["AIR-TO-AIR", "firepower"],
+        ["AIR-TO-GROUND", "ground"],
         ["DEFENSE", "defense"]
       ];
       ui.specBars.innerHTML = rows.map(([label, key]) =>
         `<div class="specRow"><span>${label}</span><div class="specBarTrack"><i style="--v:${(bars[key] || 0).toFixed(2)}"></i></div></div>`
       ).join("");
+      const spwSpec = SPW_TYPES[spec.spw && spec.spw.key];
       ui.ammoGrid.innerHTML =
-        `<dt>GUN</dt><dd>---</dd><dt>MSL</dt><dd>${String(spec.missileCapacity)}</dd><dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
+        `<dt>GUN</dt><dd>---</dd><dt>MSL</dt><dd>${String(spec.missileCapacity)}</dd>` +
+        `<dt>SP.W</dt><dd>${spwSpec ? `${spwSpec.label} ×${spec.spw.capacity}` : "---"}</dd>` +
+        `<dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
       ui.aircraftBlurbLine.textContent = spec.blurb;
       ui.hangarMissionTag.textContent =
         `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title}`;
