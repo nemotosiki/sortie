@@ -1071,6 +1071,7 @@
 
     #stallWarning,
     #missileWarning,
+    #battleAreaWarning,
     #cameraFocusStatus {
       position: absolute;
       left: 50%;
@@ -1116,6 +1117,30 @@
       opacity: 1;
       border-color: rgba(255, 69, 82, 0.75);
       animation: alertPulse 0.34s ease-in-out infinite alternate;
+    }
+
+    /* Low on the frame, above the stall caption: the banner row (top ~22-30%)
+       and the missile alert (top 18%) both own the upper half, and a boundary
+       run frequently coincides with all three. */
+    #battleAreaWarning {
+      bottom: 25%;
+      color: #ffd45a;
+      text-shadow: 0 0 12px rgba(255, 190, 56, 0.95);
+    }
+
+    #battleAreaWarning.active {
+      opacity: 1;
+      border-color: rgba(255, 212, 90, 0.75);
+      animation: alertPulse 0.5s ease-in-out infinite alternate;
+    }
+
+    /* Past the line the countdown is running, so the caution yellow escalates
+       to the same red the stall and missile alerts use. */
+    #battleAreaWarning.critical {
+      color: #ff4d58;
+      border-color: rgba(255, 72, 82, 0.8);
+      text-shadow: 0 0 12px rgba(255, 38, 54, 0.95);
+      animation-duration: 0.3s;
     }
 
     #cameraFocusStatus {
@@ -1768,6 +1793,7 @@
     <div id="boostIndicator">AFTERBURNER</div>
     <div id="stallWarning">STALL · ACCELERATE / LOWER NOSE</div>
     <div id="missileWarning">MISSILE ALERT</div>
+    <div id="battleAreaWarning">RETURN TO THE BATTLE AREA</div>
     <div id="cameraFocusStatus">TARGET VIEW</div>
     <div id="controlModeStatus">FLIGHT CONTROL · NORMAL · M / SHARE TOGGLE</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
@@ -1964,6 +1990,19 @@
     const LOCK_HYSTERESIS_BONUS = 0.15;
     const KILL_SCORE = 1000;
     const RADAR_RANGE = 1400;
+    // The ocean is a finite plane that rides with the camera, so this only has
+    // to out-reach the fog (far 2600-3350 by preset) with margin for the
+    // horizon at altitude - not cover the playable area.
+    const OCEAN_PLANE_SIZE = 12000;
+    // Battle area, AC style. Measured basis: every objective in the campaign
+    // sits inside r=3000 (waves spawn 820-1160m off the player's nose, the
+    // night base is at (900,-1200), the glacier corridor ends at z=-2600,
+    // scenery rings stop at 3900), and fog far is 3350 at most. 12000 leaves
+    // ~35s of boost (340 m/s) from the centre before the warning, which is far
+    // outside any engagement yet still bounds the sortie.
+    const BATTLE_RADIUS = 12000;
+    const BATTLE_WARN_FRACTION = 0.9;
+    const BATTLE_FAIL_TIME = 10;
     const MISSION_GRACE_TIME = 3.0;
     const PLAYER_HIT_COOLDOWN = 0.55;
     const GAMEPAD_DEADZONE = 0.18;
@@ -3483,6 +3522,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       boostIndicator: document.getElementById("boostIndicator"),
       stallWarning: document.getElementById("stallWarning"),
       missileWarning: document.getElementById("missileWarning"),
+      battleAreaWarning: document.getElementById("battleAreaWarning"),
       cameraFocusStatus: document.getElementById("cameraFocusStatus"),
       gamepadStatus: document.getElementById("gamepadStatus"),
       controlModeStatus: document.getElementById("controlModeStatus"),
@@ -3701,6 +3741,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // when this timer runs out, so the player keeps flying under ACCOMPLISHED.
     const OUTCOME_PENDING_TIME = 2.8;
     const outcomePending = { active: false, timer: 0 };
+    // Battle area state. `distance`/`bearing` are read by the radar rim marker,
+    // `timer` counts the grace the player has left outside the line. Declared
+    // here with the rest of the mission state because startMission - defined far
+    // above updateBattleArea - resets it.
+    const battleArea = {
+      centerX: 0,
+      centerZ: 0,
+      radius: BATTLE_RADIUS,
+      distance: 0,
+      bearing: 0,
+      warning: false,
+      outside: false,
+      timer: 0,
+      toneTimer: 0
+    };
     const BRIEFING_ZOOM_TIME = 0.9;
     const BRIEFING_ZOOM_START = 1;
     const BRIEFING_ZOOM_END = 2.5;
@@ -4016,6 +4071,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         queueLength: 0
       },
       threats: { incomingMissiles: [], nearest: null },
+      battleArea: {
+        centerX: 0, centerZ: 0, radius: BATTLE_RADIUS,
+        distance: 0, warning: false, outside: false, timer: 0
+      },
       hud: {
         visibleEnemyMarkers: [],
         targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0, mode: "hidden" }
@@ -4148,6 +4207,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           currentMissionIndex = index;
           return true;
         },
+        // Campaign order changes as missions are added, so tests address a
+        // sortie by key and resolve the index here rather than hard-coding it.
+        missionIndexOf: (key) => MISSIONS.findIndex((mission) => mission.key === key),
+        missionKeys: () => MISSIONS.map((mission) => mission.key),
         forceMissionCursor: (index) => {
           if (gameState !== STATE_MISSION_SELECT) return false;
           missionCursor = ((index % MISSIONS.length) + MISSIONS.length) % MISSIONS.length;
@@ -4195,6 +4258,23 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           cloud: world.cloudVolumes.reduce((a, b) => (b.r > a.r ? b : a)),
           mountain: world.mountains[0],
           cloudVeil: cloudVeilLevel
+        }),
+        // Ocean follow probe. The plane's position must equal the camera's, and
+        // `offsetU/offsetV` must carry a term of camera-position/tile on top of
+        // the drift - that compensation is what keeps the wave pattern pinned to
+        // the world instead of glued to the viewer.
+        oceanProbe: () => ({
+          planeX: world.ocean ? world.ocean.position.x : null,
+          planeZ: world.ocean ? world.ocean.position.z : null,
+          camX: camera.position.x,
+          camZ: camera.position.z,
+          tile: world.oceanTileSize || null,
+          offsetU: world.oceanTexture.offset.x,
+          offsetV: world.oceanTexture.offset.y,
+          driftU: oceanDriftU,
+          driftV: oceanDriftV,
+          sunRoadX: world.sunRoad ? world.sunRoad.position.x : null,
+          sunRoadZ: world.sunRoad ? world.sunRoad.position.z : null
         }),
         forceDamageEnemy: (id, amount = 200) => {
           if (gameState !== STATE_PLAYING) return false;
@@ -4576,8 +4656,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           updateMissiles(dt);
           updateBombs(dt);
           updateEnemyMissiles(dt);
-          updateMission(dt);
+          updateBattleArea(dt);
         }
+        // After updateBattleArea, so a boundary washout this frame takes the
+        // sortie before the wave logic can hand out a completion.
+        if (gameState === STATE_PLAYING) updateMission(dt);
         // rawDt, not dt: the band above it fades on wall-clock time, so a
         // kill-cam slowdown at the buzzer must not desync the two.
         if (gameState === STATE_PLAYING) updateOutcomePending(rawDt);
@@ -5643,6 +5726,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       camera.updateProjectionMatrix();
       missileSide = 1;
       missionElapsed = 0;
+      resetBattleArea(MISSIONS[currentMissionIndex]);
       playerHitCooldown = 0;
       preferredTargetId = null;
       rollRate = 0;
@@ -8630,12 +8714,135 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       }
     }
 
+    function resetBattleArea(mission) {
+      // Centre on the mission's own objectives when it places ground targets;
+      // otherwise the arena is built around the player's spawn, which sits at
+      // the origin. Air waves spawn off the player's nose, so origin is right.
+      const units = mission && mission.groundUnits;
+      if (units && units.length > 0) {
+        let sumX = 0;
+        let sumZ = 0;
+        for (const unit of units) {
+          sumX += unit.x;
+          sumZ += unit.z;
+        }
+        battleArea.centerX = sumX / units.length;
+        battleArea.centerZ = sumZ / units.length;
+      } else {
+        battleArea.centerX = 0;
+        battleArea.centerZ = 0;
+      }
+      battleArea.radius = (mission && mission.battleRadius) || BATTLE_RADIUS;
+      battleArea.distance = 0;
+      battleArea.bearing = 0;
+      battleArea.warning = false;
+      battleArea.outside = false;
+      battleArea.timer = 0;
+      battleArea.toneTimer = 0;
+      if (ui.battleAreaWarning) {
+        ui.battleAreaWarning.classList.remove("active", "critical");
+      }
+    }
+
+    // AC's "RETURN TO THE BATTLE AREA": warn at 90% of the radius, and once the
+    // line itself is crossed give the player BATTLE_FAIL_TIME to turn around
+    // before the sortie is written off. Coming back inside clears everything.
+    function updateBattleArea(dt) {
+      if (gameState !== STATE_PLAYING || outcomePending.active) return;
+      const dx = player.position.x - battleArea.centerX;
+      const dz = player.position.z - battleArea.centerZ;
+      const distance = Math.hypot(dx, dz);
+      battleArea.distance = distance;
+      battleArea.bearing = Math.atan2(dx, dz);
+
+      const outside = distance > battleArea.radius;
+      const warning = distance > battleArea.radius * BATTLE_WARN_FRACTION;
+      const entering = warning && !battleArea.warning;
+      battleArea.warning = warning;
+      battleArea.outside = outside;
+
+      if (!warning) {
+        battleArea.timer = 0;
+        battleArea.toneTimer = 0;
+        return;
+      }
+
+      if (entering) {
+        showBanner("RETURN TO THE BATTLE AREA", 2.4, "danger");
+        radioSay(
+          "command",
+          "{nickname}、戦域を離脱しつつある。直ちに反転しろ。",
+          RADIO_PRIORITY.URGENT,
+          "battle-area"
+        );
+      }
+
+      // Beeping doubles in rate once the line is actually crossed, so the audio
+      // alone tells the player whether the countdown is running.
+      battleArea.toneTimer -= dt;
+      if (battleArea.toneTimer <= 0) {
+        battleArea.toneTimer = outside ? 0.5 : 1;
+        playTone(outside ? 720 : 560, 0.12, 0.075, "square");
+        if (outside) playTone(540, 0.1, 0.055, "square", 0.13);
+      }
+
+      if (!outside) {
+        battleArea.timer = 0;
+        return;
+      }
+
+      battleArea.timer += dt;
+      if (battleArea.timer >= BATTLE_FAIL_TIME) {
+        battleArea.timer = BATTLE_FAIL_TIME;
+        completeMission(false);
+      }
+    }
+
     let cloudVeilLevel = 0;
+    // Wave drift accumulated on its own, so the UV write below can be an
+    // absolute value (drift + world-lock term) rather than a running sum. A
+    // running sum would drift out of sync the moment a preset swap resets the
+    // texture.
+    let oceanDriftU = 0;
+    let oceanDriftV = 0;
     function updateWorld(dt) {
       // Slow wave drift; the plane's own motion over the fixed pattern is the
       // real speed cue.
-      world.oceanTexture.offset.x += dt * 0.0045;
-      world.oceanTexture.offset.y += dt * 0.0018;
+      oceanDriftU += dt * 0.0045;
+      oceanDriftV += dt * 0.0018;
+
+      // The ocean plane is finite (OCEAN_PLANE_SIZE), so left alone its rim
+      // shows up as "the world ends" after ~18s of boost. Snap it under the
+      // camera every frame and cancel the snap in UV space: the mesh follows,
+      // the wave pattern stays pinned to the world, so the player still reads
+      // motion across the water.
+      const camX = camera.position.x;
+      const camZ = camera.position.z;
+      const ocean = world.ocean;
+      if (ocean) {
+        ocean.position.x = camX;
+        ocean.position.z = camZ;
+        // +x moves the mesh east, which slides the texture east with it; adding
+        // camX/tile back into the U offset pulls the sampled pattern west by the
+        // same amount, netting zero world-space movement. The plane was rotated
+        // -90 deg about X, so its local +y maps to world +z -> V follows camZ.
+        const tile = world.oceanTileSize || 1;
+        world.oceanTexture.offset.set(
+          oceanDriftU + camX / tile,
+          oceanDriftV - camZ / tile
+        );
+      } else {
+        world.oceanTexture.offset.set(oceanDriftU, oceanDriftV);
+      }
+
+      // The sun glint is a view-relative reflection, not a place on the map, so
+      // it rides the camera with no UV compensation - that is what keeps the
+      // road pointing at the sun from wherever the player is.
+      if (world.sunRoad) {
+        const follow = world.sunRoad.userData.followOffset;
+        world.sunRoad.position.x = camX + follow.x;
+        world.sunRoad.position.z = camZ + follow.z;
+      }
 
       // White-out while the camera is inside a cloud volume. Vertical distance
       // is weighted up because the puff clusters are much flatter than wide.
@@ -9254,6 +9461,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         ? `TARGET VIEW · ${cameraFocusTargetId}`
         : "TARGET VIEW";
 
+      const boundaryWarning = gameState === STATE_PLAYING && battleArea.warning;
+      ui.battleAreaWarning.classList.toggle("active", boundaryWarning);
+      ui.battleAreaWarning.classList.toggle("critical", boundaryWarning && battleArea.outside);
+      if (boundaryWarning) {
+        ui.battleAreaWarning.textContent = battleArea.outside
+          ? `RETURN TO THE BATTLE AREA · ${Math.max(0, Math.ceil(BATTLE_FAIL_TIME - battleArea.timer))}`
+          : "RETURN TO THE BATTLE AREA";
+      }
+
       const threat = nearestMissileThreat;
       ui.missileWarning.classList.toggle("active", Boolean(threat));
       ui.missileWarning.textContent = threat
@@ -9396,6 +9612,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.hud.targetArrow.y = targetArrowState.y;
       hook.hud.targetArrow.angle = targetArrowState.angle;
       hook.hud.targetArrow.mode = targetArrowState.mode;
+      hook.battleArea.centerX = battleArea.centerX;
+      hook.battleArea.centerZ = battleArea.centerZ;
+      hook.battleArea.radius = battleArea.radius;
+      hook.battleArea.distance = battleArea.distance;
+      hook.battleArea.warning = battleArea.warning;
+      hook.battleArea.outside = battleArea.outside;
+      hook.battleArea.timer = battleArea.timer;
       hook.debug.destroyedEnemies = kills;
       hook.debug.activeSparkParticles = sparkParticlePool.activeCount;
       hook.debug.activeDebrisParticles = debrisParticlePool.activeCount;
@@ -9655,6 +9878,33 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         ctx.lineTo(px + 3.5, py + 3);
         ctx.closePath();
         ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+
+      // Boundary run: a chevron on the scope rim pointing the way back to the
+      // arena centre. The centre is normally far outside radar range, so this is
+      // a bearing cue rather than a contact - it is pinned to the rim.
+      if (gameState === STATE_PLAYING && battleArea.warning) {
+        // battleArea.bearing points centre -> player; negate to point home, then
+        // rotate into the heading-up scope frame.
+        const homeRel = Math.atan2(-Math.sin(battleArea.bearing), -Math.cos(battleArea.bearing)) - headingRad;
+        const rimRadius = radius * 1.04;
+        const hx = center + Math.sin(homeRel) * rimRadius;
+        const hy = center - Math.cos(homeRel) * rimRadius;
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(homeRel);
+        ctx.fillStyle = battleArea.outside ? "#ff4f5e" : "#ffd45a";
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 9;
+        ctx.beginPath();
+        ctx.moveTo(0, -6);
+        ctx.lineTo(-5, 4);
+        ctx.lineTo(0, 1);
+        ctx.lineTo(5, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
         ctx.shadowBlur = 0;
       }
 
@@ -11776,7 +12026,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       oceanTexture.wrapT = THREE.RepeatWrapping;
       oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
       oceanTexture.colorSpace = THREE.SRGBColorSpace;
-      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(12000, 12000, 1, 1));
+      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
       oceanGeometry.rotateX(-Math.PI / 2);
       const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
         map: oceanTexture,
@@ -11785,18 +12035,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       }));
       const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
       ocean.position.y = 0;
+      // The plane rides with the camera (see updateWorld), so its own extent is
+      // never the horizon - fog far is. Frustum culling has to go: the bounding
+      // sphere is computed from the un-snapped geometry origin.
+      ocean.frustumCulled = false;
       addRoot(ocean);
 
+      // World units covered by one texture tile. updateWorld divides the plane's
+      // snap offset by this to cancel the motion in UV space, so the wave
+      // pattern stays pinned to the world instead of sliding with the mesh.
+      const oceanTileSize = OCEAN_PLANE_SIZE / preset.ocean.repeat;
+
+      let sunRoad = null;
       if (preset.sunRoad) {
         const road = preset.sunRoad;
         const sunRoadGeometry = keepGeometry(new THREE.PlaneGeometry(road.width, road.length));
         sunRoadGeometry.rotateX(-Math.PI / 2);
-        const sunRoad = new THREE.Mesh(sunRoadGeometry, keepMaterial(new THREE.MeshBasicMaterial({
+        sunRoad = new THREE.Mesh(sunRoadGeometry, keepMaterial(new THREE.MeshBasicMaterial({
           map: glareTexture, color: road.color, transparent: true, opacity: road.opacity,
           blending: THREE.AdditiveBlending, depthWrite: false, fog: false
         })));
         sunRoad.rotation.y = road.rotationY;
         sunRoad.position.set(road.position[0], road.position[1], road.position[2]);
+        // The glint is a reflection of the sun, i.e. it is defined relative to
+        // the viewer, not the world: it follows the camera outright with no UV
+        // compensation. Its authored x/z is the offset from the viewer that the
+        // original fixed placement had at spawn.
+        sunRoad.userData.followOffset = { x: road.position[0], z: road.position[2] };
+        sunRoad.frustumCulled = false;
         addRoot(sunRoad);
       }
 
@@ -11951,6 +12217,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, cloudVolumes, mountains,
+        ocean, oceanTileSize, sunRoad,
         roots, geometries, materials, textures
       };
     }
@@ -11979,6 +12246,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       if (world && world.preset === key) return false;
       disposeWorld(world);
       world = createWorld(key);
+      // The new preset brings a fresh texture at offset 0; carrying the old
+      // drift over would jump the wave pattern on the swap frame.
+      oceanDriftU = 0;
+      oceanDriftV = 0;
       return true;
     }
 
