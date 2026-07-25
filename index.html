@@ -2247,7 +2247,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "mig31", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "f35c", "mig31", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2312,6 +2312,25 @@
         tubes: 2,
         reload: 8,
         lockRange: 2000
+      }),
+      // F-35C: the eight-target salvo cut down to four. Same acquisition path as
+      // the 8AAM - updateMultiLock() reads `multi` and `multiLockTime` and knows
+      // nothing about either weapon by name - so this entry is the whole feature.
+      // Four targets at 0.45 s a step fills in 1.8 s against the 8AAM's 3.6: half
+      // the salvo, acquired in half the time. 90 damage sits above the 8AAM's 78
+      // and below the plain missile's 98, so it still takes two rounds to down
+      // anything in the hangar - a multi-target weapon wins on count, not punch.
+      aam4: Object.freeze({
+        key: "aam4",
+        label: "4AAM",
+        kind: "aam",
+        damage: 90,
+        turnRateDeg: 200,
+        maxSpeed: 520,
+        life: 9.5,
+        multi: 4,
+        multiLockTime: 0.45,
+        lockRange: null
       }),
       // F-22: one trigger, up to eight targets, at 78 damage a round.
       aam8: Object.freeze({
@@ -2497,6 +2516,38 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         theme: Object.freeze({
 primary: 0x9aa4ad, secondary: 0x646d76, accent: 0x8c2f2f,
 canopy: 0x8fe0ff, exhaust: 0xbfd4ff, scale: 1.16, variant: "foxhound"
+        })
+      }),
+      // F-35C: the carrier-borne fifth-gen multirole. Deliberately holds no
+      // single best number in the hangar and no single worst one either - the
+      // spread is 67/78/85/68/72 with nothing outside it. That flat profile IS
+      // the design: it is not the jack-of-all-trades that loses everywhere, it
+      // is the one with nothing to exploit. Armour is the exception that proves
+      // it - 165 HP is second only to the Raptor, because a stealth airframe's
+      // survivability has to live somewhere the sim can model.
+      //
+      // The big wing is the C model's own: 45% more area than the A (668 vs 460
+      // sq ft) and folding tips, bought to make a 145 kt approach to a deck.
+      // That buys the same low-speed steadiness the Super Hornet has - the same
+      // trade the F-2A makes off the F-16, for the same physical reason.
+      f35c: Object.freeze({
+        id: "f35c",
+        label: "F-35C LIGHTNING II",
+        role: "Stealth Multirole",
+        tag: "MULTIROLE",
+        blurb: "艦載型の第5世代ステルス機。突出した最高値は持たないが弱点も無く、大型主翼による安定と堅牢な機体で、あらゆる任務を水準以上にこなす。4目標同時攻撃が空戦の主役だ。",
+        cruiseSpeed: 210, boostSpeed: 400, brakeSpeed: 124,
+        pitchRateDeg: 46, rollRateDeg: 152, yawRateDeg: 13, maxBankAngleDeg: 58,
+        normalRollSpring: 44, rollRateLimitDeg: 146, turnRateDeg: 33,
+        rollDamping: 12.0, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.48, structuralG: 3.1,
+        gunDamage: 21, missileDamage: 98,
+        boostResponse: 0.50, brakeResponse: 0.50, cruiseResponse: 0.56,
+        missileCapacity: 12, maxHealth: 165,
+        spw: Object.freeze({ key: "aam4", capacity: 20 }),
+        tipSpan: 7.6, tipZ: 2.8,
+        theme: Object.freeze({
+primary: 0x6e767e, secondary: 0x40474e, accent: 0x2d8fa8,
+canopy: 0xc8b47a, exhaust: 0xa8d8ff, scale: 1.0, variant: "lightning"
         })
       }),
       f4: Object.freeze({
@@ -11666,6 +11717,22 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -1.6], [3.4, 0.9], [3.4, 1.5], [1.2, 2.0],
         [-1.2, 2.0], [-3.4, 1.5], [-3.4, 0.9]
       ], 0.26);
+      // F-35C: a trapezoid, not the Raptor's diamond - the two stealth jets have
+      // to read apart from above. Half-span 7.6 is only 0.7 past the F-22, but
+      // the chord is far deeper (root -5.4 to 5.0 against the Raptor's -4.4 to
+      // 4.6) and the tip chord is wide rather than pointed, which is where the
+      // C model's 45% wing-area margin over the A actually shows. The last pair
+      // of points crops the tip square for the folding hinge.
+      const wingLightning = extrudedSurface([
+        [0, -5.4], [1.4, -3.4], [7.6, 1.4], [7.6, 3.4], [2.8, 5.0],
+        [0, 5.0], [-2.8, 5.0], [-7.6, 3.4], [-7.6, 1.4], [-1.4, -3.4]
+      ], 0.32);
+      // Matching stabs: same trapezoid language, clipped tips, wider than the
+      // Viper's so the tail reads as one design with the wing.
+      const stabLightning = extrudedSurface([
+        [0, -1.5], [3.9, 1.0], [3.9, 1.9], [1.3, 2.3],
+        [-1.3, 2.3], [-3.9, 1.9], [-3.9, 1.0]
+      ], 0.28);
       // Unit box for small angled panels (F-4 wing tips / stabs, ventral fins,
       // F-22 nozzle shells) - scaled per use.
       const panel = new THREE.BoxGeometry(1, 1, 1);
@@ -11699,7 +11766,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
+        wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor,
+        wingLightning, stabLightning, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -12093,6 +12161,50 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 2.6, -0.62, -0.9, 0.85, 0.85, 0.9);
         add(geometry.canopy, navL, -8.6, 0.5, 3.2, 0.13, 0.13, 0.13);
         add(geometry.canopy, navR, 8.6, 0.5, 3.2, 0.13, 0.13, 0.13);
+      } else if (theme.variant === "lightning") {
+        // F-35C: the only single-engine stealth jet here, and the silhouette has
+        // to say both things at once. Against the F-22 (twin nozzles, diamond
+        // wing, fins at +/-1.62) it is ONE fat nozzle on the centreline, a
+        // trapezoid wing and fins pushed out to +/-1.95 - same inward-cant
+        // family, different spacing. Against the F-16 and F-2A, the other single
+        // engine jets, it is the twin tails and the much thicker body: the real
+        // aircraft is fat because the weapons live inside it, and a fighter with
+        // no external stores is the point of the airframe.
+        add(geometry.fuselage, primary, 0, 0, -0.5, 1.06, 0.94, 1.02);
+        add(geometry.rearBody, secondary, 0, -0.02, 6.3, 1.0, 0.9, 1.08);
+        add(geometry.nose, primary, 0, 0.02, -8.1, 0.9, 0.8, 0.98);
+        add(geometry.canopy, canopy, 0, 0.9, -3.6, 0.66, 0.56, 1.45);
+        add(geometry.wingLightning, secondary, 0, -0.06, 1.0);
+        add(geometry.stabLightning, primary, 0, 0.02, 6.5);
+        // Fins: inward-cant like the Raptor's (negative rz on the left panel
+        // leans its top toward the centreline) but seated wider and slightly
+        // further aft, which is the pair's read-apart cue from directly astern.
+        add(geometry.fin, secondary, -1.95, 0.46, 4.7, 0.7, 1.0, 0.76, -0.34);
+        add(geometry.fin, secondary, 1.95, 0.46, 4.7, 0.7, 1.0, 0.76, 0.34);
+        // Faceted cheek intakes, canted outward at the top like the real DSI
+        // bumps, and the flat chine that carries the facet line into the nose.
+        add(geometry.intake, accent, -1.62, -0.14, -1.9, 0.78, 1.0, 1.15, 0.2);
+        add(geometry.intake, accent, 1.62, -0.14, -1.9, 0.78, 1.0, 1.15, -0.2);
+        add(geometry.panel, primary, -1.5, 0.16, -4.2, 0.62, 0.16, 3.2, 0.18);
+        add(geometry.panel, primary, 1.5, 0.16, -4.2, 0.62, 0.16, 3.2, -0.18);
+        // One nozzle, on the centreline, larger than any single-engine nozzle in
+        // the hangar - the F135 is the highest-thrust fighter engine flying.
+        add(geometry.nozzle, accent, 0, -0.02, 8.0, 1.3, 1.3, 1.2);
+        addFlame(0, -0.02, 9.5, 1.28, 1.28);
+        // Details: internal-bay doors scribed into the belly (the reason for the
+        // fat fuselage, and the only jet here that shows them), the folding-wing
+        // hinge lines at the crop, chine strips, and nav lights at the tips.
+        add(geometry.panel, dark, -0.62, -0.86, 1.4, 0.5, 0.1, 4.4);
+        add(geometry.panel, dark, 0.62, -0.86, 1.4, 0.5, 0.1, 4.4);
+        add(geometry.panel, dark, -6.2, -0.02, 2.4, 0.1, 0.2, 3.0);
+        add(geometry.panel, dark, 6.2, -0.02, 2.4, 0.1, 0.2, 3.0);
+        add(geometry.panel, dark, -0.86, 0.06, -6.4, 0.5, 0.06, 3.2, 0.1);
+        add(geometry.panel, dark, 0.86, 0.06, -6.4, 0.5, 0.06, 3.2, -0.1);
+        // Arrestor hook: carrier jet, same stowed-under-the-tail treatment the
+        // Super Hornet gets.
+        add(geometry.panel, dark, 0, -1.0, 6.8, 0.13, 0.13, 2.4).rotation.x = 0.34;
+        add(geometry.canopy, navL, -7.7, 0.06, 3.2, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 7.7, 0.06, 3.2, 0.12, 0.12, 0.12);
       } else if (theme.variant === "bomber") {
         // B-52H: long slab-sided fuselage, high-aspect swept wing, four
         // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
