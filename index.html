@@ -4290,9 +4290,25 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           enemy.targetSpeed = spec.patrolSpeed + (enemy.wave - 1) * 7;
         }
 
-        if (enemy.group.position.y < 70) {
-          targetPoint = enemy.safeTarget.copy(targetPoint);
-          targetPoint.y = 150;
+        // Terrain avoidance. Project the altitude ~1.8s ahead along the
+        // current descent; if that dips toward the sea - or a mountain the
+        // aircraft is near - override the aim point with a climb straight
+        // ahead, so the (airframe-limited) turn is spent purely on pulling up.
+        forwardOf(enemy.group, tmpV8);
+        let floorHeight = 0;
+        for (const mountain of world.mountains) {
+          const mdx = enemy.group.position.x - mountain.x;
+          const mdz = enemy.group.position.z - mountain.z;
+          if (mdx * mdx + mdz * mdz < mountain.r * mountain.r * 2.6) {
+            floorHeight = Math.max(floorHeight, mountain.h);
+          }
+        }
+        const projectedAltitude = enemy.group.position.y + tmpV8.y * enemy.speed * 1.8;
+        if (projectedAltitude < floorHeight + 120 || enemy.group.position.y < floorHeight + 70) {
+          targetPoint = enemy.safeTarget.copy(enemy.group.position);
+          targetPoint.x += tmpV8.x * 260;
+          targetPoint.z += tmpV8.z * 260;
+          targetPoint.y = Math.max(enemy.group.position.y, floorHeight) + 240;
         }
 
         tmpV4.copy(targetPoint).sub(enemy.group.position);
@@ -4307,6 +4323,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
         forwardOf(enemy.group, tmpV4);
         enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
+
+        // Last-resort floor: the AI never goes below the sea surface or into
+        // a mountainside, even mid-dive - snap up and level the nose.
+        const hardFloor = floorHeight + 26;
+        if (enemy.group.position.y < hardFloor) {
+          enemy.group.position.y = hardFloor;
+          if (tmpV4.y < 0) {
+            tmpV8.set(tmpV4.x, 0.22, tmpV4.z).normalize();
+            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV8);
+            enemy.group.quaternion.rotateTowards(tmpQ1, spec.pursuitTurn * 2.5 * dt);
+            enemy.group.quaternion.normalize();
+          }
+        }
 
         const baseFlame = spec.behavior === "evasive" ? 1.18 : (spec.behavior === "armored" ? 0.82 : 1.0);
         const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
