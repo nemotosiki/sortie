@@ -2284,7 +2284,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         band: 2, ace: false, idBase: 3, radio: null
       }),
       naval: Object.freeze({
-        kind: "naval", types: null, fleet: Object.freeze(["carrier", "aegis", "aegis"]),
+        kind: "naval", types: null, fleet: Object.freeze(["carrier", "aegis", "aegis", "frigate", "frigate"]),
         band: 3, ace: false, idBase: 6, radio: null
       })
     });
@@ -2680,6 +2680,22 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         life: 10.5,
         launchDot: -1
       }),
+      // Frigate SAM: a single-arm Mk 13 rail, not a VLS field. One launcher
+      // reloading off a magazine means a long gap between shots (~1.7x the
+      // Aegis), shorter legs and a lazier seeker - the canonical "Aegis carries
+      // two launchers, everyone else is weaker" difference, made numeric.
+      frigate: Object.freeze({
+        cooldownMin: 12.0,
+        cooldownSpread: 5.0,
+        range: 1250,
+        minRange: 240,
+        speed: 175,
+        maxSpeed: 470,
+        turnRate: THREE.MathUtils.degToRad(46),
+        damage: 98,
+        life: 8.5,
+        launchDot: -1
+      }),
       // SAM site: a big cold-launched round on the same VLS idiom as the Aegis
       // - straight up out of the pack, then it tips over. Slower off the rail,
       // longer legged and lazier to turn than anything airborne.
@@ -2724,6 +2740,37 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         aaHeight: 13,
         aa: Object.freeze({ range: 640, cooldownMin: 0.55, cooldownSpread: 0.55, damage: 7, maxHitChance: 0.16, tracers: 2 }),
         radarColor: "#ffb46a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      // Escort frigate (Perry / Gorshkov idiom, 135m). The light rank of the
+      // fleet: two missiles instead of the Aegis' three, one CIWS mount instead
+      // of two, one rail launcher instead of two VLS fields. Fastest hull of the
+      // three, so it is the one that runs. HP is 196 = exactly 2 missiles -
+      // the spec's 180 was off the 98 quantum and bought nothing (99..196 all
+      // die to the same two rounds), and 196 leaves headroom for a future
+      // LASM (190) + a short burst of gun.
+      frigate: Object.freeze({
+        key: "frigate",
+        surface: true,
+        label: "FRIGATE",
+        role: "Guided Missile Frigate",
+        hp: 196,
+        cruiseSpeed: 15,
+        turnRate: THREE.MathUtils.degToRad(4),
+        hitRadius: 62,
+        crash: Object.freeze({ halfLen: 66, halfBeam: 11, top: 17 }),
+        hitBox: Object.freeze({ x: 20, y: 26, z: 135 }),
+        sinkDepth: 24,
+        blastSpread: 26,
+        smokeOffset: 10,
+        smokeHeight: 14,
+        sternOffset: 63,
+        bowOffset: 61,
+        aaMounts: Object.freeze([26]),
+        aaHeight: 11,
+        aa: Object.freeze({ range: 520, cooldownMin: 0.8, cooldownSpread: 0.7, damage: 7, maxHitChance: 0.13, tracers: 1 }),
+        radarColor: "#ffcf8a",
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       }),
@@ -3065,12 +3112,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         key: "m03",
         world: "sunsetOcean",
         title: "FLEET DESTRUCTION",
-        jp: "敵機動部隊を捕捉した。空母1、護衛イージス艦2。対艦攻撃で殲滅せよ。",
+        jp: "敵機動部隊を捕捉した。空母1、イージス艦2、フリゲート2。対艦攻撃で殲滅せよ。",
         sequence: ["naval"],
-        parTime: 200,
+        parTime: 250,
         hasOutro: false,
         map: { x: 0.71, y: 0.56 },
-        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。"
+        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2、フリゲート2の計5隻。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。\nフリゲートは単装ランチャーで発射間隔が長い——後回しでいい。"
       },
       {
         key: "m-glacier",
@@ -7274,14 +7321,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         else showBanner(`WAVE ${missionWaveIndex} · ENEMY FLEET DETECTED`, 2.2, "danger");
         triggerRadioLine(
           "command",
-          "レーダーに水上反応。敵艦隊だ——空母1、護衛のイージス艦2。対艦攻撃に移れ。",
+          "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
           RADIO_PRIORITY.NORMAL,
           "wave-naval-inbound"
         );
         triggerRadioLine(
           "wingman",
           first
-            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！"
+            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
             : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
           RADIO_PRIORITY.NORMAL,
           "wave-naval-brief"
@@ -10842,6 +10889,49 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.shipCylinder, light, 0, 18.4, 51, 2.1, 2.6, 2.1);
         add(geometry.enemyHitbox, light, 0, 20.6, 51, 0.17, 0.17, 0.17);
         add(geometry.shockRing, markings, 0, 9.75, 66, 7.5, 7.5, 1, -Math.PI / 2);
+      } else if (kind === "frigate") {
+        // Perry-class idiom at 135m - the Aegis hull at 0.83 with its identity
+        // marks deliberately removed. No SPY octagons (those ARE the Aegis, and
+        // putting them here would make the two ships unreadable at range), no
+        // VLS fields fore and aft. What replaces them reads at a kilometre:
+        // one tall lattice mast well above the low deckhouse, a single canted
+        // Mk 13 rail launcher on the bow turntable, and one CIWS drum aft.
+        add(geometry.panel, hull, 0, 3.7, 5, 15.8, 7.5, 106);
+        add(geometry.shipBow, hull, 0, 3.7, -56.5, 7.9, 16.6, 4.2, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 0.7, 5, 16.3, 1.5, 107);
+        add(geometry.panel, deck, 0, 7.7, 7.5, 15.9, 0.6, 102);
+        // Bow: 76mm mount, then the single-arm rail launcher on its turntable -
+        // the frigate's signature. Canted up and slightly off the centreline.
+        add(geometry.shipCylinder, house, 0, 9, -40, 2.8, 2.2, 2.8);
+        add(geometry.panel, house, 0, 10, -44.5, 0.9, 0.9, 6.6, 0.06);
+        add(geometry.shipCylinder, dark, 0, 8.9, -24, 3.6, 1.5, 3.6);
+        add(geometry.panel, light, 0, 12.4, -24.5, 1.5, 1.5, 12, -0.62);
+        add(geometry.panel, light, -1.5, 12.4, -24.5, 0.7, 0.7, 10, -0.62);
+        add(geometry.panel, light, 1.5, 12.4, -24.5, 0.7, 0.7, 10, -0.62);
+        // Low, short deckhouse - about half the Aegis' block, so the silhouette
+        // is mast-dominated instead of superstructure-dominated.
+        add(geometry.panel, house, 0, 10.6, -4, 11, 6.6, 17);
+        add(geometry.panel, house, 0, 15.2, -6, 8.2, 3.4, 9);
+        add(geometry.panel, dark, 0, 17.1, -6, 8.6, 0.5, 9.4);
+        // Single tall lattice mast: four legs converging, cross-braced, with a
+        // spinning-style plate radar and a whip at the top.
+        add(geometry.shipCylinder, dark, -1.9, 26, -2, 0.42, 15, 0.42, 0, 0, 0.055);
+        add(geometry.shipCylinder, dark, 1.9, 26, -2, 0.42, 15, 0.42, 0, 0, -0.055);
+        add(geometry.shipCylinder, dark, 0, 26, -4.1, 0.42, 15, 0.42, 0.055, 0, 0);
+        add(geometry.shipCylinder, dark, 0, 26, 0.1, 0.42, 15, 0.42, -0.055, 0, 0);
+        add(geometry.panel, dark, 0, 20, -2, 5, 0.4, 0.4);
+        add(geometry.panel, dark, 0, 30, -2, 4.2, 0.4, 0.4);
+        add(geometry.panel, light, 0, 34.6, -2, 7.2, 2.6, 0.5, 0, 0, 0.22);
+        add(geometry.shipCylinder, dark, 0, 39, -2, 0.28, 5, 0.28);
+        // Funnel, then the CIWS drum aft on its pedestal - one mount, matching
+        // aaMounts:[26].
+        add(geometry.panel, house, 0, 10.4, 14, 6.2, 5.4, 8);
+        add(geometry.panel, dark, 0, 13.3, 14, 6.6, 0.8, 8.4);
+        add(geometry.shipCylinder, light, 0, 11.6, 26, 1.9, 2.2, 1.9);
+        add(geometry.panel, light, 0, 14.4, 26, 2.4, 1.5, 3.2, -0.3);
+        // Aft: low helo deck with the landing circle, no hangar block.
+        add(geometry.panel, deck, 0, 8.1, 44, 12.4, 0.7, 26);
+        add(geometry.shockRing, markings, 0, 8.55, 46, 5.6, 5.6, 1, -Math.PI / 2);
       } else {
         // Carrier (~330m): full-length flight deck with painted runway decals,
         // starboard island, parked-aircraft clutter and sponsons.
