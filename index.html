@@ -2002,6 +2002,16 @@
         variant: "raptor"
       })
     });
+    // ---- Variable-geometry wing (F-14D only) --------------------------------
+    // Sweep is presentation, not physics: nothing in the flight model reads it.
+    // The wing sits fully forward at or below cruise, fully aft at boost speed,
+    // and lerps between the two so a throttle change is visible on the airframe.
+    // Angles are the aerodynamic sweep the wing shows; the mesh pivot turns by
+    // the difference from the modelled (deployed) planform.
+    const WING_SWEEP_FORWARD_DEG = 20;
+    const WING_SWEEP_AFT_DEG = 68;
+    const WING_SWEEP_RATE = 0.0016;
+
     const KILLCAM_DURATION = 1.6;
     const KILLCAM_SCALE = 0.18;
     const KILLCAM_RAMP = 0.35;
@@ -2009,7 +2019,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "fa18", "f15", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "fa18", "f15", "f14", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2136,6 +2146,36 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.02, variant: "hornet"
         theme: Object.freeze({
 primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
+        })
+      }),
+      // F-14D: the fleet-defense interceptor, and the only swing-wing in the
+      // hangar. It buys its speed - second only to the Raptor - with size: the
+      // turn rate lands under the Eagle's and the roll is Hornet-grade rather
+      // than Eagle-grade, so it runs down anything it points at but loses the
+      // slow knife-fight it should never have entered. XLAA is the same launcher
+      // the F-15 carries; the difference between the two airframes is the 20 kt
+      // of top end and the steadier platform underneath it, not the missile.
+      //
+      // The wing sweep is cosmetic - no flight constant reads it. See
+      // WING_SWEEP_* and updateFlightEffects().
+      f14: Object.freeze({
+        id: "f14",
+        label: "F-14D SUPER TOMCAT",
+        role: "Fleet Defense Interceptor",
+        tag: "SWING-WING",
+        blurb: "可変後退翼を備えた艦隊防空の要。長射程XLAAで敵編隊を遠距離から削り、F-15を上回る速度で戦域を渡り歩く。格闘戦の旋回はイーグルに一歩譲るが、直線と長距離迎撃なら随一。",
+        cruiseSpeed: 220, boostSpeed: 445, brakeSpeed: 124,
+        pitchRateDeg: 46, rollRateDeg: 150, yawRateDeg: 12, maxBankAngleDeg: 56,
+        normalRollSpring: 41, rollRateLimitDeg: 143, turnRateDeg: 32,
+        rollDamping: 10.9, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.6, structuralG: 3.05,
+        gunDamage: 21, missileDamage: 98,
+        boostResponse: 0.5, brakeResponse: 0.49, cruiseResponse: 0.57,
+        missileCapacity: 12, maxHealth: 150,
+        spw: Object.freeze({ key: "xlaa", capacity: 12 }),
+        tipSpan: 9.6, tipZ: 3.1,
+        theme: Object.freeze({
+primary: 0xb0b8c0, secondary: 0x5c6c7c, accent: 0x2b3a49,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         })
       }),
       f4: Object.freeze({
@@ -3513,6 +3553,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let aircraftSpecBarCache = null;
     let hangarOrbitAngle = 0.7;
+    // Live sweep of the player's wing in aerodynamic degrees, for the HUD-less
+    // observer: the test hook reads it and non-swing airframes leave it at the
+    // forward stop.
+    let wingSweepDeg = WING_SWEEP_FORWARD_DEG;
     let missileCount = PLAYER_MISSILE_CAPACITY;
     // AC-style missile tubes: two loaded at any time, the rest of the stock
     // reloads one tube at a time on a timer.
@@ -3887,6 +3931,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         enemyMissilesLaunched: 0
       },
       flight: {
+        wingSweepDeg: WING_SWEEP_FORWARD_DEG,
         stalling: false,
         stallSeverity: 0,
         rollRate: 0,
@@ -8459,8 +8504,32 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     let gStrain = 0;
     const contrailTip = new THREE.Vector3();
     const contrailStill = new THREE.Vector3();
+    // Drives the F-14D's wing sweep from airspeed. Every other airframe hands
+    // back an empty wingPivots array, so this costs one property read for them.
+    // In the hangar the wing is pinned fully forward: the orbit camera is a
+    // showroom shot, and a parked jet has its wings out.
+    function updateWingSweep(dt) {
+      const pivots = playerModel.wingPivots;
+      if (!pivots || pivots.length === 0) return;
+      const span = Math.max(1, BOOST_SPEED - CRUISE_SPEED);
+      const t = gameState === STATE_PLAYING
+        ? THREE.MathUtils.clamp((playerSpeed - CRUISE_SPEED) / span, 0, 1)
+        : 0;
+      const targetDeg = THREE.MathUtils.lerp(WING_SWEEP_FORWARD_DEG, WING_SWEEP_AFT_DEG, t);
+      // The mesh is modelled at the forward sweep, so the pivot only turns by
+      // the delta beyond it.
+      const targetRad = THREE.MathUtils.degToRad(targetDeg - WING_SWEEP_FORWARD_DEG);
+      for (const pivot of pivots) {
+        const side = pivot.userData.sweepSide || 1;
+        pivot.rotation.y = THREE.MathUtils.lerp(pivot.rotation.y, -targetRad * side, damping(WING_SWEEP_RATE, dt));
+      }
+      wingSweepDeg = WING_SWEEP_FORWARD_DEG +
+        Math.abs(THREE.MathUtils.radToDeg(pivots[0].rotation.y));
+    }
+
     function updateFlightEffects(dt) {
       const playing = gameState === STATE_PLAYING;
+      updateWingSweep(dt);
 
       // Wingtip vortex contrails while pulling hard or at full boost.
       if (playing && (currentGLoad > 0.95 || (boostActive && playerSpeed > BOOST_SPEED * 0.72))) {
@@ -9254,6 +9323,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.weapons.ccip.distance = ccip.distance;
       hook.weapons.lastBombImpact = lastBombImpact;
       hook.weapons.enemyMissilesLaunched = enemyMissilesLaunched;
+      hook.flight.wingSweepDeg = wingSweepDeg;
       hook.flight.stalling = stalling;
       hook.flight.stallSeverity = stallSeverity;
       hook.flight.rollRate = rollRate;
@@ -10254,6 +10324,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -3.6], [1.9, -2.9], [7.9, 1.2], [7.9, 3.0], [3.0, 3.6],
         [0, 3.6], [-3.0, 3.6], [-7.9, 3.0], [-7.9, 1.2], [-1.9, -2.9]
       ], 0.28);
+      // F-14D outer wing panel: ONE side only (+x), with its inboard edge at
+      // x=0 sitting on the pivot line, because each panel is parented to its own
+      // rotating group rather than being one mirrored mesh like every other
+      // airframe here. Drawn at the deployed sweep; the pivot supplies the rest.
+      const wingTomcat = extrudedSurface([
+        [0.2, -2.5], [1.4, -2.2], [8.1, 0.6], [8.1, 1.5], [1.9, 2.4], [0.2, 2.4]
+      ], 0.28);
       const wingPhantom = extrudedSurface([
         [0, -3.2], [3.2, -1.5], [7.4, 1.8], [7.4, 2.8], [2.8, 3.4],
         [0, 3.7], [-2.8, 3.4], [-7.4, 2.8], [-7.4, 1.8], [-3.2, -1.5]
@@ -10307,7 +10384,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingEagle, wingHornet, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
+        wingViper, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -10410,6 +10487,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // signature features: engine count, tail configuration and wing planform.
       const parts = [];
       const flames = [];
+      // Populated only by the swing-wing variant; empty for every other
+      // airframe, which is what keeps the sweep update a no-op for them.
+      const wingPivots = [];
       const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rz = 0) => {
         const m = new THREE.Mesh(geo, material);
         m.position.set(x, y, z);
@@ -10417,6 +10497,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         if (rz) m.rotation.z = rz;
         parts.push(m);
         return m;
+      };
+      // One outer wing panel on its own pivot. `side` is -1 for the left panel,
+      // which also mirrors the +x planform across x. The group's rotation.y is
+      // the sweep control: 0 leaves the wing at the modelled forward sweep.
+      // Ry(t) sends the tip to z' = -x sin t, so raking a panel AFT needs a
+      // NEGATIVE angle on the right wing - updateWingSweep applies -delta*side.
+      const addWingPivot = (geo, material, side, x, y, z) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(x, y, z);
+        const panel = new THREE.Mesh(geo, material);
+        panel.scale.x = side;
+        pivot.add(panel);
+        pivot.userData.sweepSide = side;
+        parts.push(pivot);
+        return pivot;
       };
       const addFlame = (x, y, z, sx = 1, sy = 1) => {
         const flame = new THREE.Mesh(geometry.flame, flameMaterial);
@@ -10545,6 +10640,53 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 7.9, -0.18, 0.7, 0.75, 0.75, 0.75);
         add(geometry.canopy, navL, -8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 8.0, 0.24, 2.0, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "tomcat") {
+        // F-14D: the widest, flattest airframe in the set. The read-at-a-glance
+        // features are the pancake - a lifting body slab spanning the whole gap
+        // between two widely separated engine nacelles - and the swing wings
+        // mounted on gloves at its leading edge. Twin fins cant outward.
+        //
+        // The nacelles are placed at +/-2.05, roughly twice the F-15's spacing,
+        // because the flat tunnel between them is what makes the silhouette.
+        add(geometry.fuselage, primary, 0, 0.02, -1.5, 0.82, 0.66, 0.9);
+        add(geometry.nose, primary, 0, -0.02, -8.6, 0.86, 0.7, 1.05);
+        add(geometry.canopy, canopy, 0, 0.82, -4.2, 0.8, 0.56, 2.2);
+        // Pancake: a wide flat plate filling the span between the nacelles and
+        // carrying the wing gloves. This is the F-14's defining structure.
+        add(geometry.panel, primary, 0, -0.12, 2.0, 4.6, 0.5, 9.4);
+        add(geometry.panel, secondary, 0, 0.2, 0.4, 3.4, 0.36, 5.2);
+        // Wing gloves: the fixed leading-edge stubs the outer panels pivot from.
+        add(geometry.panel, secondary, -2.2, 0.12, -1.4, 1.5, 0.26, 3.0, 0.1);
+        add(geometry.panel, secondary, 2.2, 0.12, -1.4, 1.5, 0.26, 3.0, -0.1);
+        // Widely spaced nacelles with their own intakes and nozzles.
+        add(geometry.rearBody, secondary, -2.05, -0.06, 4.9, 0.86, 0.86, 1.5);
+        add(geometry.rearBody, secondary, 2.05, -0.06, 4.9, 0.86, 0.86, 1.5);
+        add(geometry.intake, accent, -2.05, -0.14, -2.6, 0.92, 1.25, 1.5);
+        add(geometry.intake, accent, 2.05, -0.14, -2.6, 0.92, 1.25, 1.5);
+        add(geometry.nozzle, accent, -2.05, -0.06, 8.5, 1.05, 1.05, 1.1);
+        add(geometry.nozzle, accent, 2.05, -0.06, 8.5, 1.05, 1.05, 1.1);
+        addFlame(-2.05, -0.06, 9.9, 1.05, 1.05);
+        addFlame(2.05, -0.06, 9.9, 1.05, 1.05);
+        // Twin outward-canted fins, one per nacelle, plus the ventral strakes
+        // under them.
+        add(geometry.fin, secondary, -2.05, 0.5, 5.0, 0.82, 1.12, 0.85, 0.16);
+        add(geometry.fin, secondary, 2.05, 0.5, 5.0, 0.82, 1.12, 0.85, -0.16);
+        add(geometry.panel, dark, -2.05, -0.85, 6.6, 0.16, 0.85, 2.2, 0.3);
+        add(geometry.panel, dark, 2.05, -0.85, 6.6, 0.16, 0.85, 2.2, -0.3);
+        // Stabilators outboard of the nacelles.
+        add(geometry.tailWing, primary, 0, -0.12, 7.0, 1.18, 1, 0.95);
+        // Swing wings. Each outer panel hangs off its own pivot group at the
+        // glove, so rotation.y on the group is the sweep. addWingPivot records
+        // them for updateFlightEffects(); createAircraftModel returns them.
+        wingPivots.push(addWingPivot(geometry.wingTomcat, secondary, -1, -1.85, 0.16, -0.4));
+        wingPivots.push(addWingPivot(geometry.wingTomcat, secondary, 1, 1.85, 0.16, -0.4));
+        // Details: radome, anti-glare strip, dorsal spine down the tunnel and
+        // nav lights on the gloves (the tips move, so lights stay put).
+        add(geometry.nose, dark, 0, -0.04, -10.1, 0.32, 0.28, 0.36);
+        add(geometry.panel, dark, 0, 0.6, -6.2, 0.72, 0.08, 2.0);
+        add(geometry.panel, secondary, 0, 0.42, 3.4, 0.34, 0.2, 5.0);
+        add(geometry.canopy, navL, -3.3, 0.24, -1.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 3.3, 0.24, -1.6, 0.12, 0.12, 0.12);
       } else if (theme.variant === "bomber") {
         // B-52H: long slab-sided fuselage, high-aspect swept wing, four
         // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
@@ -10609,6 +10751,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return {
         group: root,
         flames,
+        wingPivots,
         standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
         flameMaterial
       };
