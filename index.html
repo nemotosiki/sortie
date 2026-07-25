@@ -236,6 +236,32 @@
 
     @keyframes shootBlink { 50% { opacity: 0.35; } }
 
+    /* Aircraft damage silhouette, sits above the ammo stack like the reference. */
+    #damageSilhouette {
+      right: clamp(12px, 2vw, 28px);
+      bottom: calc(clamp(12px, 2vw, 26px) + 54px);
+      line-height: 0;
+    }
+
+    #silhouetteBody {
+      fill: rgba(83, 255, 92, 0.16);
+      stroke: var(--hud-line);
+      stroke-width: 1.2;
+      stroke-linejoin: round;
+      transition: fill 200ms ease, stroke 200ms ease;
+    }
+
+    #damageSilhouette.warn #silhouetteBody {
+      fill: rgba(255, 212, 90, 0.22);
+      stroke: var(--warning);
+    }
+
+    #damageSilhouette.critical #silhouetteBody {
+      fill: rgba(255, 95, 105, 0.26);
+      stroke: var(--danger);
+      animation: shootBlink 0.7s steps(2, end) infinite;
+    }
+
     #stateStrip {
       left: 50%;
       top: 64px;
@@ -1266,6 +1292,12 @@
 
     <div id="shootCue" class="hudBox">SHOOT</div>
 
+    <section id="damageSilhouette" class="panel" aria-hidden="true">
+      <svg viewBox="0 0 40 44" width="40" height="44">
+        <path id="silhouetteBody" d="M20 2 L23 14 L23 20 L38 30 L38 34 L23 29 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 29 L2 34 L2 30 L17 20 L17 14 Z" />
+      </svg>
+    </section>
+
     <section id="stateStrip" class="panel">
       STATE <strong id="state">ready</strong><span id="waveReadout">WAVE 0 / 2</span>
     </section>
@@ -1826,6 +1858,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       speedTape: document.getElementById("speedTape"),
       altTape: document.getElementById("altTape"),
       shootCue: document.getElementById("shootCue"),
+      damageSilhouette: document.getElementById("damageSilhouette"),
       aircraftCardRow: document.getElementById("aircraftCardRow"),
       changeAircraftBtn: document.getElementById("changeAircraftBtn"),
       state: document.getElementById("state"),
@@ -4640,6 +4673,10 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateTape(altTapeNodes, altitudeM, 100);
       ui.missionTime.textContent = formatMissionTime(missionElapsed);
       ui.shootCue.classList.toggle("active", gameState === STATE_PLAYING && lock.locked);
+
+      const healthRatio = health / PLAYER_MAX_HEALTH;
+      ui.damageSilhouette.classList.toggle("warn", healthRatio <= 0.55 && healthRatio > 0.3);
+      ui.damageSilhouette.classList.toggle("critical", healthRatio <= 0.3);
       const expertMode = controlMode === CONTROL_EXPERT;
       ui.controlModeStatus.textContent = expertMode
         ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
@@ -4815,32 +4852,58 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ctx.setTransform(radarDpr, 0, 0, radarDpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
 
-      const glow = ctx.createRadialGradient(center, center, 4, center, center, radius);
-      glow.addColorStop(0, "rgba(80, 220, 236, 0.11)");
-      glow.addColorStop(1, "rgba(10, 64, 82, 0.03)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(center, center, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(139, 239, 250, 0.28)";
-      ctx.lineWidth = 1;
-      for (const factor of [0.33, 0.66, 1]) {
-        ctx.beginPath();
-        ctx.arc(center, center, radius * factor, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.moveTo(center - radius, center);
-      ctx.lineTo(center + radius, center);
-      ctx.moveTo(center, center - radius);
-      ctx.lineTo(center, center + radius);
-      ctx.stroke();
-
+      // Square scope with a forward view cone and cardinal letters, matching the
+      // Ace Combat reference. The scope is heading-up: north rotates around it.
       forwardOf(player, tmpV1);
       tmpV1.y = 0;
       if (tmpV1.lengthSq() > 0.0001) lastRadarForward.copy(tmpV1).normalize();
       tmpV2.set(-lastRadarForward.z, 0, lastRadarForward.x).normalize();
+
+      const inset = size * 0.06;
+      const span = size - inset * 2;
+
+      ctx.fillStyle = "rgba(6, 30, 12, 0.4)";
+      ctx.fillRect(inset, inset, span, span);
+
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.34)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(inset, inset, span, span);
+      ctx.beginPath();
+      ctx.moveTo(inset, center);
+      ctx.lineTo(inset + span, center);
+      ctx.moveTo(center, inset);
+      ctx.lineTo(center, inset + span);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.18)";
+      ctx.beginPath();
+      ctx.arc(center, center, radius * 0.5, 0, Math.PI * 2);
+      ctx.moveTo(center + radius, center);
+      ctx.arc(center, center, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Forward view cone (matches the on-screen HUD's lock cone half-angle).
+      const coneHalf = Math.acos(THREE.MathUtils.clamp(LOCK_DOT, -1, 1));
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.42)";
+      ctx.beginPath();
+      ctx.moveTo(center, center);
+      ctx.lineTo(center + Math.sin(-coneHalf) * span, center - Math.cos(-coneHalf) * span);
+      ctx.moveTo(center, center);
+      ctx.lineTo(center + Math.sin(coneHalf) * span, center - Math.cos(coneHalf) * span);
+      ctx.stroke();
+
+      // Cardinal letters ride the rim. North is -Z, same convention the compass
+      // strip uses, so the two instruments always agree.
+      const headingRad = Math.atan2(lastRadarForward.x, -lastRadarForward.z);
+      const letterRadius = span * 0.42;
+      ctx.fillStyle = "rgba(150, 255, 158, 0.75)";
+      ctx.font = "700 9px ui-monospace, Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const [label, deg] of [["N", 0], ["E", 90], ["S", 180], ["W", 270]]) {
+        const rel = THREE.MathUtils.degToRad(deg) - headingRad;
+        ctx.fillText(label, center + Math.sin(rel) * letterRadius, center - Math.cos(rel) * letterRadius);
+      }
 
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
