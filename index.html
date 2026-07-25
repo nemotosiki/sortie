@@ -9,11 +9,13 @@
     :root {
       color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --hud: #9df7ff;
-      --hud-soft: rgba(157, 247, 255, 0.58);
+      --hud: #53ff5c;
+      --hud-line: rgba(83, 255, 92, 0.78);
+      --hud-soft: rgba(83, 255, 92, 0.5);
+      --hud-dim: rgba(150, 255, 158, 0.6);
       --danger: #ff5f69;
       --warning: #ffd45a;
-      --panel: rgba(3, 15, 25, 0.64);
+      --panel: rgba(3, 18, 8, 0.55);
     }
 
     * { box-sizing: border-box; }
@@ -48,143 +50,137 @@
       z-index: 10;
       pointer-events: none;
       color: var(--hud);
-      text-shadow: 0 0 7px rgba(51, 226, 255, 0.75);
+      /* Dark halo keeps the green readable against bright sky/cloud without
+         reintroducing filled panels (the wireframe look is the point). */
+      text-shadow:
+        0 0 3px rgba(0, 0, 0, 0.95),
+        0 1px 3px rgba(0, 0, 0, 0.85),
+        0 0 9px rgba(20, 255, 70, 0.25);
       font-variant-numeric: tabular-nums;
     }
 
     .panel {
       position: absolute;
-      border: 1px solid rgba(142, 239, 255, 0.43);
-      background:
-        linear-gradient(135deg, rgba(74, 219, 246, 0.08), transparent 40%),
-        var(--panel);
-      box-shadow: inset 0 0 22px rgba(30, 180, 220, 0.08), 0 0 18px rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(3px);
+      border: 0;
+      background: none;
+      box-shadow: none;
+      backdrop-filter: none;
     }
 
-    .panel::before,
-    .panel::after {
-      content: "";
-      position: absolute;
-      width: 10px;
-      height: 10px;
-      border-color: var(--hud);
-      opacity: 0.72;
-    }
-
-    .panel::before {
-      left: -1px;
-      top: -1px;
-      border-left: 2px solid;
-      border-top: 2px solid;
-    }
-
-    .panel::after {
-      right: -1px;
-      bottom: -1px;
-      border-right: 2px solid;
-      border-bottom: 2px solid;
-    }
-
-    #flightData {
-      left: clamp(12px, 2vw, 28px);
-      top: clamp(12px, 2vw, 26px);
-      min-width: 188px;
-      padding: 12px 14px 11px;
-    }
-
-    .eyebrow {
-      color: rgba(191, 248, 255, 0.72);
+    .hudBox {
+      display: inline-block;
+      padding: 2px 7px 3px;
+      border: 1px solid var(--hud-line);
+      color: var(--hud);
       font-size: 10px;
-      letter-spacing: 0.22em;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      line-height: 1;
       text-transform: uppercase;
     }
 
-    .dataRow {
-      display: grid;
-      grid-template-columns: 54px 76px 1fr;
-      align-items: baseline;
-      gap: 8px;
-      margin-top: 5px;
-    }
-
-    .dataRow .label {
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      color: rgba(202, 248, 255, 0.72);
-    }
-
-    .dataRow .value {
-      text-align: right;
-      font-size: 24px;
+    .hudVal {
+      font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      color: var(--hud);
+      font-weight: 600;
       line-height: 1;
-      font-weight: 700;
+      font-size: 17px;
     }
 
-    .dataRow .unit {
-      font-size: 10px;
-      color: rgba(202, 248, 255, 0.58);
+    .hudRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #flightData {
+      left: max(24px, 20vw);
+      top: 50%;
+      transform: translateY(-50%);
+      text-align: left;
+    }
+
+    #altData {
+      right: max(24px, 20vw);
+      top: 50%;
+      transform: translateY(-50%);
+      text-align: right;
+    }
+
+    #flightData .hudVal.big,
+    #altData .hudVal.big {
+      margin-top: 7px;
+      font-size: 30px;
+      letter-spacing: 0.04em;
     }
 
     #stateStrip {
       left: 50%;
-      top: 18px;
+      top: 64px;
       transform: translateX(-50%);
-      min-width: min(420px, 54vw);
-      padding: 8px 16px;
+      min-width: 0;
+      padding: 0;
       text-align: center;
-      letter-spacing: 0.15em;
-      font-size: 11px;
+      letter-spacing: 0.18em;
+      font-size: 10px;
+      color: var(--hud-dim);
     }
 
     #state {
-      color: #fff;
+      color: var(--hud);
       font-weight: 800;
       letter-spacing: 0.08em;
     }
 
     #waveReadout {
       margin-left: 10px;
-      color: rgba(182, 245, 255, 0.7);
+      color: var(--hud-dim);
     }
 
     #scorePanel {
-      right: clamp(12px, 2vw, 28px);
+      left: clamp(12px, 2vw, 28px);
       top: clamp(12px, 2vw, 26px);
-      min-width: 208px;
-      padding: 11px 14px;
-    }
-
-    .scoreGrid {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 4px 18px;
-      align-items: baseline;
-      font-size: 11px;
-      letter-spacing: 0.12em;
-    }
-
-    .scoreGrid strong {
-      color: #fff;
-      font-size: 18px;
-      letter-spacing: 0.05em;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
 
     #statusPanel {
-      left: clamp(12px, 2vw, 28px);
+      right: clamp(12px, 2vw, 28px);
       bottom: clamp(12px, 2vw, 26px);
-      width: min(330px, 42vw);
-      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      align-items: flex-end;
     }
 
-    .statusLine {
-      display: grid;
-      grid-template-columns: 72px 1fr auto;
-      gap: 10px;
-      align-items: center;
-      margin: 6px 0;
-      font-size: 11px;
-      letter-spacing: 0.13em;
+    #statusPanel .hudVal {
+      min-width: 42px;
+      text-align: right;
+    }
+
+    /* Scoped under #statusPanel so these beat the shared `.bar` / `.bar > span`
+       rules below regardless of source order (the base `.bar` rules are still
+       used by the start-screen aircraft stat bars and must not be touched). */
+    #statusPanel .hudHpBar {
+      width: 110px;
+      height: 7px;
+      border: 1px solid var(--hud-line);
+      background: rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    #statusPanel .hudHpBar > span {
+      display: block;
+      width: 100%;
+      height: 100%;
+      transform-origin: left;
+      background: var(--hud);
+      box-shadow: none;
+    }
+
+    #statusPanel.healthLow .hudHpBar > span {
+      background: var(--danger);
     }
 
     .bar {
@@ -203,39 +199,36 @@
       box-shadow: 0 0 10px rgba(94, 230, 255, 0.9);
     }
 
-    #healthLow .bar > span,
-    #statusPanel.healthLow .bar > span {
-      background: linear-gradient(90deg, #ff3548, #ff9b75);
-      box-shadow: 0 0 12px rgba(255, 62, 80, 0.95);
-    }
-
     #missilePips {
       display: flex;
-      gap: 5px;
+      gap: 4px;
       justify-content: flex-end;
     }
 
     .missilePip {
-      width: 5px;
-      height: 15px;
-      border: 1px solid rgba(179, 249, 255, 0.75);
-      background: rgba(121, 235, 255, 0.7);
-      transform: skewX(-10deg);
-      box-shadow: 0 0 7px rgba(77, 224, 255, 0.7);
+      width: 6px;
+      height: 6px;
+      border: 1px solid var(--hud-line);
+      background: var(--hud);
+      transform: none;
+      box-shadow: none;
     }
 
     .missilePip.empty {
       background: transparent;
-      opacity: 0.24;
+      opacity: 0.3;
       box-shadow: none;
     }
 
     #radarWrap {
-      right: clamp(12px, 2vw, 28px);
+      left: clamp(12px, 2vw, 28px);
+      right: auto;
       bottom: clamp(12px, 2vw, 26px);
       width: clamp(160px, 18vw, 210px);
       aspect-ratio: 1;
-      padding: 8px;
+      padding: 6px;
+      border: 1px solid var(--hud-line);
+      background: rgba(0, 12, 4, 0.3);
     }
 
     #radar {
@@ -246,11 +239,11 @@
 
     #radarLabel {
       position: absolute;
-      left: 12px;
-      top: 9px;
+      left: 10px;
+      top: 8px;
       font-size: 9px;
       letter-spacing: 0.18em;
-      color: rgba(183, 247, 255, 0.67);
+      color: var(--hud-dim);
     }
 
     #reticleWrap {
@@ -265,17 +258,17 @@
     #reticle {
       position: absolute;
       inset: 33px;
-      border: 1px solid rgba(155, 247, 255, 0.62);
+      border: 1px solid var(--hud-line);
       border-radius: 50%;
-      filter: drop-shadow(0 0 5px rgba(74, 226, 255, 0.72));
+      filter: drop-shadow(0 0 4px rgba(40, 255, 90, 0.45));
     }
 
     #reticle::before,
     #reticle::after {
       content: "";
       position: absolute;
-      background: rgba(180, 251, 255, 0.9);
-      box-shadow: 0 0 5px rgba(72, 225, 255, 0.9);
+      background: var(--hud);
+      box-shadow: none;
     }
 
     #reticle::before {
@@ -296,7 +289,7 @@
 
     .reticleTick {
       position: absolute;
-      background: rgba(166, 249, 255, 0.82);
+      background: var(--hud-soft);
     }
 
     .reticleTick.t { left: 89px; top: 14px; width: 1px; height: 25px; }
@@ -311,7 +304,7 @@
       transform: translateX(-50%);
       font-size: 9px;
       letter-spacing: 0.16em;
-      color: rgba(176, 247, 255, 0.6);
+      color: var(--hud-dim);
     }
 
     #pitchViewport {
@@ -341,7 +334,7 @@
       right: 20%;
       top: 50%;
       height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(160, 245, 255, 0.75) 14%, rgba(160, 245, 255, 0.75) 43%, transparent 43%, transparent 57%, rgba(160, 245, 255, 0.75) 57%, rgba(160, 245, 255, 0.75) 86%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.75) 14%, rgba(83, 255, 92, 0.75) 43%, transparent 43%, transparent 57%, rgba(83, 255, 92, 0.75) 57%, rgba(83, 255, 92, 0.75) 86%, transparent);
     }
 
     .pitchMark {
@@ -350,7 +343,7 @@
       width: 120px;
       height: 1px;
       transform: translateX(-50%);
-      background: linear-gradient(90deg, transparent, rgba(157, 247, 255, 0.64) 20%, rgba(157, 247, 255, 0.64) 44%, transparent 44%, transparent 56%, rgba(157, 247, 255, 0.64) 56%, rgba(157, 247, 255, 0.64) 80%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
     }
 
     .pitchMark::before,
@@ -359,7 +352,7 @@
       position: absolute;
       top: -7px;
       font-size: 8px;
-      color: rgba(177, 247, 255, 0.7);
+      color: var(--hud-dim);
     }
 
     .pitchMark::before { left: 8px; }
@@ -607,9 +600,9 @@
       transform: translate(-50%, -12px);
       padding: 11px 24px;
       text-align: center;
-      border-top: 1px solid rgba(154, 246, 255, 0.55);
-      border-bottom: 1px solid rgba(154, 246, 255, 0.55);
-      background: linear-gradient(90deg, transparent, rgba(4, 24, 37, 0.8) 18%, rgba(4, 24, 37, 0.8) 82%, transparent);
+      border-top: 1px solid var(--hud-soft);
+      border-bottom: 1px solid var(--hud-soft);
+      background: linear-gradient(90deg, transparent, rgba(2, 18, 8, 0.8) 18%, rgba(2, 18, 8, 0.8) 82%, transparent);
       opacity: 0;
       transition: opacity 160ms ease, transform 160ms ease;
       font-size: clamp(13px, 1.4vw, 18px);
@@ -688,7 +681,7 @@
       transform: translateX(-50%);
       padding: 7px 15px;
       border: 1px solid transparent;
-      background: rgba(5, 11, 18, 0.66);
+      background: rgba(0, 0, 0, 0.45);
       opacity: 0;
       font-size: 10px;
       font-weight: 900;
@@ -730,7 +723,7 @@
     }
 
     #cameraFocusStatus {
-      top: 91px;
+      top: 122px;
       color: #ffe97b;
       text-shadow: 0 0 9px rgba(255, 218, 71, 0.85);
     }
@@ -1038,13 +1031,13 @@
     #controlModeStatus {
       position: absolute;
       left: 50%;
-      top: 58px;
+      top: 94px;
       transform: translateX(-50%);
       min-width: 250px;
       padding: 6px 12px;
-      border: 1px solid rgba(157, 247, 255, 0.34);
-      background: rgba(3, 15, 25, 0.58);
-      color: rgba(178, 247, 255, 0.84);
+      border: 1px solid transparent;
+      background: none;
+      color: var(--hud-dim);
       text-align: center;
       font-size: 9px;
       letter-spacing: 0.14em;
@@ -1060,16 +1053,16 @@
 
     #gamepadStatus {
       position: absolute;
-      right: clamp(12px, 2vw, 28px);
+      left: clamp(12px, 2vw, 28px);
       bottom: calc(clamp(160px, 18vw, 210px) + clamp(30px, 4vw, 48px));
       padding: 6px 10px;
-      border: 1px solid rgba(157, 247, 255, 0.28);
-      background: rgba(3, 15, 25, 0.5);
-      color: rgba(181, 241, 248, 0.48);
+      border: 1px solid var(--hud-soft);
+      background: none;
+      color: var(--hud-dim);
       font-size: 9px;
       letter-spacing: 0.14em;
       white-space: nowrap;
-      transition: color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+      transition: color 160ms ease, border-color 160ms ease;
     }
 
     #gamepadStatus::before {
@@ -1085,21 +1078,21 @@
     }
 
     #gamepadStatus.connected {
-      color: #a7ffb1;
-      border-color: rgba(167, 255, 177, 0.5);
-      box-shadow: inset 0 0 14px rgba(91, 255, 136, 0.08), 0 0 10px rgba(91, 255, 136, 0.08);
+      color: var(--hud);
+      border-color: var(--hud-line);
+      box-shadow: none;
     }
 
     @keyframes targetSpin { to { transform: rotate(360deg); } }
     @keyframes lockPulse { to { transform: translate(-50%, -50%) scale(0.92); } }
 
     @media (max-width: 720px) {
-      #flightData, #scorePanel { transform: scale(0.86); }
-      #flightData { transform-origin: left top; }
-      #scorePanel { transform-origin: right top; }
-      #stateStrip { top: 108px; min-width: 70vw; }
-      #controlModeStatus { top: 146px; }
-      #statusPanel { width: 54vw; transform: scale(0.88); transform-origin: left bottom; }
+      #scorePanel { transform: scale(0.86); transform-origin: left top; }
+      #flightData { left: 12px; transform: translateY(-50%) scale(0.86); transform-origin: left center; }
+      #altData { right: 12px; transform: translateY(-50%) scale(0.86); transform-origin: right center; }
+      #stateStrip { top: 108px; }
+      #controlModeStatus { top: 132px; }
+      #statusPanel { transform: scale(0.88); transform-origin: right bottom; }
       #radarWrap { width: 150px; }
       .controls { grid-template-columns: 1fr 1fr; }
       .aircraftCardRow { grid-template-columns: 1fr 1fr; }
@@ -1129,9 +1122,13 @@
 
   <div id="hud" aria-hidden="true">
     <section id="flightData" class="panel">
-      <div class="eyebrow">Flight telemetry</div>
-      <div class="dataRow"><span class="label">SPEED</span><span class="value" id="speedValue">0</span><span class="unit">KM/H</span></div>
-      <div class="dataRow"><span class="label">ALT</span><span class="value" id="altitudeValue">0</span><span class="unit">M</span></div>
+      <span class="hudBox">SPEED</span>
+      <div class="hudVal big" id="speedValue">0</div>
+    </section>
+
+    <section id="altData" class="panel">
+      <span class="hudBox">ALT</span>
+      <div class="hudVal big" id="altitudeValue">0</div>
     </section>
 
     <section id="stateStrip" class="panel">
@@ -1139,25 +1136,14 @@
     </section>
 
     <section id="scorePanel" class="panel">
-      <div class="scoreGrid">
-        <span>SCORE</span><strong id="score">0</strong>
-        <span>HIGH SCORE</span><strong id="highscore">0</strong>
-        <span>KILLS</span><strong id="kills">0</strong>
-      </div>
+      <div class="hudRow"><span class="hudBox">PTS</span><strong class="hudVal" id="score">0</strong></div>
+      <div class="hudRow"><span class="hudBox">HI</span><strong class="hudVal" id="highscore">0</strong></div>
+      <div class="hudRow"><span class="hudBox">KILLS</span><strong class="hudVal" id="kills">0</strong></div>
     </section>
 
     <section id="statusPanel" class="panel">
-      <div class="eyebrow">Aircraft status</div>
-      <div class="statusLine">
-        <span>INTEGRITY</span>
-        <span class="bar"><span id="healthBar"></span></span>
-        <strong id="health">100</strong>
-      </div>
-      <div class="statusLine">
-        <span>MISSILES</span>
-        <span id="missilePips"></span>
-        <strong id="missiles">10</strong>
-      </div>
+      <div class="hudRow"><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
+      <div class="hudRow"><span class="hudBox">HP</span><span class="bar hudHpBar"><span id="healthBar"></span></span><strong class="hudVal" id="health">100</strong></div>
     </section>
 
     <section id="radarWrap" class="panel">
