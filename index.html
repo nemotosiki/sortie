@@ -2965,7 +2965,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           rocks: { count: 26, color: 0x4a5a52, scale: [8, 26] },
           extraClouds: {
             towers: 5, towerSize: [70, 120], towerBase: 620,
-            stratus: 7, stratusSize: [260, 460], stratusBase: 240,
+            stratus: 9, stratusSize: [190, 320], stratusBase: 1450,
             distance: [1100, 3400]
           }
         }
@@ -3033,7 +3033,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           extraIslands: {
             count: 10, radius: [150, 380], height: [34, 104], distance: [2600, 3600]
           },
-          shore: { sand: 0x6d4a3c, shallow: 0x27414a, opacity: 0.8, width: 1.24 },
+          // Low opacity on purpose: against this map's near-black water a
+          // solid sand band reads as an opaque slab floating on the surface
+          // rather than as a beach catching the last of the light.
+          shore: { sand: 0x7d5744, shallow: 0x2c4652, opacity: 0.42, width: 1.2 },
           trees: { perIsland: 12, color: 0x24202a, trunk: 0x1d1820, height: [12, 24] },
           harbour: { hut: 0x4b3630, roof: 0x2e2026, light: 0xffb066, huts: 11 },
           rocks: { count: 18, color: 0x2b2026, scale: [8, 24] },
@@ -3041,7 +3044,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           // their tops, which is the whole look of this map.
           extraClouds: {
             towers: 6, towerSize: [90, 150], towerBase: 560,
-            stratus: 8, stratusSize: [320, 560], stratusBase: 220,
+            stratus: 10, stratusSize: [220, 380], stratusBase: 1400,
             distance: [1200, 3500]
           }
         }
@@ -3114,12 +3117,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           trees: null,
           floes: { count: 70, color: 0xe4f1f7, scale: [18, 62], along: { x: 640, z: [800, -5800] } },
           rocks: { count: 16, color: 0x7e9aab, scale: [9, 24] },
-          // Low flat shelf only - no towers. An overcast lid over the canyon
-          // keeps the eye down in the valley where the flying happens.
+          // High thin overcast. stratusBase has to stay well above the spires
+          // (they top out around 560m): a shelf at canyon height passes close
+          // to the camera, where its silhouette resolves as a hard-edged slab
+          // instead of haze. Small and high reads as cloud; big and low does
+          // not.
           extraClouds: {
-            towers: 2, towerSize: [60, 90], towerBase: 700,
-            stratus: 10, stratusSize: [300, 520], stratusBase: 300,
-            distance: [1000, 3200]
+            towers: 2, towerSize: [60, 90], towerBase: 900,
+            stratus: 12, stratusSize: [180, 300], stratusBase: 1500,
+            distance: [1400, 3400]
           }
         }
       },
@@ -3193,7 +3199,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           // out the moon-rim, not to be looked at.
           extraClouds: {
             towers: 2, towerSize: [70, 110], towerBase: 600,
-            stratus: 5, stratusSize: [280, 460], stratusBase: 260,
+            stratus: 6, stratusSize: [200, 340], stratusBase: 1400,
             distance: [1200, 3000]
           }
         }
@@ -12009,33 +12015,48 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const buildIsland = (x, z, radius, height, squash, capSquash, baseSpin, capSpin, shape) => {
         const island = new THREE.Group();
         if (shape === 1) {
-          // Sand bar: wide, barely above the water, no green cap at all.
+          // Sand bar: wide, low, mostly beach - but with a scrub patch inland
+          // so a big one is not just a bare slab when seen from above.
           const bar = new THREE.Mesh(islandGeometry, islandStone);
           const barH = height * 0.3;
           bar.scale.set(radius * 1.45, barH, radius * squash * 1.15);
           bar.position.y = barH * 0.43;
           bar.rotateY(baseSpin);
           island.add(bar);
+          const scrub = new THREE.Mesh(islandGeometry, islandGreen);
+          scrub.scale.set(radius * 0.82, barH * 0.5, radius * squash * 0.66);
+          scrub.position.y = barH * 0.82;
+          scrub.rotateY(capSpin);
+          island.add(scrub);
           const spit = new THREE.Mesh(islandGeometry, islandStone);
           spit.scale.set(radius * 0.7, barH * 0.72, radius * squash * 0.5);
           spit.position.set(radius * 0.95, barH * 0.3, radius * squash * 0.35);
           spit.rotateY(capSpin);
           island.add(spit);
         } else if (shape === 2) {
-          // Terrace: two stacked steps, so the profile has a shoulder.
+          // Terrace: two stacked steps, so the profile has a shoulder. Each
+          // step gets its own green shelf - seen from above (which is most of
+          // the time in this game) a bare stone step reads as a flat brown
+          // polygon, so the vegetation has to cover the tread, not just perch
+          // on the summit.
           const lower = new THREE.Mesh(islandGeometry, islandStone);
           lower.scale.set(radius, height * 0.62, radius * squash);
           lower.position.y = height * 0.27;
           lower.rotateY(baseSpin);
           island.add(lower);
+          const shelf = new THREE.Mesh(islandGeometry, islandGreen);
+          shelf.scale.set(radius * 0.94, height * 0.1, radius * squash * 0.94);
+          shelf.position.y = height * 0.6;
+          shelf.rotateY(baseSpin);
+          island.add(shelf);
           const upper = new THREE.Mesh(islandGeometry, islandStone);
           upper.scale.set(radius * 0.62, height * 0.55, radius * squash * 0.6);
           upper.position.y = height * 0.78;
           upper.rotateY(capSpin);
           island.add(upper);
           const cap = new THREE.Mesh(islandGeometry, islandGreen);
-          cap.scale.set(radius * 0.56, height * 0.16, radius * capSquash * 0.58);
-          cap.position.y = height * 1.04;
+          cap.scale.set(radius * 0.58, height * 0.14, radius * capSquash * 0.6);
+          cap.position.y = height * 1.02;
           cap.rotateY(baseSpin);
           island.add(cap);
         } else if (shape === 3) {
@@ -12252,17 +12273,28 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         if (decor.trees && islandAnchors.length > 0) {
           const spots = [];
           for (const anchor of islandAnchors) {
-            if (anchor.shape === 1) continue; // bare sand bars stay bare
             if (blocked(anchor.x, anchor.z)) continue;
-            for (let t = 0; t < decor.trees.perIsland; t += 1) {
-              // Sqrt keeps the scatter area-uniform instead of centre-heavy,
-              // and 0.82 holds them inside the green cap.
-              const rr = Math.sqrt(decorRng()) * 0.82;
+            // Sand bars are low and mostly beach, so they get a thinner stand
+            // clustered on the inland scrub patch rather than a full canopy.
+            const count = anchor.shape === 1
+              ? Math.max(2, Math.round(decor.trees.perIsland * 0.35))
+              : decor.trees.perIsland;
+            // Where the green actually is differs per archetype: the sand bar
+            // has a low scrub patch, the terrace has shelves partway up, the
+            // others cap out near the summit. Planting at the wrong height is
+            // what makes trees float or sink into the hillside.
+            const spread = anchor.shape === 1 ? 0.6 : 0.82;
+            const baseY = anchor.shape === 1
+              ? anchor.height * 0.3 * 0.95
+              : anchor.height * (anchor.shape === 3 ? 0.95 : 0.9);
+            for (let t = 0; t < count; t += 1) {
+              // Sqrt keeps the scatter area-uniform instead of centre-heavy.
+              const rr = Math.sqrt(decorRng()) * spread;
               const theta = decorRng() * Math.PI * 2;
               spots.push({
                 x: anchor.x + Math.cos(theta) * anchor.radius * rr,
                 z: anchor.z + Math.sin(theta) * anchor.radius * rr * anchor.squash,
-                y: anchor.height * (anchor.shape === 3 ? 0.95 : 0.9),
+                y: baseY,
                 h: decor.trees.height[0] + decorRng() * (decor.trees.height[1] - decor.trees.height[0]),
                 spin: decorRng() * Math.PI
               });
@@ -12494,17 +12526,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             tower.rotateY(decorRng() * Math.PI);
             addRoot(tower);
           }
+          // Stratus shelves. Built from several overlapping lozenges rather
+          // than one big flattened sphere: a single stretched sphere at this
+          // size reads as a solid grey slab hanging in the sky, because its
+          // silhouette is one hard convex outline. Breaking it into offset
+          // pieces gives the ragged edge that makes it read as cloud.
           for (let i = 0; i < cfg.stratus; i += 1) {
             const angle = decorRng() * Math.PI * 2;
             const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
-            const shelf = new THREE.Mesh(cloudGeometry, cirrusMaterial);
             const w = cfg.stratusSize[0] + decorRng() * (cfg.stratusSize[1] - cfg.stratusSize[0]);
+            const shelf = new THREE.Group();
+            const pieces = 3 + Math.floor(decorRng() * 3);
+            for (let p = 0; p < pieces; p += 1) {
+              const slab = new THREE.Mesh(cloudGeometry, cirrusMaterial);
+              const pw = w * (0.4 + decorRng() * 0.42);
+              slab.position.set(
+                (p - (pieces - 1) / 2) * w * 0.34 + (decorRng() - 0.5) * w * 0.16,
+                (decorRng() - 0.5) * 16,
+                (decorRng() - 0.5) * w * 0.3
+              );
+              slab.scale.set(pw, 5 + decorRng() * 6, pw * (0.34 + decorRng() * 0.3));
+              slab.rotation.y = decorRng() * Math.PI;
+              shelf.add(slab);
+            }
             shelf.position.set(
               Math.cos(angle) * distance,
               cfg.stratusBase + decorRng() * 160,
               Math.sin(angle) * distance
             );
-            shelf.scale.set(w, 6 + decorRng() * 7, w * (0.32 + decorRng() * 0.3));
             shelf.rotation.y = decorRng() * Math.PI;
             addRoot(shelf);
           }
