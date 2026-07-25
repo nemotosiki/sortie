@@ -896,6 +896,16 @@
       will-change: opacity;
     }
 
+    #gVignette {
+      position: fixed;
+      inset: 0;
+      z-index: 7;
+      pointer-events: none;
+      opacity: 0;
+      background: radial-gradient(ellipse at 50% 50%, transparent 34%, rgba(4, 8, 12, 0.46) 72%, rgba(1, 3, 5, 0.92) 100%);
+      will-change: opacity;
+    }
+
     #damageFlash {
       position: fixed;
       inset: 0;
@@ -1377,6 +1387,7 @@
   <div id="radioPanel"><span id="radioSpeaker"></span><span id="radioText"></span></div>
 
   <div id="cloudVeil"></div>
+  <div id="gVignette"></div>
   <div id="damageFlash"></div>
 
   <section id="startScreen" class="screen">
@@ -1461,6 +1472,8 @@
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
     let STRUCTURAL_G = 3;              // max load factor; sets the corner speed
+    let TIP_OFFSET_X = 7.3;            // wingtip offset for contrail emitters
+    let TIP_OFFSET_Z = 3.3;
     // Slowing down tightens the turn, but only down to the corner speed. Below it
     // the wing cannot generate the lift for that much G and the turn opens back
     // up, so there is a sweet spot rather than "slower is always better".
@@ -1556,6 +1569,7 @@
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
         missileCapacity: 10, maxHealth: 100,
+        tipSpan: 7.3, tipZ: 3.3,
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
 canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
@@ -1574,6 +1588,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         gunDamage: 22, missileDamage: 98,
         boostResponse: 0.48, brakeResponse: 0.48, cruiseResponse: 0.56,
         missileCapacity: 12, maxHealth: 150,
+        tipSpan: 8.55, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0xd9e3ea, secondary: 0x4a6478, accent: 0x2c8fd6,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
@@ -1592,6 +1607,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         gunDamage: 14, missileDamage: 98,
         boostResponse: 0.66, brakeResponse: 0.62, cruiseResponse: 0.7,
         missileCapacity: 8, maxHealth: 125,
+        tipSpan: 9.1, tipZ: 2.4,
         theme: Object.freeze({
 primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
@@ -1610,6 +1626,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
         missileCapacity: 14, maxHealth: 200,
+        tipSpan: 6.85, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
 canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
@@ -1998,6 +2015,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       controlModeStatus: document.getElementById("controlModeStatus"),
       damageFlash: document.getElementById("damageFlash"),
       cloudVeil: document.getElementById("cloudVeil"),
+      gVignette: document.getElementById("gVignette"),
       radar: document.getElementById("radar"),
       resultTitle: document.getElementById("resultTitle"),
       resultMessage: document.getElementById("resultMessage"),
@@ -2011,6 +2029,30 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     scene.fog = new THREE.Fog(0x7ba8ba, 650, 3350);
 
     const camera = new THREE.PerspectiveCamera(BASE_CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 7000);
+    scene.add(camera);
+    // Camera-space wind streaks - thin lines that rush past at high speed.
+    const WIND_STREAK_COUNT = 26;
+    const windStreakPositions = new Float32Array(WIND_STREAK_COUNT * 6);
+    const windStreakData = [];
+    for (let i = 0; i < WIND_STREAK_COUNT; i += 1) {
+      windStreakData.push({
+        x: (Math.random() - 0.5) * 26,
+        y: (Math.random() - 0.5) * 15,
+        z: -8 - Math.random() * 30,
+        len: 2.2 + Math.random() * 3
+      });
+    }
+    const windStreakGeometry = new THREE.BufferGeometry();
+    const windStreakAttribute = new THREE.BufferAttribute(windStreakPositions, 3);
+    windStreakAttribute.setUsage(THREE.DynamicDrawUsage);
+    windStreakGeometry.setAttribute("position", windStreakAttribute);
+    const windStreakMaterial = new THREE.LineBasicMaterial({
+      color: 0xdff4ff, transparent: true, opacity: 0, depthWrite: false, fog: false
+    });
+    const windStreaks = new THREE.LineSegments(windStreakGeometry, windStreakMaterial);
+    windStreaks.frustumCulled = false;
+    windStreaks.renderOrder = 9;
+    camera.add(windStreaks);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x6698b2, 1);
@@ -2294,6 +2336,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         missileKills: 0,
         damageTaken: 0,
         aceDestroyed: false,
+        activeContrailParticles: () => contrailParticlePool.activeCount,
+        gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceSelectAircraft: (id) => selectAircraft(id),
         forceTeleport: (x, y, z) => {
           if (gameState !== STATE_PLAYING) return false;
@@ -2371,6 +2415,15 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       additive: false
     });
     const explosionSpriteTexture = createParticleTexture("explosion");
+    // Wingtip vortex contrails - white puffs dropped at the tips every frame
+    // during hard turns or full boost blend into a smooth AC-style trail.
+    const contrailParticlePool = createParticlePool(220, {
+      size: 3.4,
+      opacity: 0.5,
+      blending: THREE.NormalBlending,
+      texture: createParticleTexture("smoke"),
+      additive: false
+    });
 
     const player = new THREE.Group();
     let playerModel = createAircraftModel(AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].theme);
@@ -2554,6 +2607,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateAudioCues(rawDt);
       updateCamera(rawDt);
       updateWorld(rawDt);
+      updateFlightEffects(rawDt);
       updateVisualStatus(rawDt);
       updateRadio(rawDt);
       updateHud();
@@ -3456,6 +3510,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         gunCooldown += 1 / GUN_RATE;
       }
 
+      boostActive = boost;
+      currentGLoad = (Math.abs(Math.sin(playerBank)) + Math.abs(pitchInput) * 0.8) *
+        playerTurnFactor * THREE.MathUtils.clamp(playerSpeed / CRUISE_SPEED, 0.4, 1.6);
+
       const flameScale = boost ? 2.4 : (brake ? 0.48 : 1.15);
       const stallFlameFactor = 1 - stallSeverity * 0.42;
       for (const flame of playerModel.flames) {
@@ -4298,6 +4356,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       );
       camera.quaternion.normalize();
 
+      if (boostActive && gameState === STATE_PLAYING) {
+        const amp = 0.42 * THREE.MathUtils.clamp(playerSpeed / BOOST_SPEED, 0.5, 1);
+        camera.position.x += (Math.random() - 0.5) * amp;
+        camera.position.y += (Math.random() - 0.5) * amp;
+        camera.position.z += (Math.random() - 0.5) * amp;
+      }
+
       world.skyGroup.position.copy(camera.position);
     }
 
@@ -4321,6 +4386,56 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       camera.quaternion.setFromRotationMatrix(tmpM1);
       world.skyGroup.position.copy(camera.position);
+    }
+
+    let boostActive = false;
+    let currentGLoad = 0;
+    let gStrain = 0;
+    const contrailTip = new THREE.Vector3();
+    const contrailStill = new THREE.Vector3();
+    function updateFlightEffects(dt) {
+      const playing = gameState === STATE_PLAYING;
+
+      // Wingtip vortex contrails while pulling hard or at full boost.
+      if (playing && (currentGLoad > 0.95 || (boostActive && playerSpeed > BOOST_SPEED * 0.72))) {
+        for (let side = -1; side <= 1; side += 2) {
+          contrailTip.set(side * TIP_OFFSET_X, 0, TIP_OFFSET_Z)
+            .applyQuaternion(player.quaternion)
+            .add(player.position);
+          contrailParticlePool.spawn(contrailTip, contrailStill, 0.85, 0xffffff, 0, 0.9);
+        }
+      }
+
+      // Sustained-G grey-out builds over about a second and releases fast.
+      gStrain += (playing && currentGLoad > 1.12) ? dt * 0.75 : -dt * 1.5;
+      gStrain = THREE.MathUtils.clamp(gStrain, 0, 1);
+      ui.gVignette.style.opacity = gStrain < 0.01 ? "0" : (gStrain * 0.72).toFixed(3);
+
+      // Wind streaks fade in above cruise and saturate near boost speed.
+      const streakFactor = playing
+        ? THREE.MathUtils.clamp((playerSpeed - CRUISE_SPEED * 1.22) / Math.max(1, BOOST_SPEED - CRUISE_SPEED * 1.22), 0, 1)
+        : 0;
+      windStreakMaterial.opacity = THREE.MathUtils.lerp(windStreakMaterial.opacity, streakFactor * 0.5, damping(0.004, dt));
+      if (windStreakMaterial.opacity > 0.01) {
+        for (let i = 0; i < WIND_STREAK_COUNT; i += 1) {
+          const streak = windStreakData[i];
+          streak.z += (40 + playerSpeed * 0.85) * dt;
+          if (streak.z > -4) {
+            streak.x = (Math.random() - 0.5) * 26;
+            streak.y = (Math.random() - 0.5) * 15;
+            streak.z = -34 - Math.random() * 10;
+            streak.len = 2.2 + Math.random() * 3;
+          }
+          const offset = i * 6;
+          windStreakPositions[offset] = streak.x;
+          windStreakPositions[offset + 1] = streak.y;
+          windStreakPositions[offset + 2] = streak.z;
+          windStreakPositions[offset + 3] = streak.x;
+          windStreakPositions[offset + 4] = streak.y;
+          windStreakPositions[offset + 5] = streak.z - streak.len;
+        }
+        windStreakAttribute.needsUpdate = true;
+      }
     }
 
     let cloudVeilLevel = 0;
@@ -5569,6 +5684,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       updateParticlePool(sparkParticlePool, dt);
       updateParticlePool(debrisParticlePool, dt);
       updateParticlePool(smokeParticlePool, dt);
+      updateParticlePool(contrailParticlePool, dt);
     }
 
     function clearParticlePool(pool) {
@@ -5584,6 +5700,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       clearParticlePool(sparkParticlePool);
       clearParticlePool(debrisParticlePool);
       clearParticlePool(smokeParticlePool);
+      clearParticlePool(contrailParticlePool);
     }
 
     function spawnParticleBurst(
@@ -6148,6 +6265,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
       STRUCTURAL_G = spec.structuralG;
+      TIP_OFFSET_X = spec.tipSpan * spec.theme.scale;
+      TIP_OFFSET_Z = spec.tipZ * spec.theme.scale;
       // AIR-TO-AIR: per-aircraft weapon punch.
       GUN_DAMAGE = spec.gunDamage;
       MISSILE_DAMAGE = spec.missileDamage;
