@@ -2019,7 +2019,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "rafale", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2218,6 +2218,33 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         theme: Object.freeze({
 primary: 0xb0b8c0, secondary: 0x5c6c7c, accent: 0x2b3a49,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
+        })
+      }),
+      // Rafale M: the carrier omnirole. Where the F-2A is a strike jet that can
+      // defend itself, this is a fighter that happens to sink ships - it gives
+      // up top speed to the Eagle and the Tomcat and buys, with a close-coupled
+      // canard delta, the third-best roll damping and the second-lowest stall
+      // entry in the hangar. It carries the LASM rather than its real LAAM: a
+      // fourth XLAA carrier would have blurred three existing jets, and the
+      // anti-ship round is what an omnirole naval fighter is for.
+      rafale: Object.freeze({
+        id: "rafale",
+        label: "RAFALE M",
+        role: "Carrier Omnirole",
+        tag: "OMNIROLE",
+        blurb: "デルタ翼と近接カナードを組み合わせた艦載万能機。低中速域での軽快さと安定を高い次元で両立し、空戦から対艦攻撃まで単機でこなす。最高速では上位機に譲るが、狙った空域に居座り続ける粘り強さが武器だ。",
+        cruiseSpeed: 208, boostSpeed: 415, brakeSpeed: 120,
+        pitchRateDeg: 50, rollRateDeg: 172, yawRateDeg: 14, maxBankAngleDeg: 62,
+        normalRollSpring: 46, rollRateLimitDeg: 165, turnRateDeg: 36,
+        rollDamping: 12.6, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.44, structuralG: 3.3,
+        gunDamage: 22, missileDamage: 98,
+        boostResponse: 0.47, brakeResponse: 0.47, cruiseResponse: 0.55,
+        missileCapacity: 14, maxHealth: 150,
+        spw: Object.freeze({ key: "lasm", capacity: 16 }),
+        tipSpan: 7.5, tipZ: 2.9,
+        theme: Object.freeze({
+primary: 0x6b7a86, secondary: 0x3f4c58, accent: 0x2f6fa8,
+canopy: 0x8fe0ff, exhaust: 0x9fd8ff, scale: 0.99, variant: "rafale"
         })
       }),
       f4: Object.freeze({
@@ -10412,6 +10439,37 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -4.4], [6.9, 2.4], [6.9, 3.0], [2.4, 4.6],
         [0, 4.6], [-2.4, 4.6], [-6.9, 3.0], [-6.9, 2.4]
       ], 0.3);
+      // Rafale M: a true delta - leading edge straight from a far-forward root
+      // apex out to a clipped tip, trailing edge square across. No cranked
+      // outboard panel, which is what separates it from every trapezoid above.
+      // Half-span 7.5 matches tipSpan so the contrail leaves the real tip.
+      const wingRafale = extrudedSurface([
+        [0, -5.4], [7.5, 3.4], [7.5, 4.4], [2.4, 4.6],
+        [0, 4.6], [-2.4, 4.6], [-7.5, 4.4], [-7.5, 3.4]
+      ], 0.28);
+      // Typhoon: the same delta idea with markedly more area - the root apex
+      // reaches further forward and the chord is deeper all the way out, so
+      // "large delta wings" reads as surface area rather than span (7.8 vs 7.5
+      // is only a third of a metre wider than the Rafale's).
+      const wingTyphoon = extrudedSurface([
+        [0, -6.4], [7.8, 3.2], [7.8, 4.6], [2.7, 5.3],
+        [0, 5.3], [-2.7, 5.3], [-7.8, 4.6], [-7.8, 3.2]
+      ], 0.3);
+      // Gripen E: the smallest delta in the set. Half-span 6.6 with a shallower
+      // root chord - the whole planform is a size step below the other two
+      // deltas, which is the read-at-a-glance difference between them.
+      const wingGripen = extrudedSurface([
+        [0, -4.6], [6.6, 2.9], [6.6, 3.8], [2.1, 4.0],
+        [0, 4.0], [-2.1, 4.0], [-6.6, 3.8], [-6.6, 2.9]
+      ], 0.26);
+      // Shared canard foreplane for the three eurocanards. Small, sharply
+      // swept and mirrored like a scaled-down tailplane; each variant places
+      // it at its own station, which is how the three are told apart (Rafale
+      // close to the wing, Typhoon far forward, Gripen between them).
+      const canard = extrudedSurface([
+        [0, -0.9], [2.9, 0.7], [2.9, 1.2], [0.9, 1.5],
+        [-0.9, 1.5], [-2.9, 1.2], [-2.9, 0.7]
+      ], 0.2);
       const stabRaptor = extrudedSurface([
         [0, -1.6], [3.4, 0.9], [3.4, 1.5], [1.2, 2.0],
         [-1.2, 2.0], [-3.4, 1.5], [-3.4, 0.9]
@@ -10450,6 +10508,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
         wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
+        wingRafale, wingTyphoon, wingGripen, canard,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -10821,6 +10880,54 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.panel, dark, 0, 0.7, -10.6, 0.6, 0.08, 2.0);
         add(geometry.canopy, navL, -12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
         add(geometry.canopy, navR, 12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
+      } else if (theme.variant === "rafale") {
+        // Rafale M: delta wing with CLOSE-COUPLED canards - the foreplanes sit
+        // just ahead of the wing root at z -4.2, almost touching the leading
+        // edge. That gap is the entire difference between this jet and the
+        // Typhoon, whose canards sit three metres further forward, so it is
+        // drawn deliberately tight. One centreline fin (not two like the
+        // Flanker/Raptor), twin nozzles held close together, and the carrier
+        // kit - a fat nose leg and an arrestor hook - finish the read.
+        add(geometry.fuselage, primary, 0, 0, -0.5, 0.9, 0.72, 1);
+        add(geometry.nose, primary, 0, 0.02, -8.2, 0.72, 0.62, 1.08);
+        add(geometry.canopy, canopy, 0, 0.86, -3.9, 0.66, 0.54, 1.5);
+        add(geometry.wingRafale, secondary, 0, -0.06, 1.0);
+        // Close-coupled canards. z -4.2 puts them barely clear of the wing
+        // apex at -5.4; they are also set high on the shoulder, as on the real
+        // aircraft, so they stay visible against the delta from head-on.
+        add(geometry.canard, primary, -1.55, 0.42, -4.2, 1, 1, 1, 0.12);
+        add(geometry.canard, primary, 1.55, 0.42, -4.2, 1, 1, 1, -0.12);
+        // One fin on the centreline.
+        add(geometry.fin, secondary, 0, 0.6, 4.6, 0.82, 1.12, 0.86);
+        // Twin engines, close-coupled: nacelles at +/-0.7, less than half the
+        // F-14's spacing, so there is no tunnel between them.
+        add(geometry.rearBody, secondary, -0.7, -0.04, 6.3, 0.76, 0.76, 1.1);
+        add(geometry.rearBody, secondary, 0.7, -0.04, 6.3, 0.76, 0.76, 1.1);
+        add(geometry.nozzle, accent, -0.7, -0.04, 8.2, 0.88, 0.88, 1);
+        add(geometry.nozzle, accent, 0.7, -0.04, 8.2, 0.88, 0.88, 1);
+        addFlame(-0.7, -0.04, 9.5, 0.88, 0.88);
+        addFlame(0.7, -0.04, 9.5, 0.88, 0.88);
+        // Half-round side intakes low on the forebody, canted in against the
+        // fuselage - not the Typhoon's single chin box.
+        add(geometry.intake, accent, -1.35, -0.5, -2.0, 0.6, 0.8, 1.1, 0.34);
+        add(geometry.intake, accent, 1.35, -0.5, -2.0, 0.6, 0.8, 1.1, -0.34);
+        // Carrier kit: a short fat nose leg fairing and the arrestor hook under
+        // the tail. The wings do NOT fold - that is the tell against the F-35C.
+        add(geometry.panel, dark, 0, -0.86, -6.2, 0.26, 0.42, 1.5);
+        add(geometry.panel, dark, 0, -0.92, 6.8, 0.12, 0.12, 2.4).rotation.x = 0.32;
+        // Details: pitot boom, anti-glare strip, dorsal spine, wingtip rails
+        // and nav lights at the geometric tips.
+        add(geometry.panel, dark, 0, 0.05, -10.9, 0.07, 0.07, 1.6);
+        add(geometry.panel, dark, 0, 0.62, -5.6, 0.6, 0.08, 1.8);
+        add(geometry.panel, secondary, 0, 0.6, 2.2, 0.28, 0.2, 5.4);
+        add(geometry.panel, dark, -7.5, -0.02, 3.6, 0.2, 0.16, 2.1);
+        add(geometry.panel, dark, 7.5, -0.02, 3.6, 0.2, 0.16, 2.1);
+        add(geometry.missileBody, light, -7.5, -0.24, 3.3, 0.75, 0.75, 0.7);
+        add(geometry.missileBody, light, 7.5, -0.24, 3.3, 0.75, 0.75, 0.7);
+        add(geometry.missileNose, dark, -7.5, -0.24, 1.6, 0.7, 0.7, 0.7);
+        add(geometry.missileNose, dark, 7.5, -0.24, 1.6, 0.7, 0.7, 0.7);
+        add(geometry.canopy, navL, -7.62, 0.08, 3.9, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 7.62, 0.08, 3.9, 0.12, 0.12, 0.12);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
