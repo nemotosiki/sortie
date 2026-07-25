@@ -1595,11 +1595,11 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
 
     const KILL_CALLOUTS = [
-      "Splash one! Nice shot!",
-      "Splash! Good kill!",
-      "He's going down!",
-      "Another one off the board!",
-      "That's a kill! Keep it rolling!"
+      "撃墜確認！ ナイスショット！",
+      "命中！ いい腕だ！",
+      "落ちるぞ！",
+      "また1機減らしたな！",
+      "撃墜だ！ その調子で行け！"
     ];
 
     const RADIO_FEAR_STAGES = [
@@ -1608,13 +1608,13 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         entry: {
           speaker: "enemy",
           priority: RADIO_PRIORITY.NORMAL,
-          text: "Viper Two is down. Hold formation — it's one bandit."
+          text: "ヴァイパー2、撃墜された。隊形を維持しろ——敵は1機だけだ。"
         },
         support: null,
         pool: [
-          "Stay on the plan. He got lucky.",
-          "All units, tighten up. Check your six.",
-          "One loss changes nothing. Press the attack."
+          "作戦通りに行け。まぐれだ。",
+          "全機、隊形を締めろ。後方を確認しろ。",
+          "1機やられた程度で何も変わらん。攻撃を続けろ。"
         ]
       },
       {
@@ -1622,13 +1622,13 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         entry: {
           speaker: "enemy",
           priority: RADIO_PRIORITY.NORMAL,
-          text: "That's two of ours gone! Who IS this guy?"
+          text: "2機目だと！？ 何なんだこいつは！"
         },
         support: null,
         pool: [
-          "Bison Lead, he's not on my scope — where is he?!",
-          "We're getting picked apart out here!",
-          "Do NOT engage alone. Pair up, now!"
+          "バイソン隊長、スコープに映らない…どこにいる！？",
+          "こっちは各個撃破されてるぞ！",
+          "単機で仕掛けるな！ 今すぐ2機1組になれ！"
         ]
       },
       {
@@ -1636,18 +1636,18 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         entry: {
           speaker: "enemy",
           priority: RADIO_PRIORITY.URGENT,
-          text: "He's cutting us to pieces! Break! Break!"
+          text: "こっちが切り刻まれてる！ ブレイク！ ブレイク！"
         },
         support: {
           speaker: "wingman",
           priority: RADIO_PRIORITY.NORMAL,
-          text: "They're panicking out there. Keep the pressure on!"
+          text: "敵が浮足立ってるぞ。そのまま押し続けろ！"
         },
         pool: [
-          "I can't shake him! I can't shake him!",
-          "Mayday! Mayday! Lancer Two going down!",
-          "That has to be {nickname}... nobody else flies like that!",
-          "Where is our support?! We need support NOW!"
+          "振り切れない！ 振り切れないんだ！",
+          "メーデー！ メーデー！ ランサー2、墜ちる！",
+          "あれは{nickname}だ…あんな飛び方をする奴が他にいるものか！",
+          "増援はどうした！？ 今すぐ増援を回せ！"
         ]
       },
       {
@@ -1655,17 +1655,17 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         entry: {
           speaker: "enemy",
           priority: RADIO_PRIORITY.URGENT,
-          text: "All units, disengage! {nickname} owns this sky!"
+          text: "全機、戦闘を中止しろ！ この空は{nickname}のものだ！"
         },
         support: {
           speaker: "command",
           priority: RADIO_PRIORITY.NORMAL,
-          text: "Enemy comms are collapsing. They have a name for you now: {nickname}."
+          text: "敵の通信が崩壊している。奴らは君をこう呼んでいる——{nickname}、と。"
         },
         pool: [
-          "I'm not dying out here. I'm pulling out!",
-          "Stay away from me... stay AWAY!",
-          "You can't outfly {nickname}. Nobody outflies {nickname}."
+          "こんな所で死んでたまるか。俺は離脱する！",
+          "来るな…来るなァ！",
+          "{nickname}には勝てない。誰も{nickname}には勝てないんだ。"
         ]
       }
     ];
@@ -2683,17 +2683,17 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const nickname = getPlayerNickname();
       const lines = [];
       if (success) {
-        lines.push("Confirm IRONBACK is down. Repeat — IRONBACK is down.");
-        lines.push(`${kills} aircraft lost to a single fighter. They call him '${nickname}'.`);
+        lines.push("IRONBACK撃墜を確認。繰り返す——IRONBACK、墜ちた。");
+        lines.push(`たった1機に${kills}機やられた。奴らは奴を『${nickname}』と呼んでいる。`);
         lines.push(gunKills >= missileKills
-          ? "Gun kills. Most of them were GUN kills. Recommend we never come back here."
-          : "He never wasted a missile. Every launch, a coffin.");
+          ? "機銃だ。ほとんどが機銃による撃墜だった。二度とこの空域に近づくな。"
+          : "ミサイルを1発も無駄にしなかった。撃てば必ず棺桶だ。");
       } else {
-        lines.push("Splash one. The bandit is down. The sky is ours again.");
+        lines.push("撃墜1。敵機は墜ちた。空はまた我々のものだ。");
         lines.push(aceDestroyed
-          ? "IRONBACK didn't make it home either. Some trade."
-          : "IRONBACK is already asking who's next.");
-        if (kills > 0) lines.push(`They lost ${kills} of ours before they took him down.`);
+          ? "IRONBACKも還らなかったがな。割に合わん取引だ。"
+          : "IRONBACKはもう「次は誰だ」と聞いている。");
+        if (kills > 0) lines.push(`落とされるまでに${kills}機持っていかれた。`);
       }
       return lines;
     }
@@ -3027,7 +3027,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       enemyMissileSerial += 1;
       enemyMissilesLaunched += 1;
-      triggerRadioLine("enemy", "Fox two, fox two!", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
+      triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
       enemyMissiles.push({
         id: enemyMissileSerial,
         mesh: root,
@@ -3310,7 +3310,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
             enemy.aceEngageLineFired = true;
             triggerRadioLine(
               "enemy",
-              "This is Ironback. All units fall back — the bandit is mine.",
+              "こちらアイアンバック。全機下がれ——奴は私がやる。",
               RADIO_PRIORITY.NORMAL,
               "ace-engage"
             );
@@ -3452,7 +3452,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           enemy.aceHalfLineFired = true;
           triggerRadioLine(
             "enemy",
-            "Not bad. You'll need more than that to bring ME down.",
+            "悪くない。だがその程度で私は墜ちんぞ。",
             RADIO_PRIORITY.NORMAL,
             "ace-half"
           );
@@ -3484,7 +3484,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         startAceKillCam(enemy);
         triggerRadioLine(
           "enemy",
-          "This is Ironback... I'm hit... going down.",
+          "こちらアイアンバック…被弾した…墜ちる…",
           RADIO_PRIORITY.URGENT,
           "ace-down"
         );
@@ -3519,7 +3519,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         completeMission(false);
       } else if (health <= PLAYER_MAX_HEALTH * 0.3) {
         showBanner("WARNING · CRITICAL DAMAGE", 1.1, "danger");
-        triggerRadioLine("wingman", "You're hit bad! Get some altitude!", RADIO_PRIORITY.URGENT, "critical-damage");
+        triggerRadioLine("wingman", "被弾がひどいぞ！ 高度を取れ！", RADIO_PRIORITY.URGENT, "critical-damage");
       }
       return true;
     }
@@ -3549,13 +3549,13 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         showBanner("WAVE 2 · INBOUND", 2.0, "danger");
         triggerRadioLine(
           "command",
-          "Second wave inbound. Lead contact is flagged: ace craft, callsign IRONBACK. Stay sharp.",
+          "第2波、接近中。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。",
           RADIO_PRIORITY.NORMAL,
           "wave2-inbound"
         );
         triggerRadioLine(
           "wingman",
-          "Ironback?! I've heard the stories. Do not let him get behind you.",
+          "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
           RADIO_PRIORITY.NORMAL,
           "ace-foreshadow-wingman"
         );
@@ -3574,25 +3574,25 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       cameraShake = Math.min(1.8, cameraShake + 0.45);
       radioSay(
         "command",
-        "New contacts! Large formation inbound — twelve plus. Stand by.",
+        "新たな反応！ 大編隊が接近——12機以上。待機せよ。",
         RADIO_PRIORITY.URGENT,
         "outro-scare"
       );
       radioSay(
         "wingman",
-        "Twelve bandits?! {nickname}, we can't take another wave!",
+        "12機だと！？ {nickname}、もう1波は保たないぞ！",
         RADIO_PRIORITY.URGENT,
         "outro-dread"
       );
       radioSay(
         "enemy",
-        "This is Bison Lead. Ironback is gone. All flights abort — get out, NOW!",
+        "こちらバイソン隊長。アイアンバックがやられた。全機作戦中止——今すぐ離脱しろ！",
         RADIO_PRIORITY.URGENT,
         "outro-break"
       );
       radioSay(
         "command",
-        "...contacts are turning. All of them. They're running from you, {nickname}.",
+        "…敵編隊、反転していく。全機だ。奴らは君から逃げている、{nickname}。",
         RADIO_PRIORITY.URGENT,
         "outro-retreat"
       );
@@ -3625,14 +3625,14 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (success) {
         radioSay(
           "command",
-          "Sky's clear. Full enemy withdrawal confirmed. Come home, {nickname}.",
+          "空域クリア。敵全機の撤退を確認。帰投せよ、{nickname}。",
           RADIO_PRIORITY.CRITICAL,
           "mission-outcome"
         );
       } else {
         triggerRadioLine(
           "command",
-          "We've lost contact. Return to base if you can hear this.",
+          "応答が途絶えた…聞こえていたら帰投せよ。",
           RADIO_PRIORITY.CRITICAL,
           "mission-outcome"
         );
