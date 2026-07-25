@@ -2019,7 +2019,9 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze([
+      "f16", "gripen", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f4", "f22"
+    ]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2084,6 +2086,26 @@
         multiLockTime: 0.45,
         lockRange: null
       }),
+      // Gripen E: six targets to the 8AAM's eight and the 4AAM's four. The
+      // small jet's answer to being outnumbered - it cannot out-armour a swarm,
+      // so it clears one instead. 84 damage sits between the 8AAM's 78 and a
+      // standard missile's 98, keeping the rule the multi-lock rounds already
+      // follow: the more targets one trigger takes, the lighter each round.
+      // At 84 it cannot one-shot even the 100 HP F-16, so a multi-target weapon
+      // still wins by handling rather than by punch. Data only - updateMultiLock
+      // and the salvo path both read `multi`/`multiLockTime` generically.
+      aam6: Object.freeze({
+        key: "aam6",
+        label: "6AAM",
+        kind: "aam",
+        damage: 84,
+        turnRateDeg: 200,
+        maxSpeed: 520,
+        life: 9.5,
+        multi: 6,
+        multiLockTime: 0.45,
+        lockRange: null
+      }),
       // F-4: free-fall bomb, no lock at all - the CCIP marker is the sight.
       ugb: Object.freeze({
         key: "ugb",
@@ -2117,6 +2139,38 @@
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
 canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
+        })
+      }),
+      // Gripen E: the deliberate valley in the hangar. Where the F-35C is
+      // built to have no weakness, this one is built to have exactly one -
+      // 125 HP, level with the F-4 and second-lowest in the set, which reads as
+      // DEFENSE 40. Everything else is bought with lightness: the third-best
+      // roll rate behind only the Raptor, and MOBILITY 87 from an airframe that
+      // gives up top speed to every jet above it. The 6AAM is the compensation:
+      // it cannot out-armour a swarm, so it clears one in a single trigger pull.
+      //
+      // The 125 is load-bearing and must not be lowered. DEFENSE is normalised
+      // against the fleet's min and max HP, and the F-16's 100 is the floor;
+      // anything under 125 that is still above 100 is fine, but dropping below
+      // 100 would move the floor and shift every other aircraft's DEFENSE bar.
+      gripen: Object.freeze({
+        id: "gripen",
+        label: "GRIPEN E",
+        role: "Lightweight Multirole",
+        tag: "LIGHTWEIGHT",
+        blurb: "小型軽量の万能機。単発ゆえに絶対的な速度と装甲では大型機に及ばないが、軽さが生む旋回とロールの鋭さは上位機に迫る。6目標同時攻撃で、数で押し寄せる敵を一度に捌く。",
+        cruiseSpeed: 202, boostSpeed: 395, brakeSpeed: 126,
+        pitchRateDeg: 48, rollRateDeg: 176, yawRateDeg: 14, maxBankAngleDeg: 60,
+        normalRollSpring: 47, rollRateLimitDeg: 169, turnRateDeg: 35,
+        rollDamping: 11.6, stallWarnSpeed: 80, stallEntrySpeed: 68, stallAuthorityLoss: 0.50, structuralG: 3.2,
+        gunDamage: 20, missileDamage: 98,
+        boostResponse: 0.49, brakeResponse: 0.48, cruiseResponse: 0.56,
+        missileCapacity: 12, maxHealth: 125,
+        spw: Object.freeze({ key: "aam6", capacity: 24 }),
+        tipSpan: 6.6, tipZ: 2.5,
+        theme: Object.freeze({
+primary: 0x4f5a63, secondary: 0x2f3941, accent: 0x3f8ecc,
+canopy: 0x9fe6ff, exhaust: 0x9fd8ff, scale: 0.92, variant: "gripen"
         })
       }),
       // F-2A: the F-16 rebuilt around an anti-ship mission. Not "Viper but
@@ -10997,6 +11051,46 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 7.8, -0.24, 1.8, 0.7, 0.7, 0.7);
         add(geometry.canopy, navL, -7.92, 0.08, 4.2, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 7.92, 0.08, 4.2, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "gripen") {
+        // Gripen E: the third canard delta, and the one that needs no careful
+        // reading to identify. It is the ONLY single-engine aircraft of the
+        // three - one nozzle on the centreline instead of a close-coupled pair
+        // - and at theme scale 0.92 it is the smallest airframe in the hangar.
+        // Engine count and size carry the identification; the canards sit
+        // between the Rafale's and the Typhoon's stations.
+        add(geometry.fuselage, primary, 0, 0, -0.5, 0.8, 0.68, 0.94);
+        add(geometry.nose, primary, 0, 0.02, -7.7, 0.66, 0.58, 1.0);
+        add(geometry.canopy, canopy, 0, 0.84, -3.7, 0.62, 0.52, 1.45);
+        add(geometry.wingGripen, secondary, 0, -0.04, 1.0);
+        // Canards at z -5.6: between the Rafale (-4.2) and the Typhoon (-7.0).
+        add(geometry.canard, primary, -1.3, 0.44, -5.6, 0.82, 1, 0.82, 0.13);
+        add(geometry.canard, primary, 1.3, 0.44, -5.6, 0.82, 1, 0.82, -0.13);
+        add(geometry.fin, secondary, 0, 0.56, 4.4, 0.78, 1.08, 0.82);
+        // ONE engine, on the centreline. This is the whole identification.
+        add(geometry.rearBody, secondary, 0, -0.04, 6.1, 0.8, 0.78, 1.05);
+        add(geometry.nozzle, accent, 0, -0.04, 7.9, 0.92, 0.92, 1);
+        addFlame(0, -0.04, 9.2, 0.98, 0.98);
+        // Small rectangular side intakes - the ducts merge inside the fuselage
+        // for the single engine, so each opening is modest.
+        add(geometry.intake, accent, -1.15, -0.32, -2.1, 0.5, 0.68, 1.0, 0.3);
+        add(geometry.intake, accent, 1.15, -0.32, -2.1, 0.5, 0.68, 1.0, -0.3);
+        // Big trailing-edge flaps: the real aircraft is built for short strips
+        // and road bases, and the oversized high-lift devices show it.
+        add(geometry.panel, secondary, -3.6, -0.06, 4.3, 1.5, 0.08, 0.5);
+        add(geometry.panel, secondary, 3.6, -0.06, 4.3, 1.5, 0.08, 0.5);
+        // Details: pitot boom, anti-glare strip, short dorsal spine, wingtip
+        // rails and nav lights.
+        add(geometry.panel, dark, 0, 0.05, -10.2, 0.06, 0.06, 1.5);
+        add(geometry.panel, dark, 0, 0.58, -5.2, 0.54, 0.08, 1.7);
+        add(geometry.panel, secondary, 0, 0.56, 2.0, 0.26, 0.18, 4.8);
+        add(geometry.panel, dark, -6.6, -0.02, 3.2, 0.18, 0.15, 2.0);
+        add(geometry.panel, dark, 6.6, -0.02, 3.2, 0.18, 0.15, 2.0);
+        add(geometry.missileBody, light, -6.6, -0.22, 2.9, 0.7, 0.7, 0.66);
+        add(geometry.missileBody, light, 6.6, -0.22, 2.9, 0.7, 0.7, 0.66);
+        add(geometry.missileNose, dark, -6.6, -0.22, 1.3, 0.66, 0.66, 0.66);
+        add(geometry.missileNose, dark, 6.6, -0.22, 1.3, 0.66, 0.66, 0.66);
+        add(geometry.canopy, navL, -6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
+        add(geometry.canopy, navR, 6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
