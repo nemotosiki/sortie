@@ -1601,7 +1601,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         missileCapacity: 14, maxHealth: 200,
         theme: Object.freeze({
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
-canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
+canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         })
       })
     });
@@ -1756,7 +1756,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           primary: 0x3d434b,
           secondary: 0x21252b,
           accent: 0x35c2e0,
-          canopy: 0x9fe9ff,
+          canopy: 0xd9bd6d,
           exhaust: 0x8cecff,
           scale: 0.82,
           variant: "raptor"
@@ -5727,13 +5727,13 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     }
 
     function createSharedGeometry() {
-      const fuselage = new THREE.CylinderGeometry(0.95, 1.55, 11.5, 10, 1, false);
+      const fuselage = new THREE.CylinderGeometry(0.95, 1.55, 11.5, 14, 1, false);
       fuselage.rotateX(Math.PI / 2);
 
-      const rearBody = new THREE.CylinderGeometry(1.35, 0.95, 3.1, 10, 1, false);
+      const rearBody = new THREE.CylinderGeometry(1.35, 0.95, 3.1, 14, 1, false);
       rearBody.rotateX(Math.PI / 2);
 
-      const nose = new THREE.ConeGeometry(1.02, 4.2, 10, 1, false);
+      const nose = new THREE.ConeGeometry(1.02, 4.2, 14, 1, false);
       nose.rotateX(-Math.PI / 2);
 
       const wing = extrudedSurface([
@@ -5746,9 +5746,36 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         [-1.55, 0], [1.9, 0], [1.15, 3.9], [-0.45, 3.25]
       ], 0.3);
 
+      // Per-airframe wing planforms ([span-x, fore-aft-z], +z aft), so each
+      // silhouette reads at a glance: F-16 cropped delta with LERX strakes,
+      // F-15 big shoulder-mounted trapezoid, F-4 broad swept wing, F-22 diamond.
+      const wingViper = extrudedSurface([
+        [0, -5.0], [1.15, -2.2], [7.2, 2.9], [7.2, 3.9], [2.4, 4.5],
+        [0, 4.5], [-2.4, 4.5], [-7.2, 3.9], [-7.2, 2.9], [-1.15, -2.2]
+      ], 0.26);
+      const wingEagle = extrudedSurface([
+        [0, -3.4], [2.0, -2.6], [8.6, 2.2], [8.6, 3.2], [3.2, 3.8],
+        [0, 3.8], [-3.2, 3.8], [-8.6, 3.2], [-8.6, 2.2], [-2.0, -2.6]
+      ], 0.3);
+      const wingPhantom = extrudedSurface([
+        [0, -3.2], [3.2, -1.5], [7.4, 1.8], [7.4, 2.8], [2.8, 3.4],
+        [0, 3.7], [-2.8, 3.4], [-7.4, 2.8], [-7.4, 1.8], [-3.2, -1.5]
+      ], 0.34);
+      const wingRaptor = extrudedSurface([
+        [0, -4.4], [6.9, 2.4], [6.9, 3.0], [2.4, 4.6],
+        [0, 4.6], [-2.4, 4.6], [-6.9, 3.0], [-6.9, 2.4]
+      ], 0.3);
+      const stabRaptor = extrudedSurface([
+        [0, -1.6], [3.4, 0.9], [3.4, 1.5], [1.2, 2.0],
+        [-1.2, 2.0], [-3.4, 1.5], [-3.4, 0.9]
+      ], 0.26);
+      // Unit box for small angled panels (F-4 wing tips / stabs, ventral fins,
+      // F-22 nozzle shells) - scaled per use.
+      const panel = new THREE.BoxGeometry(1, 1, 1);
+
       const canopy = new THREE.SphereGeometry(1, 16, 10);
       const intake = new THREE.BoxGeometry(1.1, 0.72, 3.2);
-      const nozzle = new THREE.CylinderGeometry(0.48, 0.62, 1.4, 10, 1, false);
+      const nozzle = new THREE.CylinderGeometry(0.48, 0.62, 1.4, 12, 1, false);
       nozzle.rotateX(Math.PI / 2);
       const flame = new THREE.ConeGeometry(0.5, 2.6, 10, 1, false);
       flame.rotateX(Math.PI / 2);
@@ -5768,6 +5795,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
+        wingViper, wingEagle, wingPhantom, wingRaptor, stabRaptor, panel,
         enemyHitbox, flash, smoke, spark, explosionChunk,
         missileBody, missileNose, missileFins, missileGlow
       };
@@ -5849,120 +5877,154 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         depthWrite: false
       });
 
-      const body = new THREE.Mesh(geometry.fuselage, primary);
-      body.position.z = -0.45;
-      const rear = new THREE.Mesh(geometry.rearBody, secondary);
-      rear.position.z = 6.4;
-      const nose = new THREE.Mesh(geometry.nose, primary);
-      nose.position.z = -8.25;
-      const wing = new THREE.Mesh(geometry.wing, secondary);
-      wing.position.z = 0.45;
-      const tailWing = new THREE.Mesh(geometry.tailWing, primary);
-      tailWing.position.z = 5.15;
-      const fin = new THREE.Mesh(geometry.fin, secondary);
-      fin.position.set(0, 0.8, 4.35);
-      const cockpit = new THREE.Mesh(geometry.canopy, canopy);
-      cockpit.position.set(0, 1.03, -2.05);
-      cockpit.scale.set(0.82, 0.62, 1.85);
+      // Detail materials shared by every variant: dark for radomes/anti-glare
+      // panels/rails, light grey for wingtip stores, and emissive nav lights
+      // (red left, green right - they read as "real aircraft" from any angle).
+      const dark = makeAircraftMaterial(0x262b31, 0.38, 0.52);
+      const light = makeAircraftMaterial(0xd8dee3, 0.5, 0.38);
+      const makeNavLight = (color) => {
+        const m = makeAircraftMaterial(color, 0.1, 0.5);
+        m.emissive.setHex(color);
+        m.emissiveIntensity = 1.7;
+        m.userData.baseEmissive = m.emissive.clone();
+        m.userData.baseIntensity = m.emissiveIntensity;
+        return m;
+      };
+      const navL = makeNavLight(0xff3b30);
+      const navR = makeNavLight(0x37ff70);
 
-      const intakeLeft = new THREE.Mesh(geometry.intake, accent);
-      intakeLeft.position.set(-1.15, -0.15, 1.55);
-      const intakeRight = intakeLeft.clone();
-      intakeRight.position.x = 1.15;
+      // Each airframe is assembled from the shared primitives with its real
+      // signature features: engine count, tail configuration and wing planform.
+      const parts = [];
+      const flames = [];
+      const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rz = 0) => {
+        const m = new THREE.Mesh(geo, material);
+        m.position.set(x, y, z);
+        m.scale.set(sx, sy, sz);
+        if (rz) m.rotation.z = rz;
+        parts.push(m);
+        return m;
+      };
+      const addFlame = (x, y, z, sx = 1, sy = 1) => {
+        const flame = new THREE.Mesh(geometry.flame, flameMaterial);
+        flame.position.set(x, y, z);
+        flame.scale.set(sx, sy, 1);
+        flames.push(flame);
+        parts.push(flame);
+        return flame;
+      };
 
-      const nozzleLeft = new THREE.Mesh(geometry.nozzle, accent);
-      nozzleLeft.position.set(-0.68, 0, 7.65);
-      const nozzleRight = nozzleLeft.clone();
-      nozzleRight.position.x = 0.68;
-
-      const flameLeft = new THREE.Mesh(geometry.flame, flameMaterial);
-      flameLeft.position.set(-0.68, 0, 9.1);
-      const flameRight = new THREE.Mesh(geometry.flame, flameMaterial);
-      flameRight.position.set(0.68, 0, 9.1);
-
-      const variantParts = [];
       if (theme.variant === "viper") {
-        body.scale.set(0.82, 0.82, 1.16);
-        rear.scale.set(0.78, 0.78, 1.08);
-        nose.scale.set(0.78, 0.78, 1.2);
-        wing.scale.set(1.08, 0.72, 0.92);
-        tailWing.scale.set(0.8, 0.72, 0.86);
-        fin.scale.set(0.72, 0.9, 0.72);
-
-        const canards = new THREE.Mesh(geometry.tailWing, accent);
-        canards.position.set(0, 0.08, -4.75);
-        canards.scale.set(0.48, 0.5, 0.42);
-        const dorsalSpine = new THREE.Mesh(geometry.intake, accent);
-        dorsalSpine.position.set(0, 0.84, 1.25);
-        dorsalSpine.scale.set(0.34, 0.32, 0.92);
-        variantParts.push(canards, dorsalSpine);
-      } else if (theme.variant === "bison") {
-        body.scale.set(1.24, 1.18, 0.95);
-        rear.scale.set(1.18, 1.16, 1.02);
-        nose.scale.set(1.12, 1.12, 0.9);
-        wing.scale.set(1.1, 1.55, 1.18);
-        tailWing.scale.set(1.15, 1.35, 1.12);
-        fin.scale.set(1.18, 1.1, 1.12);
-        cockpit.scale.set(0.96, 0.72, 1.62);
-
-        for (const side of [-1, 1]) {
-          const podBody = new THREE.Mesh(geometry.rearBody, secondary);
-          podBody.position.set(side * 4.35, -0.28, 2.45);
-          podBody.scale.set(0.58, 0.72, 1.14);
-          const podIntake = new THREE.Mesh(geometry.intake, accent);
-          podIntake.position.set(side * 4.35, -0.22, -0.15);
-          podIntake.scale.set(0.84, 1.05, 1.35);
-          variantParts.push(podBody, podIntake);
-        }
+        // F-16: slim single-engine body, bubble canopy well forward, LERX
+        // delta wing, one tall fin, ventral fins, chin intake, single nozzle.
+        add(geometry.fuselage, primary, 0, 0, -0.45, 0.78, 0.74, 1);
+        add(geometry.rearBody, secondary, 0, 0, 6.4, 0.74, 0.7, 1);
+        add(geometry.nose, primary, 0, 0.05, -8.0, 0.64, 0.6, 1.05);
+        add(geometry.canopy, canopy, 0, 0.92, -3.4, 0.68, 0.6, 1.5);
+        add(geometry.wingViper, secondary, 0, -0.05, 0.7);
+        add(geometry.tailWing, primary, 0, 0, 5.9, 0.74, 1, 0.82);
+        add(geometry.fin, secondary, 0, 0.72, 4.75, 0.85, 1.18, 0.85);
+        add(geometry.panel, accent, -0.52, -0.8, 5.3, 0.1, 0.62, 1.5, -0.5);
+        add(geometry.panel, accent, 0.52, -0.8, 5.3, 0.1, 0.62, 1.5, 0.5);
+        add(geometry.intake, accent, 0, -0.84, -1.7, 0.82, 0.7, 1.05);
+        add(geometry.nozzle, accent, 0, 0, 7.95, 1.12, 1.12, 1.1);
+        addFlame(0, 0, 9.35, 1.12, 1.12);
+        // Details: nose pitot boom, anti-glare strip, dorsal spine, wingtip
+        // rails with AIM-9s, nav lights.
+        add(geometry.panel, dark, 0, 0.05, -10.9, 0.07, 0.07, 1.7);
+        add(geometry.panel, dark, 0, 0.6, -4.7, 0.6, 0.08, 1.8);
+        add(geometry.panel, secondary, 0, 0.68, 1.9, 0.28, 0.2, 6.2);
+        add(geometry.panel, dark, -7.3, -0.05, 3.5, 0.22, 0.16, 2.3);
+        add(geometry.panel, dark, 7.3, -0.05, 3.5, 0.22, 0.16, 2.3);
+        add(geometry.missileBody, light, -7.3, -0.28, 3.2, 0.8, 0.8, 0.75);
+        add(geometry.missileBody, light, 7.3, -0.28, 3.2, 0.8, 0.8, 0.75);
+        add(geometry.missileNose, dark, -7.3, -0.28, 1.4, 0.75, 0.75, 0.75);
+        add(geometry.missileNose, dark, 7.3, -0.28, 1.4, 0.75, 0.75, 0.75);
+        add(geometry.canopy, navL, -7.42, 0.06, 3.0, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 7.42, 0.06, 3.0, 0.12, 0.12, 0.12);
       } else if (theme.variant === "lancer") {
-        fin.visible = false;
-        wing.scale.set(1.04, 0.92, 1.04);
-        tailWing.scale.set(0.96, 0.88, 1.02);
-
-        const finLeft = new THREE.Mesh(geometry.fin, secondary);
-        finLeft.position.set(-1.25, 0.62, 4.45);
-        finLeft.scale.set(0.72, 0.88, 0.72);
-        finLeft.rotateZ(-0.14);
-        const finRight = new THREE.Mesh(geometry.fin, secondary);
-        finRight.position.set(1.25, 0.62, 4.45);
-        finRight.scale.set(0.72, 0.88, 0.72);
-        finRight.rotateZ(0.14);
-        const railLeft = new THREE.Mesh(geometry.intake, accent);
-        railLeft.position.set(-8.35, -0.05, 1.1);
-        railLeft.scale.set(0.34, 0.38, 1.02);
-        const railRight = railLeft.clone();
-        railRight.position.x = 8.35;
-        variantParts.push(finLeft, finRight, railLeft, railRight);
-      } else if (theme.variant === "raptor") {
-        body.scale.set(1.04, 0.86, 1.06);
-        nose.scale.set(0.88, 0.8, 1.05);
-        wing.scale.set(1.0, 0.6, 1.08);
-        tailWing.scale.set(0.88, 0.58, 0.96);
-        fin.visible = false;
-        cockpit.scale.set(0.68, 0.48, 1.55);
-        cockpit.position.set(0, 0.92, -2.05);
-
-        const finLeft = new THREE.Mesh(geometry.fin, secondary);
-        finLeft.position.set(-1.55, 0.55, 4.5);
-        finLeft.scale.set(0.6, 0.95, 0.64);
-        finLeft.rotateZ(-0.34);
-        const finRight = new THREE.Mesh(geometry.fin, secondary);
-        finRight.position.set(1.55, 0.55, 4.5);
-        finRight.scale.set(0.6, 0.95, 0.64);
-        finRight.rotateZ(0.34);
-        variantParts.push(finLeft, finRight);
+        // F-15: wide body, shoulder-mounted wing, boxy cheek intakes, twin
+        // straight vertical tails, two spaced engines.
+        add(geometry.fuselage, primary, 0, 0.1, -0.45, 1.02, 0.8, 1);
+        add(geometry.nose, primary, 0, 0.12, -8.05, 0.8, 0.68, 1);
+        add(geometry.canopy, canopy, 0, 0.95, -2.7, 0.78, 0.58, 1.7);
+        add(geometry.wingEagle, secondary, 0, 0.32, 0.7);
+        add(geometry.tailWing, primary, 0, -0.02, 6.15, 1.02, 1, 0.95);
+        add(geometry.fin, secondary, -1.3, 0.55, 4.95, 0.78, 1.05, 0.75);
+        add(geometry.fin, secondary, 1.3, 0.55, 4.95, 0.78, 1.05, 0.75);
+        add(geometry.rearBody, secondary, -0.85, -0.08, 6.3, 0.8, 0.8, 1.2);
+        add(geometry.rearBody, secondary, 0.85, -0.08, 6.3, 0.8, 0.8, 1.2);
+        add(geometry.intake, accent, -1.32, 0.02, -1.3, 0.62, 1.35, 1.2);
+        add(geometry.intake, accent, 1.32, 0.02, -1.3, 0.62, 1.35, 1.2);
+        add(geometry.nozzle, accent, -0.85, -0.08, 8.3);
+        add(geometry.nozzle, accent, 0.85, -0.08, 8.3);
+        addFlame(-0.85, -0.08, 9.7);
+        addFlame(0.85, -0.08, 9.7);
+        // Details: anti-glare strip, flat deck between the engines, dorsal
+        // airbrake plate, nav lights.
+        add(geometry.panel, dark, 0, 0.72, -4.5, 0.72, 0.08, 1.9);
+        add(geometry.panel, secondary, 0, 0.42, 5.0, 2.2, 0.18, 3.4);
+        add(geometry.panel, dark, 0, 0.66, -0.5, 0.9, 0.07, 1.6);
+        add(geometry.canopy, navL, -8.55, 0.38, 2.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 8.55, 0.38, 2.6, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "bison") {
+        // F-4: stout body, low swept wing with upturned tips, drooping
+        // stabilators, long tandem canopy, side intakes, twin tucked nozzles.
+        add(geometry.fuselage, primary, 0, 0, -0.4, 1.14, 0.98, 1.05);
+        add(geometry.rearBody, secondary, 0, 0.02, 6.45, 1.02, 0.92, 1.1);
+        add(geometry.nose, primary, 0, -0.04, -8.15, 0.84, 0.78, 0.98);
+        add(geometry.canopy, canopy, 0, 0.98, -3.0, 0.84, 0.58, 2.25);
+        add(geometry.wingPhantom, secondary, 0, -0.42, 1.0);
+        add(geometry.panel, secondary, -8.3, 0.02, 2.3, 2.1, 0.14, 2.1, -0.45);
+        add(geometry.panel, secondary, 8.3, 0.02, 2.3, 2.1, 0.14, 2.1, 0.45);
+        add(geometry.panel, primary, -2.05, -0.26, 6.5, 2.4, 0.14, 1.7, 0.4);
+        add(geometry.panel, primary, 2.05, -0.26, 6.5, 2.4, 0.14, 1.7, -0.4);
+        add(geometry.fin, secondary, 0, 0.8, 4.7, 0.95, 1.02, 1);
+        add(geometry.intake, accent, -1.48, 0.1, -1.9, 0.55, 1.05, 1.15);
+        add(geometry.intake, accent, 1.48, 0.1, -1.9, 0.55, 1.05, 1.15);
+        add(geometry.nozzle, accent, -0.6, -0.2, 7.95, 0.95, 0.95, 0.9);
+        add(geometry.nozzle, accent, 0.6, -0.2, 7.95, 0.95, 0.95, 0.9);
+        addFlame(-0.6, -0.2, 9.25, 0.95, 0.95);
+        addFlame(0.6, -0.2, 9.25, 0.95, 0.95);
+        // Details: black radome, chin IR pod, anti-glare strip, windscreen
+        // frame splitting the long tandem canopy, nav lights on the tips.
+        add(geometry.nose, dark, 0, -0.05, -9.55, 0.3, 0.27, 0.34);
+        add(geometry.panel, dark, 0, -0.68, -7.4, 0.42, 0.45, 1.1);
+        add(geometry.panel, dark, 0, 0.74, -4.75, 0.76, 0.08, 1.5);
+        add(geometry.panel, dark, 0, 1.12, -3.0, 0.92, 0.52, 0.16);
+        add(geometry.canopy, navL, -9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
+      } else {
+        // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
+        // big outward-canted twin tails, rectangular nozzle shells.
+        add(geometry.fuselage, primary, 0, 0, -0.5, 1.14, 0.66, 1.06);
+        add(geometry.rearBody, secondary, 0, -0.02, 6.35, 1.04, 0.6, 1.05);
+        add(geometry.nose, primary, 0, 0.02, -8.25, 0.86, 0.58, 1.02);
+        add(geometry.canopy, canopy, 0, 0.78, -3.1, 0.66, 0.5, 1.65);
+        add(geometry.wingRaptor, secondary, 0, -0.02, 1.1);
+        add(geometry.stabRaptor, primary, 0, 0.04, 6.3);
+        add(geometry.fin, secondary, -1.62, 0.42, 4.55, 0.72, 1.05, 0.78, 0.42);
+        add(geometry.fin, secondary, 1.62, 0.42, 4.55, 0.72, 1.05, 0.78, -0.42);
+        add(geometry.intake, accent, -1.58, -0.18, -1.5, 0.68, 0.9, 1.05, 0.22);
+        add(geometry.intake, accent, 1.58, -0.18, -1.5, 0.68, 0.9, 1.05, -0.22);
+        add(geometry.panel, accent, -0.78, -0.02, 7.6, 1.15, 0.68, 1.1);
+        add(geometry.panel, accent, 0.78, -0.02, 7.6, 1.15, 0.68, 1.1);
+        addFlame(-0.78, -0.02, 8.85, 0.8, 0.55);
+        addFlame(0.78, -0.02, 8.85, 0.8, 0.55);
+        // Details: chine strips along the nose sides and nav lights. No
+        // anti-glare strip - the gold canopy is the F-22's signature instead.
+        add(geometry.panel, dark, -0.82, -0.02, -6.2, 0.55, 0.06, 3.4, 0.12);
+        add(geometry.panel, dark, 0.82, -0.02, -6.2, 0.55, 0.06, 3.4, -0.12);
+        add(geometry.canopy, navL, -6.85, 0.05, 2.5, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 6.85, 0.05, 2.5, 0.12, 0.12, 0.12);
       }
 
-      root.add(
-        body, rear, nose, wing, tailWing, fin, cockpit,
-        intakeLeft, intakeRight, nozzleLeft, nozzleRight,
-        flameLeft, flameRight, ...variantParts
-      );
+      root.add(...parts);
 
       return {
         group: root,
-        flames: [flameLeft, flameRight],
-        standardMaterials: [primary, secondary, accent, canopy],
+        flames,
+        standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
         flameMaterial
       };
     }
