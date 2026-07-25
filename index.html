@@ -1614,7 +1614,7 @@
     const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
     const LOCK_GRACE_TIME = 0.4;
     const LOCK_HYSTERESIS_BONUS = 0.15;
-    const TOTAL_ENEMIES = 6;
+    const TOTAL_ENEMIES = 9;
     const KILL_SCORE = 1000;
     const RADAR_RANGE = 1400;
     const MISSION_GRACE_TIME = 3.0;
@@ -1978,6 +1978,76 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         damage: 98,
         life: 7.6,
         launchDot: 0.24
+      }),
+      // Aegis SM-2: cold-launched straight up off the deck, slow off the rail,
+      // then the seeker tips it over - long reach and it keeps its energy.
+      aegis: Object.freeze({
+        cooldownMin: 7.0,
+        cooldownSpread: 3.2,
+        range: 1700,
+        minRange: 260,
+        speed: 175,
+        maxSpeed: 545,
+        turnRate: THREE.MathUtils.degToRad(58),
+        damage: 98,
+        life: 10.5,
+        launchDot: -1
+      })
+    });
+
+    // Wave 3 surface combatants. Ships have no player analogue, so unlike the
+    // aircraft they own their stats outright: HP is tuned in whole missiles
+    // (98 each) - AEGIS ~3, the carrier ~6 - and speeds are true-scale knots,
+    // which reads as near-stationary next to a jet, exactly like AC.
+    const SHIP_SINK_DURATION = 11;
+    const SHIP_TYPES = Object.freeze({
+      aegis: Object.freeze({
+        key: "aegis",
+        surface: true,
+        label: "AEGIS",
+        role: "Guided Missile Destroyer",
+        hp: 250,
+        cruiseSpeed: 13,
+        turnRate: THREE.MathUtils.degToRad(3),
+        hitRadius: 84,
+        crash: Object.freeze({ halfLen: 80, halfBeam: 15, top: 22 }),
+        hitBox: Object.freeze({ x: 26, y: 34, z: 162 }),
+        sinkDepth: 30,
+        blastSpread: 34,
+        smokeOffset: 14,
+        smokeHeight: 18,
+        sternOffset: 76,
+        bowOffset: 74,
+        aaMounts: Object.freeze([-48, 50]),
+        aaHeight: 13,
+        aa: Object.freeze({ range: 640, cooldownMin: 0.55, cooldownSpread: 0.55, damage: 7, maxHitChance: 0.16, tracers: 2 }),
+        radarColor: "#ffb46a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      carrier: Object.freeze({
+        key: "carrier",
+        surface: true,
+        label: "CARRIER",
+        role: "Aircraft Carrier",
+        hp: 520,
+        cruiseSpeed: 10,
+        turnRate: THREE.MathUtils.degToRad(1.6),
+        hitRadius: 150,
+        crash: Object.freeze({ halfLen: 168, halfBeam: 40, top: 26 }),
+        hitBox: Object.freeze({ x: 82, y: 46, z: 340 }),
+        sinkDepth: 42,
+        blastSpread: 70,
+        smokeOffset: -30,
+        smokeHeight: 26,
+        sternOffset: 162,
+        bowOffset: 168,
+        aaMounts: Object.freeze([-120, 130]),
+        aaHeight: 18,
+        aa: Object.freeze({ range: 560, cooldownMin: 0.85, cooldownSpread: 0.7, damage: 7, maxHitChance: 0.1, tracers: 1 }),
+        radarColor: "#ff8a6a",
+        tracerColor: 0xff9a52,
+        explosionColor: 0xffb648
       })
     });
 
@@ -2483,6 +2553,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           damageEnemy(enemy, amount, false);
           return true;
         },
+        forceNavalWave: () => {
+          if (gameState !== STATE_PLAYING || waveNumber >= 3) return false;
+          for (const enemy of enemies) {
+            if (!enemy.alive) continue;
+            enemy.alive = false;
+            enemy.deadTimer = 0.2;
+            enemy.hitbox.visible = false;
+            enemy.model.group.visible = false;
+          }
+          kills = 6;
+          resetLock();
+          preferredTargetId = null;
+          spawnNavalWave();
+          return true;
+        },
         forceStartOutro: () => {
           if (gameState !== STATE_PLAYING || outro.active) return false;
           for (const enemy of enemies) {
@@ -2494,7 +2579,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           }
           kills = TOTAL_ENEMIES;
           aceDestroyed = true;
-          waveNumber = 2;
+          waveNumber = 3;
           resetLock();
           preferredTargetId = null;
           startOutro();
@@ -3647,6 +3732,23 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         }
       }
 
+      // Warships are solid too: their hull box (length x beam, up to the
+      // superstructure) crashes the player just like terrain, hulks included.
+      for (const enemy of enemies) {
+        if (!enemy.surface) continue;
+        if (!enemy.alive && enemy.deadTimer <= 0) continue;
+        forwardOf(enemy.group, tmpV2);
+        tmpV3.copy(player.position).sub(enemy.group.position);
+        const along = tmpV3.x * tmpV2.x + tmpV3.z * tmpV2.z;
+        const side = tmpV3.x * -tmpV2.z + tmpV3.z * tmpV2.x;
+        const box = enemy.spec.crash;
+        if (Math.abs(along) < box.halfLen && Math.abs(side) < box.halfBeam &&
+            player.position.y < enemy.group.position.y + box.top) {
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+          break;
+        }
+      }
+
       gunCooldown = Math.max(0, gunCooldown - dt);
       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
         fireGun();
@@ -3779,7 +3881,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
           missile.mesh.quaternion.rotateTowards(tmpQ1, THREE.MathUtils.degToRad(190) * dt);
 
-          if (distance < 16) {
+          if (distance < (target.surface ? target.spec.hitRadius * 0.35 : 16)) {
             damageEnemy(target, MISSILE_DAMAGE, true);
             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
             removeMissile(i);
@@ -3825,16 +3927,34 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       rightOf(enemy.group, tmpV3);
       upOf(enemy.group, tmpV4);
       const root = createMissileModel(true);
-      root.position.copy(enemy.group.position)
-        .addScaledVector(tmpV2, 7.2)
-        .addScaledVector(tmpV3, enemy.id % 2 === 0 ? 2.6 : -2.6)
-        .addScaledVector(tmpV4, -0.7);
-      root.quaternion.copy(enemy.group.quaternion);
+      if (enemy.surface) {
+        // VLS cold launch: straight up out of the fore/aft cell field with an
+        // efflux cloud on deck - guidance then tips it over toward the player.
+        enemy.vlsSide = -enemy.vlsSide;
+        root.position.copy(enemy.group.position)
+          .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
+          .addScaledVector(WORLD_UP, 13);
+        root.quaternion.setFromUnitVectors(LOCAL_FORWARD, WORLD_UP);
+        for (let puff = 0; puff < 7; puff += 1) {
+          tmpV9.set((Math.random() - 0.5) * 14, Math.random() * 5, (Math.random() - 0.5) * 14);
+          smokeParticlePool.spawn(root.position, tmpV9, 1.6 + Math.random() * 0.9, 0xcfd6da, -0.25, 1.1);
+        }
+      } else {
+        root.position.copy(enemy.group.position)
+          .addScaledVector(tmpV2, 7.2)
+          .addScaledVector(tmpV3, enemy.id % 2 === 0 ? 2.6 : -2.6)
+          .addScaledVector(tmpV4, -0.7);
+        root.quaternion.copy(enemy.group.quaternion);
+      }
       scene.add(root);
 
       enemyMissileSerial += 1;
       enemyMissilesLaunched += 1;
-      triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
+      if (enemy.surface) {
+        triggerRadioLine("wingman", "敵艦からミサイル発射！ 垂直発射だ——見えたらブレイクしろ！", RADIO_PRIORITY.NORMAL, "ship-sam");
+      } else {
+        triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
+      }
       enemyMissiles.push({
         id: enemyMissileSerial,
         mesh: root,
@@ -4185,6 +4305,120 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       });
     }
 
+    function spawnShip(position, headingRad, slot, typeKey) {
+      enemySerial += 1;
+      const id = 6 + slot + 1;
+      const spec = SHIP_TYPES[typeKey];
+      const root = new THREE.Group();
+      root.position.set(position.x, 0, position.z);
+      root.rotation.y = headingRad;
+      root.userData.enemyType = typeKey;
+
+      const model = createShipModel(typeKey);
+      root.add(model.group);
+
+      const hitbox = new THREE.Mesh(geometry.panel, shared.hitbox);
+      hitbox.userData.enemyId = id;
+      hitbox.scale.set(spec.hitBox.x, spec.hitBox.y, spec.hitBox.z);
+      hitbox.position.y = spec.hitBox.y * 0.5 - 5;
+      root.add(hitbox);
+      scene.add(root);
+
+      enemies.push({
+        id,
+        serial: enemySerial,
+        wave: 3,
+        slot,
+        type: typeKey,
+        label: spec.label,
+        role: spec.role,
+        behavior: "fleet",
+        surface: true,
+        isAce: false,
+        aceEngageLineFired: true,
+        aceHalfLineFired: true,
+        spec,
+        group: root,
+        model,
+        hitbox,
+        alive: true,
+        maxHp: spec.hp,
+        hp: spec.hp,
+        speed: spec.cruiseSpeed,
+        targetSpeed: spec.cruiseSpeed,
+        mode: "cruise",
+        baseHeading: headingRad,
+        vlsSide: 1,
+        waypoints: [],
+        waypointIndex: 0,
+        fireCooldown: 999,
+        missileCooldown: 4 + slot * 2.6 + Math.random() * 2,
+        aaCooldown: 1.2 + Math.random(),
+        wakeTimer: Math.random() * 0.1,
+        sinkBoomTimer: 0,
+        sinkRoll: 0,
+        sinkPitch: 0,
+        deadTimer: 0,
+        hitFlash: 0,
+        smokeTimer: 0,
+        seed: Math.random() * Math.PI * 2,
+        formationLeaderId: 7,
+        formationSide: slot === 1 ? -1 : 1,
+        formationActive: false,
+        targetPoint: new THREE.Vector3(),
+        formationPoint: new THREE.Vector3(),
+        safeTarget: new THREE.Vector3()
+      });
+    }
+
+    function spawnNavalWave() {
+      waveNumber = 3;
+      waveClearTimer = -1;
+
+      // The fleet sits on open water ~2.4km ahead of the player's heading,
+      // clamped into the inner sea so it can never spawn inside the mountain
+      // ring; escorts ride the carrier's beam.
+      forwardOf(player, tmpV1);
+      tmpV1.y = 0;
+      if (tmpV1.lengthSq() < 0.001) tmpV1.set(0, 0, -1);
+      tmpV1.normalize();
+      const center = new THREE.Vector3().copy(player.position).addScaledVector(tmpV1, 2400);
+      center.y = 0;
+      const centerDistance = Math.hypot(center.x, center.z);
+      if (centerDistance > 1500) center.multiplyScalar(1500 / centerDistance);
+      const across = new THREE.Vector3(-tmpV1.z, 0, tmpV1.x);
+      const fleetHeading = Math.atan2(tmpV1.x, -tmpV1.z) + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+
+      const positions = [
+        center.clone(),
+        center.clone().addScaledVector(across, -430).addScaledVector(tmpV1, 150),
+        center.clone().addScaledVector(across, 430).addScaledVector(tmpV1, -170)
+      ];
+      for (const position of positions) {
+        for (const mountain of world.mountains) {
+          tmpV2.set(position.x - mountain.x, 0, position.z - mountain.z);
+          const clearance = mountain.r * 1.7 + 140;
+          const d = tmpV2.length();
+          if (d < clearance) {
+            if (d < 0.001) tmpV2.set(1, 0, 0);
+            else tmpV2.multiplyScalar(1 / d);
+            position.set(mountain.x + tmpV2.x * clearance, 0, mountain.z + tmpV2.z * clearance);
+          }
+        }
+      }
+
+      spawnShip(positions[0], fleetHeading, 0, "carrier");
+      spawnShip(positions[1], fleetHeading, 1, "aegis");
+      spawnShip(positions[2], fleetHeading, 2, "aegis");
+
+      // AC-style checkpoint resupply: the anti-ship leg starts with full tubes.
+      // Flares deliberately do NOT restock - two per sortie is the contract.
+      missileCount = PLAYER_MISSILE_CAPACITY;
+      loadedMissiles = Math.min(MISSILE_TUBE_COUNT, missileCount);
+      missileReloadTimers.length = 0;
+      showBanner("MISSILES RESTOCKED", 1.4, "success");
+    }
+
     function updateEnemies(dt) {
       const time = performance.now() * 0.001;
       forwardOf(player, tmpV5);
@@ -4195,6 +4429,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         const enemy = enemies[i];
         if (!enemy.alive) {
           enemy.deadTimer -= dt;
+          if (enemy.surface) updateShipSinking(enemy, dt);
           if (enemy.deadTimer <= 0) {
             scene.remove(enemy.group);
             disposeAircraftMaterials(enemy.model);
@@ -4207,6 +4442,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
         updateAircraftFlash(enemy.model, enemy.hitFlash);
         enemy.formationActive = false;
+
+        if (enemy.surface) {
+          updateShip(enemy, dt, time);
+          continue;
+        }
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
         // quarter it burns - black smoke with orange flame flicker.
@@ -4358,6 +4598,184 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
     }
 
+    // ---- Surface combatants ---------------------------------------------------
+    // Ships share the enemies array (lock, radar, guns, missiles and the kill
+    // flow all come for free) but skip the whole flight AI: they cruise on the
+    // waterline, throw up AA and SAMs, and sink instead of exploding away.
+
+    function updateShip(enemy, dt, time) {
+      const spec = enemy.spec;
+
+      // Damage smoke pours from the superstructure long before the kill.
+      const hpRatio = enemy.hp / spec.hp;
+      if (hpRatio < 0.5) {
+        enemy.smokeTimer -= dt;
+        if (enemy.smokeTimer <= 0) {
+          const burning = hpRatio < 0.25;
+          forwardOf(enemy.group, tmpV8);
+          tmpV8.multiplyScalar(spec.smokeOffset).add(enemy.group.position);
+          tmpV8.y += spec.smokeHeight;
+          tmpV2.set((Math.random() - 0.5) * 5, 6 + Math.random() * 5, (Math.random() - 0.5) * 5);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 2.4 + Math.random() * 1.2, burning ? 0x17181c : 0x3a3f45, -0.7, 1.5);
+          if (burning) {
+            tmpV2.set((Math.random() - 0.5) * 9, 3 + Math.random() * 7, (Math.random() - 0.5) * 9);
+            sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.2, 0xffab4a, 2, 0.34);
+          }
+          enemy.smokeTimer += burning ? 0.05 : 0.09;
+        }
+      }
+
+      // Straight-line cruise. The only steering is a slow ease back toward the
+      // inner sea (or away from a mountain footprint) so the fleet never beaches.
+      let desiredHeading = enemy.baseHeading;
+      const originDistance = Math.hypot(enemy.group.position.x, enemy.group.position.z);
+      if (originDistance > 1900) {
+        desiredHeading = Math.atan2(-enemy.group.position.x, enemy.group.position.z);
+      } else {
+        for (const mountain of world.mountains) {
+          const dx = enemy.group.position.x - mountain.x;
+          const dz = enemy.group.position.z - mountain.z;
+          const clearance = mountain.r * 2.0 + 160;
+          if (dx * dx + dz * dz < clearance * clearance) {
+            desiredHeading = Math.atan2(dx, -dz);
+            break;
+          }
+        }
+      }
+      let headingDelta = desiredHeading - enemy.baseHeading;
+      while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
+      while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
+      enemy.baseHeading += THREE.MathUtils.clamp(headingDelta, -spec.turnRate * dt, spec.turnRate * dt);
+
+      enemy.group.rotation.set(
+        Math.sin(time * 0.41 + enemy.seed) * 0.006,
+        enemy.baseHeading + Math.sin(time * 0.23 + enemy.seed) * 0.015,
+        Math.sin(time * 0.57 + enemy.seed) * 0.01
+      );
+      forwardOf(enemy.group, tmpV4);
+      enemy.group.position.x += tmpV4.x * enemy.speed * dt;
+      enemy.group.position.z += tmpV4.z * enemy.speed * dt;
+      enemy.group.position.y = Math.sin(time * 0.5 + enemy.seed) * 0.35;
+
+      // Wake: stern foam plus a little bow spray.
+      enemy.wakeTimer -= dt;
+      if (enemy.wakeTimer <= 0) {
+        tmpV8.copy(enemy.group.position).addScaledVector(tmpV4, -spec.sternOffset);
+        tmpV8.y = 0.7;
+        tmpV8.x += (Math.random() - 0.5) * 7;
+        tmpV8.z += (Math.random() - 0.5) * 7;
+        tmpV2.copy(tmpV4).multiplyScalar(-4).setY(0.4);
+        smokeParticlePool.spawn(tmpV8, tmpV2, 2.1 + Math.random() * 0.8, 0xe4edf1, -0.03, 1.05);
+        tmpV8.copy(enemy.group.position).addScaledVector(tmpV4, spec.bowOffset);
+        tmpV8.y = 0.7;
+        tmpV2.set((Math.random() - 0.5) * 5, 1.4, (Math.random() - 0.5) * 5);
+        smokeParticlePool.spawn(tmpV8, tmpV2, 0.75, 0xeef5f8, 0.15, 0.55);
+        enemy.wakeTimer += 0.1;
+      }
+
+      enemy.aaCooldown -= dt;
+      if (enemy.aaCooldown <= 0) {
+        shipAaBurst(enemy);
+        enemy.aaCooldown = spec.aa.cooldownMin + Math.random() * spec.aa.cooldownSpread;
+      }
+
+      if (ENEMY_MISSILE_PROFILES[enemy.type]) {
+        enemy.missileCooldown -= dt;
+        if (enemy.missileCooldown <= 0) {
+          const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+          const launched = attemptEnemyMissile(enemy);
+          enemy.missileCooldown = launched
+            ? profile.cooldownMin + Math.random() * profile.cooldownSpread
+            : 1.3 + Math.random() * 0.9;
+        }
+      }
+    }
+
+    function shipAaBurst(enemy) {
+      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return;
+      const aa = enemy.spec.aa;
+      tmpV1.copy(player.position).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      if (!Number.isFinite(distance) || distance > aa.range || distance < 45) return;
+
+      forwardOf(enemy.group, tmpV2);
+      forwardOf(player, tmpV3);
+      for (let i = 0; i < aa.tracers; i += 1) {
+        const mount = enemy.spec.aaMounts[i % enemy.spec.aaMounts.length];
+        const start = enemy.group.position.clone().addScaledVector(tmpV2, mount);
+        start.y += enemy.spec.aaHeight;
+        const hitChance = THREE.MathUtils.clamp(
+          (1 - distance / (aa.range + 140)) * 0.5,
+          0.02,
+          aa.maxHitChance
+        );
+        const hit = playerHitCooldown <= 0 && Math.random() < hitChance;
+        // Aim at a lead point so misses burst AROUND the player - the AC "flak
+        // over the fleet" look - instead of trailing harmlessly behind.
+        const end = player.position.clone()
+          .addScaledVector(tmpV3, playerSpeed * distance / 900 * (0.2 + Math.random() * 0.5));
+        if (!hit) {
+          end.x += (Math.random() - 0.5) * 46;
+          end.y += (Math.random() - 0.5) * 30;
+          end.z += (Math.random() - 0.5) * 46;
+        }
+        createTracer(start, end, enemy.spec.tracerColor, 0.15, 0.55);
+        if (i === 0) createMuzzleFlash(start, enemy.spec.tracerColor);
+        if (hit) applyPlayerDamage(aa.damage);
+      }
+    }
+
+    function updateShipSinking(enemy, dt) {
+      const spec = enemy.spec;
+      const t = THREE.MathUtils.clamp(1 - enemy.deadTimer / SHIP_SINK_DURATION, 0, 1);
+      const settle = t * t;
+      enemy.speed = THREE.MathUtils.lerp(enemy.speed, 0, damping(0.2, dt));
+      enemy.group.rotation.set(
+        enemy.sinkPitch * settle,
+        enemy.baseHeading,
+        enemy.sinkRoll * settle
+      );
+      forwardOf(enemy.group, tmpV4);
+      enemy.group.position.x += tmpV4.x * enemy.speed * dt;
+      enemy.group.position.z += tmpV4.z * enemy.speed * dt;
+      enemy.group.position.y = -settle * spec.sinkDepth;
+
+      // Burn, pop and churn foam until the hull slips under.
+      if (enemy.group.position.y > -spec.sinkDepth * 0.6) {
+        enemy.smokeTimer -= dt;
+        if (enemy.smokeTimer <= 0) {
+          tmpV8.copy(enemy.group.position)
+            .addScaledVector(tmpV4, (Math.random() - 0.5) * spec.crash.halfLen * 1.3);
+          tmpV8.y = Math.max(2, enemy.group.position.y + spec.smokeHeight);
+          tmpV2.set((Math.random() - 0.5) * 6, 7 + Math.random() * 6, (Math.random() - 0.5) * 6);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 2.8 + Math.random() * 1.4, 0x15161a, -0.75, 1.9);
+          tmpV2.set((Math.random() - 0.5) * 10, 3 + Math.random() * 8, (Math.random() - 0.5) * 10);
+          sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.25, 0xffa54e, 3, 0.36);
+          enemy.smokeTimer += 0.05;
+        }
+        enemy.sinkBoomTimer -= dt;
+        if (enemy.sinkBoomTimer <= 0) {
+          tmpV8.copy(enemy.group.position)
+            .addScaledVector(tmpV4, (Math.random() - 0.5) * spec.crash.halfLen * 1.4);
+          tmpV8.y = enemy.group.position.y + spec.smokeHeight * (0.4 + Math.random() * 0.8);
+          createImpactBurst(tmpV8, 0xffa54e, 1.1);
+          playSfx("explosion", 0.26, 1.2 + Math.random() * 0.35);
+          enemy.sinkBoomTimer += 1.2 + Math.random() * 1.5;
+        }
+        enemy.wakeTimer -= dt;
+        if (enemy.wakeTimer <= 0) {
+          tmpV8.copy(enemy.group.position)
+            .addScaledVector(tmpV4, (Math.random() - 0.5) * spec.crash.halfLen * 1.8);
+          tmpV8.y = 0.6;
+          tmpV8.x += (Math.random() - 0.5) * spec.crash.halfBeam * 2.4;
+          tmpV8.z += (Math.random() - 0.5) * spec.crash.halfBeam * 2.4;
+          tmpV2.set((Math.random() - 0.5) * 3, 1.1, (Math.random() - 0.5) * 3);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 1.6 + Math.random() * 0.7, 0xe8f0f4, -0.02, 1.2);
+          enemy.wakeTimer += 0.07;
+        }
+      }
+    }
+
     function attemptEnemyAttack(enemy) {
       if (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0) return;
 
@@ -4418,10 +4836,32 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
 
       enemy.alive = false;
-      enemy.deadTimer = 2.4;
       enemy.hitbox.visible = false;
-      enemy.model.group.visible = false;
-      createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, missileHit ? 1.15 : 0.95);
+      if (enemy.surface) {
+        // Ships do not vanish in a fireball - they burn, list and go down over
+        // ~11s, so keep the model visible and let updateShipSinking play it out.
+        enemy.deadTimer = SHIP_SINK_DURATION;
+        enemy.sinkRoll = (Math.random() < 0.5 ? -1 : 1) * (0.3 + Math.random() * 0.22);
+        enemy.sinkPitch = (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.1);
+        forwardOf(enemy.group, tmpV8);
+        for (let blast = -1; blast <= 1; blast += 1) {
+          tmpV9.copy(enemy.group.position).addScaledVector(tmpV8, blast * enemy.spec.blastSpread);
+          tmpV9.y += enemy.spec.smokeHeight * 0.7;
+          createExplosion(tmpV9, blast === 0 ? 0xffd35f : enemy.spec.explosionColor, blast === 0 ? 1.6 : 1.05);
+        }
+        triggerRadioLine(
+          "wingman",
+          enemy.type === "carrier"
+            ? "でかいぞ……空母、轟沈！ やったな{nickname}！"
+            : "イージス艦、沈黙！ 対空砲火が薄くなったぞ！",
+          RADIO_PRIORITY.NORMAL,
+          `ship-down-${enemy.id}`
+        );
+      } else {
+        enemy.deadTimer = 2.4;
+        enemy.model.group.visible = false;
+        createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, missileHit ? 1.15 : 0.95);
+      }
       kills += 1;
       if (missileHit) missileKills += 1;
       else gunKills += 1;
@@ -4437,6 +4877,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
       showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+      if (enemy.type === "carrier") startAceKillCam(enemy);
       if (enemy.isAce) {
         aceDestroyed = true;
         startAceKillCam(enemy);
@@ -4497,14 +4938,14 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
 
       if (waveClearTimer < 0) {
-        waveClearTimer = waveNumber < 2 ? 2.15 : 1.35;
-        showBanner(waveNumber < 2 ? "WAVE 1 CLEAR" : "ALL TARGETS DESTROYED", 1.35, "success");
+        waveClearTimer = waveNumber < 3 ? 2.15 : 1.35;
+        showBanner(waveNumber < 3 ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
       }
 
       waveClearTimer -= dt;
       if (waveClearTimer > 0) return;
 
-      if (waveNumber < 2) {
+      if (waveNumber === 1) {
         spawnWave(2);
         showBanner("WAVE 2 · INBOUND", 2.0, "danger");
         triggerRadioLine(
@@ -4518,6 +4959,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
           RADIO_PRIORITY.NORMAL,
           "ace-foreshadow-wingman"
+        );
+      } else if (waveNumber === 2) {
+        spawnNavalWave();
+        showBanner("WAVE 3 · ENEMY FLEET DETECTED", 2.2, "danger");
+        triggerRadioLine(
+          "command",
+          "レーダーに水上反応。敵艦隊だ——空母1、護衛のイージス艦2。対艦攻撃に移れ。",
+          RADIO_PRIORITY.NORMAL,
+          "wave3-inbound"
+        );
+        triggerRadioLine(
+          "wingman",
+          "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
+          RADIO_PRIORITY.NORMAL,
+          "wave3-brief"
         );
       } else if (kills >= TOTAL_ENEMIES) {
         startOutro();
@@ -5284,7 +5740,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
       ui.altitude.textContent = String(altitudeM);
-      ui.wave.textContent = `WAVE ${waveNumber} / 2`;
+      ui.wave.textContent = `WAVE ${waveNumber} / 3`;
 
       updateCompass(getPlayerHeadingDeg());
       updateTape(speedTapeNodes, speedKph, 100);
@@ -5463,6 +5919,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         label: enemy.label,
         role: enemy.role,
         behavior: enemy.behavior,
+        surface: Boolean(enemy.surface),
         hp: Math.max(0, Math.round(enemy.hp)),
         maxHp: enemy.maxHp,
         speed: enemy.speed,
@@ -5572,16 +6029,24 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(headingAngle);
-        ctx.fillStyle = "#f4f7fa";
-        ctx.shadowColor = "#f4f7fa";
-        ctx.shadowBlur = isTarget ? 8 : 5;
-        ctx.beginPath();
-        ctx.moveTo(0, -4.5);
-        ctx.lineTo(-3, 3);
-        ctx.lineTo(0, 1);
-        ctx.lineTo(3, 3);
-        ctx.closePath();
-        ctx.fill();
+        if (enemy.surface) {
+          const shipScale = enemy.type === "carrier" ? 1.35 : 1;
+          ctx.fillStyle = "#ffc47a";
+          ctx.shadowColor = "#ffc47a";
+          ctx.shadowBlur = isTarget ? 8 : 5;
+          ctx.fillRect(-2.1 * shipScale, -4.6 * shipScale, 4.2 * shipScale, 9.2 * shipScale);
+        } else {
+          ctx.fillStyle = "#f4f7fa";
+          ctx.shadowColor = "#f4f7fa";
+          ctx.shadowBlur = isTarget ? 8 : 5;
+          ctx.beginPath();
+          ctx.moveTo(0, -4.5);
+          ctx.lineTo(-3, 3);
+          ctx.lineTo(0, 1);
+          ctx.lineTo(3, 3);
+          ctx.closePath();
+          ctx.fill();
+        }
         ctx.restore();
         ctx.shadowBlur = 0;
 
@@ -6342,6 +6807,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       const flame = new THREE.ConeGeometry(0.5, 2.6, 10, 1, false);
       flame.rotateX(Math.PI / 2);
       const shockRing = new THREE.RingGeometry(0.86, 1, 40);
+      // Ship primitives: a diamond-section bow wedge, generic cylinder, an
+      // octagonal plate for SPY radar panels and a unit plane for deck decals.
+      const shipBow = new THREE.ConeGeometry(1, 1, 4);
+      const shipCylinder = new THREE.CylinderGeometry(1, 1, 1, 10);
+      const shipOctPlate = new THREE.CylinderGeometry(1, 1, 1, 8);
+      const shipDeck = new THREE.PlaneGeometry(1, 1);
       const enemyHitbox = new THREE.SphereGeometry(10.5, 10, 8);
       const flash = new THREE.IcosahedronGeometry(1, 1);
       const smoke = new THREE.SphereGeometry(1, 8, 6);
@@ -6360,6 +6831,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
         wingViper, wingEagle, wingPhantom, wingRaptor, stabRaptor, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
+        shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
       };
     }
@@ -6592,6 +7064,126 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       };
     }
 
+    function makeCarrierDeckTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 128;
+      canvas.height = 512;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#3d434b";
+      ctx.fillRect(0, 0, 128, 512);
+      ctx.strokeStyle = "rgba(240, 245, 248, 0.85)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(5, 4, 118, 504);
+      // Axial runway centreline (canvas top = bow), then the angled recovery
+      // deck running to the stern-port corner.
+      ctx.setLineDash([18, 12]);
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(64, 10);
+      ctx.lineTo(64, 300);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(80, 200);
+      ctx.lineTo(30, 500);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(96, 200);
+      ctx.lineTo(46, 502);
+      ctx.moveTo(64, 200);
+      ctx.lineTo(14, 502);
+      ctx.stroke();
+      // Elevators: two lighter pads on the starboard edge.
+      ctx.fillStyle = "#4a515a";
+      ctx.fillRect(96, 120, 26, 52);
+      ctx.fillRect(96, 250, 26, 52);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function createShipModel(kind) {
+      const root = new THREE.Group();
+      const hull = makeAircraftMaterial(0x6f7780, 0.28, 0.6);
+      const deck = makeAircraftMaterial(kind === "carrier" ? 0x3d434b : 0x59616a, 0.22, 0.72);
+      const house = makeAircraftMaterial(0x8a929c, 0.24, 0.58);
+      const dark = makeAircraftMaterial(0x272b31, 0.3, 0.6);
+      const light = makeAircraftMaterial(0xd6dde2, 0.3, 0.45);
+      const markings = new THREE.MeshBasicMaterial({ color: 0xf0f5f8 });
+      const extraMaterials = [];
+
+      const parts = [];
+      const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+        const m = new THREE.Mesh(geo, material);
+        m.position.set(x, y, z);
+        m.scale.set(sx, sy, sz);
+        m.rotation.set(rx, ry, rz);
+        parts.push(m);
+        return m;
+      };
+
+      if (kind === "aegis") {
+        // Arleigh Burke idiom at true scale (155m, bow at -Z): knife bow, one
+        // big forward deckhouse carrying the four SPY-1 octagons, two low
+        // funnels, aft hangar with the helo circle, 5-inch mount and VLS fields.
+        add(geometry.panel, hull, 0, 4.5, 6, 19, 9, 128);
+        add(geometry.shipBow, hull, 0, 4.5, -68, 9.5, 20, 5, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 0.9, 6, 19.6, 1.8, 129);
+        add(geometry.panel, deck, 0, 9.3, 9, 19.2, 0.7, 123);
+        add(geometry.shipCylinder, house, 0, 10.9, -48, 3.4, 2.6, 3.4);
+        add(geometry.panel, house, 0, 12.1, -53.5, 1.1, 1.1, 8, 0.06);
+        add(geometry.panel, dark, 0, 9.9, -37, 12, 0.5, 10);
+        add(geometry.panel, house, 0, 13.8, -16, 15, 9.5, 24);
+        add(geometry.panel, house, 0, 21.3, -18, 11, 6, 13);
+        add(geometry.shipOctPlate, light, -6.6, 14.4, -27, 4.1, 0.7, 4.1, Math.PI / 2, 0, Math.PI - 0.55);
+        add(geometry.shipOctPlate, light, 6.6, 14.4, -27, 4.1, 0.7, 4.1, Math.PI / 2, 0, Math.PI + 0.55);
+        add(geometry.shipOctPlate, light, -6.6, 14.4, -5, 4.1, 0.7, 4.1, Math.PI / 2, 0, 0.55);
+        add(geometry.shipOctPlate, light, 6.6, 14.4, -5, 4.1, 0.7, 4.1, Math.PI / 2, 0, -0.55);
+        add(geometry.shipCylinder, dark, 0, 29, -12, 0.9, 13, 0.9);
+        add(geometry.panel, dark, 0, 31.5, -12, 7, 0.5, 0.6);
+        add(geometry.panel, house, 0, 12.4, 8, 7.5, 6.5, 9);
+        add(geometry.panel, dark, 0, 15.9, 8, 7.9, 0.9, 9.4);
+        add(geometry.panel, house, 0, 12.4, 22, 7.5, 6.5, 9);
+        add(geometry.panel, dark, 0, 15.9, 22, 7.9, 0.9, 9.4);
+        add(geometry.panel, dark, 0, 9.9, 33, 13, 0.5, 9);
+        add(geometry.panel, house, 0, 13.2, 46, 14, 7.8, 22);
+        add(geometry.shipCylinder, light, 0, 18.4, 51, 2.1, 2.6, 2.1);
+        add(geometry.enemyHitbox, light, 0, 20.6, 51, 0.17, 0.17, 0.17);
+        add(geometry.shockRing, markings, 0, 9.75, 66, 7.5, 7.5, 1, -Math.PI / 2);
+      } else {
+        // Carrier (~330m): full-length flight deck with painted runway decals,
+        // starboard island, parked-aircraft clutter and sponsons.
+        add(geometry.panel, hull, 0, 8, 5, 40, 20, 300);
+        add(geometry.shipBow, hull, 0, 8, -160, 19, 30, 10, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 1, 5, 40.6, 2, 301);
+        add(geometry.panel, deck, 0, 20.6, 0, 76, 3.2, 332);
+        const deckSkin = new THREE.MeshBasicMaterial({ map: makeCarrierDeckTexture() });
+        extraMaterials.push(deckSkin);
+        add(geometry.shipDeck, deckSkin, 0, 22.35, 0, 76, 332, 1, -Math.PI / 2);
+        add(geometry.panel, house, 32, 28.5, 38, 10, 13, 32);
+        add(geometry.panel, house, 32, 37.5, 32, 8, 5.5, 16);
+        add(geometry.shipOctPlate, light, 27.4, 30.5, 26, 3.4, 0.6, 3.4, Math.PI / 2, 0, Math.PI - 0.5);
+        add(geometry.shipCylinder, dark, 32, 46, 40, 0.8, 12, 0.8);
+        add(geometry.panel, dark, 32, 49, 40, 6.5, 0.5, 0.6);
+        add(geometry.panel, dark, -40.5, 15.5, -50, 6, 4.5, 12);
+        add(geometry.panel, dark, 40.5, 15.5, 78, 6, 4.5, 12);
+        for (let i = 0; i < 4; i += 1) {
+          const px = -22 + (i % 2) * 14 + (i > 1 ? 4 : 0);
+          const pz = -128 + Math.floor(i / 2) * 24 + (i % 2) * 9;
+          add(geometry.panel, light, px, 23, pz, 7, 0.9, 11, 0, i % 2 ? -0.35 : 0.3, 0);
+          add(geometry.panel, light, px, 24.1, pz + 3.5, 1, 2, 3.4, 0, i % 2 ? -0.35 : 0.3, 0);
+        }
+      }
+
+      root.add(...parts);
+      return {
+        group: root,
+        flames: [],
+        standardMaterials: [hull, deck, house, dark, light],
+        flameMaterial: markings,
+        extraMaterials
+      };
+    }
+
     function makeAircraftMaterial(color, metalness, roughness) {
       const emissive = new THREE.Color(color).multiplyScalar(0.045);
       const material = new THREE.MeshStandardMaterial({
@@ -6622,6 +7214,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     function disposeAircraftMaterials(model) {
       for (const material of model.standardMaterials) material.dispose();
       model.flameMaterial.dispose();
+      if (model.extraMaterials) {
+        for (const material of model.extraMaterials) {
+          if (material.map) material.map.dispose();
+          material.dispose();
+        }
+      }
     }
 
     function rebuildPlayerModel(id) {
