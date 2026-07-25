@@ -1878,6 +1878,15 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       targetId: null
     };
 
+    // CC0 samples (see sfx/CREDITS.txt). Everything else stays procedural, and
+    // the game is fully playable if these fail to load.
+    const SFX_SOURCES = Object.freeze({
+      gun: "sfx/gun.ogg",
+      missile: "sfx/missile.ogg",
+      explosion: "sfx/explosion.ogg",
+      hit: "sfx/hit.ogg"
+    });
+
     const audioSystem = {
       context: null,
       master: null,
@@ -1887,7 +1896,9 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       lockBeeps: 0,
       lockCompleteCues: 0,
       threatBeeps: 0,
-      activeSources: new Set()
+      activeSources: new Set(),
+      buffers: Object.create(null),
+      sfxRequested: false
     };
 
     const lock = {
@@ -2505,6 +2516,43 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       if (audioSystem.context.state === "suspended") {
         void audioSystem.context.resume().catch(() => {});
       }
+      loadSfx();
+    }
+
+    function loadSfx() {
+      if (audioSystem.sfxRequested || !audioSystem.context) return;
+      audioSystem.sfxRequested = true;
+      for (const [name, url] of Object.entries(SFX_SOURCES)) {
+        // Each sample is independent: one failed fetch/decode must not stop the
+        // others, and a missing sample simply means that cue stays silent.
+        void fetch(url)
+          .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(response.status)))
+          .then((data) => audioSystem.context.decodeAudioData(data))
+          .then((buffer) => { audioSystem.buffers[name] = buffer; })
+          .catch(() => {});
+      }
+    }
+
+    function playSfx(name, volume = 0.6, rate = 1) {
+      const context = audioSystem.context;
+      const master = audioSystem.master;
+      const buffer = audioSystem.buffers[name];
+      if (!context || !master || !buffer || context.state !== "running") return;
+
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      source.playbackRate.value = rate;
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(master);
+      audioSystem.activeSources.add(source);
+      source.start();
+      source.addEventListener("ended", () => {
+        audioSystem.activeSources.delete(source);
+        source.disconnect();
+        gain.disconnect();
+      }, { once: true });
     }
 
     function playTone(frequency, duration, volume = 0.12, type = "sine", delay = 0) {
@@ -2894,6 +2942,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function fireGun() {
       gunShots += 1;
+      // Fires 12x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
+      playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
       forwardOf(player, tmpV1);
       upOf(player, tmpV2);
       rightOf(player, tmpV3);
@@ -2930,6 +2980,8 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         resetLock();
         return;
       }
+
+      playSfx("missile", 0.5);
 
       forwardOf(player, tmpV1);
       rightOf(player, tmpV2);
@@ -3474,6 +3526,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         saveHighscore();
       }
       createDestroyedPopup(enemy.group.position, enemy.label, KILL_SCORE);
+      playSfx("explosion", 0.75, 0.9 + Math.random() * 0.2);
       playTone(150, 0.18, 0.1, "sawtooth");
       playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
@@ -3512,9 +3565,11 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       cameraShake = Math.min(1.8, cameraShake + 0.58 + hitIntensity * 0.72);
       updateAircraftFlash(playerModel, 0.14);
       createImpactBurst(player.position, 0xff654f, 0.9);
+      playSfx("hit", 0.45 + hitIntensity * 0.3, 0.85);
 
       if (health <= 0) {
         createExplosion(player.position, 0xffad45, 1.45);
+        playSfx("explosion", 0.9, 0.72);
         playerModel.group.visible = false;
         completeMission(false);
       } else if (health <= PLAYER_MAX_HEALTH * 0.3) {
