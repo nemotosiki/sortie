@@ -1885,7 +1885,11 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missile: "sfx/missile.ogg",
       explosion: "sfx/explosion.ogg",
       hit: "sfx/hit.ogg",
-      engine: "sfx/engine.ogg"
+      engine: "sfx/engine.ogg",
+      lockBeep: "sfx/lock_beep.ogg",
+      lockOn: "sfx/lock_on.ogg",
+      missileAlert: "sfx/missile_alert.ogg",
+      rwr: "sfx/rwr.ogg"
     });
 
     const ENGINE_GAIN_IDLE = 0.10;
@@ -2552,11 +2556,13 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       }
     }
 
+    // Returns false when the sample is unavailable, so cues that must always be
+    // audible can fall back to the synthesised tone.
     function playSfx(name, volume = 0.6, rate = 1) {
       const context = audioSystem.context;
       const master = audioSystem.master;
       const buffer = audioSystem.buffers[name];
-      if (!context || !master || !buffer || context.state !== "running") return;
+      if (!context || !master || !buffer || context.state !== "running") return false;
 
       const source = context.createBufferSource();
       const gain = context.createGain();
@@ -2572,6 +2578,7 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         source.disconnect();
         gain.disconnect();
       }, { once: true });
+      return true;
     }
 
     function playTone(frequency, duration, volume = 0.12, type = "sine", delay = 0) {
@@ -2751,15 +2758,20 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       if (lock.locked && !audioSystem.lastLocked) {
         audioSystem.lockCompleteCues += 1;
-        playTone(880, 0.11, 0.12, "square");
-        playTone(1180, 0.16, 0.09, "sine", 0.08);
+        if (!playSfx("lockOn", 0.55)) {
+          playTone(880, 0.11, 0.12, "square");
+          playTone(1180, 0.16, 0.09, "sine", 0.08);
+        }
       }
 
       if (!lock.locked && lock.progress > 0) {
         audioSystem.lockTimer -= dt;
         if (audioSystem.lockTimer <= 0) {
           audioSystem.lockBeeps += 1;
-          playTone(470 + lock.progress * 420, 0.065, 0.075, "square");
+          // Pitch climbs with lock progress, same cue shape as before.
+          if (!playSfx("lockBeep", 0.3, 0.85 + lock.progress * 0.5)) {
+            playTone(470 + lock.progress * 420, 0.065, 0.075, "square");
+          }
           audioSystem.lockTimer = THREE.MathUtils.lerp(0.34, 0.11, lock.progress);
         }
       } else {
@@ -2774,9 +2786,12 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (audioSystem.threatTimer <= 0) {
           audioSystem.threatBeeps += 1;
           const urgency = THREE.MathUtils.clamp(1 - nearestMissileThreat.distance / 900, 0, 1);
-          const base = 250 + urgency * 220;
-          playTone(base, 0.075, 0.1 + urgency * 0.05, "sawtooth");
-          playTone(base * 1.5, 0.06, 0.07 + urgency * 0.05, "square", 0.075);
+          // Rises in pitch and volume as the missile closes.
+          if (!playSfx("missileAlert", 0.4 + urgency * 0.3, 0.9 + urgency * 0.45)) {
+            const base = 250 + urgency * 220;
+            playTone(base, 0.075, 0.1 + urgency * 0.05, "sawtooth");
+            playTone(base * 1.5, 0.06, 0.07 + urgency * 0.05, "square", 0.075);
+          }
           audioSystem.threatTimer = THREE.MathUtils.lerp(0.5, 0.14, urgency);
         }
       } else {
@@ -2789,8 +2804,10 @@ canopy: 0x9fe9ff, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         audioSystem.rwrTimer -= dt;
         if (audioSystem.rwrTimer <= 0) {
           audioSystem.rwrBeeps += 1;
-          playTone(1560, 0.05, 0.055, "square");
-          playTone(1560, 0.05, 0.045, "square", 0.1);
+          if (!playSfx("rwr", 0.32, 1.15)) {
+            playTone(1560, 0.05, 0.055, "square");
+            playTone(1560, 0.05, 0.045, "square", 0.1);
+          }
           audioSystem.rwrTimer = RWR_BEEP_INTERVAL / Math.min(3, playerTargetedBy);
         }
       } else {
