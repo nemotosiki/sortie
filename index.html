@@ -69,22 +69,24 @@
 
     .hudBox {
       display: inline-block;
-      padding: 2px 7px 3px;
+      padding: 2px 8px 3px;
       border: 1px solid var(--hud-line);
       color: var(--hud);
-      font-size: 10px;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.16em;
+      letter-spacing: 0.2em;
       line-height: 1;
       text-transform: uppercase;
     }
 
     .hudVal {
-      font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      font-family: "Courier New", "Lucida Console", monospace;
       color: var(--hud);
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1;
-      font-size: 17px;
+      font-size: 18px;
+      letter-spacing: 0.02em;
     }
 
     .hudRow {
@@ -113,6 +115,9 @@
       font-size: 30px;
       letter-spacing: 0.04em;
     }
+
+    #speedValue::after { content: ">"; margin-left: 2px; }
+    #altitudeValue::before { content: "<"; margin-right: 2px; }
 
     /* Vertical tapes. A fixed pool of rows is reused every frame (translateY +
        textContent), never rebuilt, so this costs no allocations per frame. */
@@ -238,9 +243,12 @@
 
     /* Aircraft damage silhouette, sits above the ammo stack like the reference. */
     #damageSilhouette {
-      right: clamp(12px, 2vw, 28px);
-      bottom: calc(clamp(12px, 2vw, 26px) + 54px);
+      right: calc(clamp(12px, 2vw, 28px) + 36px);
+      bottom: clamp(10px, 1.6vw, 22px);
       line-height: 0;
+      display: flex;
+      align-items: flex-end;
+      gap: 9px;
     }
 
     #silhouetteBody {
@@ -295,16 +303,42 @@
 
     #statusPanel {
       right: clamp(12px, 2vw, 28px);
-      bottom: clamp(12px, 2vw, 26px);
+      bottom: calc(clamp(12px, 2vw, 26px) + 60px);
       display: flex;
       flex-direction: column;
       gap: 7px;
-      align-items: flex-end;
+      align-items: flex-start;
+    }
+
+    #statusPanel .hudRow {
+      justify-content: flex-start;
+      gap: 12px;
+    }
+
+    /* Uniform label boxes so the value column lines up, AC5 style. */
+    #statusPanel .hudBox,
+    #statusPanel .hudPlain {
+      width: 64px;
+      text-align: center;
+    }
+
+    .hudPlain {
+      display: inline-block;
+      padding: 2px 8px 3px;
+      border: 1px solid transparent;
+      color: var(--hud);
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      line-height: 1;
+      text-transform: uppercase;
     }
 
     #statusPanel .hudVal {
-      min-width: 42px;
-      text-align: right;
+      min-width: 0;
+      text-align: left;
+      font-size: 19px;
     }
 
     /* Scoped under #statusPanel so these beat the shared `.bar` / `.bar > span`
@@ -347,19 +381,39 @@
       box-shadow: 0 0 10px rgba(94, 230, 255, 0.9);
     }
 
-    #missilePips {
+    #missilePips,
+    #flarePips {
       display: flex;
-      gap: 4px;
-      justify-content: flex-end;
+      gap: 3px;
+      margin: 0;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 14px;
+      line-height: 1;
+      color: var(--hud);
     }
 
     .missilePip {
-      width: 6px;
-      height: 6px;
-      border: 1px solid var(--hud-line);
-      background: var(--hud);
+      width: auto;
+      height: auto;
+      border: 0;
+      background: none;
       transform: none;
       box-shadow: none;
+    }
+
+    .rackMissile path {
+      fill: rgba(83, 255, 92, 0.16);
+      stroke: var(--hud-line);
+      stroke-width: 1.1;
+      stroke-linejoin: round;
+    }
+
+    .rackMissile {
+      transition: opacity 180ms ease;
+    }
+
+    .rackMissile.empty {
+      opacity: 0.14;
     }
 
     .missilePip.empty {
@@ -385,7 +439,21 @@
       display: block;
     }
 
+    #headingCardinal {
+      text-align: center;
+      margin: 0 0 2px;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--hud);
+    }
+
     #radarLabel {
+      display: none;
+    }
+
+    #radarLabelOld {
       position: absolute;
       left: 10px;
       top: 8px;
@@ -769,19 +837,20 @@
     #radioPanel {
       position: absolute;
       left: 50%;
-      bottom: clamp(6px, 1.2vh, 16px);
+      top: clamp(96px, 12vh, 132px);
       z-index: 35;
-      transform: translate(-50%, 8px);
-      width: min(640px, 86vw);
-      padding: 9px 20px;
+      transform: translate(-50%, -6px);
+      width: min(760px, 90vw);
+      padding: 4px 20px;
       text-align: center;
-      background: var(--panel);
-      border-top: 1px solid var(--hud-soft);
-      border-bottom: 1px solid var(--hud-soft);
+      background: none;
+      border: 0;
       opacity: 0;
       transition: opacity 140ms ease, transform 140ms ease;
-      font-size: clamp(12px, 1.2vw, 15px);
+      font-size: clamp(13px, 1.35vw, 17px);
       pointer-events: none;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-weight: 700;
     }
 
     #radioPanel.visible {
@@ -789,20 +858,29 @@
       transform: translate(-50%, 0);
     }
 
-    #radioPanel.command #radioSpeaker { color: var(--hud); }
-    #radioPanel.wingman #radioSpeaker { color: var(--warning); }
-    #radioPanel.enemy #radioSpeaker { color: var(--danger); }
+    /* AC5 shows every radio callsign in red with an underline. */
+    #radioPanel.command #radioSpeaker,
+    #radioPanel.wingman #radioSpeaker,
+    #radioPanel.enemy #radioSpeaker { color: #ff4a52; }
 
     #radioSpeaker {
-      margin-right: 10px;
+      display: block;
+      margin: 0 0 2px;
       font-weight: 800;
-      letter-spacing: 0.14em;
+      letter-spacing: 0.12em;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     }
 
     #radioText {
-      color: #eaf6ff;
-      letter-spacing: 0.01em;
+      color: #f4f8ff;
+      letter-spacing: 0.02em;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     }
+
+    #radioText::before { content: "\300A\0020"; color: #ff4a52; }
+    #radioText::after { content: "\0020\300B"; color: #ff4a52; }
 
     #boostIndicator {
       position: absolute;
@@ -1313,6 +1391,7 @@
   <div id="hud" aria-hidden="true">
     <section id="compassStrip" class="panel">
       <div id="compassTicks"></div>
+      <div id="headingCardinal">N</div>
       <div class="hudBox" id="headingValue">000</div>
     </section>
 
@@ -1335,8 +1414,14 @@
     <div id="shootCue" class="hudBox">SHOOT</div>
 
     <section id="damageSilhouette" class="panel" aria-hidden="true">
+      <svg id="rackLeft" class="rackMissile" viewBox="0 0 12 34" width="12" height="34">
+        <path d="M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z" />
+      </svg>
       <svg viewBox="0 0 40 44" width="40" height="44">
         <path id="silhouetteBody" d="M20 2 L23 14 L23 20 L38 30 L38 34 L23 29 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 29 L2 34 L2 30 L17 20 L17 14 Z" />
+      </svg>
+      <svg id="rackRight" class="rackMissile" viewBox="0 0 12 34" width="12" height="34">
+        <path d="M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z" />
       </svg>
     </section>
 
@@ -1351,9 +1436,10 @@
     </section>
 
     <section id="statusPanel" class="panel">
+      <div class="hudRow"><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
       <div class="hudRow"><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
-      <div class="hudRow"><span class="hudBox">FLR</span><strong class="hudVal" id="flares">2</strong></div>
-      <div class="hudRow"><span class="hudBox">HP</span><span class="bar hudHpBar"><span id="healthBar"></span></span><strong class="hudVal" id="health">100</strong></div>
+      <div class="hudRow"><span class="hudPlain">FLR</span><span id="flarePips"></span><strong class="hudVal" id="flares">2</strong></div>
+      <div class="hudRow"><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
     </section>
 
     <section id="radarWrap" class="panel">
@@ -1996,6 +2082,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       retryBtn: document.getElementById("retryBtn"),
       compassTicks: document.getElementById("compassTicks"),
       headingValue: document.getElementById("headingValue"),
+      headingCardinal: document.getElementById("headingCardinal"),
       missionTime: document.getElementById("missionTime"),
       speedTape: document.getElementById("speedTape"),
       altTape: document.getElementById("altTape"),
@@ -2010,9 +2097,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missiles: document.getElementById("missiles"),
       flares: document.getElementById("flares"),
       kills: document.getElementById("kills"),
-      healthBar: document.getElementById("healthBar"),
       statusPanel: document.getElementById("statusPanel"),
       missilePips: document.getElementById("missilePips"),
+      flarePips: document.getElementById("flarePips"),
+      rackLeft: document.getElementById("rackLeft"),
+      rackRight: document.getElementById("rackRight"),
       speed: document.getElementById("speedValue"),
       altitude: document.getElementById("altitudeValue"),
       wave: document.getElementById("waveReadout"),
@@ -2124,6 +2213,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let missileCount = PLAYER_MISSILE_CAPACITY;
+    // AC-style missile tubes: two loaded at any time, the rest of the stock
+    // reloads one tube at a time on a timer.
+    const MISSILE_TUBE_COUNT = 2;
+    const MISSILE_RELOAD_TIME = 5;
+    let loadedMissiles = MISSILE_TUBE_COUNT;
+    const missileReloadTimers = [];
     const FLARE_CAPACITY = 2;
     let flareCount = FLARE_CAPACITY;
     let flareCooldown = 0;
@@ -2252,6 +2347,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // AC-style instrument geometry. Declared up here (not next to the render
     // helpers) because init runs updateHud() before that point in the file, and
     // const declarations are not hoisted.
+    const CARDINAL_NAMES = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
     const COMPASS_TICK_COUNT = 25;      // one every 15 deg, covers a full sweep
     const COMPASS_TICK_STEP = 15;
     const COMPASS_PX_PER_DEG = 3.4;
@@ -2630,6 +2726,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (gameState === STATE_PLAYING) updateEnemies(dt);
         if (gameState === STATE_PLAYING) {
           updateLock(dt);
+          updateMissileReload(dt);
           updateMissiles(dt);
           updateEnemyMissiles(dt);
           updateMission(dt);
@@ -3292,6 +3389,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       missileCount = PLAYER_MISSILE_CAPACITY;
       flareCount = FLARE_CAPACITY;
       flareCooldown = 0;
+      loadedMissiles = Math.min(MISSILE_TUBE_COUNT, PLAYER_MISSILE_CAPACITY);
+      missileReloadTimers.length = 0;
       clearFlares();
       kills = 0;
       fearStageReached = 0;
@@ -3610,6 +3709,10 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
     function launchMissile() {
       if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return;
+      if (loadedMissiles <= 0) {
+        playTone(240, 0.07, 0.05, "square");
+        return;
+      }
       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
       if (!target) {
         resetLock();
@@ -3640,9 +3743,26 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       missileSide *= -1;
       missileCount -= 1;
+      loadedMissiles -= 1;
+      // Schedule a reload only if unloaded stock remains beyond what the
+      // pending reloads will already deliver.
+      if (missileCount - loadedMissiles - missileReloadTimers.length > 0) {
+        missileReloadTimers.push(MISSILE_RELOAD_TIME);
+      }
       missilesLaunched += 1;
       showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
       resetLock();
+    }
+
+    function updateMissileReload(dt) {
+      for (let i = missileReloadTimers.length - 1; i >= 0; i -= 1) {
+        missileReloadTimers[i] -= dt;
+        if (missileReloadTimers[i] <= 0) {
+          missileReloadTimers.splice(i, 1);
+          loadedMissiles = Math.min(loadedMissiles + 1, MISSILE_TUBE_COUNT, missileCount);
+          playTone(880, 0.08, 0.045, "square");
+        }
+      }
     }
 
     function updateMissiles(dt) {
@@ -5096,6 +5216,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (tick.firstChild.textContent !== text) tick.firstChild.textContent = text;
       }
       ui.headingValue.textContent = String(Math.round(headingDeg)).padStart(3, "0");
+      ui.headingCardinal.textContent = CARDINAL_NAMES[Math.round(headingDeg / 45) % 8];
     }
 
     function updateTape(nodes, value, step) {
@@ -5126,7 +5247,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       ui.state.textContent = gameState;
       ui.score.textContent = String(Math.round(score));
       ui.highscore.textContent = String(Math.round(highscore));
-      ui.health.textContent = String(Math.round(health));
+      ui.health.textContent = `${Math.round((1 - health / PLAYER_MAX_HEALTH) * 100)}%`;
       ui.missiles.textContent = String(Math.round(missileCount));
       ui.flares.textContent = String(flareCount);
       ui.kills.textContent = String(Math.round(kills));
@@ -5150,7 +5271,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
         : "FLIGHT CONTROL · NORMAL · COORDINATED TURN + L1/R1 YAW · M/SHARE TOGGLE";
       ui.controlModeStatus.classList.toggle("expert", expertMode);
-      ui.healthBar.style.transform = `scaleX(${THREE.MathUtils.clamp(health / PLAYER_MAX_HEALTH, 0, 1)})`;
+
       ui.statusPanel.classList.toggle("healthLow", health <= PLAYER_MAX_HEALTH * 0.3);
 
       const lowSpeed = gameState === STATE_PLAYING && playerSpeed < STALL_WARNING_SPEED;
@@ -5171,16 +5292,39 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         ? `MISSILE ALERT · ${threat.direction} · ${Math.round(threat.distance)}M`
         : "MISSILE ALERT";
 
-      if (ui.missilePips.childElementCount !== PLAYER_MISSILE_CAPACITY) {
-        ui.missilePips.replaceChildren(...Array.from({ length: PLAYER_MISSILE_CAPACITY }, () => {
+      // Tube diamonds, AC style: lit = loaded, brightening = reloading,
+      // near-invisible = no stock left for that tube.
+      if (ui.missilePips.childElementCount !== MISSILE_TUBE_COUNT) {
+        ui.missilePips.replaceChildren(...Array.from({ length: MISSILE_TUBE_COUNT }, () => {
           const pip = document.createElement("span");
           pip.className = "missilePip";
+          pip.textContent = "\u25c6";
           return pip;
         }));
       }
       Array.from(ui.missilePips.children).forEach((pip, index) => {
-        pip.classList.toggle("empty", index >= missileCount);
+        if (index < loadedMissiles) {
+          pip.style.opacity = "1";
+          return;
+        }
+        const timer = missileReloadTimers[index - loadedMissiles];
+        pip.style.opacity = timer === undefined
+          ? "0.12"
+          : String((0.15 + 0.55 * (1 - timer / MISSILE_RELOAD_TIME)).toFixed(2));
       });
+      if (ui.flarePips.childElementCount !== FLARE_CAPACITY) {
+        ui.flarePips.replaceChildren(...Array.from({ length: FLARE_CAPACITY }, () => {
+          const pip = document.createElement("span");
+          pip.className = "missilePip";
+          pip.textContent = "\u25c6";
+          return pip;
+        }));
+      }
+      Array.from(ui.flarePips.children).forEach((pip, index) => {
+        pip.style.opacity = index < flareCount ? "1" : "0.12";
+      });
+      ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
+      ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
 
       forwardOf(player, tmpV1);
       rightOf(player, tmpV2);
@@ -5212,6 +5356,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
       hook.loadout.gunDamage = GUN_DAMAGE;
       hook.flares = flareCount;
+      hook.missilesLoaded = loadedMissiles;
+      hook.missileReloads = missileReloadTimers.length;
       hook.loadout.missileDamage = MISSILE_DAMAGE;
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
