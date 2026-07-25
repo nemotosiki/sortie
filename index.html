@@ -2322,6 +2322,59 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // Fraction of the airframe's boost headroom the AI spends while chasing.
     const ENEMY_PURSUIT_THROTTLE = 0.2;
 
+    // ---- Missile break turn ---------------------------------------------------
+    // A tracked aircraft rolls into a hard break when a player missile is inside
+    // the warning radius and still closing. The turn is flown at the airframe's
+    // own pursuit rate - nothing is boosted for it - so the round simply has to
+    // spend its 190 deg/s of authority on a line that keeps moving, and sometimes
+    // runs out before the 16m proximity fuse. The QAAM's 300 deg/s is the answer.
+    const ENEMY_BREAK_RANGE = 800;
+    const ENEMY_BREAK_DURATION = 1.6;
+    // Measured from the moment the break starts, so a machine cannot chain them.
+    const ENEMY_BREAK_COOLDOWN = 4.0;
+    const ENEMY_BREAK_LATERAL = 380;
+    const ENEMY_BREAK_JINK = 90;
+    const ENEMY_BREAK_JINK_RATE = 7;
+    // The radio id is per-aircraft, so RADIO_LINE_COOLDOWN (25s) already supplies
+    // the per-aircraft cooldown the call wants; this is the extra dice roll.
+    const ENEMY_BREAK_RADIO_CHANCE = 0.5;
+    // Debug kill switch for the A/B hit-rate probe (debug.setBreakEnabled).
+    let enemyBreakEnabled = true;
+
+    // ---- IRONBACK post-stall --------------------------------------------------
+    // The ace's last card: a scripted cobra that spends all its energy to put the
+    // nose back on a pursuer. Phase 1 rotates faster than the F-22 table allows -
+    // that is deliberate, and it is the ONLY place in the game it happens. It is a
+    // canned 1.4s animation on a long cooldown, not a capability the AI can steer
+    // with, so "enemies fly the same physics table as the player" still holds for
+    // every frame outside the script. Being scripted costs the ace too: it is a
+    // slow, non-evading target for the whole manoeuvre.
+    const ACE_POSTSTALL_HP_RATIO = 0.4;
+    // Trigger band, not just a ceiling. A pursuer's bearing sweeps at v/r, and
+    // inside this floor it outruns what the ace can track during the 1.4 s
+    // script - the manoeuvre cannot resolve into a head-on however well it is
+    // flown, so an ace does not spend its last card on a merge already decided.
+    // The floor is where the measurement puts the crossover, not a guess: at
+    // 339 m the merge ends at dot +0.03 and at 369 m +0.25, both short of a
+    // firing position, while 399 m and out land at +0.54 to +0.88.
+    const ACE_POSTSTALL_MIN_RANGE = 380;
+    const ACE_POSTSTALL_RANGE = 460;
+    const ACE_POSTSTALL_REAR_DOT = -0.5;
+    const ACE_POSTSTALL_COOLDOWN = 12;
+    const ACE_POSTSTALL_PITCH = 0.5;   // phase 1: brake hard, nose up and back
+    // Phases 2 and 3 run concurrently rather than back to back. A roll is about
+    // the forward axis, so it does not move the nose at all - spending 0.4 s on
+    // it alone threw away nearly half the rotation budget and the merge came out
+    // abeam instead of head-on. The roll now happens inside the tracking window:
+    // same 1.4 s total, same rates, 0.9 s of pointing instead of 0.5 s.
+    const ACE_POSTSTALL_ROLL = 0.4;    // 180 deg roll, inside the tracking window
+    const ACE_POSTSTALL_TRACK = 0.9;   // nose onto the player
+    const ACE_POSTSTALL_DURATION = ACE_POSTSTALL_PITCH + ACE_POSTSTALL_TRACK;
+    const ACE_POSTSTALL_PITCH_RATE = THREE.MathUtils.degToRad(160);
+    const ACE_POSTSTALL_ROLL_RATE = Math.PI / ACE_POSTSTALL_ROLL;
+    const ACE_POSTSTALL_SPEED = 90;
+    const ACE_POSTSTALL_TRACK_SCALE = 2.0;
+
     const ENEMY_TYPES = Object.freeze(Object.fromEntries(
       Object.keys(ENEMY_AI_PROFILES).map((id) => {
         const air = AIRCRAFT_TYPES[id];
@@ -3207,6 +3260,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     const tmpV8 = new THREE.Vector3();
     const tmpV9 = new THREE.Vector3();
     const tmpV10 = new THREE.Vector3();
+    // Owned by the enemy break / post-stall code, which runs inside the enemy
+    // loop and must not tread on the tmpV* slots that loop is already holding.
+    const tmpAiA = new THREE.Vector3();
+    const tmpAiB = new THREE.Vector3();
+    // Owned by the missile swept-fuse test.
+    const tmpSwept = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
@@ -3246,9 +3305,44 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     // reloads one tube at a time on a timer.
     const MISSILE_TUBE_COUNT = 2;
     const MISSILE_RELOAD_TIME = 5;
+    // Deliberately unchanged at 190. Dropping it to 130 and then 110 was measured
+    // against a breaking target and bought almost nothing - 100% -> 95% -> 90%
+    // hit rate, with the miss distance flat at ~10 m the whole way - because the
+    // endgame is decided by frame quantisation rather than seeker authority: at
+    // 520 m/s the round steps ~8.7 m between proximity tests, which swamps the
+    // couple of metres a lazier turn rate would have cost it. Nerfing the rate
+    // would have taxed every ordinary shot in the game to buy that nothing, so
+    // the break is paid for at the fuse instead - see proximityFuseFor().
     const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(190);
     const MISSILE_MAX_SPEED = 520;
     const MISSILE_LIFE = 9.5;
+    // Proximity fuse against an aircraft, and the one lever that makes a break
+    // turn worth flying. No airframe in the table can drag the miss distance past
+    // 16 m - the crossing speed simply is not there, and the ~8.7 m the round
+    // jumps between proximity tests hides what little it does generate - so a
+    // round that had to be shot through a break gets a tighter fuse instead of
+    // the aircraft getting a bigger turn. Scoped per round rather than to the
+    // target's current mode: in a tail chase the break is long over by the time
+    // the round arrives, so keying off "is breaking right now" would never fire.
+    // Ordinary shots, ships and installations all keep the original radius, so
+    // nothing outside a break changes. The QAAM's 300 deg/s still gets inside
+    // 11 m, which is the whole reason to carry one.
+    // How long a seeker may be asked to out-turn its own rate before it gives
+    // up and the round flies on ballistically. In seconds rather than frames so
+    // it means the same thing inside and outside the terminal sub-step. Player
+    // rounds only - applying the same rule to enemy missiles would move every
+    // mission's difficulty at once, so that stays a separate decision.
+    const SEEKER_LOSS_TIME = 0.08;
+    const MISSILE_FUSE = 16;
+    // Terminal sub-stepping. At 520 m/s a round covers ~8.7 m per frame, so the
+    // whole endgame against a 16 m fuse is two or three frames - fine for
+    // deciding "did it hit", useless for deciding anything subtler. Inside this
+    // radius guidance, the fuse and the seeker-loss clock are resolved eight
+    // times finer, which is what lets a break turn, a seeker's turn limit and
+    // the QAAM's advantage register at all instead of being quantised away.
+    // Outside it nothing changes, so the cost is a few rounds per frame at most.
+    const MISSILE_TERMINAL_RANGE = 150;
+    const MISSILE_TERMINAL_SUBSTEPS = 8;
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
     const FLARE_CAPACITY = 2;
@@ -3684,6 +3778,31 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           syncPlayerOrientation();
           return true;
         },
+        // A/B affordance for the break turn: with it off the enemy flies the old
+        // pursuit line, so a probe can measure missile hit rate against a target
+        // that does not manoeuvre. Deliberately survives a restart - a run sets it
+        // once and then flies several sorties under it.
+        setBreakEnabled: (enabled) => {
+          enemyBreakEnabled = enabled !== false;
+          if (!enemyBreakEnabled) {
+            for (const enemy of enemies) {
+              if (enemy.mode !== "break") continue;
+              enemy.mode = "pursuit";
+              enemy.breakTimer = 0;
+            }
+          }
+          return enemyBreakEnabled;
+        },
+        breakEnabled: () => enemyBreakEnabled,
+        // Runs the ace's post-stall script on demand. The trigger conditions are
+        // skipped; the cooldown is not, so it cannot manufacture a chain.
+        forceAcePostStall: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          const ace = enemies.find((enemy) => enemy.alive && enemy.isAce && !enemy.surface);
+          if (!ace || ace.postStallTimer > 0 || ace.postStallCooldown > 0) return false;
+          startAcePostStall(ace);
+          return true;
+        },
         forceSetEnemyHp: (id, hp) => {
           if (gameState !== STATE_PLAYING) return false;
           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
@@ -3692,6 +3811,21 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           enemy.maxHp = Math.max(enemy.maxHp, hp);
           return enemy.hp;
         },
+        // Player rounds in flight, with the range to the aircraft each one is
+        // tracking - the number the proximity fuse and the break turn argue over.
+        missileProbe: () => missilesInFlight.map((missile) => {
+          const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+          return {
+            targetId: missile.targetId,
+            spw: missile.spw ?? null,
+            life: missile.life,
+            speed: missile.speed,
+            closing: Boolean(missile.closing),
+            lost: Boolean(missile.lost),
+            lostTime: Number((missile.lostTime || 0).toFixed(4)),
+            range: target ? missile.mesh.position.distanceTo(target.group.position) : null
+          };
+        }),
         bombProbe: () => bombsInFlight.map((bomb) => ({
           x: bomb.mesh.position.x,
           y: bomb.mesh.position.y,
@@ -4904,7 +5038,9 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
     function aceEngagedNow() {
       if (gameState !== STATE_PLAYING) return false;
       for (const enemy of enemies) {
-        if (enemy.alive && enemy.isAce && enemy.mode === "pursuit") return true;
+        // Anything but patrol counts: a 1.6s break, or a post-stall flown while
+        // the mode still reads "pursuit", must not drop the ace track for a beat.
+        if (enemy.alive && enemy.isAce && enemy.mode && enemy.mode !== "patrol") return true;
       }
       return false;
     }
@@ -5590,7 +5726,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         targetId: target.id,
         speed: Math.max(playerSpeed + 120, 300),
         life: 0,
-        trailTimer: 0
+        trailTimer: 0,
+        closing: false,
+        lastTargetDistance: Infinity,
+        los: new THREE.Vector3(),
+        losValid: false,
+        lostTime: 0,
+        lost: false
       });
 
       missileSide *= -1;
@@ -5625,28 +5767,85 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         missile.trailTimer -= dt;
 
         const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+        // One step out in the cruise, eight through the endgame.
+        let steps = 1;
         if (target) {
-          tmpV1.copy(target.group.position).sub(missile.mesh.position);
-          const distance = tmpV1.length();
-          tmpV1.normalize();
-          tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
-          missile.mesh.quaternion.rotateTowards(tmpQ1, (missile.turnRate ?? MISSILE_TURN_RATE) * dt);
+          if (missile.mesh.position.distanceTo(target.group.position) < MISSILE_TERMINAL_RANGE) {
+            steps = MISSILE_TERMINAL_SUBSTEPS;
+          }
+        } else {
+          missile.closing = false;
+        }
+        const slice = dt / steps;
+        let struck = false;
 
-          if (distance < (target.surface ? target.spec.hitRadius * 0.35 : 16)) {
+        for (let step = 0; step < steps; step += 1) {
+          if (target) {
+            tmpV1.copy(target.group.position).sub(missile.mesh.position);
+            const distance = tmpV1.length();
+            // Break trigger input: a round that has been out-turned and is now
+            // opening is no longer something the target needs to break against.
+            missile.closing = distance < missile.lastTargetDistance;
+            missile.lastTargetDistance = distance;
+            tmpV1.normalize();
+
+            // Seeker lock-loss. The line of sight to a manoeuvring target rotates
+            // at v/r, which inside the last hundred metres of a break runs away
+            // from any finite turn rate. A seeker being asked for more than it
+            // has is not tracking any more - it is pointing where the target used
+            // to be - so once it has been behind for long enough it stops
+            // pretending and flies on ballistically. This is what makes a break
+            // turn work, and it is why the QAAM is worth carrying: the rate it
+            // has to exceed is its own, so 300 deg/s stays locked where 190 lets
+            // go. Only resolvable because the terminal phase is sub-stepped - at
+            // frame resolution the line never rotates for more than one step.
+            const seekerRate = missile.turnRate ?? MISSILE_TURN_RATE;
+            if (!missile.lost) {
+              if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+                missile.lostTime += slice;
+                if (missile.lostTime >= SEEKER_LOSS_TIME) {
+                  missile.lost = true;
+                  // A puff as the motor keeps burning on a dead seeker.
+                  for (let puff = 0; puff < 3; puff += 1) {
+                    tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+                    smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+                  }
+                }
+              } else {
+                missile.lostTime = 0;
+              }
+              missile.los.copy(tmpV1);
+              missile.losValid = true;
+              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+              missile.mesh.quaternion.rotateTowards(tmpQ1, seekerRate * slice);
+            }
+          }
+
+          missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed ?? MISSILE_MAX_SPEED, damping(0.012, slice));
+          forwardOf(missile.mesh, tmpV2);
+          const travel = missile.speed * slice;
+
+          // Swept fuse: the round is a segment this step, not a point. Testing
+          // the segment's closest approach removes the tunnelling that let a
+          // clean pass score as a hit - and a real hit score as a pass - purely
+          // on where the sample points happened to land.
+          if (target && sweptMissDistance(missile.mesh.position, tmpV2, travel, target.group.position)
+              < proximityFuseFor(target)) {
             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
             if (missile.spw) spwHits += 1;
             else missileHits += 1;
             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
             removeMissile(i);
-            continue;
+            struck = true;
+            break;
           }
-        }
 
-        missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed ?? MISSILE_MAX_SPEED, damping(0.012, dt));
-        forwardOf(missile.mesh, tmpV2);
-        missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
+          missile.mesh.position.addScaledVector(tmpV2, travel);
+        }
+        if (struck) continue;
 
         if (missile.trailTimer <= 0) {
+          forwardOf(missile.mesh, tmpV2);
           tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.4);
           createMissileTrailPuff(tmpV3);
           missile.trailTimer += 0.03;
@@ -5657,6 +5856,22 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           removeMissile(i);
         }
       }
+    }
+
+    // Closest approach between the segment a round travels this step and a point.
+    function sweptMissDistance(from, dir, length, point) {
+      tmpSwept.copy(point).sub(from);
+      const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+      return tmpSwept.addScaledVector(dir, -along).length();
+    }
+
+    // Hull radius for a surface target, the standard proximity fuse for an
+    // aircraft. The break-only 11 m fuse that used to live here is gone: it was a
+    // workaround for the endgame being quantised, and sub-stepping fixed the
+    // cause, so every round faces the same radius it always did.
+    function proximityFuseFor(target) {
+      if (target.surface) return target.spec.hitRadius * 0.35;
+      return MISSILE_FUSE;
     }
 
     function removeMissile(index) {
@@ -5745,7 +5960,13 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         lifeLimit: PLAYER_SPW.life,
         spw: PLAYER_SPW.key,
         life: 0,
-        trailTimer: 0
+        trailTimer: 0,
+        closing: false,
+        lastTargetDistance: Infinity,
+        los: new THREE.Vector3(),
+        losValid: false,
+        lostTime: 0,
+        lost: false
       });
 
       missileSide *= -1;
@@ -6459,6 +6680,19 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         speed: spec.patrolSpeed * 0.92,
         targetSpeed: spec.patrolSpeed,
         mode: "patrol",
+        // Missile break state. `breakAxis` is the horizontal direction the break
+        // is flown along; `breakSide` fixes which way, once per break.
+        breakTimer: 0,
+        breakCooldown: 0,
+        breakSide: 1,
+        breakAxis: new THREE.Vector3(1, 0, 0),
+        // Post-stall script state. Carried by every aircraft so the probe and the
+        // hook can read it uniformly; only the ace ever sets it.
+        postStallTimer: 0,
+        postStallCooldown: 0,
+        postStallPhase: 0,
+        postStallSmokeTimer: 0,
+        acePostStallLineFired: false,
         waypoints,
         waypointIndex: 0,
         fireCooldown: spec.fireMin + Math.random() * spec.fireSpread,
@@ -6863,13 +7097,61 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         }
         if (enemy.mode === "pursuit" && distanceToPlayer > spec.disengageRange) enemy.mode = "patrol";
 
+        // Post-stall owns the frame outright when it is running: `mode` is left
+        // exactly as the manoeuvre found it, so the ace music cue keeps reading
+        // "engaged" and the normal AI resumes mid-thought when the script ends.
+        if (enemy.isAce) {
+          enemy.postStallCooldown = Math.max(0, enemy.postStallCooldown - dt);
+          if (enemy.postStallTimer <= 0 && postStallWanted(enemy, distanceToPlayer)) {
+            startAcePostStall(enemy);
+          }
+        }
+        if (enemy.postStallTimer > 0) {
+          updateAcePostStall(enemy, dt);
+          updateEnemyOrdnance(enemy, dt, time);
+          continue;
+        }
+
+        // Missile break. Sits on top of the patrol/pursuit machine rather than
+        // replacing it: when the 1.6s is up, range decides where to go back to.
+        enemy.breakCooldown = Math.max(0, enemy.breakCooldown - dt);
+        if (enemy.mode === "break") {
+          enemy.breakTimer -= dt;
+          const threat = closingPlayerMissile(enemy);
+          // Keep the break square to the round as it corrects, and keep marking
+          // the round as one that had to be shot at through a break.
+          if (threat) aimBreakAxis(enemy, threat);
+          // Holding the break open while the round was still inbound was tried
+          // both alone and paired with seeker lock-loss, and measured no better
+          // either way (95% hit rate, median miss 5.2 m vs 4.4 m). A break is a
+          // snap, and it ends.
+          if (enemy.breakTimer <= 0) {
+            enemy.breakTimer = 0;
+            enemy.mode = distanceToPlayer < spec.engageRange ? "pursuit" : "patrol";
+          }
+        } else if (enemyBreakEnabled && enemy.breakCooldown <= 0) {
+          const threat = closingPlayerMissile(enemy);
+          if (threat) startBreak(enemy, threat);
+        }
+
         const leader = spec.behavior === "formation"
           ? enemies.find((candidate) => candidate.alive && candidate.wave === enemy.wave && candidate.id !== enemy.id && candidate.id === enemy.formationLeaderId)
             || enemies.find((candidate) => candidate.alive && candidate.wave === enemy.wave && candidate.id !== enemy.id)
           : null;
 
         let targetPoint;
-        if (enemy.mode === "pursuit") {
+        if (enemy.mode === "break") {
+          // Perpendicular to the missile's line of sight plus a vertical jink:
+          // two axes for the seeker to chase at once, neither of them predictable
+          // from the geometry it had when it was launched.
+          targetPoint = enemy.targetPoint.copy(enemy.group.position)
+            .addScaledVector(enemy.breakAxis, ENEMY_BREAK_LATERAL)
+            .addScaledVector(WORLD_UP, Math.sin(time * ENEMY_BREAK_JINK_RATE + enemy.seed) * ENEMY_BREAK_JINK);
+          // Throttle is left wherever the previous mode had it. Firewalling here
+          // measured worse, not better: the extra speed turns the break into an
+          // extension, which buys the round a long straight tail chase to settle
+          // its aim on. The break is a turn, and only a turn.
+        } else if (enemy.mode === "pursuit") {
           targetPoint = enemy.targetPoint.copy(player.position)
             .addScaledVector(tmpV5, -spec.pursuitBack)
             .addScaledVector(WORLD_UP, spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude);
@@ -6914,14 +7196,7 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         // aircraft is near - override the aim point with a climb straight
         // ahead, so the (airframe-limited) turn is spent purely on pulling up.
         forwardOf(enemy.group, tmpV8);
-        let floorHeight = 0;
-        for (const mountain of world.mountains) {
-          const mdx = enemy.group.position.x - mountain.x;
-          const mdz = enemy.group.position.z - mountain.z;
-          if (mdx * mdx + mdz * mdz < mountain.r * mountain.r * 2.6) {
-            floorHeight = Math.max(floorHeight, mountain.h);
-          }
-        }
+        const floorHeight = terrainFloorAt(enemy.group.position);
         const projectedAltitude = enemy.group.position.y + tmpV8.y * enemy.speed * 1.8;
         if (projectedAltitude < floorHeight + 120 || enemy.group.position.y < floorHeight + 70) {
           targetPoint = enemy.safeTarget.copy(enemy.group.position);
@@ -6934,7 +7209,8 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         if (tmpV4.lengthSq() > 0.00001) {
           tmpV4.normalize();
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
-          const turnRate = enemy.mode === "pursuit" ? spec.pursuitTurn : spec.patrolTurn;
+          // A break is flown at the pursuit rate - hard, but still the airframe's.
+          const turnRate = enemy.mode === "patrol" ? spec.patrolTurn : spec.pursuitTurn;
           enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
           enemy.group.quaternion.normalize();
         }
@@ -6956,25 +7232,229 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
           }
         }
 
-        const baseFlame = spec.behavior === "evasive" ? 1.18 : (spec.behavior === "armored" ? 0.82 : 1.0);
-        const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
-        for (const flame of enemy.model.flames) flame.scale.z = flamePulse;
+        updateEnemyOrdnance(enemy, dt, time);
+      }
+    }
 
-        enemy.fireCooldown -= dt;
-        if (enemy.fireCooldown <= 0) {
-          attemptEnemyAttack(enemy);
-          enemy.fireCooldown = spec.fireMin + Math.random() * spec.fireSpread;
-        }
+    // Exhaust flicker and the two weapon timers. Shared by normal flight and the
+    // post-stall script: a manoeuvring aircraft still burns and still shoots, and
+    // the head-on the cobra produces is only worth anything if the guns run.
+    function updateEnemyOrdnance(enemy, dt, time) {
+      const spec = enemy.spec;
+      const baseFlame = spec.behavior === "evasive" ? 1.18 : (spec.behavior === "armored" ? 0.82 : 1.0);
+      const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
+      for (const flame of enemy.model.flames) flame.scale.z = flamePulse;
 
-        enemy.missileCooldown -= dt;
-        if (enemy.missileCooldown <= 0) {
-          const profile = ENEMY_MISSILE_PROFILES[enemy.type];
-          const launched = attemptEnemyMissile(enemy);
-          enemy.missileCooldown = launched && profile
-            ? profile.cooldownMin + Math.random() * profile.cooldownSpread
-            : 1.15 + Math.random() * 0.85;
+      enemy.fireCooldown -= dt;
+      if (enemy.fireCooldown <= 0) {
+        attemptEnemyAttack(enemy);
+        enemy.fireCooldown = spec.fireMin + Math.random() * spec.fireSpread;
+      }
+
+      enemy.missileCooldown -= dt;
+      if (enemy.missileCooldown <= 0) {
+        const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+        const launched = attemptEnemyMissile(enemy);
+        enemy.missileCooldown = launched && profile
+          ? profile.cooldownMin + Math.random() * profile.cooldownSpread
+          : 1.15 + Math.random() * 0.85;
+      }
+    }
+
+    // Highest mountain top whose footprint covers this point (2.6 in squared
+    // terms, so ~1.6 radii out). One definition of "the ground" for the steering
+    // look-ahead, the hard floor and the post-stall script alike.
+    function terrainFloorAt(position) {
+      let floorHeight = 0;
+      for (const mountain of world.mountains) {
+        const mdx = position.x - mountain.x;
+        const mdz = position.z - mountain.z;
+        if (mdx * mdx + mdz * mdz < mountain.r * mountain.r * 2.6) {
+          floorHeight = Math.max(floorHeight, mountain.h);
         }
       }
+      return floorHeight;
+    }
+
+    // ---- Missile break turn ---------------------------------------------------
+
+    // Nearest player round that is tracking this aircraft, inside the warning
+    // radius and still gaining. `closing` is set by updateMissiles a frame
+    // earlier, which is a sixtieth of a second of staleness on an 800m call.
+    function closingPlayerMissile(enemy) {
+      let nearest = null;
+      let nearestDistance = ENEMY_BREAK_RANGE;
+      for (const missile of missilesInFlight) {
+        if (missile.targetId !== enemy.id || !missile.closing) continue;
+        const distance = missile.mesh.position.distanceTo(enemy.group.position);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = missile;
+        }
+      }
+      return nearest;
+    }
+
+    // Horizontal direction square to the missile's line of sight. The side is
+    // fixed for the whole break so the aircraft commits instead of flip-flopping
+    // each time the round nudges the line back.
+    function aimBreakAxis(enemy, missile) {
+      tmpAiA.copy(enemy.group.position).sub(missile.mesh.position);
+      tmpAiA.y = 0;
+      if (tmpAiA.lengthSq() < 0.0001) return;
+      tmpAiA.normalize();
+      enemy.breakAxis.set(tmpAiA.z, 0, -tmpAiA.x).multiplyScalar(enemy.breakSide);
+    }
+
+    function startBreak(enemy, missile) {
+      enemy.mode = "break";
+      enemy.breakTimer = ENEMY_BREAK_DURATION;
+      enemy.breakCooldown = ENEMY_BREAK_COOLDOWN;
+      enemy.breakSide = Math.random() < 0.5 ? 1 : -1;
+      aimBreakAxis(enemy, missile);
+      // Not every break gets a call - a chorus of them on a three-ship would bury
+      // everything else on the net.
+      if (Math.random() < ENEMY_BREAK_RADIO_CHANCE) {
+        triggerRadioLine(
+          "enemy",
+          "ミサイル！ ブレイク、ブレイク！",
+          RADIO_PRIORITY.NORMAL,
+          `break-${enemy.id}`
+        );
+      }
+    }
+
+    // ---- IRONBACK post-stall --------------------------------------------------
+
+    function postStallWanted(enemy, distanceToPlayer) {
+      if (gameState !== STATE_PLAYING) return false;
+      if (enemy.postStallCooldown > 0) return false;
+      if (distanceToPlayer > ACE_POSTSTALL_RANGE || distanceToPlayer < ACE_POSTSTALL_MIN_RANGE) return false;
+      if (enemy.hp >= enemy.maxHp * ACE_POSTSTALL_HP_RATIO) return false;
+      tmpAiB.copy(player.position).sub(enemy.group.position);
+      if (tmpAiB.lengthSq() < 1) return false;
+      forwardOf(enemy.group, tmpAiA);
+      // Only worth spending when the player is genuinely in the ace's six.
+      return tmpAiA.dot(tmpAiB.normalize()) < ACE_POSTSTALL_REAR_DOT;
+    }
+
+    function startAcePostStall(enemy) {
+      enemy.postStallTimer = ACE_POSTSTALL_DURATION;
+      enemy.postStallCooldown = ACE_POSTSTALL_COOLDOWN;
+      enemy.postStallPhase = 1;
+      enemy.postStallSmokeTimer = 0;
+      // Any break in progress is abandoned - the cobra is the better answer, and
+      // resuming a half-finished break afterwards would look like a stutter.
+      enemy.breakTimer = 0;
+      if (enemy.mode === "break") enemy.mode = "pursuit";
+      if (!enemy.acePostStallLineFired) {
+        enemy.acePostStallLineFired = true;
+        triggerRadioLine(
+          "enemy",
+          "そんな旋回で私を捉えたつもりか！",
+          RADIO_PRIORITY.NORMAL,
+          "ace-poststall"
+        );
+      }
+    }
+
+    // The script itself. Every rotation here is time-based animation; the phase-1
+    // pitch is the one place the game exceeds an airframe's turn table, and it
+    // costs the ace all its energy to buy. dt arrives already time-scaled, so a
+    // kill-cam slowdown plays the whole manoeuvre slower rather than desyncing it.
+    function updateAcePostStall(enemy, dt) {
+      const spec = enemy.spec;
+      enemy.postStallTimer = Math.max(0, enemy.postStallTimer - dt);
+      const elapsed = ACE_POSTSTALL_DURATION - enemy.postStallTimer;
+
+      if (elapsed < ACE_POSTSTALL_PITCH) {
+        enemy.postStallPhase = 1;
+        enemy.targetSpeed = ACE_POSTSTALL_SPEED;
+        // Up and back, flown in the plane of the fight. Two things this is not:
+        // rotateX(), which pitches about the ace's own wing line and so cobras
+        // sideways whenever it was banked when the manoeuvre fired; and a purely
+        // vertical rear-up, which throws the nose straight at the sky while the
+        // pursuer sits off to one side, leaving the tracking window to drag it
+        // back down again. Lifting the pursuer's bearing halfway to vertical and
+        // pitching in that plane spends all 80 deg in a useful direction.
+        forwardOf(enemy.group, tmpAiA);
+        tmpAiB.copy(player.position).sub(enemy.group.position);
+        if (tmpAiB.lengthSq() > 1) tmpAiB.normalize().add(WORLD_UP).normalize();
+        else tmpAiB.copy(WORLD_UP);
+        tmpAiA.cross(tmpAiB);
+        // Degenerate when the nose already points along that lifted bearing.
+        if (tmpAiA.lengthSq() < 1e-6) {
+          forwardOf(enemy.group, tmpAiA);
+          tmpAiA.cross(WORLD_UP);
+        }
+        if (tmpAiA.lengthSq() > 1e-6) {
+          tmpAiA.normalize();
+          tmpQ1.setFromAxisAngle(tmpAiA, ACE_POSTSTALL_PITCH_RATE * dt);
+          enemy.group.quaternion.premultiply(tmpQ1);
+        }
+        // Wing-tip vapour: the tell that the wing has stopped flying and the
+        // aircraft is riding on nothing but its own momentum.
+        enemy.postStallSmokeTimer -= dt;
+        if (enemy.postStallSmokeTimer <= 0) {
+          rightOf(enemy.group, tmpAiA);
+          const span = 7 * spec.theme.scale;
+          for (let side = -1; side <= 1; side += 2) {
+            tmpAiB.copy(enemy.group.position).addScaledVector(tmpAiA, side * span);
+            tmpV2.set((Math.random() - 0.5) * 4, 1.4 + Math.random() * 1.8, (Math.random() - 0.5) * 4);
+            smokeParticlePool.spawn(tmpAiB, tmpV2, 0.45 + Math.random() * 0.25, 0xdfe6ec, -0.2, 0.5);
+          }
+          enemy.postStallSmokeTimer += 0.035;
+        }
+      } else {
+        // Rolling and pointing at the same time. The two are orthogonal: the roll
+        // is applied about the local forward axis and does not move the nose,
+        // the tracking is applied in world space and does not touch the roll.
+        // Phase 2 is "still rolling", phase 3 is "rolled out and still tracking".
+        const rolling = elapsed < ACE_POSTSTALL_PITCH + ACE_POSTSTALL_ROLL;
+        enemy.postStallPhase = rolling ? 2 : 3;
+        if (rolling) enemy.group.rotateZ(ACE_POSTSTALL_ROLL_RATE * dt);
+        // Ordinary pursuit throttle on the recovery. Firewalling it to
+        // spec.maxSpeed was tried and is much worse: the ace simply outruns the
+        // merge, and the pursuer it just cobra'd stays behind it (dot ended
+        // -0.28..-0.49 across the band instead of -0.20..+0.52).
+        enemy.targetSpeed = Math.min(spec.maxSpeed, playerSpeed + spec.pursuitBonus);
+        // Lead, not pure pursuit. At merge range the pursuer's bearing sweeps at
+        // v/r, which past ~117 deg/s is faster than the ace can turn - chasing
+        // the current position means never arriving. Aiming at where the pursuer
+        // will be when the script ends converges instead of trailing.
+        forwardOf(player, tmpV2);
+        tmpAiB.copy(player.position)
+          .addScaledVector(tmpV2, playerSpeed * enemy.postStallTimer)
+          .sub(enemy.group.position);
+        if (tmpAiB.lengthSq() > 0.00001) {
+          tmpAiB.normalize();
+          forwardOf(enemy.group, tmpAiA);
+          // Pure pointing, applied in world space. rotateTowards() would measure
+          // the whole quaternion gap - which mid-roll contains up to 180 deg of
+          // roll - and spend most of the window levelling out instead of hauling
+          // the nose round. The ace is supposed to finish this inverted.
+          const gap = tmpAiA.angleTo(tmpAiB);
+          if (gap > 1e-4) {
+            tmpAiA.cross(tmpAiB);
+            if (tmpAiA.lengthSq() > 1e-8) {
+              tmpAiA.normalize();
+              tmpQ1.setFromAxisAngle(tmpAiA, Math.min(gap, spec.pursuitTurn * ACE_POSTSTALL_TRACK_SCALE * dt));
+              enemy.group.quaternion.premultiply(tmpQ1);
+            }
+          }
+        }
+      }
+      enemy.group.quaternion.normalize();
+
+      enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
+      forwardOf(enemy.group, tmpAiA);
+      enemy.group.position.addScaledVector(tmpAiA, enemy.speed * dt);
+
+      // The script is exempt from the turn table, never from the terrain.
+      const hardFloor = terrainFloorAt(enemy.group.position) + 26;
+      if (enemy.group.position.y < hardFloor) enemy.group.position.y = hardFloor;
+
+      if (enemy.postStallTimer <= 0) enemy.postStallPhase = 0;
     }
 
     // ---- Surface combatants ---------------------------------------------------
@@ -7312,6 +7792,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 
       enemy.alive = false;
       enemy.hitbox.visible = false;
+      // Manoeuvre state dies with the aircraft, so a wreck never reports itself
+      // as mid-break or mid-cobra to the probe or to anything reading `mode`.
+      enemy.breakTimer = 0;
+      enemy.postStallTimer = 0;
+      enemy.postStallPhase = 0;
       let chainBlast = null;
       if (enemy.ground) {
         // Installations neither sink nor pop out of existence: one big blast,
@@ -8609,6 +9094,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         speed: enemy.speed,
         fwd: (() => { const f = forwardOf(enemy.group, tmpV9); return { x: f.x, y: f.y, z: f.z }; })(),
         mode: enemy.mode,
+        // Surface units carry none of the air-AI state, hence the fallbacks.
+        breakTimer: Math.max(0, enemy.breakTimer ?? 0),
+        breakCooldown: Math.max(0, enemy.breakCooldown ?? 0),
+        postStallPhase: enemy.postStallPhase ?? 0,
+        postStallCooldown: Math.max(0, enemy.postStallCooldown ?? 0),
         formationLeaderId: enemy.formationLeaderId,
         formationActive: enemy.formationActive,
         missileReadyIn: Math.max(0, enemy.missileCooldown)
