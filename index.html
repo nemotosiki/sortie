@@ -417,6 +417,7 @@
       box-shadow: 0 0 10px rgba(94, 230, 255, 0.9);
     }
 
+    #spwTubes,
     #missilePips,
     #flarePips {
       display: flex;
@@ -1720,7 +1721,7 @@
     <section id="statusPanel" class="panel">
       <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
       <div class="hudRow wpnActive" id="mslRow"><span class="wpnSel">▶</span><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
-      <div class="hudRow" id="spwRow"><span class="wpnSel">▶</span><span class="hudBox" id="spwLabel">SP.W</span><span id="spwPips"></span><strong class="hudVal" id="spwCount">0</strong></div>
+      <div class="hudRow" id="spwRow"><span class="wpnSel">▶</span><span class="hudBox" id="spwLabel">SP.W</span><span id="spwTubes"></span><span id="spwPips"></span><strong class="hudVal" id="spwCount">0</strong></div>
       <div class="hudRow"><span class="wpnSel"></span><span class="hudPlain">FLR</span><span id="flarePips"></span><strong class="hudVal" id="flares">2</strong></div>
       <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
     </section>
@@ -2024,10 +2025,18 @@
 
     // ---- Special weapons (SP.W) ---------------------------------------------
     // One slot per airframe, following AC7's real loadout for each aircraft.
-    // These sit OUTSIDE the two missile tubes: a dedicated launcher with no
-    // reload timer, refilled by the same checkpoint resupply that tops up the
-    // tubes. `multi` is how many targets one trigger pull can engage, `kind`
-    // picks the launch path (guided round vs free-fall bomb).
+    // These sit OUTSIDE the two missile tubes: a dedicated launcher with its own
+    // tubes and reload clock, refilled by the same checkpoint resupply that tops
+    // up the missile tubes. `multi` is how many targets one trigger pull can
+    // engage, `kind` picks the launch path (guided round vs free-fall bomb).
+    //
+    // `tubes` / `reload` are the firing discipline: how many trigger pulls the
+    // launcher has ready, and how long one tube takes to come back. Without them
+    // the SP.W was a trigger-mash weapon that emptied a 12-round magazine as
+    // fast as the button could be pressed, which is what separates a special
+    // from the standard missile in AC. A salvo weapon (multi > 1) spends one
+    // tube per SALVO, not per round: the 8AAM's single tube is the whole
+    // eight-round volley, and the 12 s clock is what that volley costs.
     const SPW_TYPES = Object.freeze({
       // F-16: dogfight round. Turns hard enough to follow a break.
       qaam: Object.freeze({
@@ -2039,6 +2048,8 @@
         maxSpeed: 520,
         life: 9.5,
         multi: 1,
+        tubes: 2,
+        reload: 6,
         lockRange: null
       }),
       // F-2A: the anti-ship round. Locks only what floats or sits on the ground -
@@ -2055,6 +2066,8 @@
         maxSpeed: 430,
         life: 14,
         multi: 1,
+        tubes: 1,
+        reload: 9,
         lockRange: 1600,
         surfaceOnly: true
       }),
@@ -2069,6 +2082,8 @@
         maxSpeed: 640,
         life: 12,
         multi: 1,
+        tubes: 2,
+        reload: 8,
         lockRange: 2000
       }),
       // F-22: one trigger, up to eight targets, at 78 damage a round.
@@ -2082,6 +2097,8 @@
         life: 9.5,
         multi: 8,
         multiLockTime: 0.45,
+        tubes: 1,
+        reload: 12,
         lockRange: null
       }),
       // F-4: free-fall bomb, no lock at all - the CCIP marker is the sight.
@@ -2094,6 +2111,8 @@
         directRadius: 14,
         dropSpeed: 9,
         multi: 1,
+        tubes: 2,
+        reload: 5,
         lockRange: null
       })
     });
@@ -3443,6 +3462,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       mslRow: document.getElementById("mslRow"),
       spwRow: document.getElementById("spwRow"),
       spwLabel: document.getElementById("spwLabel"),
+      spwTubes: document.getElementById("spwTubes"),
       spwPips: document.getElementById("spwPips"),
       spwCount: document.getElementById("spwCount"),
       ccipMarker: document.getElementById("ccipMarker"),
@@ -3654,6 +3674,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     let PLAYER_SPW_CAPACITY = AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID].spw.capacity;
     let selectedWeapon = "msl";
     let spwAmmo = PLAYER_SPW_CAPACITY;
+    // SP.W firing discipline. Same shape as the missile tubes above - a loaded
+    // count plus a list of running reload clocks - but per weapon rather than
+    // global, because tube count and reload time come off the SPW_TYPES entry.
+    // A salvo weapon spends one tube per trigger pull however many rounds leave
+    // the rail, so this counts trigger pulls, not ordnance; spwAmmo remains the
+    // magazine and is still decremented per round.
+    let spwLoaded = spwTubeCount();
+    const spwReloadTimers = [];
     let spwLaunched = 0;
     let spwHits = 0;
     let missileHits = 0;
@@ -3956,7 +3984,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         missileCapacity: PLAYER_MISSILE_CAPACITY,
         gunDamage: GUN_DAMAGE,
         missileDamage: MISSILE_DAMAGE,
-        spw: { key: null, label: null, kind: null, capacity: 0, ammo: 0 }
+        spw: {
+          key: null, label: null, kind: null, capacity: 0, ammo: 0,
+          tubes: 0, reload: 0, loaded: 0, reloading: 0, reloadRemaining: 0
+        }
       },
       selectedTargetId: null,
       weapons: {
@@ -4052,7 +4083,27 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         forceSpwAmmo: (rounds) => {
           if (gameState !== STATE_PLAYING) return false;
           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
+          // The magazine can no longer back more tubes than it holds shots for.
+          spwLoaded = Math.min(spwLoaded, spwTubeCount(), spwAmmo);
           return spwAmmo;
+        },
+        // Live tube state for the firing-discipline probes: what is loaded, what
+        // is on the clock and how long the nearest tube still owes.
+        spwTubeProbe: () => ({
+          key: PLAYER_SPW ? PLAYER_SPW.key : null,
+          tubes: spwTubeCount(),
+          reload: spwReloadTime(),
+          loaded: spwLoaded,
+          ammo: spwAmmo,
+          timers: spwReloadTimers.map((t) => Number(t.toFixed(3)))
+        }),
+        // Drives the checkpoint-resupply gate without having to fly a whole leg:
+        // exactly what resupplyAtCheckpoint does to the launcher.
+        forceSpwResupply: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          spwAmmo = PLAYER_SPW_CAPACITY;
+          resetSpwTubes();
+          return { ammo: spwAmmo, loaded: spwLoaded, timers: spwReloadTimers.length };
         },
         // Test affordance: point the nose straight at a target so an automated
         // run can reach a lock without flying the intercept by hand.
@@ -4573,6 +4624,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         if (gameState === STATE_PLAYING) {
           updateLock(dt);
           updateMissileReload(dt);
+          updateSpwReload(dt);
           updateMissiles(dt);
           updateBombs(dt);
           updateEnemyMissiles(dt);
@@ -5608,6 +5660,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       missileReloadTimers.length = 0;
       selectedWeapon = "msl";
       spwAmmo = PLAYER_SPW_CAPACITY;
+      resetSpwTubes();
       spwLaunched = 0;
       spwHits = 0;
       missileHits = 0;
@@ -6188,6 +6241,57 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
     // ---- Special weapons ----------------------------------------------------
 
+    // Tubes on the currently fitted launcher. Defaults to 1 so a weapon entry
+    // that omits the field still behaves like a single-shot launcher rather than
+    // an infinite one.
+    function spwTubeCount() {
+      return PLAYER_SPW && PLAYER_SPW.tubes ? PLAYER_SPW.tubes : 1;
+    }
+
+    function spwReloadTime() {
+      return PLAYER_SPW && PLAYER_SPW.reload ? PLAYER_SPW.reload : 0;
+    }
+
+    // Reset the launcher to a full, un-reloading state. Used at mission start
+    // and by checkpoint resupply, which restocks the magazine at the same time.
+    //
+    // Tubes are capped by spwAmmo, one round per tube, even for a salvo weapon:
+    // the 8AAM spends a variable number of rounds per volley (one per latched
+    // target, up to eight), so requiring a full eight before loading a tube
+    // would strand the tail of the magazine - after an 8-round volley a
+    // 12-round load has 4 left, which is a perfectly good four-target salvo.
+    function resetSpwTubes() {
+      spwReloadTimers.length = 0;
+      spwLoaded = Math.min(spwTubeCount(), spwAmmo);
+    }
+
+    // One clock per tube out, exactly like updateMissileReload. Scheduled only
+    // when the magazine still holds shots beyond what the pending reloads will
+    // already deliver, so a dry launcher does not sit ticking forever.
+    function scheduleSpwReload() {
+      const reload = spwReloadTime();
+      if (reload <= 0) {
+        spwLoaded = Math.min(spwTubeCount(), spwAmmo);
+        return;
+      }
+      if (spwAmmo - spwLoaded - spwReloadTimers.length > 0) {
+        spwReloadTimers.push(reload);
+      }
+    }
+
+    function updateSpwReload(dt) {
+      for (let i = spwReloadTimers.length - 1; i >= 0; i -= 1) {
+        spwReloadTimers[i] -= dt;
+        if (spwReloadTimers[i] <= 0) {
+          spwReloadTimers.splice(i, 1);
+          spwLoaded = Math.min(spwLoaded + 1, spwTubeCount(), spwAmmo);
+          // Same "tube ready" blip the missile tubes use, a fifth lower so the
+          // two launchers are tellable apart by ear.
+          playTone(700, 0.08, 0.045, "square");
+        }
+      }
+    }
+
     // The trigger fires whichever weapon is selected; everything else about the
     // aircraft (gun, flares, tubes) is unaffected by the choice.
     function fireWeapon() {
@@ -6195,16 +6299,33 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return launchMissile();
     }
 
-    // SP.W has no tube/reload gate: the launcher is either loaded or dry.
+    // The SP.W trigger passes only with a loaded tube. Dry magazine and
+    // mid-reload are deliberately different sounds: the first is the same low
+    // "no ordnance" click the game already used, the second a quieter, higher
+    // click that reads as "not yet" rather than "never again".
     function launchSpWeapon() {
       if (gameState !== STATE_PLAYING || !PLAYER_SPW) return false;
       if (spwAmmo <= 0) {
         playTone(240, 0.07, 0.05, "square");
         return false;
       }
-      if (PLAYER_SPW.kind === "bomb") return dropBomb();
-      if (PLAYER_SPW.multi > 1) return launchSpSalvo();
-      return launchSpSingle();
+      if (spwLoaded <= 0) {
+        playTone(320, 0.05, 0.028, "square");
+        return false;
+      }
+      // The launch paths below decide whether the shot actually happens (no
+      // lock, no target in the salvo list, and so on). A tube is only spent
+      // when one of them reports a round away.
+      const fired = PLAYER_SPW.kind === "bomb"
+        ? dropBomb()
+        : PLAYER_SPW.multi > 1
+          ? launchSpSalvo()
+          : launchSpSingle();
+      if (fired) {
+        spwLoaded -= 1;
+        scheduleSpwReload();
+      }
+      return fired;
     }
 
     function launchSpSingle() {
@@ -6804,6 +6925,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     }
 
     function updateLock(dt) {
+      // A bomb has no seeker. Measured on the F-4 before this gate existed: with
+      // the UGB selected the lock still ran to completion - progress 0 -> 1.0,
+      // LOCKED on the reticle, five progress beeps and the lock-complete cue -
+      // because "no lock at all" was only ever true of the launch path
+      // (dropBomb ignores lock entirely), never of the state machine feeding the
+      // HUD and the audio. Clearing it here kills progress, the LOCKED label,
+      // the MISSILE LOCK banner, the beeps and the lock drone in one place,
+      // since every one of them reads lock.targetId/progress. Manual target
+      // selection is untouched: the TGT box reads preferredTargetId, so the
+      // range readout a bombing run wants stays, and the CCIP marker is the sight.
+      if (selectedWeapon === "spw" && PLAYER_SPW && PLAYER_SPW.kind === "bomb") {
+        if (lock.targetId !== null || lock.progress > 0) resetLock();
+        clearMultiLock();
+        return;
+      }
       forwardOf(player, tmpV1);
       let candidate = null;
       let preferredCandidate = null;
@@ -7305,6 +7441,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, missileCount);
       missileReloadTimers.length = 0;
       spwAmmo = PLAYER_SPW_CAPACITY;
+      // Resupply also cancels a running SP.W reload: a checkpoint hands over a
+      // loaded launcher, not one that still owes 12 s on the clock.
+      resetSpwTubes();
       if (waveNumber > 1) showBanner("MISSILES RESTOCKED", 1.4, "success");
     }
 
@@ -9106,7 +9245,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     function updateTargetBox() {
       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
       if (!target || gameState !== STATE_PLAYING) {
+        // Reset the readout as well as hiding it. The panel is display:none so
+        // nothing here is on screen either way, but leaving "LOCKED" sitting in
+        // a hidden node means the DOM disagrees with the game state - which is
+        // exactly what made the UGB lock audit ambiguous the first time.
         ui.targetBox.style.display = "none";
+        ui.targetBox.classList.remove("locked");
+        ui.lockLabel.textContent = "LOCK 0%";
+        ui.lockMeterFill.style.width = "0%";
         return;
       }
 
@@ -9302,6 +9448,31 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       ui.spwRow.classList.toggle("wpnActive", spwSelected);
       ui.spwLabel.textContent = PLAYER_SPW ? PLAYER_SPW.label : "SP.W";
       ui.spwCount.textContent = String(spwAmmo);
+      // SP.W tube diamonds: lit = a trigger pull is ready, brightening = a tube
+      // is reloading, near-invisible = the magazine cannot pay for that tube.
+      // Identical treatment to the MSSL row above, so the reload reads the same
+      // way on both launchers.
+      const spwTubeTotal = spwTubeCount();
+      if (ui.spwTubes.childElementCount !== spwTubeTotal) {
+        ui.spwTubes.replaceChildren(...Array.from({ length: spwTubeTotal }, () => {
+          const pip = document.createElement("span");
+          pip.className = "missilePip";
+          pip.textContent = "\u25c6";
+          return pip;
+        }));
+      }
+      const spwReloadSpan = spwReloadTime();
+      Array.from(ui.spwTubes.children).forEach((pip, index) => {
+        if (index < spwLoaded) {
+          pip.style.opacity = "1";
+          return;
+        }
+        const timer = spwReloadTimers[index - spwLoaded];
+        pip.style.opacity = timer === undefined || spwReloadSpan <= 0
+          ? "0.12"
+          : String((0.15 + 0.55 * (1 - timer / spwReloadSpan)).toFixed(2));
+      });
+
       const spwPipUnit = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / SPW_PIP_MAX));
       const spwPipCount = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / spwPipUnit));
       if (ui.spwPips.childElementCount !== spwPipCount) {
@@ -9354,6 +9525,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.flares = flareCount;
       hook.missilesLoaded = loadedMissiles;
       hook.missileReloads = missileReloadTimers.length;
+      hook.loadout.spw.tubes = spwTubeCount();
+      hook.loadout.spw.reload = spwReloadTime();
+      hook.loadout.spw.loaded = spwLoaded;
+      hook.loadout.spw.reloading = spwReloadTimers.length;
+      hook.loadout.spw.reloadRemaining = spwReloadTimers.length
+        ? Number(Math.min(...spwReloadTimers).toFixed(3))
+        : 0;
       hook.loadout.missileDamage = MISSILE_DAMAGE;
       hook.killCam.active = killCam.active;
       hook.killCam.timer = killCam.timer;
@@ -11132,6 +11310,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       PLAYER_SPW = SPW_TYPES[spec.spw.key];
       PLAYER_SPW_CAPACITY = spec.spw.capacity;
       spwAmmo = PLAYER_SPW_CAPACITY;
+      resetSpwTubes();
       selectedWeapon = "msl";
       clearMultiLock();
       // STABILITY: how little the aircraft wanders when banked or slow.
