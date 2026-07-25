@@ -2019,7 +2019,7 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze(["f16", "fa18", "f15", "f14", "f4", "f22"]);
+    const AIRCRAFT_ORDER = Object.freeze(["f16", "f2a", "fa18", "f15", "f14", "f4", "f22"]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -2040,6 +2040,23 @@
         life: 9.5,
         multi: 1,
         lockRange: null
+      }),
+      // F-2A: the anti-ship round. Locks only what floats or sits on the ground -
+      // pointing it at a fighter gets you nothing - and reaches far past the standard
+      // seeker to keep the launch aircraft outside a fleet's air defence envelope.
+      // 190 damage is picked against hull HP, not the 98 missile quantum: it takes
+      // an AEGIS (250) down in two rounds where a standard missile needs three.
+      lasm: Object.freeze({
+        key: "lasm",
+        label: "LASM",
+        kind: "aam",
+        damage: 190,
+        turnRateDeg: 55,
+        maxSpeed: 430,
+        life: 14,
+        multi: 1,
+        lockRange: 1600,
+        surfaceOnly: true
       }),
       // F-15: BVR sniper. Sees past the standard 1200 m seeker, but flies
       // almost straight once it is off the rail.
@@ -2100,6 +2117,31 @@
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
 canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
+        })
+      }),
+      // F-2A: the F-16 rebuilt around an anti-ship mission. Not "Viper but
+      // better" - the 25% larger wing buys stall margin and a steadier aiming
+      // platform, and pays for it in roll rate and roll damping. What it really
+      // brings is the LASM: the only round in the hangar that outranges a
+      // frigate's SAM envelope, aimed at hulls and useless against fighters.
+      f2a: Object.freeze({
+        id: "f2a",
+        label: "F-2A VIPER ZERO",
+        role: "Anti-Ship Multirole",
+        tag: "STRIKE",
+        blurb: "F-16を拡大再設計した対艦攻撃の専門機。空戦性能は堅実な水準に留まるが、大型主翼が生む安定した射爆軸と長射程の対艦ミサイルで、海上の目標を遠距離から仕留める。",
+        cruiseSpeed: 195, boostSpeed: 385, brakeSpeed: 132,
+        pitchRateDeg: 41, rollRateDeg: 140, yawRateDeg: 12, maxBankAngleDeg: 54,
+        normalRollSpring: 39, rollRateLimitDeg: 134, turnRateDeg: 30,
+        rollDamping: 10.2, stallWarnSpeed: 90, stallEntrySpeed: 78, stallAuthorityLoss: 0.62, structuralG: 3.05,
+        gunDamage: 19, missileDamage: 98,
+        boostResponse: 0.56, brakeResponse: 0.54, cruiseResponse: 0.62,
+        missileCapacity: 12, maxHealth: 135,
+        spw: Object.freeze({ key: "lasm", capacity: 14 }),
+        tipSpan: 8.1, tipZ: 3.1,
+        theme: Object.freeze({
+primary: 0x2f5f96, secondary: 0x1d3f68, accent: 0x8fb8dd,
+canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
         })
       }),
       // F/A-18F: the carrier jet. Deliberately not "F-16 but better" - it gives
@@ -6772,8 +6814,15 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const preferred = enemies.find((enemy) => enemy.id === preferredTargetId && enemy.alive);
       if (preferredTargetId !== null && !preferred) preferredTargetId = null;
 
+      // A surface-only SP.W (LASM) never sees an aircraft. Gated on the SP.W
+      // actually being selected, so the plain missile's lock is untouched, and
+      // on a flag the other four SP.Ws don't set, so they are untouched too.
+      const surfaceOnlyLock =
+        selectedWeapon === "spw" && Boolean(PLAYER_SPW) && Boolean(PLAYER_SPW.surfaceOnly);
+
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
+        if (surfaceOnlyLock && !enemy.surface) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
         if (distance > lockRange || distance < 1) continue;
@@ -6853,6 +6902,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       if (gameState !== STATE_PLAYING || !PLAYER_SPW) return false;
       selectedWeapon = selectedWeapon === "msl" ? "spw" : "msl";
       clearMultiLock();
+      // Selecting a surface-only round drops an air lock in the same frame it is
+      // selected. updateLock would clear it on the next tick anyway, but the
+      // trigger is polled in between, and a LASM must never leave the rail after
+      // a fighter.
+      if (selectedWeapon === "spw" && PLAYER_SPW.surfaceOnly && lock.targetId !== null) {
+        const locked = enemies.find((enemy) => enemy.id === lock.targetId);
+        if (!locked || !locked.surface) resetLock();
+      }
       playTone(1240, 0.05, 0.05, "square");
       showBanner(
         selectedWeapon === "spw" ? `SP.W ▶ ${PLAYER_SPW.label}` : "WPN ▶ MSL",
@@ -10312,6 +10369,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -5.0], [1.15, -2.2], [7.2, 2.9], [7.2, 3.9], [2.4, 4.5],
         [0, 4.5], [-2.4, 4.5], [-7.2, 3.9], [-7.2, 2.9], [-1.15, -2.2]
       ], 0.26);
+      // F-2A: the Viper planform grown by the real aircraft's margin - 25% more
+      // wing area (34.84 vs 27.87 m2) - so the half-span reaches the airframe's
+      // tipSpan 8.1 and the chord is stretched with it. Same cropped-delta shape
+      // as the F-16 on purpose: the F-2 reads as an enlarged Viper, not a new jet.
+      const wingViperZero = extrudedSurface([
+        [0, -5.6], [1.3, -2.5], [8.1, 3.3], [8.1, 4.5], [2.7, 5.2],
+        [0, 5.2], [-2.7, 5.2], [-8.1, 4.5], [-8.1, 3.3], [-1.3, -2.5]
+      ], 0.28);
       const wingEagle = extrudedSurface([
         [0, -3.4], [2.0, -2.6], [8.6, 2.2], [8.6, 3.2], [3.2, 3.8],
         [0, 3.8], [-3.2, 3.8], [-8.6, 3.2], [-8.6, 2.2], [-2.0, -2.6]
@@ -10384,7 +10449,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
+        wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor, panel,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -10550,6 +10615,41 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 7.3, -0.28, 1.4, 0.75, 0.75, 0.75);
         add(geometry.canopy, navL, -7.42, 0.06, 3.0, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 7.42, 0.06, 3.0, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "viperzero") {
+        // F-2A: the Viper airframe with the parts the real aircraft actually
+        // grew - bigger wing, bigger stabs, a longer and fatter radome for the
+        // AESA - and nothing else. Everything unchanged from the F-16 is
+        // unchanged on purpose; the silhouette difference is the wing.
+        add(geometry.fuselage, primary, 0, 0, -0.45, 0.8, 0.76, 1);
+        add(geometry.rearBody, secondary, 0, 0, 6.4, 0.74, 0.7, 1);
+        add(geometry.nose, primary, 0, 0.05, -8.15, 0.7, 0.66, 1.12);
+        add(geometry.canopy, canopy, 0, 0.92, -3.4, 0.68, 0.6, 1.5);
+        add(geometry.wingViperZero, secondary, 0, -0.05, 0.7);
+        add(geometry.tailWing, primary, 0, 0, 5.9, 0.86, 1, 0.95);
+        add(geometry.fin, secondary, 0, 0.72, 4.75, 0.85, 1.18, 0.85);
+        add(geometry.panel, accent, -0.52, -0.8, 5.3, 0.1, 0.62, 1.5, -0.5);
+        add(geometry.panel, accent, 0.52, -0.8, 5.3, 0.1, 0.62, 1.5, 0.5);
+        add(geometry.intake, accent, 0, -0.84, -1.7, 0.82, 0.7, 1.05);
+        add(geometry.nozzle, accent, 0, 0, 7.95, 1.12, 1.12, 1.1);
+        addFlame(0, 0, 9.35, 1.12, 1.12);
+        // Same detail set as the Viper, moved outboard onto the wider wing.
+        add(geometry.panel, dark, 0, 0.05, -11.1, 0.07, 0.07, 1.7);
+        add(geometry.panel, dark, 0, 0.6, -4.7, 0.6, 0.08, 1.8);
+        add(geometry.panel, secondary, 0, 0.68, 1.9, 0.28, 0.2, 6.2);
+        add(geometry.panel, dark, -8.1, -0.05, 4.1, 0.22, 0.16, 2.3);
+        add(geometry.panel, dark, 8.1, -0.05, 4.1, 0.22, 0.16, 2.3);
+        add(geometry.missileBody, light, -8.1, -0.28, 3.8, 0.8, 0.8, 0.75);
+        add(geometry.missileBody, light, 8.1, -0.28, 3.8, 0.8, 0.8, 0.75);
+        add(geometry.missileNose, dark, -8.1, -0.28, 2.0, 0.75, 0.75, 0.75);
+        add(geometry.missileNose, dark, 8.1, -0.28, 2.0, 0.75, 0.75, 0.75);
+        // Underwing anti-ship rounds: the reason the jet exists, and the only
+        // store on any airframe here that hangs inboard rather than on the tip.
+        add(geometry.missileBody, light, -4.6, -0.62, 3.4, 1.15, 1.15, 1.2);
+        add(geometry.missileBody, light, 4.6, -0.62, 3.4, 1.15, 1.15, 1.2);
+        add(geometry.missileNose, dark, -4.6, -0.62, 0.7, 1.1, 1.1, 1.2);
+        add(geometry.missileNose, dark, 4.6, -0.62, 0.7, 1.1, 1.1, 1.2);
+        add(geometry.canopy, navL, -8.22, 0.06, 3.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 8.22, 0.06, 3.6, 0.12, 0.12, 0.12);
       } else if (theme.variant === "lancer") {
         // F-15: wide body, shoulder-mounted wing, boxy cheek intakes, twin
         // straight vertical tails, two spaced engines.
@@ -11116,7 +11216,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // a floor rather than a zero, but only a bomb makes it an attack role.
       const groundScore = (spec) => {
         const weapon = SPW_TYPES[spec.spw && spec.spw.key];
-        return weapon && weapon.kind === "bomb" ? 0.95 : 0.25;
+        if (!weapon) return 0.25;
+        if (weapon.kind === "bomb") return 0.95;
+        // A guided anti-ship round is a surface attack role too - less flexible
+        // than a bomb (it only takes hulls and installations, never a runway or
+        // a soft target the seeker can't see) but far more accurate. Absolute,
+        // like the other two branches, so no existing airframe's bar moves.
+        if (weapon.surfaceOnly) return 0.8;
+        return 0.25;
       };
       const stabilities = specs.map(stabilityScore);
       const firepowers = specs.map(firepowerScore);
