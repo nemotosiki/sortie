@@ -1,0 +1,54 @@
+name: Fix map texture patch guardrail
+
+on:
+  push:
+    branches:
+      - chatgpt/map-texture-review-20260726-a
+    paths:
+      - .github/workflows/fix-map-texture-guardrail.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Align guardrail with optimized ocean shader key
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import gzip
+
+          path = Path('_chatgpt_runner/apply_patch.py')
+          text = path.read_text(encoding='utf-8')
+          old = "        'sortie-ocean-v3',\n"
+          new = "        'sortie-ocean-v4-distance-branches',\n"
+          if text.count(old) != 1:
+              raise RuntimeError(f'expected one old guardrail, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8', newline='\n')
+
+          prefix = 'apply_patch.py.b64'
+          for old_part in Path('_chatgpt_runner').glob(prefix + '.*'):
+              old_part.unlink()
+          payload = base64.b64encode(gzip.compress(path.read_bytes(), compresslevel=9)).decode('ascii')
+          for offset in range(0, len(payload), 6000):
+              Path('_chatgpt_runner', f'{prefix}.{offset // 6000:02d}').write_text(
+                  payload[offset:offset + 6000], encoding='ascii', newline='\n'
+              )
+          PY
+          python3 -m py_compile _chatgpt_runner/apply_patch.py
+          grep -F "'sortie-ocean-v4-distance-branches'," _chatgpt_runner/apply_patch.py
+          git config user.name "ChatGPT"
+          git config user.email "noreply@openai.com"
+          git add -A -- _chatgpt_runner
+          git commit -m "Align optimized ocean shader guardrail"
+          git push origin "HEAD:chatgpt/map-texture-review-20260726-a"
