@@ -1549,6 +1549,23 @@
     #briefingObjectives li.objBonus { color: rgba(207, 232, 251, 0.6); }
     #briefingObjectives li.objBonus i { color: #ffa64a; }
 
+    /* C3: the story epigraph above the tactical body. Deliberately NOT a
+       teleprinter - it is narration, not traffic, so it is already there when
+       the screen opens and the amber typewriter below it stays the voice of
+       the briefing itself. No border, italic, dimmer than the body. */
+    #briefingStory {
+      margin: clamp(8px, 1.3vh, 14px) 0 0;
+      padding: 0 4px 0 19px;
+      color: rgba(196, 224, 246, 0.82);
+      font-size: clamp(11.5px, 1.1vw, 14px);
+      font-style: italic;
+      line-height: 1.7;
+      letter-spacing: 0.05em;
+      white-space: pre-wrap;
+      border-left: 1px solid rgba(255, 154, 60, 0.35);
+    }
+    #briefingStory.hidden { display: none; }
+
     .briefingBody {
       margin: clamp(10px, 1.6vh, 18px) 0 0;
       min-height: clamp(70px, 11vh, 100px);
@@ -1917,6 +1934,53 @@
     }
 
     #debriefIntelLines li + li { margin-top: 7px; }
+
+    /* C3: the aftermath, typed out under the intercepted comms. Blue rather
+       than the intel block's green, and a thin rule instead of the gold one -
+       this is the campaign's own voice, not something the enemy said. Shown
+       only after a win, so a failed sortie's debrief is unchanged. */
+    .debriefEpilogue {
+      max-width: 680px;
+      margin: -6px auto 26px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(110, 190, 255, 0.28);
+      text-align: left;
+    }
+    .debriefEpilogue.hidden { display: none; }
+
+    .debriefEpilogueHeader {
+      margin-bottom: 10px;
+      color: rgba(150, 205, 245, 0.6);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+    }
+
+    #debriefEpilogueLines {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      /* Reserves the block's full height up front so the typewriter cannot
+         push the buttons below it down line by line. */
+      min-height: 4.9em;
+    }
+
+    #debriefEpilogueLines li {
+      color: rgba(207, 232, 251, 0.82);
+      font-size: clamp(10px, 1.05vw, 12.5px);
+      line-height: 1.62;
+      letter-spacing: 0.04em;
+      white-space: pre-wrap;
+      min-height: 1.62em;
+    }
+
+    #debriefEpilogueLines li + li { margin-top: 5px; }
+
+    #debriefEpilogueLines li.typing::after {
+      content: "_";
+      color: #ff9a3c;
+      animation: briefCaret 0.9s steps(1) infinite;
+    }
     #debriefIntelLines li::before { content: ">> "; color: #ffd35f; }
 
     #controlModeStatus {
@@ -2227,6 +2291,7 @@
           <div class="menuRankBig" id="briefingPar">—</div>
         </aside>
       </div>
+      <p id="briefingStory" class="hidden"></p>
       <p class="briefingBody" id="briefingText"></p>
       <footer class="menuLegend">
         <span id="briefingHint"><span class="legendKey">ENTER / ○</span> 進む</span>
@@ -2283,6 +2348,10 @@
       <div class="debriefIntel" id="debriefIntel">
         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
         <ul id="debriefIntelLines"></ul>
+      </div>
+      <div class="debriefEpilogue hidden" id="debriefEpilogue">
+        <div class="debriefEpilogueHeader">AFTER ACTION · CAMPAIGN LOG</div>
+        <ul id="debriefEpilogueLines"></ul>
       </div>
       <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>
       <button id="changeAircraftBtn" class="actionButton secondary" type="button">◀ CHANGE AIRCRAFT</button>
@@ -2546,10 +2615,11 @@
     // designation changed when the enemy roster went Russian without one line
     // here changing is the point of the split.
     //
-    // IRONBACK is the only profile any mission currently flies. VULTURE and
-    // LONGBOW are staged, not orphaned, and both are written against airframes
-    // that survived the faction split (Su-37, MiG-31). Placing them in a wave
-    // is a one-line `ace: "vulture"` on that wave when it lands.
+    // IRONBACK (m04, m05) and the four Jormungandr pilots (m-squadron) are the
+    // profiles missions currently fly. VULTURE and LONGBOW are staged, not
+    // orphaned, and both are written against airframes that survived the
+    // faction split (Su-37, MiG-31). Placing one in a wave is a one-line
+    // `ace: "vulture"` on that wave.
     const ACE_PROFILES = Object.freeze({
       // The campaign's recurring antagonist, and the only ace with a scripted
       // post-stall (see ACE_POSTSTALL_*). Flies the Felon - which is the
@@ -2633,6 +2703,126 @@
           wingman: "ロングボウ！？ あいつは格闘に付き合わない——先に距離を潰さないと一方的に撃たれるぞ！",
           engage: "こちらロングボウ。射程はこちらが上だ。近づく前に終わる。",
           down: "こちらロングボウ…直撃…回避が…間に合わ——"
+        })
+      }),
+      // ---- Jormungandr squadron (m-squadron / RED CIRCUS) -------------------
+      // IRONBACK's own flight, and the only place in the campaign where four
+      // named pilots share one sortie. Story bible §2: the NFF calls them the
+      // World Serpent, the AEF calls the formation RED CIRCUS, and the four
+      // callsigns are the Norse end-of-the-world side of the mythology split.
+      //
+      // Each one is written against a DIFFERENT airframe so the four read
+      // apart at a glance in a melee - Flanker-E, Berkut, Flanker-D,
+      // Terminator - but, as everywhere else in this table, the airframe is
+      // chosen by the WAVE, not here: no profile carries `variant`, so a
+      // profile can never drag a model along behind it. `scale` is the one
+      // geometry field pinned, and each is written a notch over the base its
+      // wave flies (1.09 / 0.85 / 1.08 / 1.10 respectively).
+      //
+      // FENRIR leads: the wolf that eats the world. Gunmetal with a white
+      // fang stripe.
+      fenrir: Object.freeze({
+        callsign: "FENRIR",
+        role: "Jormungandr Lead",
+        behavior: "evasive",
+        evadeLateral: 74,
+        evadeVertical: 30,
+        evadeFrequency: 1.9,
+        radarColor: "#e8eef5",
+        tracerColor: 0xdfe9f4,
+        theme: Object.freeze({
+          primary: 0x39414a,
+          secondary: 0x1d2229,
+          accent: 0xe8eef5,
+          canopy: 0xcfe9ff,
+          exhaust: 0xbcd6f0,
+          scale: 1.16
+        }),
+        radio: Object.freeze({
+          inbound: "エース編隊だ——先頭は『FENRIR』。IRONBACKの直属、ヨルムンガンド隊だ。",
+          wingman: "4機とも名前持ちかよ！ 一人ずつ剥がすしかないぞ——群れに囲まれるな！",
+          engage: "こちらフェンリル。隊長機には触らせん。ここで食い止める。",
+          down: "こちらフェンリル…先に行く…蛇は…途切れない…"
+        })
+      }),
+      // SURTR, the fire giant who burns the world at the end. Rides the
+      // forward-swept Berkut - the tightest turn in the game - so the profile
+      // adds the hardest evasion of the four. Charcoal and ember.
+      surtr: Object.freeze({
+        callsign: "SURTR",
+        role: "Flight Leader",
+        behavior: "evasive",
+        evadeLateral: 92,
+        evadeVertical: 38,
+        evadeFrequency: 2.4,
+        radarColor: "#ff8a3c",
+        tracerColor: 0xff8a3c,
+        theme: Object.freeze({
+          primary: 0x2a2622,
+          secondary: 0x15120f,
+          accent: 0xff7a26,
+          canopy: 0xffd6a0,
+          exhaust: 0xff7a26,
+          scale: 0.92
+        }),
+        radio: Object.freeze({
+          inbound: "2機目、『SURTR』——前進翼だ。旋回で追うな、こちらが焼かれる。",
+          wingman: "あの翼形は反則だろ！ 曲がり負けする、正面から撃て！",
+          engage: "こちらスルト。最後に燃えるのは、いつも建てた側だ。",
+          down: "こちらスルト…火が…消える…"
+        })
+      }),
+      // HATI, the wolf that chases the moon. Flies the Flanker-D, the naval
+      // Flanker - the interceptor half of the pair. Night blue, moon silver.
+      hati: Object.freeze({
+        callsign: "HATI",
+        role: "Element Lead",
+        behavior: "evasive",
+        evadeLateral: 66,
+        evadeVertical: 34,
+        evadeFrequency: 2.1,
+        radarColor: "#9fd0ff",
+        tracerColor: 0x9fd0ff,
+        theme: Object.freeze({
+          primary: 0x22304a,
+          secondary: 0x131b2b,
+          accent: 0xbfd8f2,
+          canopy: 0xbfe4ff,
+          exhaust: 0xbfd8f2,
+          scale: 1.14
+        }),
+        radio: Object.freeze({
+          inbound: "3機目、『HATI』が上がってきた。月を追う狼——だそうだ。",
+          wingman: "まだ来るのかよ！ 数えるな、目の前の1機を落とせ！",
+          engage: "こちらハティ。月を追い続けて、いつか届く。今日がその日だ。",
+          down: "こちらハティ…届かなかった…スコル、後は…"
+        })
+      }),
+      // SKÖLL, the wolf that chases the sun, and HATI's twin. The Terminator:
+      // thrust-vectoring, so the pair are matched in intent and opposite in
+      // airframe. Rust red, sun gold.
+      skoll: Object.freeze({
+        callsign: "SKÖLL",
+        role: "Element Lead",
+        behavior: "evasive",
+        evadeLateral: 70,
+        evadeVertical: 26,
+        evadeFrequency: 2.2,
+        radarColor: "#ffbe4a",
+        tracerColor: 0xffbe4a,
+        theme: Object.freeze({
+          primary: 0x4a2a22,
+          secondary: 0x2a1712,
+          accent: 0xffbe4a,
+          canopy: 0xffe0a8,
+          exhaust: 0xffbe4a,
+          scale: 1.16
+        }),
+        radio: Object.freeze({
+          inbound: "4機目、『SKÖLL』。ハティの僚機だ——2機で1組、切り離せない。",
+          wingman: "双子でかかってくる気だ！ 片方を追うともう片方に食われるぞ！",
+          engage: "こちらスコル。太陽を追う者だ。お前の空を、今日で終わりにする。",
+          down: "こちらスコル…ハティ……先に行ったか…"
         })
       })
     });
@@ -6983,6 +7173,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "FIRST CONTACT",
         jp: "Tu-95編隊が本基地へ直行中。護衛は旧式のMiG-21が3。爆撃機を撃墜し、基地を守れ。",
+        act: 1,
+        storyNo: 1,
+        story: "灯台事件から11日。どちらが先に撃ったのかは、まだ誰も答えられていない。\n君の初出撃だ。DAGGER 1の後ろに付け。",
+        epilogue: [
+          "BASE ALPHA、被害軽微。開戦後はじめて、この海で墜ちたのは向こうの機体だった。",
+          "DAGGER 1のラング少佐は報告書にこう書いた——「新入りは撃つ前に一拍置く。悪くない癖だ」",
+          "セント・ヴェルダでは今日も、統合管制塔BABELの建設が続いている。"
+        ],
         // The traditional Ace Combat first sortie: a bomber intercept, and the
         // mission that teaches the campaign's central reading - TGT is the
         // subject of the sortie, everything else is weather.
@@ -7047,6 +7245,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "TWO-PRONGED",
         jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
+        act: 1,
+        storyNo: 2,
+        story: "二正面。片方を追えば、もう片方が抜ける——そういう攻め方だ。\nDAGGER 1は今日も先頭を飛ぶと言っている。",
+        epilogue: [
+          "第2波は撤退。二正面攻勢は、この海域では成立しなかった。",
+          "DAGGER 1は還らなかった。最後の通信は君宛てだった——「HAMMER 1、お前が前に出ろ」",
+          "以後、SORTIE隊の先頭を飛ぶのは君の機体だ。"
+        ],
         // The first fighters the player ever dogfights, and the first sortie
         // where the TGT list is SHORTER than the contact list. Two designated
         // leaders per prong; everything else on the board is trash-role
@@ -7217,6 +7423,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "sunsetOcean",
         title: "FLEET DESTRUCTION",
         jp: "敵機動部隊を捕捉した。空母1、イージス艦2、フリゲート2。対艦攻撃で殲滅せよ。",
+        act: 1,
+        storyNo: 4,
+        story: "反攻の第一手だ。INDEPENDENCEから発艦し、敵機動部隊を叩く。\n進入路の浅瀬には、直角に組まれた石が沈んでいる。",
+        epilogue: [
+          "敵機動部隊、全艦沈黙。反攻の第一手は通った。",
+          "海底の石組みの写真が回ってきた。HAMMER 2は「自然にできる形じゃないよな」と言ったきり黙っている。",
+          "戦闘記録の隅に、交戦しなかった機影が1つ。管制はそこに『IRONBACK』とだけ書き込んだ。"
+        ],
         // The fleet is the objective; its CAP is not. Both are on the board from
         // the first second - a task force with no air cover was the thing that
         // read as wrong - but only the hulls gate ACCOMPLISHED.
@@ -7264,6 +7478,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "glacierCanyon",
         title: "GLACIER RUN",
         jp: "氷河回廊に敵のレーダー網。谷底を這うように侵攻し、壁のSAMサイトごと制圧せよ。",
+        act: 2,
+        storyNo: 6,
+        story: "北方の氷河回廊。氷の下に、加工痕のない巨石が環状に並んでいるのが透けて見える。\n北方連邦軍はあれを「人が元々持っていたもの」と呼んでいるらしい。",
+        epilogue: [
+          "氷河回廊のレーダー網は沈黙。北への輸送路が開いた。",
+          "低空カメラが氷の下を撮っていた。環状に並んだ巨石。文字は無く、削った痕も無い。",
+          "解析班の結論は「自然物」。その下に担当者の手書きで一行——「ではなぜ円なのか」"
+        ],
         // The designated list is the four installations plus the ground-attack
         // pair the radar net existed to protect - six, and not one of the
         // fighters. A Frogfoot is the right opponent for a canyon: slow enough
@@ -7323,6 +7545,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "stormOcean",
         title: "STORM FRONT",
         jp: "嵐の外洋で哨戒中の空域に敵編隊。視界は最悪だ。指定目標のTu-95とSu-25を撃墜せよ。",
+        act: 2,
+        storyNo: 7,
+        story: "雲底600、視程2キロ。この嵐を隠れ蓑にして、何かが抜けようとしている。",
+        epilogue: [
+          "混成編隊は撃退。荒天下の迎撃としては上出来だ、と報告書は言っている。",
+          "だが記録には、説明の付かない機影が1つ残った。雲に入り、そのまま出てこなかった。",
+          "SKYEYEの音声はその一箇所だけ乱れている——「……見失った。今のは何だったの」"
+        ],
         // Story bible #07: a foul-weather patrol that turns into a mixed
         // intercept. The weather IS the difficulty here - nothing on this board
         // is stronger than what m-glacier already fielded, and deliberately so.
@@ -7396,6 +7626,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "nightBase",
         title: "NIGHT RAID",
         jp: "敵前線基地への夜間強襲。防空網と燃料庫を焼き払い、基地を機能停止に追い込め。",
+        act: 2,
+        storyNo: 8,
+        story: "敵前線基地を夜襲する。IRONBACK隊がここに駐留していた、という報が入っている。",
+        epilogue: [
+          "前線基地は機能停止。滑走路も燃料庫も、朝を待たずに使えなくなった。",
+          "格納庫の壁に、世界を囲む蛇の紋章が描かれていた。塗料はまだ新しい。",
+          "奴らはここにいた。もう居ない。"
+        ],
         // A base raid: the eleven installations ARE the mission, and not one
         // aircraft on this board is a designated target. Ten of them, in four
         // batches on a clock, exist to make the attack runs cost something -
@@ -7691,6 +7929,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "IRONBACK",
         jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
+        act: 4,
+        storyNo: 19,
+        story: "宿敵との決着だ。同じ空域、同じ時刻、同じ雲。\nこの戦争で一度も届かなかった、ただ一つの機影。",
+        epilogue: [
+          "IRONBACK機は被弾し、雲へ消えた。残骸は見つかっていない。",
+          "SKYEYEは記録にこう残した——「……墜ちてない。あれは墜ちてない」",
+          "北方連邦軍の通信は、その夜だけ一度も彼の名を呼ばなかった。"
+        ],
         // Was the "air2" preset (F-22 / F-4 / F-16), written inline so the
         // wingmen could be picked for this fight rather than inherited. The
         // ace flies the Felon, the same jet he flies in air2 and in m05's last
@@ -7743,6 +7989,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "FINAL SORTIE",
         jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
+        act: 4,
+        storyNo: 20,
+        story: "総力戦。ここを凌げば、この海の戦争は終わる。\n塔は、まだ立っている。",
+        epilogue: [
+          "北方連邦軍、全戦線で撤退を開始。BABELは無傷のまま残った。",
+          "アルバン技師長は泣いて喜んだ。これでもう誰も撃たなくて済む、と。SKYEYEは何も言わなかった。",
+          "この海の全ての空が、一つの管制の下に入った。命令書の署名だけが、最後まで誰のものか分からないままだ。"
+        ],
         // Late-campaign difficulty: an ace in the second wave (as it always
         // had) and a second one leading the fleet's CAP, so the last leg is
         // not a pure ground-attack run any more.
@@ -7810,6 +8064,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "BOMBER STREAM",
         jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
+        act: 3,
+        storyNo: 17,
+        story: "大規模爆撃編隊。狙いは統合管制塔BABELそのものだ。\n塔を守れ——それがこの戦争を終わらせる唯一の物だと、上は言っている。",
+        epilogue: [
+          "爆撃編隊は全機撃墜。BABELの足場には破片ひとつ落ちなかった。",
+          "その夜、SKYEYEは作戦命令書の署名欄を長いこと見ていた。",
+          "塔の建設を承認した委員会と、塔の破壊を要求した委員会。署名の形が同じだった。"
+        ],
         // Story bible 17: a mass raid aimed at BABEL itself. Six Tu-95s, two
         // per wave, and they are the entire designated list - twelve escorts
         // across the three waves are not. 1:2 exactly, the top of the band.
@@ -7864,6 +8126,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "nightBase",
         title: "UAV SWARM",
         jp: "敵の無人機群が夜間に展開。指定のUAV6機を撃墜せよ。地上目標は無い、純粋な空戦だ。",
+        act: 2,
+        storyNo: 12,
+        story: "敵の新型無人機だ。中に人は乗っていない。\n墜としても誰も死なない——それが新しい戦争の形らしい。",
+        epilogue: [
+          "無人機群は掃討。母機も含め、全機が地上に落ちた。",
+          "回収された機体に座席は無い。パラシュートも、名前を書く場所も無い。",
+          "HAMMER 2が着陸後にぽつりと言った——「誰も死なない戦争ってのは、誰が止めるんだ？」"
+        ],
         // The swarm mission, and the first sortie in the campaign with nothing
         // on the ground at all. Six UAVs in two waves of three: each dies to a
         // single missile, and none of them can be out-turned by any airframe in
@@ -8127,6 +8397,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "nightCity",
         title: "CITY LIGHTS",
         jp: "セント・ヴェルダ市街へ夜間爆撃。爆撃編隊は3波に分かれて来る。護衛は厚い。街の灯を守れ。",
+        act: 3,
+        storyNo: 15,
+        story: "セント・ヴェルダ——連合の首都。市街の中心に、建設中のBABELが立っている。\n今夜、そこに爆弾が落ちる。",
+        epilogue: [
+          "爆撃編隊は撃退。だが街の灯は、いくつかの区画で戻らなかった。",
+          "消防は朝まで動き続けた。BABELの足元だけが、変わらず明るいままだ。",
+          "全部は守れない。守れる分を守った。報告書に書けるのはそれだけだ。"
+        ],
         // Campaign 15. Story bible: "街の明かりが一区画ずつ落ちる。撃墜しても、
         // 落ちる爆弾は落ちる。全部は守れない" - and the wave composition has to
         // be what says that, not the briefing text.
@@ -8162,7 +8440,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
             concurrent: true, role: "trash",
             radio: [
-              { speaker: "wingman", text: "HAMMER 2だ、護衛が3機付いてる！ 相手をするな——爆撃機だ、爆撃機を落とせ！", id: "city-escort-1" }
+              { speaker: "wingman", text: "護衛が3機付いてる！ 相手をするな——爆撃機だ、爆撃機を落とせ！", id: "city-escort-1" }
             ]
           },
           // Second stream, on a clock rather than on the first stream's death:
@@ -8183,7 +8461,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
             concurrent: true, role: "line", delay: 55,
             radio: [
-              { speaker: "command", text: "SKYEYEより全機——高高度に上位掩護。Su-27だ、こいつらは本気で来る。", id: "city-top-cover" }
+              { speaker: "command", text: "全機、高高度に上位掩護だ。Su-27——こいつらは本気で来る。", id: "city-top-cover" }
             ]
           },
           // Third stream. The heaviest cover in the mission arrives with it,
@@ -8193,7 +8471,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             types: ["mig29", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "LATE ESCORT",
             concurrent: true, role: "trash", delay: 40,
             radio: [
-              { speaker: "wingman", text: "第3波、護衛4機！ 街の灯が消えていく……HAMMER 2、まだ飛べる、行くぞ！", id: "city-escort-3" }
+              { speaker: "wingman", text: "第3波、護衛4機！ 街の灯が消えていく……まだ飛べる、行くぞ！", id: "city-escort-3" }
             ]
           }
         ],
@@ -8233,7 +8511,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         battleRadius: 8600,
         briefing: "セント・ヴェルダ——連合の首都だ。今夜、そこに爆弾が落ちる。\n街の灯が一区画ずつ消えていくのを、君は上空から見ることになる。\n指定目標はTu-95が6機。3波に分かれ、時間差で市街へ直進してくる。\n護衛は11機。落とす義務は無いが、放置すれば背後を取られる。\n覚えておけ——全部は守れない。守れる分を守れ。\nビル街の谷間は飛べる。ただし高度に気をつけろ、最も高い建物で地上200mを超える。",
         introRadio: [
-          { speaker: "command", text: "SKYEYEより。セント・ヴェルダ上空、爆撃編隊が進入中——Tu-95が6、3波だ。", id: "city-brief" },
+          { speaker: "command", text: "セント・ヴェルダ上空、爆撃編隊が進入中——Tu-95が6、3波だ。", id: "city-brief" },
           { speaker: "wingman", text: "眼下は街だ。……全部は無理でも、落とせるだけ落とすぞ。HAMMER 2、続く。", id: "city-brief-wing" }
         ]
       },
@@ -8242,6 +8520,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "coastalPlain",
         title: "IRON COLUMN",
         jp: "敵機甲部隊が海岸平野を縦断中。対空戦車を伴う車列を、南岸へ抜けられる前に殲滅せよ。",
+        act: 2,
+        storyNo: 9,
+        story: "敵機甲部隊が上陸した。海岸平野を縦断し、南岸へ抜けようとしている。\n抜けられたら、この島の前線は無くなる。",
+        epilogue: [
+          "機甲部隊は海岸平野で停止。南岸の防衛線は保たれた。",
+          "焼けた車両から、この島の漁村の地図が出てきた。書き込みは補給路のものだった。",
+          "HAMMER 2は何も言わなかった。着艦してからも、しばらく黙っていた。"
+        ],
         // The first mission whose targets move on the ground. Everything the
         // player has learned about ground attack still applies - these are the
         // same lock-on, the same gun, the same missile quantum - but the aim
@@ -8338,10 +8624,109 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
+        key: "m-squadron",
+        world: "glacierCanyon",
+        title: "RED CIRCUS",
+        jp: "IRONBACK直属のエース飛行隊が氷河峡谷に展開。ネームド4機との乱戦だ。全機撃墜せよ。",
+        act: 4,
+        storyNo: 18,
+        story: "IRONBACKは一人では飛んでいなかった。氷の下の神殿の上に、四つの名前が待っている。",
+        // Story bible 18. The only sortie in the campaign that fields FOUR
+        // named pilots, and the reason ACE_PROFILES was built as a table of
+        // identities rather than a single antagonist constant.
+        //
+        // Each ace is its own wave entry because a wave carries exactly one
+        // `aceSlot` - four callsigns is four entries, not one wave of four -
+        // and each names a DIFFERENT airframe, so the melee reads as four
+        // distinct silhouettes: Flanker-E, Berkut, Flanker-D, Terminator.
+        // Nothing here pins a model in the profile; the wave picks the
+        // airframe and the profile only paints it.
+        //
+        // Shape: two aces on the board from the first second (FENRIR leading,
+        // SURTR riding concurrent), then the twins HATI and SKOLL as wave 2
+        // once the first pair is down. Four designated against seven
+        // trash-role wingmen in three batches - 1:1.75, the campaign's default
+        // ratio - and the trash is what makes it a melee rather than four
+        // consecutive duels.
+        //
+        // Ids: the four aces take 1-4 so TGT REMAIN counts the callsigns in
+        // the order they arrive; the interference sits at 11+ and never
+        // renumbers a named pilot.
+        sequence: [
+          { types: ["su35"], ace: "fenrir", band: 2, idBase: 0, label: "JORMUNGANDR" },
+          {
+            // Concurrent with no delay: the pair is on the board together or
+            // it is not a squadron fight. Custom radio rather than the ace
+            // fallback, which would put four lines in a four-deep queue and
+            // drop the escort call behind them.
+            types: ["su47"], ace: "surtr", band: 1, concurrent: true, idBase: 1,
+            radio: [
+              { speaker: "command", text: "2機目にも名前がある——『SURTR』。前進翼のSu-47だ、旋回で追うな。", id: "squadron-surtr-inbound" }
+            ]
+          },
+          {
+            types: ["mig29", "mig29", "mig21"], tgt: false, band: 1, label: "SERPENT ESCORT",
+            concurrent: true, role: "trash", idBase: 10,
+            radio: [
+              { speaker: "wingman", text: "エースの僚機が3機！ 相手をするな——名前持ちだけ数えろ！", id: "squadron-escort-1" }
+            ]
+          },
+          // Wave 2: the twins. Non-concurrent, so they arrive only once the
+          // first pair is gone - the fight is two engagements of two, not one
+          // of four, which is what keeps it survivable at four ace-role hulls.
+          { types: ["su33"], ace: "hati", band: 1, idBase: 2, label: "JORMUNGANDR" },
+          {
+            types: ["su37"], ace: "skoll", band: 2, concurrent: true, idBase: 3,
+            radio: [
+              { speaker: "wingman", text: "もう1機、対で来る——『SKÖLL』だ！ 2機は切り離せないぞ！", id: "squadron-skoll-inbound" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "SERPENT RELIEF",
+            concurrent: true, role: "trash", idBase: 13, delay: 45
+          },
+          {
+            // The last batch. Never spawns at all if the twins go down inside
+            // 100s, which is the reward for finishing them fast.
+            types: ["mig23", "mig21"], tgt: false, band: 2, label: "INTERFERENCE",
+            concurrent: true, role: "trash", idBase: 15, delay: 100,
+            radio: [
+              { speaker: "wingman", text: "まだ湧いてくる！ 蛇の尻尾だ——本体を先に切れ、{nickname}！", id: "squadron-interference" }
+            ]
+          }
+        ],
+        // Four ace-role hulls (196 + 165 + 165 + 150 HP) flown at 1.2x turn,
+        // through seven fighters the player owes nothing. Longer than m04's
+        // single duel (165s) by roughly the three extra kills plus the second
+        // merge, and short of m-glacier's 335 because nothing here has to be
+        // hunted on the deck.
+        parTime: 330,
+        hasOutro: false,
+        map: { x: 0.22, y: 0.16 },
+        briefing: "IRONBACK直属の飛行隊が氷河回廊上空に展開した。連中の呼び名は『RED CIRCUS』——鹵獲した通信では『ヨルムンガンド隊』と名乗っている。\n指定目標は4機、全員がネームドだ。FENRIR、SURTR、HATI、SKÖLL。\n機体はバラバラだ——Su-35S、Su-47、Su-33、Su-37。見分けはつく、見分けろ。\n先に上がるのはFENRIRとSURTRの2機。落とせば残る2機が上がってくる。\n僚機が7機付いているが、1機も落とす必要はない。数に付き合えば囲まれるだけだ。\nこいつらはIRONBACKを守るために飛んでいる。ここを抜ければ、次は本人だ。",
+        introRadio: [
+          { speaker: "command", text: "氷河回廊上空に敵エース編隊——4機、全機がネームドだ。RED CIRCUS、来たわ。", id: "squadron-brief" },
+          { speaker: "wingman", text: "4対1かよ！ 一度に相手にするな——1機ずつ剥がすぞ、{nickname}！", id: "squadron-brief-wing" }
+        ],
+        epilogue: [
+          "ヨルムンガンド隊、全機撃墜。北方連邦軍の精鋭飛行隊がひとつ、地図から消えた。",
+          "回収された機体の垂直尾翼には、いずれも世界蛇の紋章があった。第08で夜襲した格納庫にあったものと同じ意匠だ。",
+          "SKYEYEの報告書はここで一行だけ短い——「彼らは誰かを守って飛んでいた。次に会うのは、その誰かです」"
+        ]
+      },
+      {
         key: "m-desert",
         world: "desertBasin",
         title: "SANDSTORM",
         jp: "内陸の砂漠に敵航空基地。SAM網を剥がし、飛行場を機能停止に追い込め。",
+        act: 2,
+        storyNo: 11,
+        story: "内陸の砂漠に敵航空基地。遮る物は何も無く、奇襲も成立しない。\n真昼の、隠れる場所の無い空だ。",
+        epilogue: [
+          "砂漠の航空基地は機能停止。内陸から上がってくる機体は、当分いない。",
+          "掩体壕の壁に、整備兵の落書きが残っていた——「塔は倒れる。人は残る」",
+          "誰が書いたのかは分からない。同じ一文が、この戦争で何度か出てくる。"
+        ],
         // Story bible 11. The second base raid of the campaign and the answer
         // to the first one: NIGHT RAID was a strike the dark hid, this is the
         // same job done in the open, at noon, with nothing between the player
@@ -8461,7 +8846,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         battleRadius: 7500,
         briefing: "砂漠を越えた内陸に、敵の航空基地がある。夜の闇は無い——真昼の、遮る物のない空だ。\n地表は砂塵で霞んでいる。だが向こうもこちらを見ている。奇襲は成立しない。\n指定目標は地上の12目標——SAMサイト4、レーダー2、対空砲3、掩体壕2、燃料庫1。\nSAM網を先に剥がせ。射線が通ったままの低空侵入は自殺行為だ。\n基地上空にはCAPが張り付き、滑走路からも次々と上がってくる。だが奴らは目標ではない。\n迎撃機は全部で19機来る。全て相手にすれば弾が尽きる——飛行場を潰せば終わりだ。",
         introRadio: [
-          { speaker: "command", text: "こちらSKYEYE。砂漠の航空基地を制圧する——まずSAM網を剥がせ。", id: "desert-brief" },
+          { speaker: "command", text: "砂漠の航空基地を制圧する——まずSAM網を剥がせ。", id: "desert-brief" },
           { speaker: "wingman", text: "遮蔽物ゼロ、砂塵で足元も見えん。低く入るならSAMを先に黙らせろよ！", id: "desert-brief-wing" }
         ]
       }
@@ -8518,12 +8903,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               });
             }))
           : null,
+        // Story text (C3). `story` is the 1-2 line epigraph the briefing prints
+        // above the tactical body; `epilogue` is the three-line aftermath the
+        // debrief types out after a win. Both are authored per mission and
+        // optional - a mission without them shows exactly what it did before.
+        epilogue: mission.epilogue ? Object.freeze([...mission.epilogue]) : null,
         battleCenter: mission.battleCenter ? Object.freeze(mission.battleCenter) : null,
         floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
         introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
         map: Object.freeze(mission.map)
       });
     }));
+
+    // ---- Acts (C3) ---------------------------------------------------------
+    // The campaign is four acts (story bible §3). A mission declares which one
+    // it belongs to with `act`, and where it sits in the STORY with `storyNo` -
+    // deliberately two different numbers, because MISSIONS[] is authored in
+    // implementation order and six of the twenty sorties are not built yet.
+    // `storyNo` is what says "18 comes before 19"; the array index only says
+    // what was written first.
+    const ACTS = Object.freeze({
+      1: Object.freeze({ label: "ACT 1", jp: "守る" }),
+      2: Object.freeze({ label: "ACT 2", jp: "押し返す" }),
+      3: Object.freeze({ label: "ACT 3", jp: "守れないものが出てくる" }),
+      4: Object.freeze({ label: "ACT 4", jp: "決着" })
+    });
+
+    // The mission that opens each act = the lowest `storyNo` currently
+    // implemented in it. Derived rather than flagged by hand, so when the six
+    // missing sorties land (03, 05, 10, 13, 14, 16) the banner moves to the
+    // real opener on its own instead of needing a second table maintained.
+    const ACT_OPENER_KEYS = Object.freeze(new Set(
+      Object.values(
+        MISSIONS.reduce((best, mission) => {
+          if (!mission.act || !mission.storyNo) return best;
+          const held = best[mission.act];
+          if (!held || mission.storyNo < held.storyNo) best[mission.act] = mission;
+          return best;
+        }, {})
+      ).map((mission) => mission.key)
+    ));
+
+    function missionActBanner(mission) {
+      if (!mission || !mission.act || !ACT_OPENER_KEYS.has(mission.key)) return null;
+      return ACTS[mission.act] || null;
+    }
 
     let currentMissionIndex = 0;
     let missionWaveIndex = 0;
@@ -8656,9 +9080,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return Boolean(missionRecords[MISSIONS[campaignMissionIndices[slot - 1]].key]?.cleared);
     }
 
+    // C3: the two friendly voices are PEOPLE, not posts - SKYEYE is Elena Dowe
+    // on the AWACS, HAMMER 2 is Vic Rathon on the wing (story bible §2). Only
+    // the printed label changed; the ids `command` and `wingman` are what every
+    // authored line, every cooldown key and every probe addresses, and those
+    // stay exactly as they were.
     const RADIO_SPEAKERS = {
-      command: { label: "COMMAND", toneFreq: 620, toneType: "square" },
-      wingman: { label: "WINGMAN", toneFreq: 460, toneType: "sine" },
+      command: { label: "SKYEYE", toneFreq: 620, toneType: "square" },
+      wingman: { label: "HAMMER 2", toneFreq: 460, toneType: "sine" },
       enemy: { label: "HOSTILE", toneFreq: 340, toneType: "sawtooth" }
     };
 
@@ -8793,6 +9222,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       briefingArea: document.getElementById("briefingArea"),
       briefingObjectives: document.getElementById("briefingObjectives"),
       briefingPar: document.getElementById("briefingPar"),
+      briefingStory: document.getElementById("briefingStory"),
       briefingText: document.getElementById("briefingText"),
       briefingHint: document.getElementById("briefingHint"),
       briefingNextBtn: document.getElementById("briefingNextBtn"),
@@ -8871,6 +9301,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       finalRank: document.getElementById("finalRank"),
       resultMissionTag: document.getElementById("resultMissionTag"),
       debriefIntelLines: document.getElementById("debriefIntelLines"),
+      debriefEpilogue: document.getElementById("debriefEpilogue"),
+      debriefEpilogueLines: document.getElementById("debriefEpilogueLines"),
       breakdownTime: document.getElementById("breakdownTime"),
       breakdownDamage: document.getElementById("breakdownDamage"),
       breakdownKills: document.getElementById("breakdownKills"),
@@ -9153,11 +9585,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let missileSide = 1;
     let bannerTimer = 0;
     let bigBannerTimer = 0;
+    // A second big band waiting for the current one to finish: the act opener
+    // shows ACT n, then MISSION START. Never more than one deep.
+    let pendingBigBanner = null;
     // A small banner asked for while the big band is up waits its turn instead
     // of popping in the same frame (MISSION START vs WAVE 1 at mission start).
     let pendingBanner = null;
     let pendingBannerTimer = 0;
     const SMALL_BANNER_DELAY = 0.8;
+    // How long the ACT band holds before it hands over to MISSION START.
+    const ACT_BANNER_TIME = 2.2;
     // Success is announced on the big band first and only becomes a state change
     // when this timer runs out, so the player keeps flying under ACCOMPLISHED.
     const OUTCOME_PENDING_TIME = 2.8;
@@ -9424,6 +9861,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       killCam: { active: false, timer: 0, enemyId: null },
       outro: { active: false, elapsed: 0, retreatBannerFired: false },
       debrief: [],
+      // C3 aftermath text, for the story probe: what the last debrief printed
+      // and how much of it has been typed.
+      epilogue: { active: false, lines: [], revealedLines: 0 },
       briefing: { active: false, complete: false, revealed: 0, totalChars: 0, zoom: 1, markers: 0 },
       bigBanner: { visible: false, text: "", subtitle: "", tone: "", timer: 0 },
       banner: { visible: false, text: "", timer: 0, pending: null },
@@ -9444,6 +9884,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       missionTable: MISSIONS.map((mission) => ({
         key: mission.key,
         title: mission.title,
+        // C3 story fields, so a probe can check act assignment, the briefing
+        // epigraph and the aftermath without opening any screen.
+        act: mission.act || null,
+        storyNo: mission.storyNo || null,
+        actOpener: ACT_OPENER_KEYS.has(mission.key),
+        story: mission.story || null,
+        epilogue: mission.epilogue ? [...mission.epilogue] : null,
         parTime: mission.parTime,
         totalTargets: mission.totalTargets,
         totalContacts: mission.totalContacts,
@@ -10552,6 +10999,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           advanceBriefing();
           return;
         }
+        // Enter on a debrief whose epilogue is still typing completes the text
+        // instead of restarting - the same "first press skips, second press
+        // acts" the briefing teleprinter already uses.
+        if ((gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) && epilogueState.active) {
+          finishEpilogue();
+          return;
+        }
         if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
           startMission();
           return;
@@ -10680,6 +11134,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           renderMissionScreenFrame(performance.now() * 0.001);
         } else if (gameState === STATE_BRIEFING) {
           updateBriefing(rawDt);
+        } else if (gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
+          // rawDt: the debrief is not affected by the kill-cam time scale.
+          updateEpilogue(rawDt);
         }
       }
 
@@ -11839,13 +12296,112 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       setState(STATE_PLAYING);
       // Ahead of the wave spawn so its own banner sees the band already up and
       // queues itself behind it.
-      showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
+      //
+      // C3: a sortie that opens an act gets the ACT band first, and MISSION
+      // START queued behind it on the same element - two consecutive wipes, not
+      // two banners fighting for the same strip of screen.
+      const actBanner = missionActBanner(MISSIONS[currentMissionIndex]);
+      if (actBanner) {
+        showBigBanner(actBanner.label, actBanner.jp, ACT_BANNER_TIME);
+        queueBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
+      } else {
+        showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
+      }
       // Scenery and installations first: a strike wave lays its run in against
       // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
       spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
       snapCamera();
       clock.getDelta();
+    }
+
+    // ---- Epilogue (C3) -----------------------------------------------------
+    // The three-line aftermath under the debrief, typed out one line at a time
+    // so it reads as a log being written rather than a paragraph appearing.
+    // Purely presentational: nothing here is read by scoring, records or the
+    // unlock chain, and a mission with no `epilogue` simply hides the block.
+    const EPILOGUE_CHAR_INTERVAL = 0.026;
+    const EPILOGUE_LINE_GAP = 0.55;
+    const epilogueState = {
+      active: false,
+      lines: [],
+      nodes: [],
+      lineIndex: 0,
+      revealed: 0,
+      charTimer: 0,
+      gapTimer: 0
+    };
+
+    function startEpilogue(mission, success) {
+      epilogueState.active = false;
+      epilogueState.lines = [];
+      epilogueState.nodes = [];
+      epilogueState.lineIndex = 0;
+      epilogueState.revealed = 0;
+      epilogueState.charTimer = 0;
+      epilogueState.gapTimer = 0;
+      // A failed sortie has no aftermath - the campaign did not move.
+      const lines = success && mission && mission.epilogue ? mission.epilogue : null;
+      if (!lines || lines.length === 0) {
+        ui.debriefEpilogueLines.replaceChildren();
+        ui.debriefEpilogue.classList.add("hidden");
+        window.__game.epilogue = { active: false, lines: [], revealedLines: 0 };
+        return;
+      }
+      epilogueState.lines = [...lines];
+      epilogueState.nodes = epilogueState.lines.map(() => document.createElement("li"));
+      ui.debriefEpilogueLines.replaceChildren(...epilogueState.nodes);
+      ui.debriefEpilogue.classList.remove("hidden");
+      epilogueState.active = true;
+      epilogueState.charTimer = EPILOGUE_CHAR_INTERVAL;
+      epilogueState.nodes[0].classList.add("typing");
+      window.__game.epilogue = { active: true, lines: [...epilogueState.lines], revealedLines: 0 };
+    }
+
+    function finishEpilogue() {
+      if (epilogueState.lines.length === 0) return;
+      for (let i = 0; i < epilogueState.lines.length; i += 1) {
+        epilogueState.nodes[i].textContent = epilogueState.lines[i];
+        epilogueState.nodes[i].classList.remove("typing");
+      }
+      epilogueState.lineIndex = epilogueState.lines.length;
+      epilogueState.active = false;
+      window.__game.epilogue.active = false;
+      window.__game.epilogue.revealedLines = epilogueState.lines.length;
+    }
+
+    function updateEpilogue(dt) {
+      if (!epilogueState.active) return;
+      if (epilogueState.gapTimer > 0) {
+        epilogueState.gapTimer -= dt;
+        return;
+      }
+      const line = epilogueState.lines[epilogueState.lineIndex];
+      const node = epilogueState.nodes[epilogueState.lineIndex];
+      if (line === undefined) {
+        epilogueState.active = false;
+        window.__game.epilogue.active = false;
+        return;
+      }
+      epilogueState.charTimer -= dt;
+      while (epilogueState.charTimer <= 0 && epilogueState.revealed < line.length) {
+        epilogueState.revealed += 1;
+        epilogueState.charTimer += EPILOGUE_CHAR_INTERVAL;
+      }
+      node.textContent = line.slice(0, epilogueState.revealed);
+      if (epilogueState.revealed < line.length) return;
+      node.classList.remove("typing");
+      epilogueState.lineIndex += 1;
+      epilogueState.revealed = 0;
+      epilogueState.charTimer = EPILOGUE_CHAR_INTERVAL;
+      window.__game.epilogue.revealedLines = epilogueState.lineIndex;
+      if (epilogueState.lineIndex >= epilogueState.lines.length) {
+        epilogueState.active = false;
+        window.__game.epilogue.active = false;
+        return;
+      }
+      epilogueState.gapTimer = EPILOGUE_LINE_GAP;
+      epilogueState.nodes[epilogueState.lineIndex].classList.add("typing");
     }
 
     function buildDebriefIntelLines(success) {
@@ -11953,6 +12509,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return item;
         }));
         window.__game.debrief = debriefLines;
+        startEpilogue(mission, success);
         queueMicrotask(() => ui.retryBtn.focus({ preventScroll: true }));
       }
     }
@@ -14480,6 +15037,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       m04: Object.freeze({ wingman: true }),
       "m-glacier": Object.freeze({ wingman: true }),
       "m-night": Object.freeze({ wingman: true }),
+      // The three sorties that shipped after this table was written and were
+      // left out of it, plus RED CIRCUS. Per spec_campaign_story §2 the wingman
+      // flies EVERY mission, so a missing key here was a hole, not a decision.
+      // Wingman only: the carrier is authored for the three naval sorties
+      // (m03 / m-convoy / m05) and nothing here is one - storm and squadron are
+      // over open water and ice with no task force, city is inland at night.
+      "m-storm": Object.freeze({ wingman: true }),
+      "m-city": Object.freeze({ wingman: true }),
+      "m-desert": Object.freeze({ wingman: true }),
+      "m-squadron": Object.freeze({ wingman: true }),
       m05: Object.freeze({
         wingman: true,
         carrier: Object.freeze({ x: -2400, z: 1600, heading: Math.PI * 0.8, label: "CV-71 INDEPENDENCE" }),
@@ -17761,8 +18328,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (bigBannerTimer > 0) {
         bigBannerTimer -= dt;
         if (bigBannerTimer <= 0) {
-          ui.bigBanner.classList.remove("visible");
-          ui.bigBanner.classList.add("fading");
+          if (pendingBigBanner) {
+            const queued = pendingBigBanner;
+            pendingBigBanner = null;
+            showBigBanner(queued.text, queued.subtitle, queued.duration, queued.tone);
+          } else {
+            ui.bigBanner.classList.remove("visible");
+            ui.bigBanner.classList.add("fading");
+          }
         }
       }
 
@@ -17799,7 +18372,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // WAVE 1 off MISSION START without spawnMissionWave knowing anything.
       if (bigBannerTimer > 0) {
         pendingBanner = { text, duration, tone };
-        pendingBannerTimer = SMALL_BANNER_DELAY;
+        // Measured from the LAST band in the chain, so on an act opener WAVE 1
+        // still lands 0.8s into MISSION START rather than on top of ACT n.
+        pendingBannerTimer = SMALL_BANNER_DELAY + (pendingBigBanner ? bigBannerTimer : 0);
         return;
       }
       pendingBanner = null;
@@ -17822,8 +18397,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       bigBannerTimer = duration;
     }
 
+    // Queues a second band to play the moment the current one lets go. The one
+    // caller is the act opener (C3): ACT 4 wipes in, then MISSION START, on the
+    // same band rather than two overlapping ones.
+    function queueBigBanner(text, subtitle, duration, tone = "") {
+      pendingBigBanner = { text, subtitle, duration, tone };
+    }
+
     function hideBigBanner() {
       bigBannerTimer = 0;
+      pendingBigBanner = null;
       ui.bigBanner.className = "";
     }
 
@@ -22731,7 +23314,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return row;
       }));
 
-      ui.briefingNum.textContent = `MISSION ${missionNumberLabel(currentMissionIndex)}`;
+      // The act line rides on the mission tag rather than taking a row of its
+      // own - "MISSION 13 · ACT 4" - so the briefing layout is unchanged.
+      const act = mission.act ? ACTS[mission.act] : null;
+      ui.briefingNum.textContent = act
+        ? `MISSION ${missionNumberLabel(currentMissionIndex)} · ${act.label}`
+        : `MISSION ${missionNumberLabel(currentMissionIndex)}`;
+      ui.briefingStory.textContent = mission.story || "";
+      ui.briefingStory.classList.toggle("hidden", !mission.story);
       ui.briefingTitle.textContent = mission.title;
       ui.briefingArea.textContent = WORLD_PRESETS[mission.world]?.label || "UNKNOWN";
       ui.briefingPar.textContent = formatParTime(mission.parTime);
