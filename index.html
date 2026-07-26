@@ -67,6 +67,8 @@
        setState() writes -- no per-frame JS toggling.
        playing / missionComplete / gameover are deliberately untouched: the
        debrief still shows the HUD behind it, as before. */
+    body[data-game-state="campaignSelect"] #hud,
+    body[data-game-state="campaignSelect"] #radioPanel,
     body[data-game-state="missionSelect"] #hud,
     body[data-game-state="missionSelect"] #radioPanel,
     body[data-game-state="briefing"] #hud,
@@ -1568,6 +1570,100 @@
     .menuLegend .actionButton { margin-left: auto; }
     .hangarCenter { pointer-events: none; }
 
+    /* ---- Campaign select ------------------------------------------------
+       Two wide cards side by side rather than the mission screen's vertical
+       list: the choice is a fork, not a sequence, and left/right has to read
+       as the natural input the moment the screen appears. */
+    .campaignLayout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr minmax(250px, 310px);
+      gap: clamp(14px, 2vw, 30px);
+      min-height: 0;
+    }
+
+    .campaignCards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      /* A fixed plate height centred in the column, not a full stretch: the
+         cards carry four short lines each, and letting them fill the whole
+         menu leaves a dead middle that reads as a rendering fault. */
+      grid-auto-rows: clamp(210px, 34vh, 300px);
+      align-content: center;
+      gap: clamp(14px, 2vw, 28px);
+      min-height: 0;
+    }
+
+    .campaignCard {
+      display: flex;
+      flex-direction: column;
+      /* Title block at the top, status line at the bottom: the card fills the
+         column like AC5's campaign plates rather than floating as a chip. */
+      justify-content: flex-start;
+      gap: 10px;
+      padding: clamp(16px, 2.4vh, 28px) clamp(16px, 1.8vw, 26px);
+      border: 1px solid rgba(110, 190, 255, 0.22);
+      background:
+        linear-gradient(150deg, rgba(9, 30, 54, 0.86), rgba(4, 13, 25, 0.78));
+      color: #cfeaff;
+      cursor: pointer;
+      position: relative;
+      transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+    }
+
+    .campaignCard .campaignCardKicker { font-size: 10px; letter-spacing: 0.2em; color: #74c2f2; }
+
+    .campaignCard .campaignCardTitle {
+      margin: 0;
+      font-size: clamp(17px, 2vw, 25px);
+      letter-spacing: 0.1em;
+      color: #eaf7ff;
+      text-shadow: 0 0 14px rgba(80, 190, 255, 0.35);
+    }
+
+    .campaignCard .campaignCardMeta { font-size: 11px; letter-spacing: 0.12em; color: #8fc4e8; }
+    /* margin-top:auto pins the sortie count (or the lock tag) to the card's
+       foot, so both cards line up however long their operation names run. */
+    .campaignCard .campaignCardCount { margin-top: auto; font-size: 12px; letter-spacing: 0.14em; color: #cfe8fb; }
+    .campaignCard .campaignCardCount b { color: #ffd27a; font-weight: 700; }
+
+    .campaignCard.selected {
+      border-color: rgba(255, 154, 60, 0.85);
+      background: linear-gradient(150deg, rgba(24, 55, 88, 0.9), rgba(6, 18, 32, 0.82));
+      transform: translateY(-2px);
+      box-shadow: 0 0 26px rgba(70, 165, 235, 0.22);
+    }
+
+    .campaignCard.selected::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: linear-gradient(180deg, #ff9a3c, rgba(255, 154, 60, 0.15));
+    }
+
+    .campaignCard.locked { color: rgba(130, 160, 185, 0.5); cursor: not-allowed; }
+    .campaignCard.locked .campaignCardTitle { color: rgba(160, 190, 215, 0.55); text-shadow: none; }
+    .campaignCard.locked .campaignCardKicker,
+    .campaignCard.locked .campaignCardMeta,
+    .campaignCard.locked .campaignCardCount { color: rgba(120, 150, 175, 0.45); }
+
+    .campaignCard .campaignLockTag {
+      align-self: flex-start;
+      margin-top: auto;
+      padding: 3px 10px;
+      border: 1px solid rgba(255, 154, 60, 0.45);
+      font-size: 10.5px;
+      letter-spacing: 0.22em;
+      color: #ffb45c;
+      background: rgba(60, 30, 8, 0.45);
+    }
+
+    .campaignPanelLine { font-size: 13px; letter-spacing: 0.06em; color: #eaf7ff; }
+    /* Aligned with the cards rather than the frame, so the screen reads as one
+       band of content instead of a short pair of plates beside a tall column. */
+    .campaignPanel { align-self: center; max-height: 100%; }
+
     .screenCard {
       width: min(820px, 92vw);
       padding: clamp(24px, 4vw, 48px);
@@ -1993,9 +2089,36 @@
   <div id="gVignette"></div>
   <div id="damageFlash"></div>
 
+  <section id="campaignScreen" class="screen menuScreen hidden">
+    <div class="menuFrame">
+      <header class="menuHeader"><h1 class="menuTitle">CAMPAIGN SELECT</h1><span class="menuHeaderRule"></span><span class="menuMissionTag">SORTIE</span></header>
+      <div class="campaignLayout">
+        <div id="campaignCards" class="campaignCards"></div>
+        <aside class="menuSidePanel campaignPanel">
+          <span class="menuPanelKicker" id="campaignPanelKicker">AMERICAN CAMPAIGN</span>
+          <h2 class="menuPanelTitle" id="campaignPanelTitle">OPERATION CLEAR SKY</h2>
+          <div class="menuRecordHeader">[ FORCE ]</div>
+          <div class="campaignPanelLine" id="campaignPanelSide">WESTERN ALLIED FORCES</div>
+          <div class="menuRecordHeader">[ CALLSIGN ]</div>
+          <div class="campaignPanelLine" id="campaignPanelCallsign">HAMMER 1</div>
+          <div class="menuRecordHeader">[ SORTIES ]</div>
+          <div class="menuRankBig" id="campaignPanelProgress">0 / 0</div>
+          <div class="menuRecordHeader">[ HANGAR ]</div>
+          <div class="campaignPanelLine" id="campaignPanelHangar">—</div>
+        </aside>
+      </div>
+      <p class="menuBlurb" id="campaignBlurb">キャンペーンを選択してください。</p>
+      <footer class="menuLegend">
+        <span><span class="legendKey">←→ / D-PAD</span> キャンペーン</span>
+        <span><span class="legendKey">ENTER / ○</span> 決定</span>
+        <button id="campaignConfirmBtn" class="actionButton" type="button">SELECT CAMPAIGN</button>
+      </footer>
+    </div>
+  </section>
+
   <section id="missionScreen" class="screen menuScreen hidden">
     <div class="menuFrame">
-      <header class="menuHeader"><h1 class="menuTitle">FREE MISSION</h1><span class="menuHeaderRule"></span><span class="menuMissionTag">SORTIE CAMPAIGN</span></header>
+      <header class="menuHeader"><h1 class="menuTitle">FREE MISSION</h1><span class="menuHeaderRule"></span><span class="menuMissionTag" id="missionCampaignTag">OPERATION CLEAR SKY</span></header>
       <div class="menuLayout">
         <ul id="missionList" class="menuList" aria-label="Select Mission"></ul>
         <div id="missionMapWrap"><canvas id="missionMap"></canvas></div>
@@ -2015,6 +2138,7 @@
       <footer class="menuLegend">
         <span><span class="legendKey">↑↓ / D-PAD</span> 選択</span>
         <span><span class="legendKey">ENTER / ○</span> 決定</span>
+        <span><span class="legendKey">ESC / □</span> キャンペーン選択</span>
         <button id="missionConfirmBtn" class="actionButton" type="button">SELECT MISSION</button>
       </footer>
     </div>
@@ -2107,6 +2231,7 @@
   <script type="module">
     import * as THREE from "three";
 
+    const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
     const STATE_BRIEFING = "briefing";
     const STATE_READY = "ready";
@@ -2475,6 +2600,56 @@
       "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22"
     ]);
     const DEFAULT_AIRCRAFT_ID = "f16";
+
+    // ---- Campaigns -----------------------------------------------------------
+    // Two sides of the same war (docs/spec_campaign_story.md). The American
+    // campaign is everything that ships today; the Russian one is a frame and a
+    // route, deliberately locked until its missions exist.
+    //
+    // `aircraft` is a FILTER over AIRCRAFT_ORDER, never a replacement roster:
+    // the hangar data stays one list, and a campaign only decides which of its
+    // entries the player may take up. Anything not named here is simply absent
+    // from that campaign's hangar, so adding an airframe to AIRCRAFT_ORDER
+    // without assigning it a side hides it rather than leaking it to both.
+    const CAMPAIGNS = Object.freeze([
+      Object.freeze({
+        id: "usa",
+        name: "AMERICAN CAMPAIGN",
+        operation: "OPERATION CLEAR SKY",
+        side: "WESTERN ALLIED FORCES",
+        callsign: "HAMMER 1",
+        jp: "西側同盟軍。空母打撃群に配属された混成飛行隊「SORTIE隊」として、北方の大国による航空侵攻を止める。",
+        locked: false,
+        lockNote: "",
+        aircraft: Object.freeze([
+          "f16", "gripen", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "f4", "a10", "f22"
+        ])
+      }),
+      Object.freeze({
+        id: "rus",
+        name: "RUSSIAN CAMPAIGN",
+        operation: "OPERATION NORTHERN STAR",
+        side: "NORTHERN FEDERATION FORCES",
+        callsign: "IRONBACK",
+        jp: "北方連邦軍。同じ戦争を反対側から描く編。現在準備中。",
+        locked: true,
+        lockNote: "COMING SOON",
+        aircraft: Object.freeze(["mig31", "su37"])
+      })
+    ]);
+    const DEFAULT_CAMPAIGN_ID = "usa";
+
+    // A mission with no `campaign` field belongs to the American campaign.
+    // Deliberately a read-time default rather than a field written into every
+    // MISSIONS entry: the mission table is edited constantly, and a default
+    // that lives in one function can never fall out of sync with 20 literals.
+    function missionCampaignId(mission) {
+      return (mission && mission.campaign) || DEFAULT_CAMPAIGN_ID;
+    }
+
+    function campaignById(id) {
+      return CAMPAIGNS.find((campaign) => campaign.id === id) || CAMPAIGNS[0];
+    }
 
     // ---- Special weapons (SP.W) ---------------------------------------------
     // One slot per airframe, following AC7's real loadout for each aircraft.
@@ -6521,6 +6696,37 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // builds both menus, and a `let` further down the module body is still in
     // its temporal dead zone at that point.
     let missionCursor = 0;
+    let selectedCampaignId = DEFAULT_CAMPAIGN_ID;
+    let campaignCursor = 0;
+
+    // The active campaign's slice of MISSIONS, as GLOBAL indices. Everything
+    // downstream (records, unlock chain, startMission, the debug hook) keeps
+    // addressing missions by their global index, so a campaign is a view over
+    // the one mission table rather than a second table. Rebuilt on switch.
+    let campaignMissionIndices = MISSIONS
+      .map((mission, index) => (missionCampaignId(mission) === selectedCampaignId ? index : -1))
+      .filter((index) => index >= 0);
+
+    function rebuildCampaignMissionIndices() {
+      campaignMissionIndices = MISSIONS
+        .map((mission, index) => (missionCampaignId(mission) === selectedCampaignId ? index : -1))
+        .filter((index) => index >= 0);
+      return campaignMissionIndices;
+    }
+
+    // Position of a global mission index within the active campaign, i.e. the
+    // number the player sees. -1 when the mission belongs to another campaign.
+    function campaignSlotOf(globalIndex) {
+      return campaignMissionIndices.indexOf(globalIndex);
+    }
+
+    // The mission number as the player reads it: position within the campaign,
+    // not within MISSIONS. Falls back to the global index for a mission the
+    // active campaign does not contain (debug hook selecting across sides).
+    function missionNumberLabel(globalIndex) {
+      const slot = campaignSlotOf(globalIndex);
+      return String((slot < 0 ? globalIndex : slot) + 1).padStart(2, "0");
+    }
 
     // Hand-drawn archipelago for the tactical map, in normalised map space.
     const MAP_LANDMASSES = [
@@ -6572,9 +6778,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     // Campaign gating: clearing a mission unlocks the next one down the list.
+    // The chain runs inside the active campaign, so the first sortie of each
+    // side is always open and no mission waits on another campaign's progress.
+    // Still keyed on the mission key, so existing records carry over untouched.
     function isMissionUnlocked(index) {
-      if (index <= 0) return true;
-      return Boolean(missionRecords[MISSIONS[index - 1].key]?.cleared);
+      const slot = campaignSlotOf(index);
+      // A mission outside the active campaign keeps its own campaign's chain
+      // rather than falling back to the global one - the debug hook can select
+      // across campaigns, and it must not read a neighbour's clear as a gate.
+      if (slot < 0) {
+        const id = missionCampaignId(MISSIONS[index]);
+        const siblings = MISSIONS
+          .map((mission, i) => (missionCampaignId(mission) === id ? i : -1))
+          .filter((i) => i >= 0);
+        const at = siblings.indexOf(index);
+        if (at <= 0) return true;
+        return Boolean(missionRecords[MISSIONS[siblings[at - 1]].key]?.cleared);
+      }
+      if (slot <= 0) return true;
+      return Boolean(missionRecords[MISSIONS[campaignMissionIndices[slot - 1]].key]?.cleared);
     }
 
     const RADIO_SPEAKERS = {
@@ -6685,6 +6907,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       shootCue: document.getElementById("shootCue"),
       damageSilhouette: document.getElementById("damageSilhouette"),
       changeAircraftBtn: document.getElementById("changeAircraftBtn"),
+      campaignScreen: document.getElementById("campaignScreen"),
+      campaignCards: document.getElementById("campaignCards"),
+      campaignPanelKicker: document.getElementById("campaignPanelKicker"),
+      campaignPanelTitle: document.getElementById("campaignPanelTitle"),
+      campaignPanelSide: document.getElementById("campaignPanelSide"),
+      campaignPanelCallsign: document.getElementById("campaignPanelCallsign"),
+      campaignPanelProgress: document.getElementById("campaignPanelProgress"),
+      campaignPanelHangar: document.getElementById("campaignPanelHangar"),
+      campaignBlurb: document.getElementById("campaignBlurb"),
+      campaignConfirmBtn: document.getElementById("campaignConfirmBtn"),
+      missionCampaignTag: document.getElementById("missionCampaignTag"),
       missionScreen: document.getElementById("missionScreen"),
       missionList: document.getElementById("missionList"),
       missionMap: document.getElementById("missionMap"),
@@ -7280,7 +7513,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       bigBanner: { visible: false, text: "", subtitle: "", tone: "", timer: 0 },
       banner: { visible: false, text: "", timer: 0, pending: null },
       outcomePending: { active: false, timer: 0 },
+      // The whole hangar, unfiltered - what airframes exist. What the ACTIVE
+      // campaign lets the player fly is __game.campaign.aircraft, which is what
+      // the hangar list is built from.
       aircraftCatalog: [...AIRCRAFT_ORDER],
+      campaign: {
+        selected: DEFAULT_CAMPAIGN_ID,
+        cursor: 0,
+        cursorId: DEFAULT_CAMPAIGN_ID,
+        aircraft: [],
+        list: []
+      },
       // Every mission's resolved wave list, flat, for the composition probe.
       // Static: MISSIONS is frozen at boot, so this never needs syncing.
       missionTable: MISSIONS.map((mission) => ({
@@ -7652,17 +7895,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (gameState === STATE_PLAYING) return false;
           const index = typeof key === "number" ? key : MISSIONS.findIndex((mission) => mission.key === key);
           if (index < 0 || index >= MISSIONS.length) return false;
+          // Selecting across campaigns switches sides with it, so the hangar
+          // and the sortie list never disagree with the mission that is loaded.
+          const owner = missionCampaignId(MISSIONS[index]);
+          if (owner !== selectedCampaignId) applyCampaign(owner);
           currentMissionIndex = index;
           return true;
         },
         // Campaign order changes as missions are added, so tests address a
         // sortie by key and resolve the index here rather than hard-coding it.
+        // Both are GLOBAL indices over MISSIONS, unchanged by campaigns.
         missionIndexOf: (key) => MISSIONS.findIndex((mission) => mission.key === key),
         missionKeys: () => MISSIONS.map((mission) => mission.key),
         forceMissionCursor: (index) => {
           if (gameState !== STATE_MISSION_SELECT) return false;
-          missionCursor = ((index % MISSIONS.length) + MISSIONS.length) % MISSIONS.length;
+          const wrapped = ((index % MISSIONS.length) + MISSIONS.length) % MISSIONS.length;
+          // Refuses a mission the open campaign does not contain rather than
+          // silently pointing the list at a row it is not rendering.
+          if (campaignSlotOf(wrapped) < 0) return false;
+          missionCursor = wrapped;
           updateMissionScreen();
+          return true;
+        },
+        campaigns: () => CAMPAIGNS.map((campaign) => campaign.id),
+        campaignOf: (key) => {
+          const mission = MISSIONS.find((entry) => entry.key === key);
+          return mission ? missionCampaignId(mission) : null;
+        },
+        forceCampaignCursor: (idOrIndex) => {
+          if (gameState !== STATE_CAMPAIGN_SELECT) return false;
+          const index = typeof idOrIndex === "number"
+            ? idOrIndex
+            : CAMPAIGNS.findIndex((campaign) => campaign.id === idOrIndex);
+          if (index < 0 || index >= CAMPAIGNS.length) return false;
+          campaignCursor = index;
+          updateCampaignScreen();
+          return true;
+        },
+        forceConfirmCampaign: () => {
+          confirmCampaignSelection();
+          return gameState === STATE_MISSION_SELECT;
+        },
+        // Switches campaign without going through the screen, for probes that
+        // only need the other side's hangar and mission list.
+        forceCampaign: (id) => {
+          if (gameState === STATE_PLAYING) return false;
+          if (!CAMPAIGNS.some((campaign) => campaign.id === id)) return false;
+          applyCampaign(id);
+          if (gameState === STATE_CAMPAIGN_SELECT) updateCampaignScreen();
+          else if (gameState === STATE_MISSION_SELECT) updateMissionScreen();
           return true;
         },
         forceConfirmMission: () => {
@@ -8013,13 +8294,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     resetPlayerTransform();
     snapCamera();
+    buildCampaignScreen();
     buildMissionList();
     buildHangarUI();
     {
-      const nextUp = MISSIONS.findIndex((mission, index) => isMissionUnlocked(index) && !missionRecords[mission.key]?.cleared);
-      currentMissionIndex = nextUp >= 0 ? nextUp : 0;
+      const nextUp = campaignMissionIndices.find(
+        (index) => isMissionUnlocked(index) && !missionRecords[MISSIONS[index].key]?.cleared
+      );
+      currentMissionIndex = nextUp !== undefined ? nextUp : (campaignMissionIndices[0] ?? 0);
+      missionCursor = currentMissionIndex;
     }
-    setState(STATE_MISSION_SELECT);
+    // Boot lands on the campaign fork, not the sortie list: which war the
+    // player is flying is the first decision, and it decides the hangar.
+    setState(STATE_CAMPAIGN_SELECT);
     resize();
     // Must precede the first updateHud(): it populates the node pools that the
     // compass and tape renderers index into.
@@ -8041,6 +8328,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     ui.changeAircraftBtn.addEventListener("click", () => {
       ensureAudio();
       setState(STATE_READY);
+    });
+    ui.campaignConfirmBtn.addEventListener("click", () => {
+      ensureAudio();
+      confirmCampaignSelection();
     });
     ui.missionConfirmBtn.addEventListener("click", () => {
       ensureAudio();
@@ -8090,6 +8381,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
+      // Campaign select is a left/right fork. Up/down are accepted too so a
+      // player who reached for the wrong axis still gets a response instead of
+      // a dead screen.
+      if ((event.code === "ArrowLeft" || event.code === "KeyA" ||
+           event.code === "ArrowUp" || event.code === "KeyW") &&
+          !event.repeat && gameState === STATE_CAMPAIGN_SELECT) {
+        moveCampaignCursor(-1);
+        return;
+      }
+      if ((event.code === "ArrowRight" || event.code === "KeyD" ||
+           event.code === "ArrowDown" || event.code === "KeyS") &&
+          !event.repeat && gameState === STATE_CAMPAIGN_SELECT) {
+        moveCampaignCursor(1);
+        return;
+      }
+
       if ((event.code === "ArrowUp" || event.code === "KeyW") &&
           !event.repeat && gameState === STATE_MISSION_SELECT) {
         moveMissionCursor(-1);
@@ -8117,11 +8424,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (gameState === STATE_BRIEFING || gameState === STATE_READY ||
             gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
           setState(STATE_MISSION_SELECT);
+        } else if (gameState === STATE_MISSION_SELECT) {
+          // One more step back out of the funnel, so the campaign fork is
+          // reachable again without reloading the page.
+          setState(STATE_CAMPAIGN_SELECT);
         }
         return;
       }
 
       if (event.code === "Enter" && !event.repeat) {
+        if (gameState === STATE_CAMPAIGN_SELECT) {
+          confirmCampaignSelection();
+          return;
+        }
         if (gameState === STATE_MISSION_SELECT) {
           confirmMissionSelection();
           return;
@@ -8419,13 +8734,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       if (modePressed && !gamepadInput.previousModeToggle) toggleControlMode();
       if (!wasPlaying && startPressed && !gamepadInput.previousStart) {
-        if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
+        if (gameState === STATE_CAMPAIGN_SELECT) confirmCampaignSelection();
+        else if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
         else if (gameState === STATE_BRIEFING) advanceBriefing();
         else startMission();
       }
       if (cameraPressed && !gamepadInput.previousCamera) {
+        // Square/X is "back": one step out of the funnel per press, so the pad
+        // can reach the campaign fork the same way ESC does.
         if (wasPlaying) cycleCamera();
-        else if (gameState !== STATE_MISSION_SELECT) setState(STATE_MISSION_SELECT);
+        else if (gameState === STATE_MISSION_SELECT) setState(STATE_CAMPAIGN_SELECT);
+        else if (gameState !== STATE_CAMPAIGN_SELECT) setState(STATE_MISSION_SELECT);
       }
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) fireWeapon();
       if (wasPlaying && flarePressed && !gamepadInput.previousFlare) deployFlare();
@@ -8433,7 +8752,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Also allowed on the result screen: otherwise a gamepad-only player can
       // never change aircraft, because retry restarts with the current one and
       // #changeAircraftBtn is mouse-only.
-      if (gameState === STATE_MISSION_SELECT) {
+      if (gameState === STATE_CAMPAIGN_SELECT) {
+        // Left/right is the campaign fork's real axis; up/down is accepted for
+        // the same reason the keyboard accepts it.
+        if ((dpadLeftPressed && !gamepadInput.previousCycleLeft) ||
+            (dpadUpPressed && !gamepadInput.previousCycleUp)) moveCampaignCursor(-1);
+        if ((dpadRightPressed && !gamepadInput.previousCycleRight) ||
+            (dpadDownPressed && !gamepadInput.previousCycleDown)) moveCampaignCursor(1);
+      } else if (gameState === STATE_MISSION_SELECT) {
         if (dpadUpPressed && !gamepadInput.previousCycleUp) moveMissionCursor(-1);
         if (dpadDownPressed && !gamepadInput.previousCycleDown) moveMissionCursor(1);
       } else if (gameState === STATE_BRIEFING) {
@@ -8463,7 +8789,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // does not instantly jump the result screen.
         gamepadInput.menuStickArmed = false;
         const menuStickStep = menuStickY < 0 ? -1 : 1;
-        if (gameState === STATE_MISSION_SELECT) {
+        if (gameState === STATE_CAMPAIGN_SELECT) {
+          moveCampaignCursor(menuStickStep);
+        } else if (gameState === STATE_MISSION_SELECT) {
           moveMissionCursor(menuStickStep);
         } else if (gameState !== STATE_PLAYING && gameState !== STATE_BRIEFING) {
           if (gameState !== STATE_READY) setState(STATE_READY);
@@ -9434,12 +9762,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // states (see the body[data-game-state] rules next to #hud).
       document.body.dataset.gameState = nextState;
       ui.state.textContent = nextState;
+      ui.campaignScreen.classList.toggle("hidden", nextState !== STATE_CAMPAIGN_SELECT);
       ui.missionScreen.classList.toggle("hidden", nextState !== STATE_MISSION_SELECT);
       ui.briefingScreen.classList.toggle("hidden", nextState !== STATE_BRIEFING);
       ui.startScreen.classList.toggle("hidden", nextState !== STATE_READY);
       ui.resultScreen.classList.toggle("hidden", nextState !== STATE_COMPLETE && nextState !== STATE_GAMEOVER);
 
-      if (nextState === STATE_MISSION_SELECT) {
+      if (nextState === STATE_CAMPAIGN_SELECT) {
+        hideBigBanner();
+        campaignCursor = Math.max(0, CAMPAIGNS.findIndex((campaign) => campaign.id === selectedCampaignId));
+        updateCampaignScreen();
+        queueMicrotask(() => ui.campaignConfirmBtn.focus({ preventScroll: true }));
+      } else if (nextState === STATE_MISSION_SELECT) {
         hideBigBanner();
         missionCursor = currentMissionIndex;
         updateMissionScreen();
@@ -9489,7 +9823,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ui.breakdownBaseDamage.textContent = `-${baseDamagePenalty}`;
         ui.breakdownBaseRow.style.display = baseDamagePenalty > 0 ? "" : "none";
         ui.resultMissionTag.textContent =
-          `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
+          `${missionNumberLabel(currentMissionIndex)} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
         const debriefLines = buildDebriefIntelLines(success);
         ui.debriefIntelLines.replaceChildren(...debriefLines.map((line) => {
           const item = document.createElement("li");
@@ -14629,7 +14963,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             missileCooldownScale: enemy.spec.missileCooldownScale ?? null,
             breaking: enemy.mode === "break"
           })),
-        unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index))
+        unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index)),
+        // Campaign-facing view: which side is active, where the current sortie
+        // sits inside it, and which of its missions the list is showing.
+        campaign: selectedCampaignId,
+        campaignSlot: campaignSlotOf(currentMissionIndex),
+        campaignKeys: campaignMissionIndices.map((index) => MISSIONS[index].key)
+      };
+      hook.campaign = {
+        selected: selectedCampaignId,
+        cursor: campaignCursor,
+        cursorId: CAMPAIGNS[campaignCursor] ? CAMPAIGNS[campaignCursor].id : null,
+        aircraft: campaignAircraft(),
+        list: CAMPAIGNS.map((campaign) => ({
+          id: campaign.id,
+          name: campaign.name,
+          operation: campaign.operation,
+          locked: campaign.locked,
+          playable: isCampaignPlayable(campaign),
+          missions: campaignMissionCount(campaign.id),
+          cleared: campaignClearedCount(campaign.id),
+          aircraft: campaignAircraft(campaign.id)
+        }))
       };
       hook.briefing.active = gameState === STATE_BRIEFING;
       hook.briefing.complete = briefing.complete;
@@ -17542,12 +17897,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rebuildPlayerModel(spec.id);
     }
 
+    // The hangar the active campaign flies. One filter over AIRCRAFT_ORDER, so
+    // the order the player sees is still the hangar's own order and the
+    // airframe table is never touched. Falls back to the full list if a
+    // campaign somehow names nothing flyable, rather than showing an empty bay.
+    function campaignAircraft(campaignId = selectedCampaignId) {
+      const campaign = campaignById(campaignId);
+      const allowed = new Set(campaign.aircraft || []);
+      const list = AIRCRAFT_ORDER.filter((id) => allowed.has(id));
+      return list.length > 0 ? list : [...AIRCRAFT_ORDER];
+    }
+
     function selectAircraft(id) {
       if (gameState === STATE_PLAYING) return false;
-      // AIRCRAFT_ORDER, not AIRCRAFT_TYPES: the table also holds enemy-only
-      // airframes, and the hangar is defined by the order list. Checking the
-      // table would let the debug hook put the player in a bomber.
-      if (!AIRCRAFT_ORDER.includes(id)) return false;
+      // campaignAircraft(), not AIRCRAFT_TYPES: the table also holds enemy-only
+      // airframes, and the hangar is defined by the order list narrowed to the
+      // campaign. Checking the table would let the debug hook put the player in
+      // a bomber; checking the unfiltered order would let it fly the other
+      // side's jets.
+      if (!campaignAircraft().includes(id)) return false;
       selectedAircraftId = id;
       rebuildPlayerModel(id);
       updateHangarScreen();
@@ -17556,8 +17924,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function cycleAircraft(delta) {
-      const idx = AIRCRAFT_ORDER.indexOf(selectedAircraftId);
-      selectAircraft(AIRCRAFT_ORDER[(idx + delta + AIRCRAFT_ORDER.length) % AIRCRAFT_ORDER.length]);
+      const roster = campaignAircraft();
+      const idx = roster.indexOf(selectedAircraftId);
+      // -1 means the current jet is not in this campaign's hangar (a campaign
+      // switch just happened): step from the front rather than wrapping off a
+      // missing index, so the first press lands on a real airframe.
+      const from = idx < 0 ? (delta > 0 ? -1 : 0) : idx;
+      selectAircraft(roster[(from + delta + roster.length) % roster.length]);
+    }
+
+    // Called when the campaign changes: keeps the player in their jet if that
+    // campaign flies it, otherwise drops them on its first airframe.
+    function ensureAircraftInCampaign() {
+      const roster = campaignAircraft();
+      if (roster.includes(selectedAircraftId)) return selectedAircraftId;
+      selectedAircraftId = roster[0];
+      rebuildPlayerModel(selectedAircraftId);
+      window.__game.selectedAircraft = selectedAircraftId;
+      return selectedAircraftId;
     }
 
     function statPercent(value, min, max) {
@@ -17639,8 +18023,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function buildHangarUI() {
+      // Bars stay fleet-relative across the WHOLE hangar, not the campaign's
+      // slice: a jet's SPEED bar must mean the same thing on both sides, or the
+      // same airframe would read differently depending on which campaign is
+      // open. Only the list below is filtered.
       aircraftSpecBarCache = computeAircraftSpecBars();
-      ui.aircraftList.replaceChildren(...AIRCRAFT_ORDER.map((id) => {
+      ui.aircraftList.replaceChildren(...campaignAircraft().map((id) => {
         const spec = AIRCRAFT_TYPES[id];
         const item = document.createElement("li");
         item.dataset.aircraft = id;
@@ -17684,7 +18072,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         `<dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
       ui.aircraftBlurbLine.textContent = spec.blurb;
       ui.hangarMissionTag.textContent =
-        `${String(currentMissionIndex + 1).padStart(2, "0")} ${MISSIONS[currentMissionIndex].title}`;
+        `${missionNumberLabel(currentMissionIndex)} ${MISSIONS[currentMissionIndex].title}`;
     }
 
     // Backing store is in CSS pixels, so everything below draws in CSS space and
@@ -17801,7 +18189,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       ctx.font = '700 10px "Courier New", monospace';
       ctx.textBaseline = "middle";
-      MISSIONS.forEach((mission, index) => {
+      // Only the active campaign's sorties are on the board. The other side's
+      // theatre is not intelligence this pilot has.
+      campaignMissionIndices.forEach((index, slot) => {
+        const mission = MISSIONS[index];
         const unlocked = isMissionUnlocked(index);
         const selected = index === missionCursor;
         const x = mission.map.x * w;
@@ -17829,7 +18220,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         const rank = missionRecords[mission.key]?.rank;
         ctx.fillStyle = selected ? "#ffd9a8" : "rgba(190, 225, 245, 0.85)";
-        ctx.fillText(`${String(index + 1).padStart(2, "0")}${rank ? `(${rank})` : ""}`, x + 10, y);
+        ctx.fillText(`${String(slot + 1).padStart(2, "0")}${rank ? `(${rank})` : ""}`, x + 10, y);
         ctx.globalAlpha = 1;
       });
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -17841,8 +18232,131 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       drawTacticalMap(ui.missionThumb, { x: mission.map.x, y: mission.map.y, zoom: 3.1 }, time);
     }
 
+    // ---- Campaign select -----------------------------------------------------
+
+    function campaignMissionCount(campaignId) {
+      return MISSIONS.reduce((n, mission) => n + (missionCampaignId(mission) === campaignId ? 1 : 0), 0);
+    }
+
+    function campaignClearedCount(campaignId) {
+      return MISSIONS.reduce(
+        (n, mission) =>
+          n + (missionCampaignId(mission) === campaignId && missionRecords[mission.key]?.cleared ? 1 : 0),
+        0
+      );
+    }
+
+    // A campaign is playable only if it is unlocked AND actually has sorties.
+    // The Russian campaign is both locked and empty today; either condition
+    // alone is enough to keep the player out, so filling in its missions later
+    // does not accidentally open it before the lock is lifted.
+    function isCampaignPlayable(campaign) {
+      return !campaign.locked && campaignMissionCount(campaign.id) > 0;
+    }
+
+    function buildCampaignScreen() {
+      ui.campaignCards.replaceChildren(...CAMPAIGNS.map((campaign, index) => {
+        const card = document.createElement("div");
+        card.className = "campaignCard";
+        card.dataset.campaign = campaign.id;
+        card.setAttribute("role", "button");
+        card.addEventListener("click", () => {
+          ensureAudio();
+          campaignCursor = index;
+          updateCampaignScreen();
+        });
+        card.addEventListener("dblclick", () => {
+          ensureAudio();
+          confirmCampaignSelection();
+        });
+        return card;
+      }));
+      updateCampaignScreen();
+    }
+
+    function updateCampaignScreen() {
+      CAMPAIGNS.forEach((campaign, index) => {
+        const card = ui.campaignCards.children[index];
+        if (!card) return;
+        const playable = isCampaignPlayable(campaign);
+        const total = campaignMissionCount(campaign.id);
+        const cleared = campaignClearedCount(campaign.id);
+        card.classList.toggle("selected", index === campaignCursor);
+        card.classList.toggle("locked", !playable);
+        card.setAttribute("aria-disabled", String(!playable));
+        card.innerHTML =
+          `<span class="campaignCardKicker">${campaign.name}</span>` +
+          `<h2 class="campaignCardTitle">${campaign.operation}</h2>` +
+          `<span class="campaignCardMeta">${campaign.side}</span>` +
+          (playable
+            ? `<span class="campaignCardCount">MISSIONS <b>${cleared}</b> / ${total} CLEARED</span>`
+            : `<span class="campaignLockTag">${campaign.lockNote || "LOCKED"}</span>`);
+      });
+
+      const campaign = CAMPAIGNS[campaignCursor];
+      const playable = isCampaignPlayable(campaign);
+      ui.campaignPanelKicker.textContent = campaign.name;
+      ui.campaignPanelTitle.textContent = campaign.operation;
+      ui.campaignPanelSide.textContent = campaign.side;
+      ui.campaignPanelCallsign.textContent = campaign.callsign;
+      ui.campaignPanelProgress.textContent = playable
+        ? `${campaignClearedCount(campaign.id)} / ${campaignMissionCount(campaign.id)}`
+        : "—";
+      // Names the airframes rather than a count: the hangar split is the one
+      // mechanical consequence of this choice the player can act on.
+      const roster = campaignAircraft(campaign.id);
+      ui.campaignPanelHangar.textContent = roster
+        .map((id) => (AIRCRAFT_TYPES[id] ? AIRCRAFT_TYPES[id].label : id))
+        .join(" / ");
+      ui.campaignBlurb.textContent = playable
+        ? campaign.jp
+        : `${campaign.jp}（${campaign.lockNote || "LOCKED"}）`;
+      ui.campaignConfirmBtn.disabled = !playable;
+    }
+
+    function moveCampaignCursor(delta) {
+      campaignCursor = ((campaignCursor + delta) % CAMPAIGNS.length + CAMPAIGNS.length) % CAMPAIGNS.length;
+      updateCampaignScreen();
+      playTone(760, 0.03, 0.03, "square");
+    }
+
+    // Switches the active campaign and rebuilds everything that is a view over
+    // it: the sortie list, the hangar, the cursor and the player's jet. Safe to
+    // call with the campaign already active - it simply re-syncs.
+    function applyCampaign(campaignId) {
+      selectedCampaignId = campaignById(campaignId).id;
+      rebuildCampaignMissionIndices();
+      ensureAircraftInCampaign();
+      buildHangarUI();
+      // The first uncleared sortie the player can actually fly, matching the
+      // boot behaviour, so switching sides lands on that campaign's next job.
+      const nextUp = campaignMissionIndices.find(
+        (index) => isMissionUnlocked(index) && !missionRecords[MISSIONS[index].key]?.cleared
+      );
+      currentMissionIndex = nextUp !== undefined ? nextUp : (campaignMissionIndices[0] ?? 0);
+      missionCursor = currentMissionIndex;
+      buildMissionList();
+      syncGameHook();
+    }
+
+    function confirmCampaignSelection() {
+      if (gameState !== STATE_CAMPAIGN_SELECT) return;
+      const campaign = CAMPAIGNS[campaignCursor];
+      if (!isCampaignPlayable(campaign)) {
+        playTone(210, 0.09, 0.06, "square");
+        return;
+      }
+      applyCampaign(campaign.id);
+      playTone(980, 0.06, 0.05, "square");
+      setState(STATE_MISSION_SELECT);
+    }
+
+    // Rebuilt whenever the campaign changes: the list is the campaign's sortie
+    // roster, and its rows carry global mission indices so everything below
+    // still addresses MISSIONS directly.
     function buildMissionList() {
-      ui.missionList.replaceChildren(...MISSIONS.map((mission, index) => {
+      ui.missionList.replaceChildren(...campaignMissionIndices.map((index) => {
+        const mission = MISSIONS[index];
         const item = document.createElement("li");
         item.dataset.mission = mission.key;
         item.addEventListener("click", () => {
@@ -17861,12 +18375,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function updateMissionScreen() {
       const places = ["1ST", "2ND", "3RD"];
-      MISSIONS.forEach((mission, index) => {
-        const item = ui.missionList.children[index];
+      campaignMissionIndices.forEach((index, slot) => {
+        const mission = MISSIONS[index];
+        const item = ui.missionList.children[slot];
         if (!item) return;
         const unlocked = isMissionUnlocked(index);
         const record = missionRecords[mission.key];
-        const num = String(index + 1).padStart(2, "0");
+        const num = String(slot + 1).padStart(2, "0");
         item.classList.toggle("selected", index === missionCursor);
         item.classList.toggle("locked", !unlocked);
         item.classList.toggle("cleared", Boolean(record?.cleared));
@@ -17878,7 +18393,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const mission = MISSIONS[missionCursor];
       const unlocked = isMissionUnlocked(missionCursor);
       const record = missionRecords[mission.key];
-      ui.missionInfoNum.textContent = `MISSION ${String(missionCursor + 1).padStart(2, "0")}`;
+      ui.missionInfoNum.textContent = `MISSION ${missionNumberLabel(missionCursor)}`;
       ui.missionInfoName.textContent = unlocked ? mission.title : "?????";
       ui.missionBestRank.textContent = record?.rank || "—";
       ui.missionScoreList.replaceChildren(...places.map((place, index) => {
@@ -17897,11 +18412,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }));
       ui.missionBlurb.textContent = unlocked ? mission.jp : "前のミッションをクリアすると解禁される。";
       ui.missionConfirmBtn.disabled = !unlocked;
+      // The header names the operation the player picked, so the stage select
+      // never loses track of which side of the war it belongs to.
+      if (ui.missionCampaignTag) ui.missionCampaignTag.textContent = campaignById(selectedCampaignId).operation;
       renderMissionScreenFrame(performance.now() * 0.001);
     }
 
     function moveMissionCursor(delta) {
-      missionCursor = ((missionCursor + delta) % MISSIONS.length + MISSIONS.length) % MISSIONS.length;
+      // Wraps inside the campaign, and steps by campaign slot rather than by
+      // global index, so a future interleaved mission table still cycles the
+      // player through their own campaign only.
+      const count = campaignMissionIndices.length;
+      if (count === 0) return;
+      const slot = campaignSlotOf(missionCursor);
+      const next = ((slot < 0 ? 0 : slot + delta) % count + count) % count;
+      missionCursor = campaignMissionIndices[next];
       updateMissionScreen();
       playTone(760, 0.03, 0.03, "square");
     }
@@ -18008,7 +18533,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return row;
       }));
 
-      ui.briefingNum.textContent = `MISSION ${String(currentMissionIndex + 1).padStart(2, "0")}`;
+      ui.briefingNum.textContent = `MISSION ${missionNumberLabel(currentMissionIndex)}`;
       ui.briefingTitle.textContent = mission.title;
       ui.briefingArea.textContent = WORLD_PRESETS[mission.world]?.label || "UNKNOWN";
       ui.briefingPar.textContent = formatParTime(mission.parTime);
