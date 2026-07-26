@@ -41,6 +41,17 @@ jobs:
           done
           base64 -d _chatgpt_runner/texture_new_maps_patch.py.gz.b64 | gzip -d > /tmp/texture-tools/patch.py
           base64 -d _chatgpt_runner/texture_new_maps_probe.cjs.gz.b64 | gzip -d > /tmp/texture-tools/probe.cjs
+          # Keep the stored probe small/stable; adjust only capture timing here.
+          python3 - <<'PY'
+          from pathlib import Path
+          probe = Path('/tmp/texture-tools/probe.cjs')
+          text = probe.read_text(encoding='utf-8')
+          old = '  await page.waitForTimeout(800);'
+          new = "  await page.waitForFunction(() => window.__game && !window.__game.bigBanner.visible, null, { timeout: 12000 });\n  await page.waitForTimeout(500);"
+          if text.count(old) != 1:
+              raise SystemExit(f'capture timing patch expected 1 match, found {text.count(old)}')
+          probe.write_text(text.replace(old, new), encoding='utf-8')
+          PY
           python3 -m py_compile /tmp/texture-tools/patch.py
           node --check /tmp/texture-tools/probe.cjs
 
