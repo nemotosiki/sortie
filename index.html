@@ -778,6 +778,18 @@
       visibility: visible;
     }
 
+    /* A ship's mount is a smaller frame than a contact: it reads as a part of
+       the thing behind it rather than another thing to fly at. */
+    .enemyMarker.subsystem {
+      width: 22px;
+      height: 22px;
+      border-style: dashed;
+    }
+
+    .enemyMarker.subsystem::before {
+      inset: 3px;
+    }
+
     /* AC04 target box layout:
      *
      *        TGT   [ box ]   F-4
@@ -3263,6 +3275,60 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // (98 each) - AEGIS ~3, the carrier ~6 - and speeds are true-scale knots,
     // which reads as near-stationary next to a jet, exactly like AC.
     const SHIP_SINK_DURATION = 11;
+
+    // ---- Ship subsystems ----------------------------------------------------
+    // AC lets you shoot a warship's mounts off before you sink the hull, and
+    // that is what these are: AA mounts, VLS cell fields and CIWS drums that
+    // live in enemies[] as children of their ship, so lock-on, the gun raycast,
+    // missile guidance and the whole kill flow come for free - the same trick
+    // the ships themselves already play on the aircraft code.
+    //
+    // Three rules keep them from leaking into everything else:
+    //   * subsystem:true / tgt:false - never a designated target, never on the
+    //     radar, never worth a hull's score, never gating a wave.
+    //   * never auto-locked (SUBSYSTEM_LOCK_PENALTY): the reticle still finds
+    //     the hull by itself, and only a deliberate NEXT press walks onto a
+    //     mount. A ship-killing round can therefore never be stolen by the gun
+    //     tub standing in front of the ship.
+    //   * a ship with no `subsystems` entry is untouched - every path below
+    //     falls back to the pre-subsystem constants.
+    const SUBSYSTEM_SCORE = 150;
+    const SUBSYSTEM_LOCK_PENALTY = 1000;
+    const SUBSYSTEM_WRECK_TIME = 4.5;
+    const SUBSYSTEM_ID_BASE = 1000;
+    // HP is quantised the way the hulls are: 49 dies to one missile or a short
+    // burst of gun (3 rounds on the F-16's 18), 98 is exactly one missile and
+    // nothing else the player carries - so "the light mounts fall to strafing,
+    // the cell fields cost you a round" is a real choice.
+    const SUBSYSTEM_KINDS = Object.freeze({
+      aa: Object.freeze({
+        kind: "aa", label: "AA GUN", role: "Ship AA Mount",
+        hp: 49, hitRadius: 14, hitBox: Object.freeze({ x: 16, y: 16, z: 16 }),
+        smokeHeight: 4, explosionColor: 0xffa348, tracerColor: 0xffb04a,
+        radarColor: "#ffb46a", surface: true
+      }),
+      vls: Object.freeze({
+        kind: "vls", label: "VLS", role: "Vertical Launch Cells",
+        hp: 98, hitRadius: 16, hitBox: Object.freeze({ x: 20, y: 12, z: 20 }),
+        smokeHeight: 3, explosionColor: 0xffd35f, tracerColor: 0xffb04a,
+        radarColor: "#ffb46a", surface: true
+      }),
+      ciws: Object.freeze({
+        kind: "ciws", label: "CIWS", role: "Close-In Weapon System",
+        hp: 49, hitRadius: 12, hitBox: Object.freeze({ x: 14, y: 14, z: 14 }),
+        smokeHeight: 4, explosionColor: 0xffa348, tracerColor: 0xfff0a0,
+        radarColor: "#ffb46a", surface: true,
+        // The reason to take a mount off before the hull. A live drum rolls
+        // once per second against every round inbound inside its range, so a
+        // missile fired past one is a missile you are likely to have wasted.
+        ciws: Object.freeze({
+          range: 800, interceptPerSecond: 0.25,
+          cooldownMin: 0.8, cooldownSpread: 0.5,
+          damage: 7, maxHitChance: 0.12, tracers: 6
+        })
+      })
+    });
+
     const SHIP_TYPES = Object.freeze({
       aegis: Object.freeze({
         key: "aegis",
@@ -3284,6 +3350,16 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         aaMounts: Object.freeze([-48, 50]),
         aaHeight: 13,
         aa: Object.freeze({ range: 640, cooldownMin: 0.55, cooldownSpread: 0.55, damage: 7, maxHitChance: 0.16, tracers: 2 }),
+        // Offsets are the ship model's own hardware in hull-local metres (bow
+        // at -Z): the 5-inch mount forward, the CIWS drum on the hangar roof
+        // aft, and the two VLS cell fields the SAMs already launch out of.
+        // Array order is the NEXT-target walk: hull, AA, AA, VLS, VLS.
+        subsystems: Object.freeze([
+          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: -48 }) }),
+          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 19, z: 51 }) }),
+          Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: -37 }) }),
+          Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: 33 }) })
+        ]),
         radarColor: "#ffb46a",
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
@@ -3338,7 +3414,21 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         bowOffset: 168,
         aaMounts: Object.freeze([-120, 130]),
         aaHeight: 18,
-        aa: Object.freeze({ range: 560, cooldownMin: 0.85, cooldownSpread: 0.7, damage: 7, maxHitChance: 0.1, tracers: 1 }),
+        // tracers is now one per AA mount rather than a flat 1: the burst
+        // thins out as the tubs are shot off, which is the readout the player
+        // is meant to fly by. Per-tracer hit chance is unchanged and
+        // PLAYER_HIT_COOLDOWN still caps a burst at one hit, so the extra
+        // tracers buy volume, not a tripled damage rate.
+        aa: Object.freeze({ range: 560, cooldownMin: 0.85, cooldownSpread: 0.7, damage: 7, maxHitChance: 0.1, tracers: 3 }),
+        // Three gun tubs and the CIWS drum, each on hardware the model draws:
+        // deck-edge sponsons fore and aft, one gun forward of the island, and
+        // the drum on the existing starboard sponson.
+        subsystems: Object.freeze([
+          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: -40.5, y: 19, z: -130 }) }),
+          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 40.5, y: 19, z: 120 }) }),
+          Object.freeze({ key: "aa-island", kind: "aa", offset: Object.freeze({ x: 34, y: 24.5, z: 14 }) }),
+          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 40.5, y: 19.5, z: 78 }) })
+        ]),
         radarColor: "#ff8a6a",
         tracerColor: 0xff9a52,
         explosionColor: 0xffb648
@@ -4472,6 +4562,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // Non-designated contacts destroyed. Deliberately separate from `kills`:
     // `kills` is the objective counter that TGT REMAIN and ACCOMPLISHED read.
     let bonusKills = 0;
+    // Player rounds shot down by a live CIWS drum.
+    let missilesIntercepted = 0;
+    // Probe instrumentation for the subsystem gates: rounds a ship's AA and a
+    // CIWS drum actually put in the air, and SAMs a ship actually launched.
+    let aaTracersFired = 0;
+    let ciwsTracersFired = 0;
+    let shipSamLaunched = 0;
     // Total score docked for bombers that got their loads off. Tracked on its
     // own so the debrief can show what the sortie cost the base.
     let baseDamagePenalty = 0;
@@ -5081,7 +5178,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             enemy.alive = false;
             enemy.deadTimer = 0.2;
             enemy.hitbox.visible = false;
-            enemy.model.group.visible = false;
+            if (enemy.model) enemy.model.group.visible = false;
           }
           kills = waveTargetsSpawned;
           resetLock();
@@ -5130,7 +5227,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             enemy.alive = false;
             enemy.deadTimer = 0.2;
             enemy.hitbox.visible = false;
-            enemy.model.group.visible = false;
+            if (enemy.model) enemy.model.group.visible = false;
           }
           kills = MISSIONS[currentMissionIndex].totalTargets;
           aceDestroyed = true;
@@ -5764,9 +5861,19 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       setControlMode(controlMode === CONTROL_NORMAL ? CONTROL_EXPERT : CONTROL_NORMAL);
     }
 
+    // Cycle order: hulls in id order, and immediately after each hull its own
+    // mounts in table order - hull, AA, AA, VLS, VLS, next hull. Ids alone
+    // cannot express that (mounts are numbered off in the 1000s to stay unique
+    // against ships, aircraft and installations alike), so the key is built.
+    function targetCycleKey(enemy) {
+      const base = enemy.subsystem ? enemy.parentId : enemy.id;
+      return base * 100 + (enemy.subsystem ? enemy.subsystemIndex + 1 : 0);
+    }
+
     function cycleTarget() {
       if (gameState !== STATE_PLAYING) return;
-      const living = enemies.filter((enemy) => enemy.alive).sort((a, b) => a.id - b.id);
+      const living = enemies.filter((enemy) => enemy.alive)
+        .sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
       if (living.length === 0) return;
 
       const currentId = preferredTargetId ?? lock.targetId;
@@ -5776,7 +5883,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       lock.targetId = next.id;
       lock.progress = 0;
       lock.locked = false;
-      showBanner(`TARGET SELECT · ${next.id}`, 0.75);
+      // A mount has no meaningful number to read out - it is "the VLS on that
+      // ship" - so it announces itself by name instead.
+      showBanner(`TARGET SELECT · ${next.subsystem ? next.label : next.id}`, 0.75);
     }
 
     function cycleCamera() {
@@ -6519,6 +6628,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       clearFlares();
       kills = 0;
       bonusKills = 0;
+      missilesIntercepted = 0;
+      aaTracersFired = 0;
+      ciwsTracersFired = 0;
+      shipSamLaunched = 0;
       baseDamagePenalty = 0;
       fearStageReached = 0;
       gunKills = 0;
@@ -6846,6 +6959,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // superstructure) crashes the player just like terrain, hulks included.
       for (const enemy of enemies) {
         if (!enemy.surface) continue;
+        // A mount is already inside its ship's box and owns no crash volume of
+        // its own - it must not stand here as a second thing to fly into.
+        if (enemy.subsystem) continue;
         if (!enemy.alive && enemy.deadTimer <= 0) continue;
         forwardOf(enemy.group, tmpV2);
         tmpV3.copy(player.position).sub(enemy.group.position);
@@ -6906,11 +7022,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, GUN_RANGE);
 
       if (hits.length > 0) {
-        const hit = hits[0];
-        const enemy = enemies.find((candidate) => candidate.id === hit.object.userData.enemyId);
-        if (enemy && enemy.alive) {
-          end = hit.point.clone();
-          damageEnemy(enemy, GUN_DAMAGE, false);
+        // A mount's box sits INSIDE its ship's, so the hull is always the
+        // nearer intersection and "nearest wins" could never reach a mount.
+        // Aim decides instead: with a mount selected the burst goes to the
+        // mount, and with anything else selected mounts are transparent and
+        // the hull takes every round. Neither can absorb the other's fire.
+        const focusId = preferredTargetId ?? lock.targetId;
+        let victim = null;
+        let point = null;
+        for (const hit of hits) {
+          const candidate = enemies.find((entity) => entity.id === hit.object.userData.enemyId);
+          if (!candidate || !candidate.alive || !candidate.subsystem) continue;
+          if (candidate.id !== focusId) continue;
+          victim = candidate;
+          point = hit.point;
+          break;
+        }
+        if (!victim) {
+          for (const hit of hits) {
+            const candidate = enemies.find((entity) => entity.id === hit.object.userData.enemyId);
+            if (!candidate || !candidate.alive || candidate.subsystem) continue;
+            victim = candidate;
+            point = hit.point;
+            break;
+          }
+        }
+        if (victim) {
+          end = point.clone();
+          damageEnemy(victim, GUN_DAMAGE, false);
           createImpactBurst(end, 0x9df8ff, 0.7);
         }
       }
@@ -6989,6 +7128,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const missile = missilesInFlight[i];
         missile.life += dt;
         missile.trailTimer -= dt;
+
+        // Point defence gets its roll before the round moves, so a drum that
+        // is about to be flown past still gets the shot it earned.
+        if (ciwsIntercept(missile, dt)) {
+          removeMissile(i);
+          continue;
+        }
 
         const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
         // One step out in the cruise, eight through the endgame.
@@ -7094,8 +7240,51 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // workaround for the endgame being quantised, and sub-stepping fixed the
     // cause, so every round faces the same radius it always did.
     function proximityFuseFor(target) {
+      // A mount is a small box bolted to a big ship: it fuses on its own
+      // radius undiluted, so a round aimed at one still arrives, while a round
+      // aimed at the hull still has to satisfy the hull's much larger figure.
+      if (target.subsystem) return target.spec.hitRadius;
       if (target.surface) return target.spec.hitRadius * 0.35;
       return MISSILE_FUSE;
+    }
+
+    const tmpCiwsAim = new THREE.Vector3();
+    const tmpCiwsDir = new THREE.Vector3();
+    const tmpCiwsEnd = new THREE.Vector3();
+
+    // CIWS interception. Every drum still standing rolls once per second, per
+    // round, against anything inbound inside its range - p converted to this
+    // frame's slice so the rate does not drift with frame time. This is the
+    // mechanical reason to strip a carrier's mounts before shooting at it.
+    function ciwsIntercept(missile, dt) {
+      if (gameState !== STATE_PLAYING || !(dt > 0)) return false;
+      forwardOf(missile.mesh, tmpCiwsDir);
+      for (const enemy of enemies) {
+        if (!enemy.alive || enemy.subsystemKind !== "ciws") continue;
+        const ciws = enemy.spec.ciws;
+        tmpCiwsAim.copy(enemy.group.position).sub(missile.mesh.position);
+        const distance = tmpCiwsAim.length();
+        if (!(distance > 1) || distance > ciws.range) continue;
+        // Inbound only: a round that has already gone past is not a threat the
+        // mount shoots at, so an overshoot is never "intercepted" after the fact.
+        if (tmpCiwsAim.dot(tmpCiwsDir) <= 0) continue;
+        if (Math.random() >= 1 - Math.pow(1 - ciws.interceptPerSecond, dt)) continue;
+
+        for (let i = 0; i < ciws.tracers; i += 1) {
+          tmpCiwsEnd.copy(missile.mesh.position);
+          tmpCiwsEnd.x += (Math.random() - 0.5) * 14;
+          tmpCiwsEnd.y += (Math.random() - 0.5) * 14;
+          tmpCiwsEnd.z += (Math.random() - 0.5) * 14;
+          createTracer(enemy.group.position, tmpCiwsEnd, enemy.spec.tracerColor, 0.12, 0.55);
+        }
+        createMuzzleFlash(enemy.group.position, enemy.spec.tracerColor);
+        createExplosion(missile.mesh.position, 0xffd08a, 0.5);
+        playSfx("explosion", 0.3, 1.35);
+        missilesIntercepted += 1;
+        showBanner("MISSILE INTERCEPTED · CIWS", 0.9, "danger");
+        return true;
+      }
+      return false;
     }
 
     function removeMissile(index) {
@@ -7542,6 +7731,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
       const profile = ENEMY_MISSILE_PROFILES[enemy.type];
       if (!profile) return false;
+      // Cells shot off means no SAM at all - not a slower one. Checked before
+      // anything is built so a silenced ship costs nothing per attempt.
+      if (shipVlsSilenced(enemy)) return false;
 
       tmpV1.copy(player.position).sub(enemy.group.position);
       const distance = tmpV1.length();
@@ -7557,10 +7749,16 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // VLS cold launch: straight up out of the fore/aft cell field with an
         // efflux cloud on deck - guidance then tips it over toward the player.
         enemy.vlsSide = -enemy.vlsSide;
+        const cell = nextLivingVls(enemy);
         if (enemy.ground) {
           // An installation launches from its own canister pack: the pad is the
           // group origin, so the round leaves 6m up instead of off a deck.
           root.position.copy(enemy.group.position).addScaledVector(WORLD_UP, 6);
+        } else if (cell) {
+          // Out of a cell field that is still standing. The round now leaves
+          // the deck plate the player can see and shoot, and the alternation
+          // walks the live fields instead of two fixed offsets.
+          root.position.copy(cell.group.position);
         } else {
           root.position.copy(enemy.group.position)
             .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
@@ -7582,6 +7780,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       enemyMissileSerial += 1;
       enemyMissilesLaunched += 1;
+      if (enemy.surface && !enemy.ground) shipSamLaunched += 1;
       if (enemy.ground) {
         triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
       } else if (enemy.surface) {
@@ -7831,8 +8030,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const dot = tmpV1.dot(tmpV2);
         if (dot < LOCK_DOT) continue;
 
-        inCone.push({ id: enemy.id, distance });
+        // Mounts are never auto-locked and never join a salvo. Without this a
+        // gun tub 50 m in front of a hull would trade lock with the ship every
+        // few frames, and every missile meant for the hull would go to it.
+        // Manual selection is untouched: preferredCandidate below still wins.
+        if (!enemy.subsystem) inCone.push({ id: enemy.id, distance });
         let selectionScore = dot * 4 - distance / lockRange;
+        if (enemy.subsystem) selectionScore -= SUBSYSTEM_LOCK_PENALTY;
         if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
         if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
         if (selectionScore > bestScore) {
@@ -8110,6 +8314,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         mode: "cruise",
         baseHeading: headingRad,
         vlsSide: 1,
+        vlsIndex: -1,
+        subsystems: [],
         waypoints: [],
         waypointIndex: 0,
         fireCooldown: 999,
@@ -8130,6 +8336,133 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+      const ship = enemies[enemies.length - 1];
+      if (spec.subsystems) spawnShipSubsystems(ship);
+    }
+
+    // Children of a ship, spawned with it and owned by it. They carry no model
+    // of their own - the mount is already part of the hull mesh - so all a
+    // subsystem adds to the scene is the invisible hitbox that rides the
+    // parent's transform. Every other field exists so the shared enemy paths
+    // (lock, HUD, damage, dispose) never have to ask what kind of thing it is.
+    function spawnShipSubsystems(parent) {
+      const list = parent.spec.subsystems;
+      for (let i = 0; i < list.length; i += 1) {
+        const entry = list[i];
+        const kindSpec = SUBSYSTEM_KINDS[entry.kind];
+        if (!kindSpec) continue;
+        const spec = Object.freeze({ ...kindSpec, ...entry, label: entry.label || kindSpec.label });
+        const id = SUBSYSTEM_ID_BASE + parent.id * 10 + i;
+        const root = new THREE.Group();
+        const hitbox = new THREE.Mesh(geometry.panel, shared.hitbox);
+        hitbox.userData.enemyId = id;
+        hitbox.scale.set(spec.hitBox.x, spec.hitBox.y, spec.hitBox.z);
+        root.add(hitbox);
+        scene.add(root);
+        enemySerial += 1;
+
+        const sub = {
+          id,
+          serial: enemySerial,
+          wave: parent.wave,
+          slot: parent.slot,
+          type: `sub-${spec.kind}`,
+          label: spec.label,
+          shortName: spec.label,
+          name: null,
+          role: spec.role,
+          behavior: "subsystem",
+          // Always a bonus kill: a mount can neither hold a wave open nor
+          // count toward the objective, whatever its parent is flagged.
+          tgt: false,
+          surface: true,
+          subsystem: true,
+          subsystemKind: spec.kind,
+          subsystemIndex: i,
+          parentId: parent.id,
+          parentRef: parent,
+          offset: new THREE.Vector3(entry.offset.x, entry.offset.y, entry.offset.z),
+          isAce: false,
+          aceEngageLineFired: true,
+          aceHalfLineFired: true,
+          spec,
+          group: root,
+          model: null,
+          hitbox,
+          alive: true,
+          maxHp: spec.hp,
+          hp: spec.hp,
+          speed: 0,
+          targetSpeed: 0,
+          mode: "mounted",
+          baseHeading: parent.baseHeading,
+          vlsSide: 1,
+          waypoints: [],
+          waypointIndex: 0,
+          fireCooldown: 999,
+          missileCooldown: 999,
+          aaCooldown: 1 + Math.random(),
+          wakeTimer: 0,
+          sinkBoomTimer: 0,
+          sinkRoll: 0,
+          sinkPitch: 0,
+          deadTimer: 0,
+          hitFlash: 0,
+          smokeTimer: 0,
+          seed: Math.random() * Math.PI * 2,
+          formationLeaderId: null,
+          formationSide: 1,
+          formationActive: false,
+          targetPoint: new THREE.Vector3(),
+          formationPoint: new THREE.Vector3(),
+          safeTarget: new THREE.Vector3()
+        };
+        parent.subsystems.push(sub);
+        enemies.push(sub);
+        positionSubsystem(sub);
+      }
+    }
+
+    // Ride the parent's transform. Driven from the hull's own update so a mount
+    // is never a frame behind the deck it is bolted to.
+    function positionSubsystem(sub) {
+      const parent = sub.parentRef;
+      sub.group.quaternion.copy(parent.group.quaternion);
+      sub.group.position.copy(sub.offset)
+        .applyQuaternion(parent.group.quaternion)
+        .add(parent.group.position);
+    }
+
+    function shipVlsSilenced(enemy) {
+      // Does this CLASS of ship launch out of cells at all? Asked of the frozen
+      // table, so the answer cannot change as mounts are destroyed and their
+      // wrecks are cleaned up.
+      const table = enemy.spec.subsystems;
+      if (!table) return false;
+      let hasCells = false;
+      for (let i = 0; i < table.length; i += 1) {
+        if (table[i].kind === "vls") { hasCells = true; break; }
+      }
+      if (!hasCells) return false;
+      // Any field still standing keeps the ship in business.
+      for (let i = 0; i < enemy.subsystems.length; i += 1) {
+        const sub = enemy.subsystems[i];
+        if (sub.alive && sub.subsystemKind === "vls") return false;
+      }
+      return true;
+    }
+
+    // Round-robin over the cell fields still standing, the way vlsSide used to
+    // alternate between the two fixed ones.
+    function nextLivingVls(enemy) {
+      if (!enemy.subsystems || enemy.subsystems.length === 0) return null;
+      const cells = [];
+      for (const sub of enemy.subsystems) {
+        if (sub.subsystemKind === "vls" && sub.alive) cells.push(sub);
+      }
+      if (cells.length === 0) return null;
+      enemy.vlsIndex = ((enemy.vlsIndex ?? -1) + 1) % cells.length;
+      return cells[enemy.vlsIndex];
     }
 
     // Installations stand on the terrain surface. Mountains are noise-
@@ -8553,11 +8886,18 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const enemy = enemies[i];
         if (!enemy.alive) {
           enemy.deadTimer -= dt;
-          if (enemy.ground) updateGroundWreck(enemy, dt);
+          if (enemy.subsystem) updateSubsystemWreck(enemy, dt);
+          else if (enemy.ground) updateGroundWreck(enemy, dt);
           else if (enemy.surface) updateShipSinking(enemy, dt);
           if (enemy.deadTimer <= 0) {
             scene.remove(enemy.group);
-            disposeAircraftMaterials(enemy.model);
+            // Mounts borrow their ship's meshes and own no materials.
+            if (enemy.model) disposeAircraftMaterials(enemy.model);
+            if (enemy.subsystem && enemy.parentRef) {
+              const owned = enemy.parentRef.subsystems;
+              const at = owned.indexOf(enemy);
+              if (at >= 0) owned.splice(at, 1);
+            }
             enemies.splice(i, 1);
           }
           continue;
@@ -8565,12 +8905,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
         const spec = enemy.spec;
         enemy.hitFlash = Math.max(0, enemy.hitFlash - dt);
-        updateAircraftFlash(enemy.model, enemy.hitFlash);
+        if (enemy.model) updateAircraftFlash(enemy.model, enemy.hitFlash);
         enemy.formationActive = false;
+
+        if (enemy.subsystem) {
+          updateSubsystem(enemy, dt);
+          continue;
+        }
 
         if (enemy.surface) {
           if (enemy.ground) updateGroundUnit(enemy, dt, time);
           else updateShip(enemy, dt, time);
+          // Mounts follow the hull the instant it has moved, alive or wrecked,
+          // so a lock box never trails the deck it is drawn on.
+          for (let s = 0; s < enemy.subsystems.length; s += 1) positionSubsystem(enemy.subsystems[s]);
           continue;
         }
 
@@ -9072,6 +9420,43 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       }
     }
 
+    const aaBurstPoints = [];
+    const aaLegacyPoints = [];
+    const aaLegacyForward = new THREE.Vector3();
+
+    // Where this ship's AA can fire from right now. A hull with a subsystems
+    // table answers with its living kind:"aa" mounts, so the burst thins out
+    // one tracer at a time and stops dead when the last mount is gone; a hull
+    // without one answers with the pre-subsystem aaMounts line, unchanged.
+    function aaFiringPoints(enemy) {
+      const out = aaBurstPoints;
+      out.length = 0;
+      const spec = enemy.spec;
+      let mounted = false;
+      if (spec.subsystems) {
+        for (let i = 0; i < spec.subsystems.length; i += 1) {
+          if (spec.subsystems[i].kind === "aa") { mounted = true; break; }
+        }
+      }
+      if (mounted) {
+        for (let i = 0; i < enemy.subsystems.length; i += 1) {
+          const sub = enemy.subsystems[i];
+          if (sub.alive && sub.subsystemKind === "aa") out.push(sub.group.position);
+        }
+        return out;
+      }
+      forwardOf(enemy.group, aaLegacyForward);
+      for (let i = 0; i < spec.aa.tracers; i += 1) {
+        const mount = spec.aaMounts[i % spec.aaMounts.length];
+        if (!aaLegacyPoints[i]) aaLegacyPoints[i] = new THREE.Vector3();
+        const point = aaLegacyPoints[i];
+        point.copy(enemy.group.position).addScaledVector(aaLegacyForward, mount);
+        point.y += spec.aaHeight;
+        out.push(point);
+      }
+      return out;
+    }
+
     function shipAaBurst(enemy) {
       if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return;
       const aa = enemy.spec.aa;
@@ -9079,12 +9464,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const distance = tmpV1.length();
       if (!Number.isFinite(distance) || distance > aa.range || distance < 45) return;
 
-      forwardOf(enemy.group, tmpV2);
+      const mounts = aaFiringPoints(enemy);
+      if (mounts.length === 0) return;
+
       forwardOf(player, tmpV3);
-      for (let i = 0; i < aa.tracers; i += 1) {
-        const mount = enemy.spec.aaMounts[i % enemy.spec.aaMounts.length];
-        const start = enemy.group.position.clone().addScaledVector(tmpV2, mount);
-        start.y += enemy.spec.aaHeight;
+      for (let i = 0; i < mounts.length; i += 1) {
+        const start = mounts[i].clone();
         const hitChance = THREE.MathUtils.clamp(
           (1 - distance / (aa.range + 140)) * 0.5,
           0.02,
@@ -9101,9 +9486,69 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           end.z += (Math.random() - 0.5) * 46;
         }
         createTracer(start, end, enemy.spec.tracerColor, 0.15, 0.55);
+        aaTracersFired += 1;
         if (i === 0) createMuzzleFlash(start, enemy.spec.tracerColor);
         if (hit) applyPlayerDamage(aa.damage);
       }
+    }
+
+    // A mount does nothing on its own except the CIWS, which is a weapon in its
+    // own right: it strafes the player here and shoots down rounds in
+    // updateMissiles. Everything else about a mount is its parent's job, which
+    // is what keeps twelve extra entities off the frame budget.
+    function updateSubsystem(enemy, dt) {
+      const ciws = enemy.spec.ciws;
+      if (!ciws) return;
+      const parent = enemy.parentRef;
+      if (!parent || !parent.alive) return;
+      enemy.aaCooldown -= dt;
+      if (enemy.aaCooldown > 0) return;
+      enemy.aaCooldown = ciws.cooldownMin + Math.random() * ciws.cooldownSpread;
+      ciwsBurst(enemy, ciws);
+    }
+
+    function ciwsBurst(enemy, ciws) {
+      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return;
+      tmpV1.copy(player.position).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      if (!Number.isFinite(distance) || distance > ciws.range || distance < 40) return;
+
+      forwardOf(player, tmpV3);
+      for (let i = 0; i < ciws.tracers; i += 1) {
+        const start = enemy.group.position.clone();
+        const hitChance = THREE.MathUtils.clamp(
+          (1 - distance / (ciws.range + 140)) * 0.5,
+          0.02,
+          ciws.maxHitChance
+        );
+        const hit = playerHitCooldown <= 0 && Math.random() < hitChance;
+        const end = player.position.clone()
+          .addScaledVector(tmpV3, playerSpeed * distance / 900 * (0.2 + Math.random() * 0.5));
+        if (!hit) {
+          end.x += (Math.random() - 0.5) * 30;
+          end.y += (Math.random() - 0.5) * 22;
+          end.z += (Math.random() - 0.5) * 30;
+        }
+        createTracer(start, end, enemy.spec.tracerColor, 0.12, 0.5);
+        ciwsTracersFired += 1;
+        if (i === 0) createMuzzleFlash(start, enemy.spec.tracerColor);
+        if (hit) applyPlayerDamage(ciws.damage);
+      }
+    }
+
+    // A wrecked mount smoulders on the deck it is bolted to for a few seconds.
+    // It is already out of enemies[] as a target the moment it dies - this is
+    // only the wreck playing out.
+    function updateSubsystemWreck(enemy, dt) {
+      enemy.smokeTimer -= dt;
+      if (enemy.smokeTimer > 0) return;
+      tmpV8.copy(enemy.group.position);
+      tmpV8.y += enemy.spec.smokeHeight * 0.5;
+      tmpV2.set((Math.random() - 0.5) * 3, 4 + Math.random() * 4, (Math.random() - 0.5) * 3);
+      smokeParticlePool.spawn(tmpV8, tmpV2, 1.8 + Math.random() * 1.1, 0x1b1c20, -0.6, 1.2);
+      tmpV2.set((Math.random() - 0.5) * 6, 2 + Math.random() * 5, (Math.random() - 0.5) * 6);
+      sparkParticlePool.spawn(tmpV8, tmpV2, 0.25 + Math.random() * 0.2, 0xffa54e, 2.4, 0.3);
+      enemy.smokeTimer += 0.09;
     }
 
     function updateShipSinking(enemy, dt) {
@@ -9332,7 +9777,17 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       enemy.postStallTimer = 0;
       enemy.postStallPhase = 0;
       let chainBlast = null;
-      if (enemy.ground) {
+      if (enemy.subsystem) {
+        // A mount neither sinks nor leaves a hulk in the sky: it blows up where
+        // it sits and burns on the parent's deck. The hull is untouched -
+        // stripping the guns off a ship never sinks it, which is the whole
+        // point of the hull still being there to shoot at afterwards.
+        enemy.deadTimer = SUBSYSTEM_WRECK_TIME;
+        enemy.smokeTimer = 0;
+        tmpV9.copy(enemy.group.position);
+        createExplosion(tmpV9, enemy.spec.explosionColor, 0.9);
+        subsystemDownRadio(enemy);
+      } else if (enemy.ground) {
         // Installations neither sink nor pop out of existence: one big blast,
         // then the burning hulk stays on the map (updateGroundWreck plays it).
         enemy.deadTimer = GROUND_WRECK_FOREVER;
@@ -9370,11 +9825,32 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const blast = (missileHit ? 1.15 : 0.95) * (enemy.spec.explosionScale || 1);
         createExplosion(enemy.group.position, missileHit ? 0xffd35f : enemy.spec.explosionColor, blast);
       }
+      // A hull that goes down takes its mounts with it: no turrets left
+      // floating over the wreck, no orphan lock candidates. They are marked
+      // rather than spliced, because damageEnemy is reached from inside loops
+      // that are themselves walking enemies[] - the removal happens in
+      // updateEnemies on the next pass, and alive:false is already enough to
+      // take them out of lock, gun, missile, radar and HUD in this one.
+      if (enemy.subsystems && enemy.subsystems.length) {
+        for (const sub of enemy.subsystems) {
+          if (!sub.alive && sub.deadTimer <= 0) continue;
+          sub.alive = false;
+          sub.deadTimer = 0;
+          sub.hitbox.visible = false;
+          if (lock.targetId === sub.id) resetLock();
+          if (preferredTargetId === sub.id) preferredTargetId = null;
+        }
+      }
+
       // A designated target counts toward the objective; anything else is a
       // bonus kill worth half, which keeps a mission that is generous with
       // non-TGT contacts from handing out ranks the player did not fly for.
+      // A mount is worth a flat 150: enough to be worth the round, far too
+      // little to rank a sortie on, so stripping a fleet cannot buy an S.
       const isTgtKill = isTgtEntry(enemy);
-      const killScore = isTgtKill ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR);
+      const killScore = enemy.subsystem
+        ? SUBSYSTEM_SCORE
+        : (isTgtKill ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR));
       if (isTgtKill) kills += 1;
       else bonusKills += 1;
       if (missileHit) missileKills += 1;
@@ -9390,7 +9866,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
-      showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+      showBanner(
+        enemy.subsystem ? `${enemy.label} DESTROYED` : `TARGET ${enemy.id} · ${enemy.label} DESTROYED`,
+        1.1,
+        "success"
+      );
       if (enemy.type === "carrier") startAceKillCam(enemy);
       if (enemy.type === "bomber" && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
@@ -9413,6 +9893,32 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       }
       onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
+    }
+
+    // Feedback for the two mount kills that change how the fight is flown: the
+    // drum that was eating the player's missiles, and the last gun on a hull.
+    function subsystemDownRadio(sub) {
+      const parent = sub.parentRef;
+      if (sub.subsystemKind === "ciws") {
+        triggerRadioLine(
+          "wingman",
+          "CIWS沈黙！ 今ならミサイルが通るぞ！",
+          RADIO_PRIORITY.NORMAL,
+          `ciws-down-${sub.id}`
+        );
+        return;
+      }
+      if (sub.subsystemKind !== "aa" || !parent) return;
+      const remaining = parent.subsystems.filter(
+        (other) => other !== sub && other.alive && other.subsystemKind === "aa"
+      ).length;
+      if (remaining > 0) return;
+      triggerRadioLine(
+        "wingman",
+        "対空砲座を全部潰したぞ！ 弾幕が止んだ！",
+        RADIO_PRIORITY.NORMAL,
+        `aa-silenced-${parent.id}`
+      );
     }
 
     function applyPlayerDamage(amount, bypassCooldown = false) {
@@ -10519,6 +11025,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         marker.classList.toggle("locked", locked);
         marker.classList.toggle("multiLocked", multiLocked);
         marker.classList.toggle("tgt", isTgt);
+        marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
         const displayName = enemyDisplayName(enemy);
         const nameLine = nameTag.firstElementChild;
@@ -10879,6 +11386,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.weapons.spwLaunched = spwLaunched;
       hook.weapons.spwHits = spwHits;
       hook.weapons.bombsDropped = bombsDropped;
+      hook.weapons.missilesIntercepted = missilesIntercepted;
       hook.weapons.multiLock = [...multiLock.ids];
       hook.weapons.ccip.active = ccip.active;
       hook.weapons.ccip.onScreen = ccip.onScreen;
@@ -10955,6 +11463,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       hook.debug.lowHealthSmokeActive = health < PLAYER_MAX_HEALTH * 0.55 && smokeParticlePool.activeCount > 0;
       hook.debug.fearStageReached = fearStageReached;
       hook.debug.nickname = playerNickname;
+      hook.debug.aaTracersFired = aaTracersFired;
+      hook.debug.ciwsTracersFired = ciwsTracersFired;
+      hook.debug.shipSamLaunched = shipSamLaunched;
       hook.debug.gunKills = gunKills;
       hook.debug.missileKills = missileKills;
       hook.debug.damageTaken = damageTaken;
@@ -11038,6 +11549,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         behavior: enemy.behavior,
         surface: Boolean(enemy.surface),
         ground: Boolean(enemy.ground),
+        subsystem: Boolean(enemy.subsystem),
+        subsystemKind: enemy.subsystemKind ?? null,
+        subsystemIndex: enemy.subsystemIndex ?? null,
+        parentId: enemy.parentId ?? null,
         hp: Math.max(0, Math.round(enemy.hp)),
         maxHp: enemy.maxHp,
         speed: enemy.speed,
@@ -11140,6 +11655,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
+        // Mounts stay off the scope. Twelve extra blips stacked on three hulls
+        // would make a fleet unreadable, and they are not contacts to fly at -
+        // they are things you shoot off something the scope already shows.
+        if (enemy.subsystem) continue;
         tmpV3.copy(enemy.group.position).sub(player.position);
         const rightDistance = tmpV3.dot(tmpV2);
         const forwardDistance = tmpV3.dot(lastRadarForward);
@@ -11304,7 +11823,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       clearMissionProps();
       for (const enemy of enemies) {
         scene.remove(enemy.group);
-        disposeAircraftMaterials(enemy.model);
+        // Mounts share their ship's materials - there is nothing of their own
+        // to dispose, and disposing the parent's twice would blank the model.
+        if (enemy.model) disposeAircraftMaterials(enemy.model);
       }
       enemies.length = 0;
 
@@ -12954,6 +13475,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.panel, dark, 32, 49, 40, 6.5, 0.5, 0.6);
         add(geometry.panel, dark, -40.5, 15.5, -50, 6, 4.5, 12);
         add(geometry.panel, dark, 40.5, 15.5, 78, 6, 4.5, 12);
+        // Gun sponsons and their mounts. Each is a lockable subsystem, so the
+        // hardware has to be visible exactly where the hitbox is: two deck-edge
+        // AA tubs fore and aft, a third gun just forward of the island, and the
+        // CIWS drum on the starboard sponson that was already there.
+        add(geometry.panel, dark, -40.5, 15.5, -130, 6, 4.5, 12);
+        add(geometry.panel, dark, 40.5, 15.5, 120, 6, 4.5, 12);
+        add(geometry.shipCylinder, light, -40.5, 18.4, -130, 2.2, 2.4, 2.2);
+        add(geometry.panel, dark, -40.5, 20.4, -133.5, 0.55, 0.55, 7, -0.3);
+        add(geometry.shipCylinder, light, 40.5, 18.4, 120, 2.2, 2.4, 2.2);
+        add(geometry.panel, dark, 40.5, 20.4, 123.5, 0.55, 0.55, 7, 0.3);
+        add(geometry.shipCylinder, light, 34, 23.8, 14, 2, 2.2, 2);
+        add(geometry.panel, dark, 34, 25.6, 10.5, 0.5, 0.5, 6.5, -0.32);
+        add(geometry.shipCylinder, light, 40.5, 18.8, 78, 1.9, 2.2, 1.9);
+        add(geometry.enemyHitbox, light, 40.5, 21, 78, 0.16, 0.16, 0.16);
         for (let i = 0; i < 4; i += 1) {
           const px = -22 + (i % 2) * 14 + (i > 1 ? 4 : 0);
           const pz = -128 + Math.floor(i / 2) * 24 + (i % 2) * 9;
