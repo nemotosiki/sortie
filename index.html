@@ -5827,6 +5827,161 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             distance: [1400, 3600]
           }
         }
+      },
+
+      // Foul-weather intercept map (story #07 STORM FRONT). The design problem
+      // this preset solves is that "bad visibility" and "playable" pull in
+      // opposite directions: a fog that really blinds you also hides the water,
+      // and a map where the ocean is invisible has no speed cue and no horizon,
+      // which is worse than dark - it is featureless.
+      //
+      // So the murk is built in three separate layers rather than one fog
+      // number, and only the FAR layer is severe:
+      //   - fog near 420 / far 2150. That is well under half the day map's
+      //     4600, so contacts fade at knife-fight range and the background
+      //     mountains are gone entirely - but the sea directly under the
+      //     aircraft still reads, because 420m of clear air at 200 m/s is
+      //     about two seconds of look-ahead.
+      //   - an overcast dome instead of sky: the gradient never gets brighter
+      //     than #58687a, so there is no blue and no sun to navigate by.
+      //   - a low, dense cloud deck (stratusBase 620 against the day map's
+      //     1450) so the ceiling is something the player flies UNDER.
+      //
+      // Lighting is kept deliberately above "dark": hemi 1.35 with a cold sky
+      // and near-black sea, plus a weak diffuse key standing in for a sun
+      // somewhere behind the overcast. Measured against the night map's 0.55
+      // hemi, this is roughly 2.5x brighter - it is a storm at midday, not
+      // night. The thing that sells the weather is contrast collapse and the
+      // fog wall, not an exposure cut.
+      stormOcean: {
+        label: "STORM FRONT",
+        // Same value as fog.color. On this map the clear colour IS the
+        // horizon: with far at 2150 the sky dome is fogged out well before its
+        // own gradient can be read at eye level, so any mismatch shows up as a
+        // seam ring around the aircraft.
+        clearColor: 0x4a5563,
+        // No blue anywhere and no bright band at the horizon - an overcast sky
+        // is brightest a little ABOVE the horizon (light leaking under the
+        // deck) and darkest at the zenith, which is the inversion of every
+        // other preset here.
+        sky: [[0, "#171d26"], [0.3, "#28313d"], [0.46, "#414b59"], [0.53, "#58687a"], [0.66, "#3a4450"], [1, "#1d232c"]],
+        // Heavy grain and the widest cloud band of any preset: the veils are
+        // doing the work the sun gradient does elsewhere, and the band spans
+        // most of the dome so there is no clean patch of sky to fix on.
+        atmosphere: { seed: 0x6e2f61, noise: 0.052, haze: 0.3, thinClouds: 46, cloudOpacity: 0.16, cloudBand: [0.3, 0.8], cloudTint: 0x8d9aab },
+        // The tightest visibility in the game. See the note above for why it
+        // stops at 420/2150 rather than going further: below ~400 near, the
+        // ocean normal map stops resolving and the sea reads as flat grey, at
+        // which point the map has no speed cue at all.
+        fog: { color: 0x4a5563, near: 420, far: 2150 },
+        // A sun behind the deck, not in front of it. The disc is drawn with
+        // `fog: false` like every other celestial body, so it does NOT get
+        // hazed out with distance the way the scene does - which means a
+        // bright disc reads as a hard white ball punched through the overcast
+        // whenever the player happens to see it through a gap in the clouds.
+        // Measured on the first screenshot pass and fixed here: the disc
+        // colour is pulled down to barely above the sky's own brightest stop
+        // (#58687a) so it is a pale smear rather than a light source, and the
+        // glare is broad and faint for the same reason. radius stays large -
+        // a small disc reads as a hole, a big soft one reads as glow behind
+        // cloud.
+        sun: {
+          position: [980, 520, -2900], color: 0x76869b, radius: 175,
+          glare: [
+            { scale: 2400, color: 0x66768c, opacity: 0.3 },
+            { scale: 900, color: 0x8496ab, opacity: 0.26 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        // Barely there. A glitter road needs a point source, and there is not
+        // one - but a faint smear of lighter water under the brightest part of
+        // the deck is what stops the sea from being one flat tone.
+        sunRoad: {
+          color: 0x8fa4bb, opacity: 0.12, width: 700, length: 3000,
+          rotationY: Math.atan2(-980, 2900), position: [590, 0.4, -1740]
+        },
+        // Storm water: near-black base, cold grey-white foam for the crests,
+        // and the strongest normal map in the game. normalScale 0.86/1.15 is
+        // roughly double the day map's, so the swell has real relief; the fast
+        // normalSpeed (0.026/0.011, ~2.4x the day map) is the wind - the wave
+        // pattern visibly races across the surface. roughness 0.72 kills the
+        // specular sheen that would otherwise make this look like calm water
+        // painted dark.
+        ocean: {
+          base: "#0d1720", bright: "176, 194, 210", dark: "3, 7, 12",
+          repeat: 26, roughness: 0.72, metalness: 0.12,
+          normalRepeat: 30, normalScale: [0.86, 1.15], normalSpeed: [0.026, 0.011], normalSeed: 0x6e2f62
+        },
+        // Wet rock. Nothing on this map is dry, so sand and grass are pulled
+        // toward the same cold grey the water is - a warm beach under this sky
+        // would be the one thing that broke the weather.
+        terrain: {
+          seed: 0x6e2f63, sand: 0x4b4f52, grass: 0x33403c, rock: 0x3f464c,
+          peak: 0x4d545a, snow: 0x8e9aa6, fineRepeat: 16, macroRepeat: 3.4,
+          normalRepeat: 21, normalStrength: 0.52, islandNormalStrength: 0.3,
+          rockSlope: [0.2, 0.62], shoreHeight: 0.2, snowSoftness: 0.1
+        },
+        // Overcast light is almost pure hemisphere: no direction, no shadows
+        // worth the name. The key is left in at low intensity purely so the
+        // aircraft's own top surfaces separate from its underside - with hemi
+        // alone every model reads as a flat silhouette.
+        lights: {
+          hemi: { sky: 0x9db0c6, ground: 0x0b1017, intensity: 1.35 },
+          key: { color: 0xa9bbd0, intensity: 0.95, position: [800, 900, -1200] },
+          fill: { color: 0x4e6076, intensity: 0.42, position: [-600, 220, 800] }
+        },
+        // Two, far out, and they will not be visible through 2150m of fog from
+        // the centre of the arena - they exist so that a player who runs to the
+        // edge of the battle area finds something out there rather than an
+        // empty grey void.
+        mountains: {
+          count: 2, radius: [190, 320], height: [160, 250], distance: [3400, 3900],
+          snowyAbove: 9999, snowLine: 0.7, roughness: 0.95,
+          palette: { low: 0x2b3238, mid: 0x363e45, rock: 0x424a51, peak: 0x4d565e, snow: 0x8c98a4 },
+          corridor: null, plateau: null
+        },
+        islands: { count: 4, stone: 0x2f363c, green: 0x2b332f },
+        // The deck itself. scale 1.6 is the largest of any preset and opacity
+        // 0.9 the most opaque: these are the clouds the fight happens inside,
+        // and a thin one would just be haze. underside 0.72 is what makes them
+        // read as a storm - the bases are near-black, so from below the ceiling
+        // is a dark lid rather than white cotton.
+        clouds: {
+          scale: 1.6, hero: true, color: 0x8996a6, opacity: 0.9,
+          cirrusColor: 0x69758a, cirrusOpacity: 0.55,
+          texture: { seed: 0x6e2f64, contrast: 1.22, underside: 0.72, softness: 1.12 }
+        },
+        decor: {
+          seed: 0x7e3f08,
+          // Same fence as the other open-water maps: nothing decorative inside
+          // the disc the mission spawns aircraft into.
+          keepClear: [{ x: 0, z: 0, r: 2400 }],
+          // Fewer and further than the day map. They are all but invisible
+          // through the fog, and that is intended - a storm at sea is not a
+          // scenic map. The handful that exist give the horizon an occasional
+          // dark smudge to break the grey.
+          extraIslands: {
+            count: 8, radius: [140, 320], height: [34, 96], distance: [2700, 3600]
+          },
+          // Storm surf: no sand tone at all, just white water where the swell
+          // breaks on the rocks. Wide and bright, because breaking surf is the
+          // brightest thing anywhere on this map.
+          shore: { sand: 0xb9c6d2, shallow: 0x1d3040, opacity: 0.6, width: 1.5 },
+          trees: null,
+          rocks: { count: 24, color: 0x232a30, scale: [9, 26] },
+          // The ceiling. towerBase 380 and stratusBase 620 put the deck
+          // roughly a third as high as the day map's, so cruise altitude is
+          // inside or just under it - which is what makes the weather
+          // something the player flies through instead of looks at. The
+          // stratus count is nearly triple the day map's so the lid is
+          // continuous rather than a scatter of shelves.
+          extraClouds: {
+            towers: 7, towerSize: [110, 180], towerBase: 380,
+            stratus: 22, stratusSize: [240, 420], stratusBase: 620,
+            distance: [700, 3200]
+          }
+        }
       }
     });
 
@@ -6041,6 +6196,79 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         introRadio: [
           { speaker: "command", text: "氷河回廊に敵レーダー網。低空で懐に潜り込み、SAMごと黙らせろ。", id: "glacier-brief" },
           { speaker: "wingman", text: "壁の上にSAMサイトだ！ 谷底を這えば射線が切れるぞ！", id: "glacier-brief-wing" }
+        ]
+      },
+      {
+        key: "m-storm",
+        world: "stormOcean",
+        title: "STORM FRONT",
+        jp: "嵐の外洋で哨戒中の空域に敵編隊。視界は最悪だ。指定目標のTu-95とSu-25を撃墜せよ。",
+        // Story bible #07: a foul-weather patrol that turns into a mixed
+        // intercept. The weather IS the difficulty here - nothing on this board
+        // is stronger than what m-glacier already fielded, and deliberately so.
+        // Contacts fade at 2150m instead of 4600m, the ceiling is at 620m, and
+        // the sea is nearly black, so the same aircraft take longer to find,
+        // longer to re-acquire after a merge, and arrive out of the murk with
+        // no warning. Stacking harder opponents on top of that would make the
+        // sortie about the fight rather than about the weather.
+        //
+        // The designated list is four: two Bears running a weather-recon track
+        // the front is supposed to hide, and the two Frogfoots the strike is
+        // actually built around. Seven trash-role fighters against those four -
+        // 1:1.75, the campaign's default band - in three batches on a clock.
+        //
+        // Every entry after the first is `concurrent`. A non-TGT wave that is
+        // not concurrent would never spawn at all, because the sequence only
+        // advances when the designated targets are gone.
+        sequence: [
+          // The recon pair. Bears are the only thing on this board a player
+          // can find by silhouette alone at fog range - four contra-rotating
+          // propeller discs - so they are what the sortie opens on.
+          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
+          {
+            types: ["mig21", "mig23"], tgt: false, band: 1, label: "STORM CAP",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "この霧の中に護衛が2機！ 目視が効かん——指定目標だけ追え！", id: "storm-cap-inbound" }
+            ]
+          },
+          // The strike pair, in band 2 so they come in from a different bearing
+          // than the recon track. Su-25 at 294 HP is a three-missile hull, and
+          // hunting one down at 2150m visibility is the mission's real clock.
+          { types: ["su25", "su25"], band: 2, label: "FROGFOOT" },
+          {
+            types: ["mig21", "mig21", "mig29"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash", delay: 55,
+            radio: [
+              { speaker: "wingman", text: "レーダーに新手だ、3機！ 雲の下から上がってくるぞ——数を数えるな！", id: "storm-escort-inbound" }
+            ]
+          },
+          {
+            types: ["mig21", "mig23"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 125
+          }
+        ],
+        // Two 294 HP Bears and two 294 HP Frogfoots - four three-missile hulls,
+        // the same tonnage as m-intercept's stream at two thirds the count -
+        // plus the search time the fog adds between kills. Sits between
+        // m-glacier's 335 and m-night's 330 on purpose: this is the same tier
+        // of sortie, made slower by the weather rather than by the opposition.
+        parTime: 345,
+        hasOutro: false,
+        map: { x: 0.24, y: 0.61 },
+        // Open water with no landmark to anchor on, so the arena is centred
+        // slightly down-range of the spawn rather than on the origin: the
+        // bombers run outbound at -Z and a player who commits to the tail chase
+        // should not be called back before catching them. Radius is left under
+        // the 12000 default because there is nothing out at the edge worth
+        // flying to - in this visibility the boundary ring on the radar is the
+        // only navigation the player has.
+        battleCenter: { x: 0, z: -1400 },
+        battleRadius: 9500,
+        briefing: "前線が空域を飲み込んだ。雲底は600、視程は2キロを切っている。\n哨戒中の君に警報だ——この嵐を隠れ蓑に、敵の混成編隊が抜けようとしている。\n指定目標は4機。気象偵察のTu-95が2機と、後から入ってくる攻撃機Su-25が2機だ。\n護衛の戦闘機が7機付いているが、1機も落とさなくていい。この視界で数を追えば、それだけで時間が尽きる。\nTu-95は尾部に銃座がある。真後ろに居座るな。Su-25は装甲が厚い——ミサイル3発を見込め。\nレーダーだけが頼りだ。目で探すな、計器で探せ。",
+        introRadio: [
+          { speaker: "command", text: "嵐の中に混成編隊。視程2キロ以下だ——目視に頼るな、レーダーで捉えろ。", id: "storm-brief" },
+          { speaker: "wingman", text: "雲底が低い！ この下は殴り合いになるぞ——指定目標を見失うな！", id: "storm-brief-wing" }
         ]
       },
       {
