@@ -34,6 +34,11 @@ jobs:
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
           mkdir -p /tmp/texture-tools /tmp/texture-before artifacts
           cp index.html /tmp/texture-before/index.html
+          # The baseline HTML references the repository's existing optional audio.
+          # Mirror it into the baseline server so before/after have identical I/O.
+          for asset_dir in bgm sfx; do
+            if [ -d "$asset_dir" ]; then cp -a "$asset_dir" /tmp/texture-before/; fi
+          done
           base64 -d _chatgpt_runner/texture_new_maps_patch.py.gz.b64 | gzip -d > /tmp/texture-tools/patch.py
           base64 -d _chatgpt_runner/texture_new_maps_probe.cjs.gz.b64 | gzip -d > /tmp/texture-tools/probe.cjs
           python3 -m py_compile /tmp/texture-tools/patch.py
