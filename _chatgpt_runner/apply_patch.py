@@ -785,7 +785,7 @@ varying vec2 vOceanUv;`
         'ocean.position.z = camZ;',
         'THREE.LinearMipmapLinearFilter',
         'renderer.capabilities.getMaxAnisotropy()',
-        'sortie-ocean-v3',
+        'sortie-ocean-v4-distance-branches',
         'sortie-terrain-v3',
     ]
     for needle in required:
