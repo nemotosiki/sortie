@@ -3119,6 +3119,147 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
 primary: 0x5c666f, secondary: 0x333b42, accent: 0xd8b23a,
 canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         })
+      }),
+      // ---- Russian roster, second batch ------------------------------------
+      // All five are enemyOnly: they are registered here because ENEMY_TYPES
+      // derives HP, speed and turn rate from this table for every
+      // ENEMY_AI_PROFILES key, but none of them is in AIRCRAFT_ORDER, so the
+      // hangar never shows them and selectAircraft() rejects them.
+      //
+      // HP follows the roster's existing ladder. 196 and 294 are exact missile
+      // counts (2 and 3 rounds at 98 a hit); 165 and 135 sit inside the same
+      // two-round band as 196 and are there for the GUN, which is where 30 HP
+      // is a real difference - the same reason the player fleet runs 135 (F-2A,
+      // F/A-18F) and 165 (Typhoon) rather than snapping everything to 98s.
+      //
+      // Su-57: the strongest airframe the AI flies. Turn 40 edges past the
+      // player F-22's 39 and the boost speed is level with it, so an ace Su-57
+      // (ACE_TURN_SCALE 1.2 on top) is the hardest single opponent in the game.
+      // It pays for that with 196 HP against the Raptor's 200 - two missiles,
+      // not three, so the player can still finish it inside one engagement.
+      su57: Object.freeze({
+        id: "su57",
+        label: "Su-57 FELON",
+        role: "Stealth Air Superiority",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の第5世代ステルス戦闘機。旋回・速度ともに最上位で、装甲も厚い。後半戦の主力にして最大の脅威。",
+        cruiseSpeed: 238, boostSpeed: 462, brakeSpeed: 120,
+        pitchRateDeg: 52, rollRateDeg: 188, yawRateDeg: 15, maxBankAngleDeg: 66,
+        normalRollSpring: 49, rollRateLimitDeg: 178, turnRateDeg: 40,
+        rollDamping: 13.0, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.4, structuralG: 3.5,
+        gunDamage: 26, missileDamage: 98,
+        boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
+        missileCapacity: 0, maxHealth: 196,
+        tipSpan: 7.0, tipZ: 2.8,
+        theme: Object.freeze({
+          primary: 0x2f3a3f, secondary: 0x1b2226, accent: 0xd9542a,
+          canopy: 0xffd08a, exhaust: 0xffb44a, scale: 0.88, variant: "felon"
+        })
+      }),
+      // Su-47: turn 42 is the best sustained rate of any crewed airframe in the
+      // game - better than the Su-57's 40 and the player Raptor's 39 - and the
+      // forward-swept wing is why. It buys that with everything else: boost 405
+      // is slower than every modern fighter here, and 165 HP is mid-table. The
+      // Berkut wins a turning fight and loses a running one, which is the exact
+      // inverse of the Felon flying beside it.
+      su47: Object.freeze({
+        id: "su47",
+        label: "Su-47 BERKUT",
+        role: "Experimental Agility Fighter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の実験機。前進翼がもたらす低速域の運動性は全機中最高で、旋回勝負では手が付けられない。ただし速度は現代機に劣る。",
+        cruiseSpeed: 205, boostSpeed: 405, brakeSpeed: 104,
+        pitchRateDeg: 54, rollRateDeg: 178, yawRateDeg: 16, maxBankAngleDeg: 68,
+        normalRollSpring: 46, rollRateLimitDeg: 170, turnRateDeg: 42,
+        rollDamping: 12.4, stallWarnSpeed: 68, stallEntrySpeed: 56, stallAuthorityLoss: 0.36, structuralG: 3.3,
+        gunDamage: 24, missileDamage: 98,
+        boostResponse: 0.46, brakeResponse: 0.4, cruiseResponse: 0.54,
+        missileCapacity: 0, maxHealth: 165,
+        // Forward-swept: the geometric tip is AHEAD of the root, so tipZ is
+        // negative here where every other airframe in the table is positive.
+        tipSpan: 7.9, tipZ: -2.6,
+        theme: Object.freeze({
+          primary: 0x2b3742, secondary: 0x18212a, accent: 0xffa23c,
+          canopy: 0xffdca0, exhaust: 0xff9a3c, scale: 0.85, variant: "berkut"
+        })
+      }),
+      // MiG-23: the second variable-geometry airframe in the game after the
+      // F-14D, and the mid-tier of this batch. Fast in a straight line (boost
+      // 372, between the F-4's 320 and the F-16's 375) and poor in a turn (24,
+      // above only the F-4's 21) - the swing wing was built for interception,
+      // not for the merge, and the numbers say so.
+      mig23: Object.freeze({
+        id: "mig23",
+        label: "MiG-23 FLOGGER",
+        role: "Variable-Geometry Interceptor",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の可変翼戦闘機。速度に応じて主翼を後退させる旧世代の中堅機。直線は速いが旋回は鈍い。",
+        cruiseSpeed: 178, boostSpeed: 372, brakeSpeed: 148,
+        pitchRateDeg: 32, rollRateDeg: 118, yawRateDeg: 9, maxBankAngleDeg: 44,
+        normalRollSpring: 30, rollRateLimitDeg: 112, turnRateDeg: 24,
+        rollDamping: 8.2, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.84, structuralG: 2.7,
+        gunDamage: 16, missileDamage: 98,
+        boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.68,
+        missileCapacity: 0, maxHealth: 135,
+        tipSpan: 7.4, tipZ: 2.6,
+        theme: Object.freeze({
+          primary: 0x8a8f7c, secondary: 0x5d6353, accent: 0xc4622c,
+          canopy: 0xffd48a, exhaust: 0xff8a3a, scale: 0.84, variant: "flogger"
+        })
+      }),
+      // Su-25: the hard slow target, and a different problem from the bomber
+      // beside it in this table. 294 HP is three missiles - the same as a Tu-95
+      // - on an airframe a quarter the size, so it does not read as a heavy at
+      // all until the player has spent two rounds on it. Turn 14 and boost 232
+      // mean it cannot run and cannot fight back at range; what it has is the
+      // heaviest gun of the batch inside 600 m, and the armour to reach it.
+      su25: Object.freeze({
+        id: "su25",
+        label: "Su-25 FROGFOOT",
+        role: "Close Air Support",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の対地攻撃機。低速で鈍重だが装甲は極めて厚く、ミサイル3発を要する。懐に入られると重機関砲が痛い。",
+        cruiseSpeed: 148, boostSpeed: 232, brakeSpeed: 118,
+        pitchRateDeg: 20, rollRateDeg: 62, yawRateDeg: 6, maxBankAngleDeg: 30,
+        normalRollSpring: 20, rollRateLimitDeg: 58, turnRateDeg: 14,
+        rollDamping: 7.0, stallWarnSpeed: 72, stallEntrySpeed: 60, stallAuthorityLoss: 0.9, structuralG: 2.2,
+        gunDamage: 20, missileDamage: 98,
+        boostResponse: 0.75, brakeResponse: 0.7, cruiseResponse: 0.8,
+        missileCapacity: 0, maxHealth: 294,
+        tipSpan: 8.6, tipZ: 1.4,
+        theme: Object.freeze({
+          primary: 0x767c69, secondary: 0x4c5244, accent: 0xb35a28,
+          canopy: 0xa8e4ff, exhaust: 0xffa64d, scale: 1.05, variant: "frogfoot"
+        })
+      }),
+      // Tu-95: the turboprop heavy, and deliberately NOT a reskin of the B-52H
+      // already in this table. Same 294-class hull and the same "flies its line
+      // and shoots backwards" role, but four contra-rotating propeller discs
+      // instead of eight podded jets - which is the read at any range the
+      // player can see it at - and the largest wing in the game behind them.
+      tu95: Object.freeze({
+        id: "tu95",
+        label: "Tu-95 BEAR",
+        role: "Turboprop Strategic Bomber",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵のターボプロップ重爆撃機。二重反転プロペラ4基を回して飛ぶ巨人。鈍重だが極めて頑丈で、尾部に防御銃座を備える。",
+        cruiseSpeed: 142, boostSpeed: 168, brakeSpeed: 124,
+        pitchRateDeg: 11, rollRateDeg: 30, yawRateDeg: 4, maxBankAngleDeg: 17,
+        normalRollSpring: 11, rollRateLimitDeg: 27, turnRateDeg: 7,
+        rollDamping: 5.8, stallWarnSpeed: 88, stallEntrySpeed: 76, stallAuthorityLoss: 0.91, structuralG: 1.5,
+        gunDamage: 12, missileDamage: 98,
+        boostResponse: 0.9, brakeResponse: 0.86, cruiseResponse: 0.92,
+        missileCapacity: 0, maxHealth: 294,
+        tipSpan: 13.2, tipZ: 1.4,
+        theme: Object.freeze({
+          primary: 0x9aa3a8, secondary: 0x666f75, accent: 0x3a4248,
+          canopy: 0xa8e4ff, exhaust: 0xffc47a, scale: 2.3, variant: "bear"
+        })
       })
     });
 
@@ -4099,6 +4240,225 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           scale: 1.09,
           variant: "flankere"
         })
+      }),
+      // ---- Russian roster, second batch ------------------------------------
+      // Faction tell: every airframe below burns WARM. The western jets in this
+      // table run cyan/violet exhaust (0x62edff, 0xd978ff, 0x8cecff); these run
+      // amber and orange, so "which side is that" is answerable from the
+      // tailpipe alone at a range where the silhouette is still a dot. The
+      // colour is declared per-entry here rather than by branching the shared
+      // flame code, which is what keeps it additive.
+      //
+      // Su-57: "evasive" wound one notch past the F-22's numbers - 86 of
+      // lateral jink at 2.5 Hz against the Raptor's 82 at 2.4 - on an airframe
+      // that also out-turns it. The longest engage envelope of any fighter in
+      // the game (1100) means it commits earlier and gives up later, which is
+      // what makes it read as an aggressor rather than a patrol.
+      su57: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.96,
+        patrolSpeedScale: 1.06,
+        patrolPathScale: 1.14,
+        engageRange: 1100,
+        disengageRange: 1720,
+        pursuitBack: 98,
+        verticalBias: 20,
+        verticalAmplitude: 38,
+        verticalFrequency: 1.65,
+        evadeLateral: 86,
+        evadeVertical: 34,
+        evadeFrequency: 2.5,
+        speedResponse: 0.013,
+        fireMin: 1.5,
+        fireSpread: 1.28,
+        attackRange: 545,
+        aimThreshold: 0.94,
+        hitChanceScale: 0.52,
+        maxHitChance: 0.38,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ff6a3d",
+        tracerColor: 0xff7a3a,
+        explosionColor: 0xff8a45,
+        theme: Object.freeze({
+          primary: 0x2f3a3f,
+          secondary: 0x1b2226,
+          accent: 0xd9542a,
+          canopy: 0xffd08a,
+          exhaust: 0xffb44a,
+          scale: 0.88,
+          variant: "felon"
+        })
+      }),
+      // Su-47: jinks harder than anything else that carries a pilot (90 at
+      // 2.6 Hz) but engages from closer in than the Felon, because a 405 boost
+      // cannot open a 1100 m merge back up if the pass goes badly. Sitting
+      // behind one is the worst place in this batch to be.
+      su47: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.95,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 1.2,
+        engageRange: 1010,
+        disengageRange: 1600,
+        pursuitBack: 90,
+        verticalBias: 18,
+        verticalAmplitude: 40,
+        verticalFrequency: 1.75,
+        evadeLateral: 90,
+        evadeVertical: 36,
+        evadeFrequency: 2.6,
+        speedResponse: 0.02,
+        fireMin: 1.6,
+        fireSpread: 1.35,
+        attackRange: 520,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.48,
+        maxHitChance: 0.34,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ff9a4d",
+        tracerColor: 0xff9a3c,
+        explosionColor: 0xffab52,
+        theme: Object.freeze({
+          primary: 0x2b3742,
+          secondary: 0x18212a,
+          accent: 0xffa23c,
+          canopy: 0xffdca0,
+          exhaust: 0xff9a3c,
+          scale: 0.85,
+          variant: "berkut"
+        })
+      }),
+      // MiG-23: "formation" like the F-15, because a poor turner that flies
+      // alone is just a target. Modest jink, modest envelope - the middle of
+      // the batch in every number, which is the point of having one.
+      mig23: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 1.0,
+        patrolSpeedScale: 0.94,
+        patrolPathScale: 0.9,
+        engageRange: 900,
+        disengageRange: 1450,
+        pursuitBack: 72,
+        verticalBias: 12,
+        verticalAmplitude: 18,
+        verticalFrequency: 0.9,
+        evadeLateral: 26,
+        evadeVertical: 12,
+        evadeFrequency: 1.4,
+        speedResponse: 0.034,
+        fireMin: 1.95,
+        fireSpread: 1.45,
+        attackRange: 540,
+        aimThreshold: 0.91,
+        hitChanceScale: 0.5,
+        maxHitChance: 0.34,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.52,
+        radarColor: "#ffb04a",
+        tracerColor: 0xff8a3a,
+        explosionColor: 0xff9d48,
+        theme: Object.freeze({
+          primary: 0x8a8f7c,
+          secondary: 0x5d6353,
+          accent: 0xc4622c,
+          canopy: 0xffd48a,
+          exhaust: 0xff8a3a,
+          scale: 0.84,
+          variant: "flogger"
+        })
+      }),
+      // Su-25: "armored", the F-4's branch, with the envelope pulled in hard.
+      // It engages at 720 where a fighter engages at 900-1100 and never jinks,
+      // so it is trivially easy to get behind - and then takes three missiles.
+      // The gun is the compensation: 600 m of reach and the highest hit ceiling
+      // of any aircraft in the game (0.40), because a CAS aircraft that cannot
+      // shoot is scenery rather than an opponent.
+      su25: Object.freeze({
+        behavior: "armored",
+        hitboxScale: 1.25,
+        patrolSpeedScale: 0.86,
+        patrolPathScale: 0.62,
+        engageRange: 720,
+        disengageRange: 1150,
+        pursuitBack: 48,
+        verticalBias: 6,
+        verticalAmplitude: 10,
+        verticalFrequency: 0.5,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.05,
+        fireMin: 2.0,
+        fireSpread: 1.4,
+        attackRange: 600,
+        aimThreshold: 0.89,
+        hitChanceScale: 0.58,
+        maxHitChance: 0.4,
+        damageMin: 7,
+        damageMax: 7,
+        explosionScale: 1.15,
+        radarColor: "#ffa04a",
+        tracerColor: 0xffa64d,
+        explosionColor: 0xffb055,
+        theme: Object.freeze({
+          primary: 0x767c69,
+          secondary: 0x4c5244,
+          accent: 0xb35a28,
+          canopy: 0xa8e4ff,
+          exhaust: 0xffa64d,
+          scale: 1.05,
+          variant: "frogfoot"
+        })
+      }),
+      // Tu-95: the B-52's role played by a different aircraft. engageRange 0
+      // keeps it out of pursuit exactly as the B-52's does, and the tail turret
+      // is the same rearGun path - `aimThreshold` measured against the REVERSED
+      // nose vector, so 0.4 is the dot < -0.4 rear cone. Slightly meaner than
+      // the B-52's turret (fireMin 1.5 vs 1.4 is slower, but 0.24 max hit
+      // chance against 0.25 is level) so the two heavies feel like the same
+      // class of problem approached from behind.
+      tu95: Object.freeze({
+        behavior: "armored",
+        hitboxScale: 2.7,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 0.28,
+        engageRange: 0,
+        disengageRange: 0,
+        pursuitBack: 0,
+        verticalBias: 28,
+        verticalAmplitude: 6,
+        verticalFrequency: 0.28,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.06,
+        rearGun: true,
+        // Local z of the turret (11.6) times the model scale (2.3).
+        rearGunOffset: 27,
+        fireMin: 1.5,
+        fireSpread: 0.95,
+        attackRange: 880,
+        aimThreshold: 0.4,
+        hitChanceScale: 0.44,
+        maxHitChance: 0.24,
+        damageMin: 7,
+        damageMax: 7,
+        explosionScale: 1.45,
+        radarColor: "#ff8f4a",
+        tracerColor: 0xffb45a,
+        explosionColor: 0xffc063,
+        theme: Object.freeze({
+          primary: 0x9aa3a8,
+          secondary: 0x666f75,
+          accent: 0x3a4248,
+          canopy: 0xa8e4ff,
+          exhaust: 0xffc47a,
+          scale: 2.3,
+          variant: "bear"
+        })
       })
     });
 
@@ -4188,7 +4548,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // fighter chevron. Membership is "is this a large, slow, non-manoeuvring
     // aircraft" - the player plans a different sortie for one of these, and the
     // map is where they find that out.
-    const HEAVY_AIR_TYPES = Object.freeze(new Set(["bomber", "transport"]));
+    const HEAVY_AIR_TYPES = Object.freeze(new Set(["bomber", "transport", "tu95"]));
 
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
@@ -4410,6 +4770,67 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: 98,
         life: 7.7,
         launchDot: 0.24
+      }),
+      // ---- Russian roster, second batch ------------------------------------
+      // Same ranking rule as the western jets: the better the airframe, the
+      // better the round. The Su-57's is the deadliest missile in the game -
+      // it out-reaches and out-turns the F-22's - which is the other half of
+      // "hardest single opponent" alongside its turn rate.
+      su57: Object.freeze({
+        cooldownMin: 7.8,
+        cooldownSpread: 4.2,
+        range: 1440,
+        minRange: 180,
+        speed: 412,
+        maxSpeed: 502,
+        turnRate: THREE.MathUtils.degToRad(80),
+        damage: 98,
+        life: 7.6,
+        launchDot: 0.25
+      }),
+      su47: Object.freeze({
+        cooldownMin: 8.6,
+        cooldownSpread: 4.5,
+        range: 1360,
+        minRange: 195,
+        speed: 388,
+        maxSpeed: 470,
+        turnRate: THREE.MathUtils.degToRad(74),
+        damage: 98,
+        life: 7.9,
+        launchDot: 0.22
+      }),
+      // MiG-23: an old radar round. Reaches nearly as far as an F-4's but
+      // turns worse than anything else in this table - it is a threat on the
+      // approach and nothing at all once the player has broken.
+      mig23: Object.freeze({
+        cooldownMin: 10.6,
+        cooldownSpread: 5.0,
+        range: 1320,
+        minRange: 215,
+        speed: 340,
+        maxSpeed: 410,
+        turnRate: THREE.MathUtils.degToRad(50),
+        damage: 98,
+        life: 8.4,
+        launchDot: 0.18
+      }),
+      // Su-25: short-range IR self-defence only. 900 m of reach against every
+      // fighter's 1300+, and it has to be pointed almost straight at the player
+      // to take the shot (launchDot 0.3, the tightest in the table). A CAS
+      // aircraft carries these to survive being intercepted, not to intercept.
+      // No Tu-95 entry: the Bear's only weapon is its tail turret.
+      su25: Object.freeze({
+        cooldownMin: 12.5,
+        cooldownSpread: 5.5,
+        range: 900,
+        minRange: 160,
+        speed: 330,
+        maxSpeed: 400,
+        turnRate: THREE.MathUtils.degToRad(62),
+        damage: 98,
+        life: 6.2,
+        launchDot: 0.3
       }),
       // Aegis SM-2: cold-launched straight up off the deck, slow off the rail,
       // then the seeker tips it over - long reach and it keeps its energy.
@@ -5287,8 +5708,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "glacierCanyon",
         title: "GLACIER RUN",
         jp: "氷河回廊に敵のレーダー網。谷底を這うように侵攻し、壁のSAMサイトごと制圧せよ。",
-        sequence: ["air1"],
-        parTime: 240,
+        // Second wave: the ground-attack pair that the radar net was there to
+        // protect, plus one escort. A Frogfoot is the right opponent for a
+        // canyon - it is slow enough to be caught in one and takes three
+        // missiles, so the fight happens between the walls rather than above
+        // them, and it arrives AFTER the SAM belt rather than alongside it.
+        sequence: [
+          "air1",
+          { types: ["su25", "su25", "mig23"], band: 2, label: "FROGFOOT" }
+        ],
+        // Three more kills, two of them 294 HP, on top of the original patrol
+        // and the four installations.
+        parTime: 320,
         hasOutro: false,
         map: { x: 0.18, y: 0.22 },
         // The canyon walls are a staggered ladder 600m apart, so one site per
@@ -5301,7 +5732,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           { id: 23, type: "samSite", x: -287, z: -2000, heading: -1.57 },
           { id: 24, type: "radarSite", x: 295, z: -2600, heading: 1.57 }
         ],
-        briefing: "氷河回廊の尾根に敵レーダー網が敷かれ、輸送路が塞がれている。\n谷底を低空で駆け抜ければSAMの射線は切れる。\n壁のレーダーサイトとSAMを黙らせ、上空の哨戒機も排除せよ。",
+        briefing: "氷河回廊の尾根に敵レーダー網が敷かれ、輸送路が塞がれている。\n谷底を低空で駆け抜ければSAMの射線は切れる。\n壁のレーダーサイトとSAMを黙らせ、上空の哨戒機も排除せよ。\n防空網を潰した頃、対地攻撃機Su-25が上がってくる。低速で鈍重だが装甲は極めて厚い——ミサイル3発を覚悟しろ。",
         // Separate from `briefing`: these fire over the radio once the player is
         // already airborne, so they stay a compressed re-statement of the board.
         introRadio: [
@@ -5381,12 +5812,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // The fleet's own CAP, led by a second ace. Su-35S over Su-33 is the
           // enemy's best pair and lands within 3% of the F-22/F-15 it replaces
           // (361 HP against 350), so the last leg is as hard as it was.
-          { types: ["su35", "su33"], ace: true, tgt: false, band: 2, label: "FLEET CAP", concurrent: true }
+          { types: ["su35", "su33"], ace: true, tgt: false, band: 2, label: "FLEET CAP", concurrent: true },
+          // The last thing the campaign puts in front of the player. Su-57 in
+          // the ace slot is the hardest single opponent in the game: turn 40 -
+          // past the player Raptor's 39 - with ACE_TURN_SCALE 1.2 on top of it,
+          // the longest engage envelope of any fighter, and the best missile in
+          // ENEMY_MISSILE_PROFILES. Its wingman is the one airframe that
+          // out-turns it, so breaking away from the Felon flies the player into
+          // the Berkut. Both are two-missile hulls, which is the concession -
+          // this wave is meant to be hard to hit, not long to grind down.
+          { types: ["su57", "su47"], ace: true, band: 2, label: "FELON" }
         ],
-        parTime: 430,
+        parTime: 520,
         hasOutro: true,
         map: { x: 0.8, y: 0.34 },
-        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\nこの空と海を取り戻せ。幸運を祈る。"
+        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
       },
       {
         key: "m-intercept",
@@ -5402,14 +5842,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // on ammunition. Net change across both waves is -25 HP out of 1015.
         sequence: [
           { types: ["bomber", "bomber", "mig29"] },
-          { types: ["bomber", "bomber", "mig21"] }
+          { types: ["bomber", "bomber", "mig21"] },
+          // Third wave: the heavies the mission is named for, flown by a
+          // different aircraft. The Tu-95 has the same 294-class hull and the
+          // same tail turret as the B-52s ahead of it, so the lesson the first
+          // two waves taught still applies - but four turning propeller discs
+          // make it unmistakable which two the player is looking at, which is
+          // the entire reason a second heavy bomber exists in the roster.
+          { types: ["tu95", "tu95", "mig23"], band: 2, label: "BEAR" }
         ],
         // No time limit - the bombers do not run. Par carries the pressure, the
-        // way AC7's own bomber-stream scoring missions do.
-        parTime: 260,
+        // way AC7's own bomber-stream scoring missions do. Three waves now, and
+        // the third is two more three-missile hulls plus an escort.
+        parTime: 370,
         hasOutro: false,
         map: { x: 0.34, y: 0.16 },
-        briefing: "高高度に大型機の反応——敵の重爆撃編隊が本土へ向かっている。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。",
+        briefing: "高高度に大型機の反応——敵の重爆撃編隊が本土へ向かっている。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。\n第3波はTu-95——二重反転プロペラ4基で飛ぶ旧ソ連製の重爆だ。頑丈さも尾部銃座も先の2波と同じだと思え。",
         introRadio: [
           { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
           { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
@@ -6561,6 +7009,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.maxHp = Math.max(enemy.maxHp, hp);
           return enemy.hp;
         },
+        // Spawns an arbitrary air wave mid-sortie. The roster is much larger
+        // than any one mission fields, so a gate that has to see a specific
+        // airframe needs a way to put it on the board without flying the whole
+        // campaign to the mission that carries it.
+        forceSpawnTypes: (types, ace = false) => {
+          if (gameState !== STATE_PLAYING) return false;
+          if (!Array.isArray(types) || types.length === 0) return false;
+          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          spawnMissionWave(normalizeWaveEntry({ types, band: 2, ace, tgt: false }));
+          return enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
+        },
+        // The enemy speed model has no throttle input, so a gate that wants to
+        // see a variable-geometry wing at a chosen sweep has to set the speed
+        // the sweep is derived from.
+        forceEnemySpeed: (id, speed) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy) return false;
+          enemy.speed = speed;
+          enemy.targetSpeed = speed;
+          return enemy.speed;
+        },
+        // Airframe animation state per live aircraft: the sweep angle of a
+        // variable-geometry wing and the rotation of the first propeller disc.
+        // Both are presentation, so this is the only way to assert on them
+        // short of reading pixels.
+        airframeProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          label: enemy.label,
+          hp: enemy.hp,
+          speed: Math.round(enemy.speed),
+          wingPivots: enemy.model.wingPivots.length,
+          sweepDeg: enemy.model.wingPivots.length
+            ? WING_SWEEP_FORWARD_DEG + Math.abs(THREE.MathUtils.radToDeg(enemy.model.wingPivots[0].rotation.y))
+            : null,
+          propSpinners: enemy.model.propSpinners.length,
+          propRotation: enemy.model.propSpinners.length ? enemy.model.propSpinners[0].rotation.z : null
+        })),
         // Player rounds in flight, with the range to the aircraft each one is
         // tracking - the number the proximity fuse and the break turn argue over.
         missileProbe: () => missilesInFlight.map((missile) => {
@@ -10676,6 +11163,44 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (next && next.concurrent) spawnMissionWave(next);
     }
 
+    // ---- AI airframe animation ------------------------------------------------
+    // The player's variable-geometry wing is driven by updateWingSweep against
+    // CRUISE_SPEED/BOOST_SPEED. An AI aircraft has no throttle in those terms,
+    // so the MiG-23's sweep is driven off the band the enemy speed model
+    // actually uses: patrolSpeed at the bottom, patrolSpeed + pursuitBonus (the
+    // fraction of boost headroom ENEMY_PURSUIT_THROTTLE lets the AI spend) at
+    // the top. The result is legible from outside - a Flogger on patrol has its
+    // wings forward, and sweeps them back the moment it commits to a chase.
+    // Presentation only: nothing in the enemy flight model reads the angle.
+    function updateEnemyWingSweep(enemy, dt) {
+      const pivots = enemy.model.wingPivots;
+      if (!pivots || pivots.length === 0) return;
+      const spec = enemy.spec;
+      const span = Math.max(1, spec.pursuitBonus || 1);
+      const t = THREE.MathUtils.clamp((enemy.speed - spec.patrolSpeed) / span, 0, 1);
+      const targetRad = THREE.MathUtils.degToRad(
+        THREE.MathUtils.lerp(WING_SWEEP_FORWARD_DEG, WING_SWEEP_AFT_DEG, t) - WING_SWEEP_FORWARD_DEG
+      );
+      for (const pivot of pivots) {
+        const side = pivot.userData.sweepSide || 1;
+        pivot.rotation.y = THREE.MathUtils.lerp(pivot.rotation.y, -targetRad * side, damping(WING_SWEEP_RATE, dt));
+      }
+    }
+
+    // Turboprop discs (Tu-95). Speed sets the rate, but never to zero: props
+    // that stop turning read as a static model rather than an aircraft, so the
+    // base term carries an idling disc even at the bottom of the speed band.
+    const PROP_SPIN_BASE = 11;
+    const PROP_SPIN_PER_SPEED = 0.06;
+    function updateEnemyProps(enemy, dt) {
+      const spinners = enemy.model.propSpinners;
+      if (!spinners || spinners.length === 0) return;
+      const rate = PROP_SPIN_BASE + enemy.speed * PROP_SPIN_PER_SPEED;
+      for (const spinner of spinners) {
+        spinner.rotation.z += rate * dt * (spinner.userData.spinDir || 1);
+      }
+    }
+
     function updateEnemies(dt) {
       const time = performance.now() * 0.001;
       forwardOf(player, tmpV5);
@@ -10721,6 +11246,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           for (let s = 0; s < enemy.subsystems.length; s += 1) positionSubsystem(enemy.subsystems[s]);
           continue;
         }
+
+        // Airframe animation for the two types that have any. Both return on an
+        // empty array, so every other aircraft pays one property read.
+        updateEnemyWingSweep(enemy, dt);
+        updateEnemyProps(enemy, dt);
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
         // quarter it burns - black smoke with orange flame flicker.
@@ -14487,6 +15017,59 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         [0, -1.5], [3.9, 1.0], [3.9, 1.9], [1.3, 2.3],
         [-1.3, 2.3], [-3.9, 1.9], [-3.9, 1.0]
       ], 0.28);
+      // ---- Russian roster, second batch ------------------------------------
+      // Su-57: a trapezoid with a long LERX root, half-span 7.0 - a touch wider
+      // than the Raptor's 6.9 diamond and with a much deeper root chord, which
+      // is the planform difference between the two stealth twins from above.
+      const wingFelon = extrudedSurface([
+        [0, -5.6], [1.5, -3.6], [7.0, 1.6], [7.0, 3.0], [2.6, 4.8],
+        [0, 4.8], [-2.6, 4.8], [-7.0, 3.0], [-7.0, 1.6], [-1.5, -3.6]
+      ], 0.3);
+      // Matching all-moving tailplane, cropped like the wing tip.
+      const stabFelon = extrudedSurface([
+        [0, -1.7], [3.6, 0.9], [3.6, 1.6], [1.3, 2.1],
+        [-1.3, 2.1], [-3.6, 1.6], [-3.6, 0.9]
+      ], 0.26);
+      // Su-47: THE forward-swept wing, and the only planform in the game whose
+      // tips sit AHEAD of its roots. Every other wing here has z increasing
+      // with |x| along the leading edge (sweep aft); this one has z DECREASING,
+      // so the leading edge runs from a root at z 1.6 out and FORWARD to a tip
+      // at z -4.4. That six-metre forward rake is the entire identification -
+      // read from above, the aircraft looks like it is flying backwards.
+      const wingBerkut = extrudedSurface([
+        [0, 1.6], [2.1, -0.4], [7.9, -4.4], [7.9, -2.8], [2.4, 3.0],
+        [0, 4.8], [-2.4, 3.0], [-7.9, -2.8], [-7.9, -4.4], [-2.1, -0.4]
+      ], 0.3);
+      // MiG-23 outer wing panel: ONE side only (+x) with its inboard edge on
+      // the pivot line, the same contract wingTomcat follows, because each
+      // panel is parented to its own rotating group. Smaller and simpler than
+      // the Tomcat's - a single-engine fighter's wing, not an interceptor's.
+      const wingFlogger = extrudedSurface([
+        [0.2, -2.3], [1.3, -2.0], [7.4, 0.8], [7.4, 1.6], [1.8, 2.3], [0.2, 2.3]
+      ], 0.26);
+      // Su-25: the only STRAIGHT wing in the game. The leading edge moves 1.4 z
+      // across 8.6 of span where a fighter's moves 5 or more, so what reads is
+      // an unswept high-aspect plank - the shape that says "this thing is here
+      // to loiter over a target area", not to chase anything.
+      const wingFrogfoot = extrudedSurface([
+        [0, -2.8], [1.6, -2.6], [8.6, -1.4], [8.6, 0.9], [2.2, 2.6],
+        [0, 2.8], [-2.2, 2.6], [-8.6, 0.9], [-8.6, -1.4], [-1.6, -2.6]
+      ], 0.34);
+      // Tu-95: the largest wing in the game at 13.2 half-span, and swept harder
+      // than the B-52's (8.6 of z across the span against the bomber's 8.1 over
+      // a shorter one) because the real Bear's 35 deg sweep on a propeller
+      // aircraft is the thing that makes it strange. The four contra-rotating
+      // prop discs are what actually separate it from the B-52 in silhouette;
+      // the wing just has to be unmistakably bigger.
+      const wingBear = extrudedSurface([
+        [0, -3.4], [1.8, -3.0], [13.2, 5.6], [13.2, 7.0], [3.2, 3.4],
+        [0, 3.4], [-3.2, 3.4], [-13.2, 7.0], [-13.2, 5.6], [-1.8, -3.0]
+      ], 0.28);
+      // Swept tailplane to match, so the tail reads as one design with the wing.
+      const stabBear = extrudedSurface([
+        [0, -1.6], [5.0, 1.9], [5.0, 2.9], [1.6, 2.6],
+        [-1.6, 2.6], [-5.0, 2.9], [-5.0, 1.9]
+      ], 0.26);
       // Unit box for small angled panels (F-4 wing tips / stabs, ventral fins,
       // F-22 nozzle shells) - scaled per use.
       const panel = new THREE.BoxGeometry(1, 1, 1);
@@ -14533,6 +15116,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wingRafale, wingTyphoon, wingGripen, canard,
         wingTerminator, canardTerminator,
         wingTransport, stabTransport, wingUav,
+        wingFelon, stabFelon, wingBerkut, wingFlogger, wingFrogfoot, wingBear, stabBear,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -14635,9 +15219,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // signature features: engine count, tail configuration and wing planform.
       const parts = [];
       const flames = [];
-      // Populated only by the swing-wing variant; empty for every other
-      // airframe, which is what keeps the sweep update a no-op for them.
+      // Populated only by the swing-wing variants (F-14D, MiG-23); empty for
+      // every other airframe, which is what keeps the sweep update a no-op for
+      // them.
       const wingPivots = [];
+      // Populated only by the turboprop variant (Tu-95). Same contract as
+      // wingPivots: an empty array everywhere else, so the spin update costs
+      // one property read for every other aircraft in the air.
+      const propSpinners = [];
       const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rz = 0) => {
         const m = new THREE.Mesh(geo, material);
         m.position.set(x, y, z);
@@ -14660,6 +15249,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         pivot.userData.sweepSide = side;
         parts.push(pivot);
         return pivot;
+      };
+      // One propeller disc: four blades and a spinner cone on a group that
+      // turns about its own z (the thrust axis). `dir` is the rotation sense,
+      // so a contra-rotating pair is two of these on one nacelle at opposite
+      // dir and slightly different z - which is the Tu-95's signature and the
+      // reason it cannot be mistaken for the jet bomber already in the roster.
+      // Blades are unit boxes scaled to a blade: offsetting each by radius/2
+      // along its own rotated axis makes it span hub-to-tip rather than
+      // straddling the hub.
+      const addProp = (x, y, z, radius, dir) => {
+        const spinner = new THREE.Group();
+        spinner.position.set(x, y, z);
+        const hub = new THREE.Mesh(geometry.nozzle, accent);
+        hub.scale.set(0.5, 0.5, 0.5);
+        spinner.add(hub);
+        for (let blade = 0; blade < 4; blade += 1) {
+          const angle = (blade * Math.PI) / 2;
+          const mesh = new THREE.Mesh(geometry.panel, dark);
+          mesh.scale.set(0.34, radius, 0.13);
+          mesh.position.set(-Math.sin(angle) * radius * 0.5, Math.cos(angle) * radius * 0.5, 0);
+          mesh.rotation.z = angle;
+          spinner.add(mesh);
+        }
+        spinner.userData.spinDir = dir;
+        parts.push(spinner);
+        propSpinners.push(spinner);
+        return spinner;
       };
       const addFlame = (x, y, z, sx = 1, sy = 1) => {
         const flame = new THREE.Mesh(geometry.flame, flameMaterial);
@@ -15138,6 +15754,214 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         add(geometry.panel, dark, 3.4, 0.05, 1.9, 0.08, 0.3, 1.6);
         add(geometry.canopy, navL, -7.1, 0.0, 2.9, 0.13, 0.13, 0.13);
         add(geometry.canopy, navR, 7.1, 0.0, 2.9, 0.13, 0.13, 0.13);
+      } else if (theme.variant === "felon") {
+        // Su-57: the flattest, widest fighter in the game. Two engines set far
+        // apart with a flat lifting tunnel between them - the Flanker line's
+        // defining structure - a chined forebody, and all-moving fins canted
+        // OUTWARD. Against the F-22, the other stealth twin here, the two reads
+        // are the nacelle spacing (+/-1.9 against the Raptor's +/-0.78) and the
+        // LEVCONs at the wing root, which no other airframe in the game has.
+        add(geometry.fuselage, primary, 0, -0.05, -0.9, 1.15, 0.62, 1.15);
+        add(geometry.nose, primary, 0, 0, -8.6, 0.88, 0.6, 1.15);
+        add(geometry.canopy, canopy, 0, 0.66, -4.2, 0.72, 0.5, 1.7);
+        // The tunnel: a flat plate filling the span between the nacelles. This
+        // is what makes the airframe read as wide and thin from every angle.
+        add(geometry.panel, primary, 0, -0.22, 2.6, 3.4, 0.42, 8.6);
+        add(geometry.wingFelon, secondary, 0, -0.1, 0.9);
+        // LEVCONs: small movable surfaces at the wing root leading edge,
+        // bridging the gap between the intake shoulder and the wing.
+        add(geometry.panel, secondary, -2.5, -0.05, -3.9, 1.9, 0.16, 1.5, 0.14);
+        add(geometry.panel, secondary, 2.5, -0.05, -3.9, 1.9, 0.16, 1.5, -0.14);
+        add(geometry.stabFelon, primary, 0, -0.06, 6.9);
+        // Widely spaced engines with their own intakes and nozzles.
+        add(geometry.rearBody, secondary, -1.9, -0.1, 5.2, 0.9, 0.8, 1.5);
+        add(geometry.rearBody, secondary, 1.9, -0.1, 5.2, 0.9, 0.8, 1.5);
+        add(geometry.intake, accent, -1.95, -0.42, -2.4, 1.0, 0.95, 1.6);
+        add(geometry.intake, accent, 1.95, -0.42, -2.4, 1.0, 0.95, 1.6);
+        add(geometry.nozzle, accent, -1.9, -0.1, 7.7, 1.08, 1.08, 1.15);
+        add(geometry.nozzle, accent, 1.9, -0.1, 7.7, 1.08, 1.08, 1.15);
+        addFlame(-1.9, -0.1, 9.1, 1.08, 1.08);
+        addFlame(1.9, -0.1, 9.1, 1.08, 1.08);
+        // Outward-canted all-moving fins, plus the ventral strakes below them.
+        add(geometry.fin, secondary, -2.2, 0.24, 4.4, 0.72, 1.0, 0.8, 0.3);
+        add(geometry.fin, secondary, 2.2, 0.24, 4.4, 0.72, 1.0, 0.8, -0.3);
+        add(geometry.panel, dark, -2.15, -0.78, 6.4, 0.14, 0.7, 1.9, 0.26);
+        add(geometry.panel, dark, 2.15, -0.78, 6.4, 0.14, 0.7, 1.9, -0.26);
+        // Details: chine strips down the forebody sides, radome, nav lights.
+        add(geometry.panel, dark, -0.95, -0.02, -6.4, 0.5, 0.06, 3.6, 0.1);
+        add(geometry.panel, dark, 0.95, -0.02, -6.4, 0.5, 0.06, 3.6, -0.1);
+        add(geometry.nose, dark, 0, 0, -10.5, 0.34, 0.26, 0.36);
+        add(geometry.canopy, navL, -6.95, 0.0, 2.4, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 6.95, 0.0, 2.4, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "berkut") {
+        // Su-47: the forward-swept wing IS the aircraft, and the model exists
+        // to show it. wingBerkut's tips sit six metres AHEAD of its roots - the
+        // reverse of every other planform in the game - and the wing is mounted
+        // well aft at z 1.9 so those forward-raked tips reach back level with
+        // the canards. From above the silhouette is three surfaces in a row
+        // with the big middle one raked the wrong way; from the side the wing
+        // root trailing edge runs almost to the nozzles.
+        add(geometry.fuselage, primary, 0, 0, -0.6, 0.98, 0.78, 1.2);
+        add(geometry.nose, primary, 0, 0.02, -8.8, 0.82, 0.7, 1.2);
+        add(geometry.canopy, canopy, 0, 0.86, -4.6, 0.74, 0.56, 1.8);
+        // THE feature.
+        add(geometry.wingBerkut, secondary, 0, -0.08, 1.9);
+        // Canards ahead of it, set high on the forebody and larger than the
+        // eurocanard trio's - on this airframe they are a control surface for
+        // a wing that wants to twist, not a trim device.
+        add(geometry.canard, primary, 0, 0.38, -3.2, 1.35, 1, 1.25);
+        // Root gloves: the fixed structure the forward-swept panels grow out
+        // of, which is what stops the wing reading as glued to the body.
+        add(geometry.panel, secondary, -1.5, -0.04, 2.6, 1.1, 0.24, 3.6, 0.08);
+        add(geometry.panel, secondary, 1.5, -0.04, 2.6, 1.1, 0.24, 3.6, -0.08);
+        // Closely spaced twin engines - the opposite of the Felon's wide tunnel.
+        add(geometry.rearBody, secondary, -1.05, -0.06, 5.6, 0.9, 0.86, 1.45);
+        add(geometry.rearBody, secondary, 1.05, -0.06, 5.6, 0.9, 0.86, 1.45);
+        add(geometry.intake, accent, -1.55, -0.5, -1.6, 0.95, 1.0, 1.5);
+        add(geometry.intake, accent, 1.55, -0.5, -1.6, 0.95, 1.0, 1.5);
+        add(geometry.nozzle, accent, -1.05, -0.06, 7.9, 1.05, 1.05, 1.15);
+        add(geometry.nozzle, accent, 1.05, -0.06, 7.9, 1.05, 1.05, 1.15);
+        addFlame(-1.05, -0.06, 9.3, 1.05, 1.05);
+        addFlame(1.05, -0.06, 9.3, 1.05, 1.05);
+        // Tailplane behind the wing, outboard of the nozzles.
+        add(geometry.tailWing, primary, 0, -0.08, 7.6, 0.9, 1, 0.88);
+        // Twin fins canted outward, well aft.
+        add(geometry.fin, secondary, -1.5, 0.42, 5.0, 0.74, 1.05, 0.8, 0.2);
+        add(geometry.fin, secondary, 1.5, 0.42, 5.0, 0.74, 1.05, 0.8, -0.2);
+        // Details: pitot boom, anti-glare strip, dorsal spine, nav lights out
+        // at the geometric tips - which on this aircraft are FORWARD of the
+        // cockpit's own station, at z -2.5.
+        add(geometry.panel, dark, 0, 0.02, -11.6, 0.07, 0.07, 1.6);
+        add(geometry.panel, dark, 0, 0.62, -6.0, 0.62, 0.08, 1.9);
+        add(geometry.panel, secondary, 0, 0.72, 2.6, 0.3, 0.2, 5.0);
+        add(geometry.canopy, navL, -7.85, 0.0, -2.5, 0.13, 0.13, 0.13);
+        add(geometry.canopy, navR, 7.85, 0.0, -2.5, 0.13, 0.13, 0.13);
+      } else if (theme.variant === "flogger") {
+        // MiG-23: the game's second variable-geometry airframe. It shares the
+        // pivot machinery with the F-14D and nothing else - one engine against
+        // two, ONE tall fin against twin canted ones, and a slim body against
+        // the Tomcat's wide pancake - so the two swing-wings never read alike
+        // even with their wings at the same sweep.
+        add(geometry.fuselage, primary, 0, 0, -0.7, 0.8, 0.76, 1.15);
+        add(geometry.rearBody, secondary, 0, -0.02, 6.2, 0.8, 0.78, 1.25);
+        add(geometry.nose, primary, 0, 0.02, -8.4, 0.68, 0.62, 1.15);
+        add(geometry.canopy, canopy, 0, 0.86, -4.0, 0.62, 0.52, 1.35);
+        // Shoulder-mounted fixed gloves. The outer panels pivot off these, and
+        // they carry the sweep line when the wing is fully aft.
+        add(geometry.panel, secondary, -1.35, 0.5, -1.0, 1.5, 0.24, 3.4, 0.1);
+        add(geometry.panel, secondary, 1.35, 0.5, -1.0, 1.5, 0.24, 3.4, -0.1);
+        // Swing wings on their own pivot groups, shoulder height at y 0.52.
+        wingPivots.push(addWingPivot(geometry.wingFlogger, secondary, -1, -1.35, 0.52, -1.2));
+        wingPivots.push(addWingPivot(geometry.wingFlogger, secondary, 1, 1.35, 0.52, -1.2));
+        // Rectangular side intakes with raked splitter plates.
+        add(geometry.panel, accent, -1.32, -0.14, -2.8, 0.5, 1.2, 4.0);
+        add(geometry.panel, accent, 1.32, -0.14, -2.8, 0.5, 1.2, 4.0);
+        add(geometry.panel, dark, -1.6, -0.14, -4.7, 0.1, 1.15, 0.6, 0.2);
+        add(geometry.panel, dark, 1.6, -0.14, -4.7, 0.1, 1.15, 0.6, -0.2);
+        add(geometry.nozzle, accent, 0, -0.02, 8.0, 1.15, 1.15, 1.2);
+        addFlame(0, -0.02, 9.5, 1.15, 1.15);
+        // ONE big fin, and the folding ventral fin under the tail - the other
+        // MiG-23 tell, and something no other aircraft in the game carries.
+        add(geometry.fin, secondary, 0, 0.7, 4.6, 1.0, 1.45, 1.0);
+        add(geometry.panel, dark, 0, -1.15, 6.6, 0.14, 1.5, 2.6);
+        add(geometry.tailWing, primary, 0, -0.06, 7.0, 0.92, 1, 0.9);
+        // Details: pitot boom, radome, anti-glare strip, dorsal spine, and nav
+        // lights on the GLOVES rather than the tips - the tips move.
+        add(geometry.panel, dark, 0, 0.02, -11.0, 0.07, 0.07, 1.6);
+        add(geometry.nose, dark, 0, 0.02, -10.0, 0.3, 0.28, 0.34);
+        add(geometry.panel, dark, 0, 0.6, -5.6, 0.55, 0.08, 1.8);
+        add(geometry.panel, secondary, 0, 0.7, 2.2, 0.26, 0.2, 5.2);
+        add(geometry.canopy, navL, -2.6, 0.62, -1.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 2.6, 0.62, -1.6, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "frogfoot") {
+        // Su-25: a straight-winged, blunt, deliberately ugly aeroplane, and it
+        // has to read that way against a sky full of deltas. Three features do
+        // it: the unswept plank wing, the two engine nacelles bolted to the
+        // fuselage SIDES at wing root height (not buried in the tail like every
+        // fighter here), and a short blunt nose with no radome at all - the
+        // real aircraft has a laser designator behind glass instead.
+        add(geometry.fuselage, primary, 0, 0.05, -0.8, 0.92, 0.9, 1.05);
+        add(geometry.nose, primary, 0, 0.05, -7.6, 0.9, 0.86, 0.72);
+        // Bathtub cockpit: armour plate around a canopy sitting high and well
+        // forward, which is the CAS idiom - the pilot has to see downward.
+        add(geometry.canopy, canopy, 0, 1.0, -4.6, 0.66, 0.52, 1.15);
+        add(geometry.panel, accent, 0, 0.55, -4.6, 1.15, 0.85, 2.3);
+        add(geometry.wingFrogfoot, secondary, 0, -0.15, 1.0);
+        // Side-mounted nacelles: long boxes on the flanks at wing root height,
+        // each with its own intake face and nozzle. This is the read that
+        // separates the Frogfoot from every other twin here.
+        add(geometry.rearBody, secondary, -1.75, -0.1, 2.0, 0.95, 0.95, 2.6);
+        add(geometry.rearBody, secondary, 1.75, -0.1, 2.0, 0.95, 0.95, 2.6);
+        add(geometry.intake, accent, -1.78, -0.1, -2.6, 1.05, 1.5, 1.3);
+        add(geometry.intake, accent, 1.78, -0.1, -2.6, 1.05, 1.5, 1.3);
+        add(geometry.nozzle, accent, -1.75, -0.1, 5.6, 1.05, 1.05, 1.1);
+        add(geometry.nozzle, accent, 1.75, -0.1, 5.6, 1.05, 1.05, 1.1);
+        addFlame(-1.75, -0.1, 6.9, 0.95, 0.95);
+        addFlame(1.75, -0.1, 6.9, 0.95, 0.95);
+        // Conventional tail: one fin, one tailplane, both unremarkable, which
+        // is itself the point next to the canted twin fins everywhere else.
+        add(geometry.fin, secondary, 0, 0.55, 5.4, 1.05, 1.3, 1.05);
+        add(geometry.tailWing, primary, 0, 0.35, 7.4, 1.0, 1, 0.95);
+        // Underwing stores: the hardpoints are what this aircraft is for, so
+        // it flies with something on them rather than clean like the fighters.
+        add(geometry.missileBody, light, -4.4, -0.75, 1.2, 1.15, 1.15, 1.1);
+        add(geometry.missileBody, light, 4.4, -0.75, 1.2, 1.15, 1.15, 1.1);
+        add(geometry.missileNose, dark, -4.4, -0.75, -1.5, 1.1, 1.1, 1.0);
+        add(geometry.missileNose, dark, 4.4, -0.75, -1.5, 1.1, 1.1, 1.0);
+        add(geometry.panel, dark, -4.4, -0.4, 1.4, 0.2, 0.5, 1.6);
+        add(geometry.panel, dark, 4.4, -0.4, 1.4, 0.2, 0.5, 1.6);
+        // Details: gun fairing under the nose, dorsal spine, nav lights.
+        add(geometry.panel, dark, -0.35, -0.85, -5.4, 0.35, 0.4, 3.2);
+        add(geometry.panel, secondary, 0, 0.85, 2.4, 0.3, 0.2, 4.6);
+        add(geometry.canopy, navL, -8.55, -0.1, 0.6, 0.14, 0.14, 0.14);
+        add(geometry.canopy, navR, 8.55, -0.1, 0.6, 0.14, 0.14, 0.14);
+      } else if (theme.variant === "bear") {
+        // Tu-95: a swept-wing jet-age bomber that flies on propellers, which is
+        // the whole reason it is here rather than another B-52 reskin. Four
+        // nacelles, each carrying a CONTRA-ROTATING pair of four-blade discs
+        // turning opposite ways - eight spinning discs in all, and the only
+        // moving machinery on any aircraft in the game besides the two swing
+        // wings. Everything else follows from that: no flames anywhere (a
+        // turboprop has no visible afterburner), the biggest wing in the game,
+        // and a slim high-fineness fuselage instead of the B-52's slab.
+        add(geometry.fuselage, primary, 0, 0, -1.4, 0.92, 0.9, 1.75);
+        add(geometry.fuselage, primary, 0, 0, 7.2, 0.8, 0.78, 0.9);
+        add(geometry.nose, primary, 0, 0.02, -12.8, 0.86, 0.84, 1.6);
+        // Stepped flight deck well forward, glazed nose below it.
+        add(geometry.canopy, canopy, 0, 0.8, -10.0, 0.58, 0.48, 1.15);
+        add(geometry.canopy, canopy, 0, -0.15, -12.2, 0.5, 0.4, 0.8);
+        add(geometry.wingBear, secondary, 0, 0.35, 0.6);
+        // Four nacelles slung under and ahead of the wing, each ending in a
+        // contra-rotating pair. The inboard pair is bigger and further forward,
+        // following the real aircraft; the discs are at the nacelle NOSE, so
+        // they sit ahead of the leading edge where they can be seen.
+        for (const side of [-1, 1]) {
+          add(geometry.rearBody, accent, side * 4.4, -0.85, -1.4, 0.92, 0.92, 2.3);
+          add(geometry.rearBody, accent, side * 8.6, -0.2, 2.2, 0.82, 0.82, 2.1);
+          // Pylons bridging nacelle to wing.
+          add(geometry.panel, secondary, side * 4.4, 0.05, -0.4, 0.26, 0.9, 2.6);
+          add(geometry.panel, secondary, side * 8.6, 0.62, 3.0, 0.24, 0.8, 2.4);
+          // Contra-rotating pairs: two discs per nacelle, opposite spin, set
+          // 0.8 apart in z so both are visible as separate discs from the side.
+          addProp(side * 4.4, -0.85, -5.4, 2.9, 1);
+          addProp(side * 4.4, -0.85, -4.6, 2.9, -1);
+          addProp(side * 8.6, -0.2, -1.8, 2.6, 1);
+          addProp(side * 8.6, -0.2, -1.0, 2.6, -1);
+        }
+        // Swept tail to match the wing, and one tall fin.
+        add(geometry.stabBear, primary, 0, 0.55, 9.0, 1.0, 1, 1.0);
+        add(geometry.fin, secondary, 0, 0.8, 7.6, 1.1, 1.9, 1.25);
+        // Tail turret at z 11.6 - the tracer origin in attemptEnemyAttack is
+        // the same point (rearGunOffset 27 = 11.6 x the 2.3 model scale), so
+        // the cannon is visibly where the rounds come from.
+        add(geometry.panel, dark, 0, 0.1, 11.0, 0.95, 0.8, 1.4);
+        add(geometry.missileBody, dark, -0.3, 0.1, 12.2, 0.5, 0.5, 0.5);
+        add(geometry.missileBody, dark, 0.3, 0.1, 12.2, 0.5, 0.5, 0.5);
+        // Details: dorsal spine, anti-glare panel, nav lights at the tips.
+        add(geometry.panel, secondary, 0, 0.72, 2.6, 0.28, 0.2, 9.4);
+        add(geometry.panel, dark, 0, 0.62, -11.2, 0.55, 0.08, 1.9);
+        add(geometry.canopy, navL, -13.2, 0.5, 6.4, 0.15, 0.15, 0.15);
+        add(geometry.canopy, navR, 13.2, 0.5, 6.4, 0.15, 0.15, 0.15);
       } else if (theme.variant === "rafale") {
         // Rafale M: delta wing with CLOSE-COUPLED canards - the foreplanes sit
         // just ahead of the wing root at z -4.2, almost touching the leading
@@ -15526,6 +16350,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         group: root,
         flames,
         wingPivots,
+        propSpinners,
         standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
         flameMaterial
       };
