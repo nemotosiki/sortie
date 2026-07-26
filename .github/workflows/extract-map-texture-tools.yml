@@ -1,0 +1,33 @@
+name: Extract map texture review tools
+
+on:
+  push:
+    branches:
+      - chatgpt/map-texture-review-20260726-a
+    paths:
+      - .github/workflows/extract-map-texture-tools.yml
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decode review tools into readable temporary files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat _chatgpt_runner/apply_patch.py.b64.* | base64 --decode | gzip --decompress > _chatgpt_runner/apply_patch.py
+          cat _chatgpt_runner/visual_test.mjs.b64.* | base64 --decode | gzip --decompress > _chatgpt_runner/visual_test.mjs
+          python3 -m py_compile _chatgpt_runner/apply_patch.py
+          node --check _chatgpt_runner/visual_test.mjs
+          git config user.name "ChatGPT"
+          git config user.email "noreply@openai.com"
+          git add -- _chatgpt_runner/apply_patch.py _chatgpt_runner/visual_test.mjs
+          git commit -m "Expose temporary map texture review tools"
+          git push origin "HEAD:chatgpt/map-texture-review-20260726-a"
