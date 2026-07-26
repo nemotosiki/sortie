@@ -14152,6 +14152,171 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       setState(STATE_READY);
     }
 
+    // Compact, tileable material data for the terrain. The RGBA channels carry
+    // independent sand/grass/rock/snow micro-patterns; the shader chooses among
+    // them from normalized height and slope, then samples the same texture at a
+    // rotated macro scale to hide repetition. Everything is authored here, so
+    // the single-file/no-external-assets contract remains intact.
+    function makeTerrainTextureSet(seed, size = 256) {
+      const detailCanvas = document.createElement("canvas");
+      detailCanvas.width = size;
+      detailCanvas.height = size;
+      const detailCtx = detailCanvas.getContext("2d");
+      const detailImage = detailCtx.createImageData(size, size);
+      const heightField = new Float32Array(size * size);
+      const phase = ((seed >>> 0) % 65521) / 65521 * Math.PI * 2;
+      const tau = Math.PI * 2;
+      const clamp01 = (value) => Math.min(1, Math.max(0, value));
+
+      for (let y = 0; y < size; y += 1) {
+        const v = y / size * tau;
+        for (let x = 0; x < size; x += 1) {
+          const u = x / size * tau;
+          const grain = 0.5 + 0.5 * Math.sin(
+            u * 37 + Math.sin(v * 29 + phase) * 2.1 + Math.sin(u * 13 - v * 17 + phase * 0.7) * 1.7
+          );
+          const broad = 0.5 + 0.24 * Math.sin(u * 3 + Math.sin(v * 2 + phase)) +
+            0.16 * Math.sin(v * 5 - u * 2 + phase * 1.3) +
+            0.1 * Math.sin((u + v) * 9 + phase * 0.4);
+          const ridges = Math.abs(Math.sin(v * 7 + Math.sin(u * 4 + phase) * 2.4));
+          const cracks = Math.pow(Math.abs(Math.sin(u * 11 - v * 8 + broad * 4.5)), 7);
+          const sand = clamp01(0.72 + 0.12 * Math.sin(u * 14 + Math.sin(v * 3) * 1.8) + 0.1 * broad + 0.06 * grain);
+          const grass = clamp01(0.58 + 0.24 * broad + 0.16 * grain - 0.05 * ridges);
+          const rock = clamp01(0.5 + 0.26 * ridges + 0.18 * grain - 0.22 * cracks);
+          const snow = clamp01(0.82 + 0.1 * broad + 0.055 * grain - 0.04 * ridges);
+          const index = y * size + x;
+          const offset = index * 4;
+          detailImage.data[offset] = Math.round(sand * 255);
+          detailImage.data[offset + 1] = Math.round(grass * 255);
+          detailImage.data[offset + 2] = Math.round(rock * 255);
+          detailImage.data[offset + 3] = Math.round(snow * 255);
+          heightField[index] = broad * 0.62 + ridges * 0.24 + grain * 0.14 - cracks * 0.1;
+        }
+      }
+      detailCtx.putImageData(detailImage, 0, 0);
+
+      const normalCanvas = document.createElement("canvas");
+      normalCanvas.width = size;
+      normalCanvas.height = size;
+      const normalCtx = normalCanvas.getContext("2d");
+      const normalImage = normalCtx.createImageData(size, size);
+      const wrapped = (value) => (value + size) % size;
+      for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+          const left = heightField[y * size + wrapped(x - 1)];
+          const right = heightField[y * size + wrapped(x + 1)];
+          const down = heightField[wrapped(y - 1) * size + x];
+          const up = heightField[wrapped(y + 1) * size + x];
+          let nx = (left - right) * 1.9;
+          let ny = 1;
+          let nz = (down - up) * 1.9;
+          const inv = 1 / Math.hypot(nx, ny, nz);
+          nx *= inv;
+          ny *= inv;
+          nz *= inv;
+          const offset = (y * size + x) * 4;
+          normalImage.data[offset] = Math.round((nx * 0.5 + 0.5) * 255);
+          normalImage.data[offset + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+          normalImage.data[offset + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+          normalImage.data[offset + 3] = 255;
+        }
+      }
+      normalCtx.putImageData(normalImage, 0, 0);
+
+      const detail = new THREE.CanvasTexture(detailCanvas);
+      detail.wrapS = THREE.RepeatWrapping;
+      detail.wrapT = THREE.RepeatWrapping;
+      detail.colorSpace = THREE.NoColorSpace;
+      const normal = new THREE.CanvasTexture(normalCanvas);
+      normal.wrapS = THREE.RepeatWrapping;
+      normal.wrapT = THREE.RepeatWrapping;
+      normal.colorSpace = THREE.NoColorSpace;
+      return { detail, normal };
+    }
+
+    function makeTerrainMaterial(detailTexture, normalTexture, mountainConfig, style, snowEnabled) {
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: detailTexture,
+        normalMap: normalTexture,
+        normalScale: new THREE.Vector2(style.normalStrength, style.normalStrength),
+        roughness: mountainConfig.roughness,
+        metalness: 0
+      });
+      material.onBeforeCompile = (shader) => {
+        shader.uniforms.terrainSandColor = { value: new THREE.Color(style.sand) };
+        shader.uniforms.terrainGrassColor = { value: new THREE.Color(style.grass) };
+        shader.uniforms.terrainRockColor = { value: new THREE.Color(style.rock) };
+        shader.uniforms.terrainPeakColor = { value: new THREE.Color(style.peak) };
+        shader.uniforms.terrainSnowColor = { value: new THREE.Color(style.snow) };
+        shader.uniforms.terrainFineRepeat = { value: style.fineRepeat };
+        shader.uniforms.terrainMacroRepeat = { value: style.macroRepeat };
+        shader.uniforms.terrainShoreHeight = { value: style.shoreHeight };
+        shader.uniforms.terrainSnowLine = { value: style.snowLine };
+        shader.uniforms.terrainSnowSoftness = { value: style.snowSoftness };
+        shader.uniforms.terrainSnowEnabled = { value: snowEnabled ? 1 : 0 };
+        shader.uniforms.terrainRockSlope = { value: new THREE.Vector2(style.rockSlope[0], style.rockSlope[1]) };
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            "void main() {",
+            `varying float vTerrainHeight;\nvarying float vTerrainSlope;\nvoid main() {`
+          )
+          .replace(
+            "#include <beginnormal_vertex>",
+            `#include <beginnormal_vertex>\n  vTerrainHeight = clamp(position.y, 0.0, 1.0);\n  vTerrainSlope = 1.0 - clamp(normal.y, 0.0, 1.0);`
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            "#define STANDARD",
+            `#define STANDARD
+uniform vec3 terrainSandColor;
+uniform vec3 terrainGrassColor;
+uniform vec3 terrainRockColor;
+uniform vec3 terrainPeakColor;
+uniform vec3 terrainSnowColor;
+uniform float terrainFineRepeat;
+uniform float terrainMacroRepeat;
+uniform float terrainShoreHeight;
+uniform float terrainSnowLine;
+uniform float terrainSnowSoftness;
+uniform float terrainSnowEnabled;
+uniform vec2 terrainRockSlope;
+varying float vTerrainHeight;
+varying float vTerrainSlope;`
+          )
+          .replace(
+            "#include <map_fragment>",
+            `vec2 terrainFineUv = vMapUv * terrainFineRepeat;
+mat2 terrainTurn = mat2(0.8, -0.6, 0.6, 0.8);
+vec2 terrainMacroUv = terrainTurn * (vMapUv - 0.5) * terrainMacroRepeat + vec2(0.37, 0.61);
+vec4 terrainFine = texture2D(map, terrainFineUv);
+vec4 terrainMacro = texture2D(map, terrainMacroUv);
+vec4 terrainDetail = mix(terrainMacro, terrainFine, 0.68);
+float terrainHeight = clamp(vTerrainHeight, 0.0, 1.0);
+float terrainSlope = smoothstep(terrainRockSlope.x, terrainRockSlope.y, vTerrainSlope);
+float terrainSandWeight = (1.0 - smoothstep(terrainShoreHeight * 0.42, terrainShoreHeight, terrainHeight)) * (1.0 - terrainSlope * 0.55);
+float terrainGrassWeight = smoothstep(terrainShoreHeight * 0.62, terrainShoreHeight * 1.45, terrainHeight) *
+  (1.0 - smoothstep(0.52, 0.78, terrainHeight)) * (1.0 - terrainSlope * 0.84);
+float terrainSnowWeight = terrainSnowEnabled *
+  smoothstep(terrainSnowLine - terrainSnowSoftness, terrainSnowLine + terrainSnowSoftness, terrainHeight) *
+  (1.0 - terrainSlope * 0.48);
+float terrainRockWeight = 0.18 + terrainSlope * 1.55 + smoothstep(0.42, 0.82, terrainHeight) * 0.34;
+vec4 terrainWeights = max(vec4(terrainSandWeight, terrainGrassWeight, terrainRockWeight, terrainSnowWeight), vec4(0.0));
+terrainWeights /= max(dot(terrainWeights, vec4(1.0)), 0.0001);
+vec3 terrainHighRock = mix(terrainRockColor, terrainPeakColor, smoothstep(0.58, 0.96, terrainHeight));
+vec3 terrainBase = terrainSandColor * terrainWeights.r + terrainGrassColor * terrainWeights.g +
+  terrainHighRock * terrainWeights.b + terrainSnowColor * terrainWeights.a;
+float terrainMicro = dot(terrainWeights, terrainDetail);
+float terrainShade = mix(0.72, 1.22, terrainMicro);
+terrainShade *= mix(1.0, 0.84 + terrainDetail.b * 0.18, terrainSlope);
+diffuseColor.rgb = terrainBase * terrainShade;`
+          );
+        material.userData.shader = shader;
+      };
+      material.customProgramCacheKey = () => `sortie-terrain-v2-${snowEnabled ? "snow" : "bare"}`;
+      return material;
+    }
+
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
     // returned record so disposeWorld() can hand it all back when a mission
     // switches maps - otherwise each swap would leak a whole world.
@@ -14329,6 +14494,31 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       // Placement is either the classic scattered ring or, for canyon maps, a
       // pair of staggered walls straight ahead of the spawn point.
       const mountainConfig = preset.mountains;
+      const terrainStyle = {
+        seed: 0x71a900 ^ key.split("").reduce((value, char) => Math.imul(value ^ char.charCodeAt(0), 16777619), 2166136261),
+        sand: mountainConfig.palette.low,
+        grass: mountainConfig.palette.mid,
+        rock: mountainConfig.palette.rock,
+        peak: mountainConfig.palette.peak,
+        snow: mountainConfig.palette.snow,
+        fineRepeat: 16,
+        macroRepeat: 3.5,
+        normalRepeat: 22,
+        normalStrength: 0.46,
+        islandNormalStrength: 0.24,
+        rockSlope: [0.22, 0.68],
+        shoreHeight: 0.2,
+        snowLine: mountainConfig.snowLine,
+        snowSoftness: 0.085,
+        ...(preset.terrain || {})
+      };
+      const terrainTextures = makeTerrainTextureSet(terrainStyle.seed);
+      const terrainDetailTexture = keepTexture(terrainTextures.detail);
+      const terrainNormalTexture = keepTexture(terrainTextures.normal);
+      const terrainAnisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      terrainDetailTexture.anisotropy = terrainAnisotropy;
+      terrainNormalTexture.anisotropy = terrainAnisotropy;
+      terrainNormalTexture.repeat.set(terrainStyle.normalRepeat, terrainStyle.normalRepeat);
       const corridorSlots = [];
       if (mountainConfig.corridor) {
         const lane = mountainConfig.corridor;
@@ -14340,9 +14530,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           }
         }
       }
-      const mountainMaterial = keepMaterial(new THREE.MeshStandardMaterial({
-        vertexColors: true, roughness: mountainConfig.roughness, metalness: 0
-      }));
+      const mountainMaterials = {
+        bare: keepMaterial(makeTerrainMaterial(
+          terrainDetailTexture, terrainNormalTexture, mountainConfig, terrainStyle, false
+        )),
+        snow: keepMaterial(makeTerrainMaterial(
+          terrainDetailTexture, terrainNormalTexture, mountainConfig, terrainStyle, true
+        ))
+      };
       const mountains = [];
       const mountainTotal = corridorSlots.length + mountainConfig.count + (mountainConfig.plateau ? 1 : 0);
       for (let i = 0; i < mountainTotal; i += 1) {
@@ -14356,7 +14551,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           palette: mountainConfig.palette,
           snowLine: mountainConfig.snowLine,
           topRadius: plateau ? plateau.topRadius : 0.08
-        })), mountainMaterial);
+        })), snowy ? mountainMaterials.snow : mountainMaterials.bare);
         const depth = radius * (0.75 + rng() * 0.35);
         mountain.scale.set(radius, height, depth);
         mountain.rotation.y = rng() * Math.PI * 2;
@@ -14388,8 +14583,16 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       // placement and every later RNG consumer (clouds) stay bit-identical to
       // the pre-polish build. These are decoration only: they are not added to
       // `mountains`, so they never affect surfaceHeightAt or collision.
-      const islandStone = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.stone, roughness: 0.96, metalness: 0 }));
-      const islandGreen = keepMaterial(new THREE.MeshStandardMaterial({ color: preset.islands.green, roughness: 0.92, metalness: 0 }));
+      const islandStone = keepMaterial(new THREE.MeshStandardMaterial({
+        color: preset.islands.stone, normalMap: terrainNormalTexture,
+        normalScale: new THREE.Vector2(terrainStyle.islandNormalStrength, terrainStyle.islandNormalStrength),
+        roughness: 0.96, metalness: 0
+      }));
+      const islandGreen = keepMaterial(new THREE.MeshStandardMaterial({
+        color: preset.islands.green, normalMap: terrainNormalTexture,
+        normalScale: new THREE.Vector2(terrainStyle.islandNormalStrength * 0.72, terrainStyle.islandNormalStrength * 0.72),
+        roughness: 0.92, metalness: 0
+      }));
       const islandGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1.18, 1, 9, 1, false));
       const islandAnchors = [];
 
