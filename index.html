@@ -3691,6 +3691,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // A delayed entry that never comes due is simply never spawned, which
         // is the design - clearing the wave fast is how the player refuses it.
         delay: Math.max(0, Number(entry.delay) || 0),
+        // Naval only. `at` pins the formation's centre to a world [x, z]
+        // instead of taking the default "2.4km off the player's nose, clamped
+        // into the inner sea", and `facing` is the [x, z] the hulls point at.
+        // Both exist for BEACHHEAD: a landing force is defined by the line it
+        // is steaming down, and a fleet placed relative to wherever the player
+        // happens to be looking has no such line. Omitted on every wave
+        // written before this, so the default placement is untouched.
+        at: kind === "naval" && Array.isArray(entry.at)
+          ? Object.freeze([Number(entry.at[0]) || 0, Number(entry.at[1]) || 0])
+          : null,
+        facing: kind === "naval" && Array.isArray(entry.facing)
+          ? Object.freeze([Number(entry.facing[0]) || 0, Number(entry.facing[1]) || 0])
+          : null,
         // ENEMY_ROLES key for every aircraft in the wave. Omitted = line, i.e.
         // the airframe flown at its published numbers. `ace` is never written
         // here; naming a pilot is what selects it.
@@ -5390,6 +5403,58 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       }),
+      // BEACHHEAD's subject. The one hull in the game that is not trying to
+      // fight the player: an amphibious landing ship (165m, wide-beamed, bow
+      // door) whose entire threat is that it will reach a beach if left alone.
+      // `landing:true` is the whole flag - it tells updateShip to steer at the
+      // shore instead of holding station off it, and updateLandingThreat to
+      // charge the player when one arrives. Nothing else branches on it.
+      //
+      // HP is 196 = exactly 2 missiles, the frigate's number rather than the
+      // Aegis' 250, and deliberately not scaled up with the hull. A landing
+      // ship is a box of vehicles with an engine; the reason to hurry is the
+      // clock, and five of these at 3 missiles each would turn the sortie into
+      // an ammunition problem instead of a timing one.
+      landingShip: Object.freeze({
+        key: "landingShip",
+        surface: true,
+        landing: true,
+        label: "LST",
+        role: "Amphibious Landing Ship",
+        hp: 196,
+        // The slowest thing afloat here - slower than the carrier's 10 - which
+        // is what makes the run in a countdown the player can read off the
+        // radar rather than a number in the HUD.
+        cruiseSpeed: 9,
+        turnRate: THREE.MathUtils.degToRad(2.2),
+        hitRadius: 78,
+        crash: Object.freeze({ halfLen: 82, halfBeam: 16, top: 21 }),
+        hitBox: Object.freeze({ x: 28, y: 30, z: 166 }),
+        sinkDepth: 26,
+        blastSpread: 36,
+        smokeOffset: 26,
+        smokeHeight: 19,
+        sternOffset: 78,
+        bowOffset: 80,
+        aaMounts: Object.freeze([-52, 56]),
+        aaHeight: 13,
+        // The weakest gun fit afloat: a transport's self-defence armament, not
+        // a warship's. Long cooldown, one tracer, short range - it has to be
+        // survivable to strafe, because the sortie asks for repeated passes on
+        // five hulls inside the clock.
+        aa: Object.freeze({ range: 460, cooldownMin: 1.2, cooldownSpread: 0.9, damage: 7, maxHitChance: 0.09, tracers: 1 }),
+        // Two mounts, both guns, both on hardware the model draws: the tub
+        // forward of the well deck and the mount on the aft deckhouse. No VLS
+        // and no CIWS - a landing ship carries neither - so a strafing pass
+        // can silence one completely before the missile run goes in.
+        subsystems: Object.freeze([
+          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 14, z: -54 }) }),
+          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 19, z: 57 }) })
+        ]),
+        radarColor: "#ffd08a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
       carrier: Object.freeze({
         key: "carrier",
         surface: true,
@@ -5583,6 +5648,86 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         dishSpin: 1.4,
         mobile: Object.freeze({ speed: 13, turnRate: THREE.MathUtils.degToRad(26) }),
         radarColor: "#ff9a5a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+
+      // ---- Armoured train (STEEL SNAKE) ----------------------------------
+      // A train is not a new mechanic. It is the convoy mechanic with the
+      // interval turned right down: every car is its own entry in enemies[],
+      // riding the SAME baked route at the SAME speed and differing only by
+      // `pathOffset`. That buys, for free, everything the mission needs -
+      // exact spacing that cannot concertina, a separate lock box per car, a
+      // separate hitbox per car, and a separate line in TGT REMAIN. Modelling
+      // the train as one coupled entity would have cost a new update path and
+      // bought nothing the player can see.
+      //
+      // `turnRate` is huge next to the road vehicles' 26-28 deg/s because a
+      // flanged wheel does not negotiate a corner, it is held on one: a car
+      // that eased into its heading the way a tank does would visibly leave
+      // the track on every curve, and the track is drawn under it.
+      trainLoco: Object.freeze({
+        key: "trainLoco",
+        surface: true,
+        ground: true,
+        label: "LOCOMOTIVE",
+        role: "Armoured Locomotive",
+        // Two missiles. The heaviest car on the train and the only one the
+        // briefing tells the player to kill first - a dead engine does not
+        // stop the sortie (the cars are targets too) but it does stop the
+        // train, which is what the mission is called.
+        hp: 196,
+        hitRadius: 16,
+        crash: Object.freeze({ halfLen: 11, halfBeam: 3.2, top: 5.4 }),
+        hitBox: Object.freeze({ x: 8, y: 9, z: 22 }),
+        smokeHeight: 6,
+        aa: null,
+        mobile: Object.freeze({ speed: 18, turnRate: THREE.MathUtils.degToRad(120) }),
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      trainFlak: Object.freeze({
+        key: "trainFlak",
+        surface: true,
+        ground: true,
+        label: "FLAK CAR",
+        role: "Anti-Aircraft Rail Car",
+        // One missile, same as the samSite and the adTank: air-defence units
+        // are the dangerous, fragile thing the player clears first, and this
+        // train's whole defence is these two cars.
+        hp: 98,
+        hitRadius: 14,
+        crash: Object.freeze({ halfLen: 9, halfBeam: 3.2, top: 4.8 }),
+        hitBox: Object.freeze({ x: 8, y: 8, z: 19 }),
+        smokeHeight: 5,
+        aaMounts: Object.freeze([-2.2, 2.4]),
+        aaHeight: 5.6,
+        // The longest reach of any gun on the ground (620 against the AD
+        // TANK's 600) and the shortest cooldown: a flak car is a battery on
+        // rails, and it is the reason a strafing run down the length of the
+        // train costs something.
+        aa: Object.freeze({ range: 620, cooldownMin: 0.6, cooldownSpread: 0.45, damage: 7, maxHitChance: 0.15, tracers: 2 }),
+        dishSpin: 1.5,
+        mobile: Object.freeze({ speed: 18, turnRate: THREE.MathUtils.degToRad(120) }),
+        radarColor: "#ff9a5a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      trainCar: Object.freeze({
+        key: "trainCar",
+        surface: true,
+        ground: true,
+        label: "SUPPLY CAR",
+        role: "Armoured Freight Car",
+        hp: 98,
+        hitRadius: 14,
+        crash: Object.freeze({ halfLen: 9, halfBeam: 3.2, top: 4.4 }),
+        hitBox: Object.freeze({ x: 8, y: 8, z: 19 }),
+        smokeHeight: 5,
+        aa: null,
+        mobile: Object.freeze({ speed: 18, turnRate: THREE.MathUtils.degToRad(120) }),
+        radarColor: "#ffc47a",
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       })
@@ -6949,6 +7094,228 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
+        key: "m-train",
+        world: "desertBasin",
+        title: "STEEL SNAKE",
+        jp: "内陸の補給線。盆地を横切る装甲列車を、線路の先へ抜けられる前に止めろ。",
+        // Campaign 10. Story bible: "補給線の装甲列車。直前に「捕虜輸送の可能性」
+        // の報。SKYEYEが確認を求めるが命令は続行。後で軍需列車と判明する——
+        // 正しかった。正しかったが、あの一瞬の躊躇だけが残る."
+        //
+        // The briefing carries that; the composition carries something else.
+        // IRON COLUMN taught the player to lead a moving ground target. This is
+        // the same lesson with the interval closed up: seven vehicles spread
+        // over 1km of road become six cars inside 130m of each other, all on
+        // one line, all moving at one speed. A pass down the length of the
+        // train can touch every car - and runs the full length of the flak
+        // cars' engagement envelope doing it. A pass ACROSS it touches one car
+        // and is over in a second. That choice is the mission.
+        //
+        // Six designated cars against eleven undesignated contacts (nine
+        // fighters and the two emplaced guns on the line) is 1:1.83, inside the
+        // 1:1.5-2 band spec_wave_variety §4 sets as the default shape.
+        //
+        // Every air entry after the first is `concurrent`: a non-TGT wave that
+        // is not concurrent would never spawn at all, because the sequence only
+        // advances when the designated targets are gone - and by then the
+        // sortie is over. Same constraint m-night, m-convoy and m-desert work
+        // under.
+        sequence: [
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "CAP", role: "trash",
+            radio: [
+              { speaker: "wingman", text: "線路上空にCAPだ！ 付き合う必要はない——狙いは列車だぞ！", id: "train-cap-inbound" }
+            ]
+          },
+          // Comes up off the supply line's own field while the player is still
+          // working the middle of the train.
+          {
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 1, label: "LINE PATROL",
+            concurrent: true, role: "trash", delay: 45,
+            radio: [
+              { speaker: "wingman", text: "増援3機！ 低空に入りづらくなるぞ——先に対空車を潰せ！", id: "train-patrol" }
+            ]
+          },
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "RELIEF FLIGHT",
+            concurrent: true, role: "trash", delay: 110
+          },
+          {
+            types: ["mig23", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
+            concurrent: true, role: "trash", delay: 175
+          }
+        ],
+        // Six ground kills at ground-attack pace against a target that is
+        // moving away the whole time, flown through nine fighters that never
+        // have to be engaged. Between m-convoy's 300 (eight kills, a slower
+        // column) and m-desert's 360.
+        parTime: 300,
+        hasOutro: false,
+        map: { x: 0.31, y: 0.86 },
+        // ★ The line is laid ACROSS the desert pan and every point of it is
+        // inside 1400m of the pan's centre (0, -1500). That bound is the same
+        // one m-desert's layout is written to and for the same reason: the
+        // plateau mesh is an elliptical, angularly-displaced cone whose flat
+        // top ends between ~0.62r and ~0.96r depending on bearing, so authoring
+        // against the nominal 3000m radius puts things on open sand. On the
+        // flat top the whole line samples one height, which is also what lets
+        // spawnRailLine draw a straight quad per leg and have it lie on the
+        // ground exactly. debug.convoyRouteAudit() measures it.
+        //
+        // Bearing is deliberately EAST-WEST rather than the convoy road's
+        // north-south. The player spawns at +Z facing -Z, so the train crosses
+        // the nose instead of running away down it: every attack is a decision
+        // about which end of a moving 130m object to take, which is the whole
+        // difference between this and IRON COLUMN.
+        railLine: [
+          [-1300, -1150], [-800, -1230], [-300, -1350], [200, -1500],
+          [700, -1650], [1100, -1770], [1330, -1850]
+        ],
+        // One speed for the whole train, because the cars are coupled: this is
+        // the number `pathOffset` differences hold the 21m interval against.
+        // 18 m/s (~65km/h) is a loaded freight, and it puts the far end of the
+        // line about 145s away - inside par, so a player who dawdles finds the
+        // train parked at the end of the rails rather than gone.
+        railSpeed: 18,
+        // The train. Every car rides the SAME polyline and differs only by how
+        // far along it it starts, so the 21m interval is exact by construction
+        // and nothing can concertina - the identical trick the convoy uses,
+        // with the spacing closed up from 170m to one car length. Each car is
+        // its own lock box and its own line in TGT REMAIN.
+        //
+        // The two flak cars ride third and fifth rather than at the ends: a
+        // train with its guns bunched at one end has a safe end, and this one
+        // is supposed to have none.
+        groundUnits: [
+          { id: 21, type: "trainLoco", pathOffset: 126 },
+          { id: 22, type: "trainCar", pathOffset: 105 },
+          { id: 23, type: "trainFlak", pathOffset: 84 },
+          { id: 24, type: "trainCar", pathOffset: 63 },
+          { id: 25, type: "trainFlak", pathOffset: 42 },
+          { id: 26, type: "trainCar", pathOffset: 21 },
+          // Two emplaced guns covering the line, and NOT designated. They are
+          // the reason the low pass down the train is expensive even after both
+          // flak cars are gone, and killing them is optional - which is the
+          // read the whole campaign is built on.
+          { id: 27, type: "aaGun", tgt: false, x: -450, z: -1000, heading: 2.5 },
+          { id: 28, type: "aaGun", tgt: false, x: 900, z: -2050, heading: -0.7 }
+        ],
+        // Centred between the spawn (z +620) and the line rather than on the
+        // line itself, so the run in and an overshoot past the far end both sit
+        // inside the 90% warning ring.
+        battleCenter: { x: 0, z: -900 },
+        battleRadius: 7000,
+        briefing: "内陸の補給線だ。北方連邦軍の物資は、この盆地を横切る単線一本で前線へ運ばれている。\n──出撃直前、妙な報告が入った。あの列車に捕虜が乗っている可能性がある、と。\n確認は取れていない。命令は変わらない。\n指定目標は装甲列車の6両——機関車1、対空車2、有蓋車3。車両ごとに別々に狙える。\n先に対空車を潰せ。射程620、列車の防空はあの2両が全てだ。\n線路脇の対空砲2門と上空のCAP9機は目標ではない。列車を止めろ。",
+        introRadio: [
+          { speaker: "command", text: "こちらSKYEYE。盆地を横切る補給線に装甲列車——6両編成。……HAMMER 1、積荷の確認が取れていない。", id: "train-brief" },
+          { speaker: "wingman", text: "確認が取れてない、ね。……いや、いい。命令は命令だ。対空車から潰すぞ。", id: "train-brief-wing" }
+        ]
+      },
+      {
+        key: "m-landing",
+        world: "sunsetOcean",
+        title: "BEACHHEAD",
+        jp: "揚陸艦団が海岸へ向かっている。上陸される前に沈めろ——時間との戦いだ。",
+        // Campaign 14, ACT 3 ("守れないものが出てくる"). Story bible: "揚陸艦団の
+        // 上陸阻止。時間との戦い."
+        //
+        // The first sortie in the campaign whose objective has a CLOCK attached
+        // to the objective itself rather than to a par time. FLEET DESTRUCTION
+        // put five hulls on the water and let the player take as long as the
+        // ammunition lasted; these five are 1.7km from a shore they will reach
+        // in about three minutes whatever the player does about it, and each
+        // one that gets there costs a thousand points and cannot be undone.
+        //
+        // What lands is NOT deleted and does not stop being a target - see
+        // updateLandingThreat. That is deliberate and it is what makes the
+        // mission readable: the objective total never moves, so the player is
+        // never punished twice, and the thing they lost by being slow is
+        // exactly the thing the debrief shows them.
+        //
+        // Five designated hulls against ten undesignated contacts (three escort
+        // warships and seven fighters) is 1:2.0 - the top of the 1:1.5-2 band,
+        // where CITY LIGHTS also sits, and for the same reason: the interference
+        // IS the difficulty here. There is no way to make a 9 m/s target hard
+        // except to make reaching it cost time.
+        sequence: [
+          // The landing group. Anchored 2.1km off the beach and pointed
+          // straight at it, in line abreast, so the whole force is visible as
+          // one shape from the spawn and the player can see it is going
+          // somewhere.
+          {
+            kind: "naval", fleet: ["landingShip", "landingShip", "landingShip", "landingShip", "landingShip"],
+            band: 3, label: "LANDING GROUP",
+            at: [-500, -1000], facing: [1650, -1000],
+            radio: [
+              { speaker: "command", text: "レーダーに水上反応——大型5、低速。揚陸艦だ。針路は海岸、まっすぐ来ている。", id: "landing-group-inbound" },
+              { speaker: "wingman", text: "あれ全部、戦車を積んでるのか……装甲は薄いはずだ、ミサイル2発で沈む。数えて撃て！", id: "landing-group-brief" }
+            ]
+          },
+          // The screen, seaward of the group and steaming up the coast rather
+          // than at it - an escort that beached itself alongside its charges
+          // would be a bug the player could see. Not designated: an Aegis is a
+          // reason to fly higher, not a reason to spend missiles.
+          {
+            kind: "naval", fleet: ["aegis", "frigate", "frigate"],
+            tgt: false, band: 3, label: "ESCORT SCREEN", concurrent: true,
+            at: [-950, -1000], facing: [-950, 600],
+            radio: [
+              { speaker: "wingman", text: "護衛艦艇3隻、イージスが混ざってる！ SAMに気をつけろ——だが目標じゃない、揚陸艦だ！", id: "landing-escort-screen" }
+            ]
+          },
+          {
+            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "上空にCAP！ 相手をしてる時間は無いぞ——ランプが下りる前に沈めろ！", id: "landing-cap-inbound" }
+            ]
+          },
+          // Timed to land while the first two or three hulls are still afloat,
+          // i.e. exactly when breaking off costs the most.
+          {
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 2, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 55
+          },
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 1, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 130
+          }
+        ],
+        // Ten missiles' worth of hull (five at 196) plus the run in, flown
+        // through a live escort screen. Shorter than m03's 285 despite the same
+        // hull count, because the real limit here is the ~190s the group takes
+        // to reach the sand - par has to sit near that, or the S rank would be
+        // handed to a player who let the whole force land.
+        parTime: 240,
+        hasOutro: false,
+        map: { x: 0.78, y: 0.48 },
+        // What is being defended. `style: "beach"` swaps the runway for a sand
+        // shelf with allied positions on it; everything else about the mechanic
+        // (the blue HUD diamond, failRadius, the breach bookkeeping, the score
+        // deduction) is the shared code m01 and m-city already use, because
+        // what is defended was only ever a labelled coordinate.
+        //
+        // heading PI/2 puts the beach's local -Z (seaward, the same convention
+        // every heading in this file uses) along world -X, i.e. facing the
+        // group that is steaming at it. failRadius 430 is where an LST's BOW
+        // touches the sand rather than where its centre does: the hull is 165m
+        // and the dry beach starts 350m from the aim point.
+        friendlyBase: {
+          x: 1650, z: -1000, heading: Math.PI / 2,
+          label: "ALLIED BEACH", failRadius: 430, style: "beach"
+        },
+        // Laid over the run rather than centred on the player: spawn is z +620,
+        // the group starts at x -500 and the beach is at x +1650, so the arena
+        // has to cover the whole width of the approach.
+        battleCenter: { x: 600, z: -700 },
+        battleRadius: 6500,
+        briefing: "敵の揚陸艦団が水平線に現れた。狙いはこの海岸だ——連合がまだ保持している最後の砂浜。\n夕日は君の背中にある。向こうからは逆光だ。使え。\n指定目標は揚陸艦5隻のみ。速力は遅い。だが止まらない。\n着岸を許しても作戦は続く——ただし海岸は取られ、その分は君の評価から引かれる。\n護衛はイージス1、フリゲート2、上空にCAPが7機。全て無指定目標だ。\n揚陸艦の装甲は薄い。ミサイル2発で沈む——沈める時間が残っていれば、の話だ。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより全機。揚陸艦5隻、本隊は真っ直ぐ海岸へ向かっている。時間が無い——沈めろ。", id: "landing-brief" },
+          { speaker: "wingman", text: "護衛は邪魔だが、付き合ってる暇はないぞ。ランプが下りたら、あの砂浜はもう戻ってこない。", id: "landing-brief-wing" }
+        ]
+      },
+      {
         key: "m04",
         world: "archipelagoDay",
         title: "IRONBACK",
@@ -7528,11 +7895,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     ].map((mission) => {
       const waves = Object.freeze(mission.sequence.map(normalizeWaveEntry));
-      // One frozen road per mission. Every vehicle in the column is handed
-      // this exact array, which is also what lets groundRoute() bake the
-      // terrain heights once and hand the same polyline to all of them.
-      const road = mission.convoyRoad
-        ? Object.freeze(mission.convoyRoad.map(Object.freeze))
+      // One frozen path per mission, whether the mission calls it a road
+      // (IRON COLUMN) or a rail line (STEEL SNAKE). Every vehicle in the
+      // column is handed this exact array, which is also what lets
+      // groundRoute() bake the terrain heights once and hand the same polyline
+      // to all of them. The two names are one field downstream because a train
+      // and a convoy are the same mechanic; they differ only in whether track
+      // is drawn under them and how tightly the units are spaced.
+      const authoredPath = mission.convoyRoad || mission.railLine || null;
+      const road = authoredPath
+        ? Object.freeze(authoredPath.map(Object.freeze))
         : null;
       return Object.freeze({
         ...mission,
@@ -7552,6 +7924,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // denominator. Concurrent entries ride in on one of these.
         waveCount: waves.filter((wave) => !wave.concurrent).length,
         convoyRoad: road,
+        // The same polyline again, flagged. Only a mission that authored
+        // `railLine` gets track laid under its column by spawnMissionGround.
+        railLine: mission.railLine ? road : null,
         // A unit that names a place on the convoy road (`pathOffset`) is given
         // the road itself plus the x/z that place works out to. Everything
         // downstream - the briefing map, the battle-area centre, the target
@@ -7564,7 +7939,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               return Object.freeze({
                 ...unit,
                 path: road,
-                speed: unit.speed || mission.convoySpeed || 0,
+                speed: unit.speed || mission.convoySpeed || mission.railSpeed || 0,
                 x: at.x,
                 z: at.z,
                 heading: at.heading
@@ -9009,6 +9384,40 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               capped: Number(capped.toFixed(3)),
               sink: Number((top - position.y).toFixed(4)),
               clampLoss: Number((top - capped).toFixed(4))
+            };
+          }),
+        // Every HULL afloat (mounts excluded - they ride their parent), with
+        // where it is relative to the shore the sortie is defending. Written
+        // for BEACHHEAD, where the mission is a race and `etaSeconds` is the
+        // thing being raced: a landing ship's whole behaviour is "how long
+        // until it is aground", and that is not visible from any other probe.
+        // `headingDeg` against `bearingDeg` is the steering gate - a landing
+        // ship must be pointed AT the beach, an escort must not be.
+        landingProbe: () => enemies
+          .filter((enemy) => enemy.surface && !enemy.ground && !enemy.subsystem)
+          .map((enemy) => {
+            const position = enemy.group.position;
+            const dx = friendlyBase ? friendlyBase.x - position.x : 0;
+            const dz = friendlyBase ? friendlyBase.z - position.z : 0;
+            const range = Math.hypot(dx, dz);
+            const stop = friendlyBase ? friendlyBase.failRadius : 0;
+            return {
+              id: enemy.id,
+              type: enemy.type,
+              landing: Boolean(enemy.spec.landing),
+              tgt: isTgtEntry(enemy),
+              alive: enemy.alive,
+              beached: Boolean(enemy.beached),
+              hp: enemy.hp,
+              x: Number(position.x.toFixed(2)),
+              z: Number(position.z.toFixed(2)),
+              speed: Number(enemy.speed.toFixed(2)),
+              headingDeg: Number((enemy.baseHeading * 180 / Math.PI).toFixed(2)),
+              bearingDeg: friendlyBase ? Number((Math.atan2(-dx, -dz) * 180 / Math.PI).toFixed(2)) : null,
+              toBeach: friendlyBase ? Number(range.toFixed(1)) : null,
+              etaSeconds: friendlyBase && enemy.speed > 0.01
+                ? Number(((range - stop) / enemy.speed).toFixed(1))
+                : null
             };
           }),
         // Walks a live vehicle's whole baked road and re-measures the ground
@@ -12729,7 +13138,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return {
             x: x0 + (x1 - x0) * t,
             z: z0 + (z1 - z0) * t,
-            heading: Math.atan2(x1 - x0, -(z1 - z0))
+            // Same convention as placeOnRoute - see the note there. This one
+            // only sets the hull's first frame (placeOnRoute snaps it on the
+            // next), but a spawn pose that disagreed with the drive pose would
+            // be one more thing to explain later.
+            heading: Math.atan2(-(x1 - x0), -(z1 - z0))
           };
         }
         travelled += leg;
@@ -12753,6 +13166,100 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       sprite.position.set(x, surfaceHeightAt(x, z) + 8, z);
       scene.add(sprite);
       missionProps.push({ node: sprite, material, scale, seed: Math.random() * Math.PI * 2 });
+    }
+
+    // Ballast, sleepers and two rails, drawn once as a repeating strip. 64x64
+    // is plenty: the strip is 13m wide and tiled every 26m of track, so one
+    // texel is about 20cm and the player is never closer than a strafing pass.
+    function makeRailTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext("2d");
+      // Ballast: dark crushed stone, speckled so it does not read as a painted
+      // band against the sand it is laid on.
+      ctx.fillStyle = "#4a4239";
+      ctx.fillRect(0, 0, 64, 64);
+      for (let i = 0; i < 260; i += 1) {
+        const g = 58 + Math.floor(Math.random() * 46);
+        ctx.fillStyle = `rgb(${g + 12}, ${g + 4}, ${g - 6})`;
+        ctx.fillRect(Math.random() * 64, Math.random() * 64, 2, 2);
+      }
+      // Sleepers across the strip - four per tile, i.e. one every ~6.5m, which
+      // is the spacing that still reads as ties rather than as a hatch.
+      ctx.fillStyle = "#3a2f26";
+      for (let i = 0; i < 4; i += 1) ctx.fillRect(8, i * 16 + 4, 48, 7);
+      // Two rails along it, with a highlight down the railhead so they catch
+      // the light the way polished steel does.
+      ctx.fillStyle = "#8f959b";
+      ctx.fillRect(20, 0, 5, 64);
+      ctx.fillRect(39, 0, 5, 64);
+      ctx.fillStyle = "#cfd6db";
+      ctx.fillRect(21, 0, 2, 64);
+      ctx.fillRect(40, 0, 2, 64);
+      const texture = new THREE.CanvasTexture(canvas);
+      // Only V tiles: U is the 13m width and must not repeat, or the rails
+      // would be mirrored back across the ballast at the strip's edges.
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    // The track STEEL SNAKE's train runs on, laid from the SAME polyline the
+    // cars drive, so the rails cannot drift from the route by construction.
+    //
+    // One flat quad per AUTHORED leg rather than per baked step: the desert pan
+    // the line crosses is level, so a leg's two ends sample the same height and
+    // a straight quad lies on it exactly. Per-step quads would have been 250
+    // meshes for a 3km line and bought nothing. Sleepers are texture, not
+    // geometry, for the same reason.
+    //
+    // The tiling lives in each quad's own UVs rather than in the texture's
+    // `repeat`, so legs of different lengths share ONE texture and ONE
+    // material and the whole track is a handful of draw calls.
+    const RAIL_STRIP_WIDTH = 13;
+    const RAIL_TILE_LENGTH = 26;
+    function spawnRailLine(path) {
+      const texture = makeRailTexture();
+      const material = new THREE.MeshStandardMaterial({
+        map: texture, roughness: 0.92, metalness: 0.18
+      });
+      const group = new THREE.Group();
+      const geometries = [];
+      for (let i = 1; i < path.length; i += 1) {
+        const [x0, z0] = path[i - 1];
+        const [x1, z1] = path[i];
+        const dx = x1 - x0;
+        const dz = z1 - z0;
+        const run = Math.hypot(dx, dz);
+        if (run < 1) continue;
+        // Overlapped by half a strip width at each end so the join between two
+        // legs has no daylight in it on the curves.
+        const span = run + RAIL_STRIP_WIDTH;
+        const geo = new THREE.PlaneGeometry(RAIL_STRIP_WIDTH, span);
+        const uv = geo.attributes.uv;
+        const tiles = Math.max(1, Math.round(span / RAIL_TILE_LENGTH));
+        for (let v = 0; v < uv.count; v += 1) uv.setY(v, uv.getY(v) * tiles);
+        uv.needsUpdate = true;
+        geometries.push(geo);
+        const mesh = new THREE.Mesh(geo, material);
+        // A plane's own +Y is its length. rotation.x = -PI/2 lays it flat with
+        // that length along world -Z, and rotation.y then swings it onto the
+        // leg - atan2(-dx, -dz), the same convention placeOnRoute drives with,
+        // which is exactly why the cars end up square on the track.
+        mesh.rotation.order = "YXZ";
+        mesh.rotation.set(-Math.PI / 2, Math.atan2(-dx, -dz), 0);
+        // 0.12m of clearance: enough that the ballast never z-fights the
+        // terrain it is laid on, far less than any car's ground clearance.
+        mesh.position.set(
+          (x0 + x1) / 2,
+          (surfaceTopAt(x0, z0) + surfaceTopAt(x1, z1)) / 2 + 0.12,
+          (z0 + z1) / 2
+        );
+        group.add(mesh);
+      }
+      scene.add(group);
+      missionProps.push({ node: group, geometries, materials: [material] });
     }
 
     // The friendly airfield the m01 bombers are flying at. Scenery, not an
@@ -12836,6 +13343,75 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (let i = -2; i <= 2; i += 1) {
           add(litMaterial, i * 34, 2.2, 0, 3, 1, 140);
         }
+      } else if (config.style === "beach") {
+        // The shore BEACHHEAD is fought over. Same deal as `city`: what is
+        // being defended was only ever a labelled coordinate, and everything
+        // downstream (the blue HUD diamond, failRadius, the breach bookkeeping)
+        // is shared. This branch only decides what stands there.
+        //
+        // It is drawn ON the water plane rather than on terrain, which is what
+        // this map already does with its shore rings - sunsetOcean's decor
+        // paints flat sand bands straight onto the sea at 0.42 opacity, and an
+        // opaque slab of the same colour reads the same way from the air. The
+        // alternative was standing a plateau up in the middle of a map three
+        // other missions share, which is not a thing one mission gets to do.
+        //
+        // Local frame: -Z is seaward (the same "nose" convention every heading
+        // in this file uses), +X runs along the shoreline.
+        const sand = makeAircraftMaterial(0x9c7352, 0.04, 0.96);
+        const wetSand = makeAircraftMaterial(0x6b4e3c, 0.08, 0.88);
+        const dune = makeAircraftMaterial(0x866145, 0.04, 0.97);
+        const scrub = makeAircraftMaterial(0x40372f, 0.05, 0.95);
+        materials.push(sand, wetSand, dune, scrub);
+        // The plain `add` above cannot rotate, and rotation is the whole point
+        // of the lobes below, so the beach gets its own.
+        const addRot = (material, x, y, z, sx, sy, sz, ry) => {
+          const mesh = new THREE.Mesh(geometry.panel, material);
+          mesh.position.set(x, y, z);
+          mesh.scale.set(sx, sy, sz);
+          mesh.rotation.y = ry;
+          group.add(mesh);
+          return mesh;
+        };
+        // Wet sand at the waterline, only just proud of the sea, then the dry
+        // beach behind it. Both are deliberately LOW - about a metre of the
+        // slab shows above the water and the rest of its thickness is below -
+        // because a slab standing three metres out of the sea reads as a table
+        // with sand painted on it, which is exactly what the first draft was.
+        addRot(wetSand, 0, 0.35, -395, 2150, 3, 170, 0);
+        addRot(wetSand, -700, 0.35, -428, 760, 3, 130, 0.05);
+        // Dry beach as FOUR overlapping lobes at slightly different angles
+        // rather than one rectangle. A perfect rectangle of sand is the one
+        // thing that says "placed slab" from the air, and no amount of colour
+        // fixes it; a broken outline does.
+        addRot(sand, 0, 0.65, 0, 1900, 4, 620, 0);
+        addRot(sand, -640, 0.65, 60, 920, 4, 560, 0.11);
+        addRot(sand, 700, 0.65, -30, 1000, 4, 590, -0.09);
+        addRot(sand, 180, 0.65, 215, 1480, 4, 430, 0.05);
+        // Dune ridge inland: overlapping banks of different heights, so the
+        // beach has a back to it and the eye reads depth instead of an edge.
+        // Nothing here is collidable - it is scenery on the water plane.
+        addRot(dune, -560, 5.5, 250, 880, 13, 230, 0.14);
+        addRot(dune, 430, 8, 285, 1050, 18, 210, -0.1);
+        addRot(dune, -60, 11, 335, 580, 24, 170, 0.06);
+        addRot(scrub, -320, 12, 352, 430, 9, 130, 0.2);
+        // Allied positions along the top of the beach: revetments and the
+        // command bunker at the aim point. They are what makes the sand read
+        // as HELD ground rather than as an empty sandbar - the mission is
+        // about denying it to somebody. Each is set low enough that its base
+        // is buried in the slab rather than standing on it.
+        for (let i = -3; i <= 3; i += 1) {
+          add(concrete, i * 240, 3, 60, 90, 5, 26);
+          add(wall, i * 240, 4.8, 74, 60, 3, 10);
+        }
+        add(wall, 0, 6, 190, 90, 12, 60);
+        add(roof, 0, 12.5, 190, 100, 3.5, 70);
+        // Beach obstacles in the surf: two staggered rows, which is the one
+        // silhouette that says "this shore is defended" without a caption.
+        for (let i = -8; i <= 8; i += 1) {
+          add(concrete, i * 118, 1.9, -330, 8, 6, 8);
+          add(concrete, i * 118 + 59, 1.7, -388, 7, 5.5, 7);
+        }
       } else {
         // Runway strip, 900m x 70m, with a dashed centreline and two aprons.
         add(asphalt, 0, 0.6, 0, 70, 1.2, 900);
@@ -12895,7 +13471,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (prop.material) prop.material.dispose();
         // Multi-mesh props own a list of each instead of a single material.
         if (prop.geometries) for (const geo of prop.geometries) geo.dispose();
-        if (prop.materials) for (const mat of prop.materials) mat.dispose();
+        if (prop.materials) {
+          for (const mat of prop.materials) {
+            // A prop material may carry a canvas texture of its own (the rail
+            // strip does). Disposing the material does not free that.
+            if (mat.map) mat.map.dispose();
+            mat.dispose();
+          }
+        }
       }
       missionProps.length = 0;
       friendlyBase = null;
@@ -13164,6 +13747,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // are already standing when the player arrives and count toward the same
     // target total, so the sortie only ends once the base is flat too.
     function spawnMissionGround(mission) {
+      // Track first, so the cars are placed onto rails that already exist and
+      // the probe that measures one against the other has both to read.
+      if (mission.railLine) spawnRailLine(mission.railLine);
       if (mission.groundUnits) {
         for (const unit of mission.groundUnits) {
           const spec = GROUND_TYPES[unit.type];
@@ -13313,7 +13899,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const dz = to.z - from.z;
       const run = Math.hypot(dx, dz);
       if (run < 1e-6) return;
-      const heading = Math.atan2(dx, -dz);
+      // ★ atan2(-dx, -dz), NOT atan2(dx, -dz). A model is nosed along local -Z
+      // and three.js yaw sends local -Z to world (-sin y, 0, -cos y) - measured,
+      // not assumed - so the yaw that points a hull down a leg is
+      // atan2(-dx, -dz). The other form is its mirror in X: it happens to be
+      // right when the leg runs along Z and is 90 degrees out when the leg runs
+      // along X, which is why a nearly-north-south convoy road hid it. STEEL
+      // SNAKE cannot: its line runs east-west with rails drawn under it, so a
+      // mirrored car sits visibly across its own track.
+      const heading = Math.atan2(-dx, -dz);
       const pitch = -Math.atan2(to.y - from.y, run);
       if (snap) {
         enemy.group.rotation.y = heading;
@@ -13332,23 +13926,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function spawnNavalWave(wave = WAVE_PRESETS.naval, idBase = 6) {
       const fleet = wave.fleet || WAVE_PRESETS.naval.fleet;
 
-      // The fleet sits on open water ~2.4km ahead of the player's heading,
-      // clamped into the inner sea so it can never spawn inside the mountain
-      // ring; escorts ride the carrier's beam.
-      forwardOf(player, tmpV1);
-      tmpV1.y = 0;
-      if (tmpV1.lengthSq() < 0.001) tmpV1.set(0, 0, -1);
-      tmpV1.normalize();
-      const center = new THREE.Vector3().copy(player.position).addScaledVector(tmpV1, 2400);
-      center.y = 0;
-      const centerDistance = Math.hypot(center.x, center.z);
-      if (centerDistance > 1500) center.multiplyScalar(1500 / centerDistance);
+      // Default: the fleet sits on open water ~2.4km ahead of the player's
+      // heading, clamped into the inner sea so it can never spawn inside the
+      // mountain ring; escorts ride the carrier's beam.
+      //
+      // A wave that authors `at`/`facing` overrides both halves of that: the
+      // centre is a fixed world point and the hulls point at another one. That
+      // is the only way a wave can be a FORMATION GOING SOMEWHERE - which is
+      // what an amphibious group is - rather than a screen parked in front of
+      // the player.
+      const anchored = Boolean(wave.at);
+      const center = new THREE.Vector3();
+      if (anchored) {
+        center.set(wave.at[0], 0, wave.at[1]);
+        if (wave.facing) tmpV1.set(wave.facing[0] - center.x, 0, wave.facing[1] - center.z);
+        else tmpV1.set(0, 0, -1);
+        if (tmpV1.lengthSq() < 0.001) tmpV1.set(0, 0, -1);
+        tmpV1.normalize();
+      } else {
+        forwardOf(player, tmpV1);
+        tmpV1.y = 0;
+        if (tmpV1.lengthSq() < 0.001) tmpV1.set(0, 0, -1);
+        tmpV1.normalize();
+        center.copy(player.position).addScaledVector(tmpV1, 2400);
+        center.y = 0;
+        const centerDistance = Math.hypot(center.x, center.z);
+        if (centerDistance > 1500) center.multiplyScalar(1500 / centerDistance);
+      }
       const across = new THREE.Vector3(-tmpV1.z, 0, tmpV1.x);
-      const fleetHeading = Math.atan2(tmpV1.x, -tmpV1.z) + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
+      // Anchored: the hulls' noses lie along tmpV1, i.e. at `facing`. Note the
+      // sign - three.js yaw sends local -Z to (-sin y, -cos y), so pointing a
+      // hull at a direction is atan2(-x, -z). Unanchored keeps the historic
+      // beam-on line abreast (the +PI/2) and its jitter, unchanged.
+      const fleetHeading = anchored
+        ? Math.atan2(-tmpV1.x, -tmpV1.z)
+        : Math.atan2(tmpV1.x, -tmpV1.z) + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
 
       // Escorts ride alternating beams, one rank further out each pair, so a
       // fleet of any size stays a screen around the capital ship. The first
       // three positions are identical to the hand-written ones this replaced.
+      // An anchored group is tighter (250m per rank against 430) because it is
+      // a formation running at one point, not a task force spread for defence:
+      // five hulls on the wide spacing would be a 1.7km front and the player
+      // could never be in front of more than one of them.
+      const beam = anchored ? 250 : 430;
+      const stagger = anchored ? 0.45 : 1;
       const positions = [];
       for (let i = 0; i < fleet.length; i += 1) {
         if (i === 0) {
@@ -13358,8 +13980,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const side = i % 2 === 1 ? -1 : 1;
         const rank = Math.ceil(i / 2);
         positions.push(center.clone()
-          .addScaledVector(across, side * 430 * rank)
-          .addScaledVector(tmpV1, (side < 0 ? 150 : -170) * rank));
+          .addScaledVector(across, side * beam * rank)
+          .addScaledVector(tmpV1, (side < 0 ? 150 : -170) * rank * stagger));
       }
       for (const position of positions) {
         for (const mountain of world.mountains) {
@@ -13442,22 +14064,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const band = wave.band || waveNumber;
       if (wave.kind === "naval") {
         spawnNavalWave(wave, idBase);
-        if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
+        // A concurrent naval entry is an escort screen riding in with the
+        // group it is screening, exactly like a concurrent air entry - not a
+        // new wave the player has to clear. It says so.
+        if (wave.concurrent) showBanner(`${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
+        else if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
         else showBanner(`WAVE ${waveNumber} · ENEMY FLEET DETECTED`, 2.2, "danger");
-        triggerRadioLine(
-          "command",
-          "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
-          RADIO_PRIORITY.NORMAL,
-          "wave-naval-inbound"
-        );
-        triggerRadioLine(
-          "wingman",
-          first
-            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
-            : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
-          RADIO_PRIORITY.NORMAL,
-          "wave-naval-brief"
-        );
+        // The two lines below name a carrier group by its exact composition,
+        // which is only true of WAVE_PRESETS.naval. A wave that fields
+        // anything else has to author its own, or it would announce ships that
+        // are not there.
+        if (wave.radio) {
+          for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+        } else {
+          triggerRadioLine(
+            "command",
+            "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
+            RADIO_PRIORITY.NORMAL,
+            "wave-naval-inbound"
+          );
+          triggerRadioLine(
+            "wingman",
+            first
+              ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
+              : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
+            RADIO_PRIORITY.NORMAL,
+            "wave-naval-brief"
+          );
+        }
       } else {
         const acePilot = aceProfileOf(wave.ace);
         spawnWave(wave, band, idBase);
@@ -14068,9 +14702,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // Straight-line cruise. The only steering is a slow ease back toward the
       // inner sea (or away from a mountain footprint) so the fleet never beaches.
+      //
+      // A landing ship is the exception and the inversion: beaching is the
+      // whole point of it, so it steers AT the defended shore and neither the
+      // sea fence nor the mountain fence applies to it. Once it has arrived
+      // (`beached`) it steers at nothing - it is aground, and updateLandingThreat
+      // has already stopped it.
       let desiredHeading = enemy.baseHeading;
       const originDistance = Math.hypot(enemy.group.position.x, enemy.group.position.z);
-      if (originDistance > 1900) {
+      if (spec.landing) {
+        if (friendlyBase && !enemy.beached) {
+          // atan2(-x, -z): pointing a -Z-nosed hull at a direction. See the
+          // convention note in placeOnRoute.
+          desiredHeading = Math.atan2(
+            -(friendlyBase.x - enemy.group.position.x),
+            -(friendlyBase.z - enemy.group.position.z)
+          );
+        }
+      } else if (originDistance > 1900) {
         desiredHeading = Math.atan2(-enemy.group.position.x, enemy.group.position.z);
       } else {
         for (const mountain of world.mountains) {
@@ -14098,9 +14747,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.group.position.z += tmpV4.z * enemy.speed * dt;
       enemy.group.position.y = Math.sin(time * 0.5 + enemy.seed) * 0.35;
 
-      // Wake: stern foam plus a little bow spray.
+      // Wake: stern foam plus a little bow spray. Skipped on a hull that is
+      // not making way - i.e. a beached landing ship, the only ship in the
+      // game whose speed ever reaches zero while it is still alive.
       enemy.wakeTimer -= dt;
-      if (enemy.wakeTimer <= 0) {
+      if (enemy.wakeTimer <= 0 && enemy.speed > 0.5) {
         tmpV8.copy(enemy.group.position).addScaledVector(tmpV4, -spec.sternOffset);
         tmpV8.y = 0.7;
         tmpV8.x += (Math.random() - 0.5) * 7;
@@ -14758,6 +15409,74 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
+    // BEACHHEAD's counterpart to updateStrikeThreat, and deliberately the same
+    // shape as it: a designated target that reaches the place the player was
+    // told to defend costs SCORE, not the sortie. What lands is not deleted and
+    // does not stop being a target - a grounded LST still has to be destroyed,
+    // it is simply stationary now and the beach behind it is already lost. So
+    // being slow costs a rank, exactly as letting a bomber release does, and
+    // "撃墜必須ではないがペナルティ" is true in the only sense the wave logic
+    // allows: the objective total is unchanged, the score is not.
+    //
+    // Charged per hull, so a player who stops three of five keeps most of it.
+    const LANDING_PENALTY = 1000;
+    function updateLandingThreat() {
+      if (!friendlyBase) return;
+
+      let closest = -1;
+      for (const enemy of enemies) {
+        if (!enemy.alive || !enemy.spec.landing || enemy.beached) continue;
+        const distance = Math.hypot(
+          enemy.group.position.x - friendlyBase.x,
+          enemy.group.position.z - friendlyBase.z
+        );
+        if (closest < 0 || distance < closest) closest = distance;
+        if (distance > friendlyBase.failRadius) continue;
+
+        // Touchdown: the ship grounds itself on the sand, drops its ramp and
+        // stops. updateShip reads `beached` and stops steering it; the zeroed
+        // speed stops the hull and its wake.
+        enemy.beached = true;
+        enemy.speed = 0;
+        enemy.targetSpeed = 0;
+        friendlyBase.breached = true;
+        friendlyBase.hits += 1;
+        baseDamagePenalty += LANDING_PENALTY;
+        score = Math.max(0, score - LANDING_PENALTY);
+        forwardOf(enemy.group, tmpV8);
+        for (let i = 0; i < 4; i += 1) {
+          tmpV9.copy(enemy.group.position)
+            .addScaledVector(tmpV8, enemy.spec.bowOffset + i * 34)
+            .add(new THREE.Vector3((Math.random() - 0.5) * 90, 4, (Math.random() - 0.5) * 90));
+          createExplosion(tmpV9, 0xffb648, 1.1 + Math.random() * 0.5);
+        }
+        playSfx("explosion", 0.85, 0.6);
+        playTone(58, 0.9, 0.18, "sawtooth");
+        cameraShake = Math.min(1.8, cameraShake + 0.7);
+        showBanner(`BEACHHEAD LOST · -${LANDING_PENALTY} PTS`, 2.0, "danger");
+        radioSay(
+          "command",
+          "揚陸艦が着岸——ランプが下りた。海岸を取られた。だが作戦は続行だ、残りを沈めろ！",
+          RADIO_PRIORITY.URGENT,
+          `landing-ashore-${friendlyBase.hits}`
+        );
+      }
+
+      // Two warnings on the way in, each fired once, so the clock is audible
+      // without the radio nagging every frame. Ranges are tighter than the
+      // bombers' because a landing ship crosses them at 9 m/s, not 74.
+      if (closest >= 0) {
+        if (closest < 700 && !friendlyBase.warnedClose) {
+          friendlyBase.warnedClose = true;
+          showBanner("WARNING · LANDING FORCE NEARING SHORE", 1.8, "danger");
+          radioSay("command", "揚陸艦が浅瀬に入る！ 着岸される前に止めろ！", RADIO_PRIORITY.URGENT, "landing-warn-close");
+        } else if (closest < 1200 && !friendlyBase.warnedFar) {
+          friendlyBase.warnedFar = true;
+          radioSay("wingman", "あいつら止まらないぞ！ 上陸されたら海岸は終わりだ！", RADIO_PRIORITY.NORMAL, "landing-warn-far");
+        }
+      }
+    }
+
     function updateMission(dt) {
       if (gameState !== STATE_PLAYING) return;
       // The sortie is already decided during the ACCOMPLISHED hold - re-running
@@ -14769,6 +15488,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       updatePendingWaves(dt);
       updateStrikeThreat();
+      updateLandingThreat();
       // Only designated targets hold the mission open. A surviving escort or
       // CAP keeps fighting - and keeps being worth bonus points - but it can
       // never stall the next wave or deny the player the mission.
@@ -18986,6 +19706,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const house = makeAircraftMaterial(friendly ? 0x6b7f9b : 0x8a929c, 0.24, 0.58);
       const dark = makeAircraftMaterial(friendly ? 0x1e2733 : 0x272b31, 0.3, 0.6);
       const light = makeAircraftMaterial(friendly ? 0xcbd8e6 : 0xd6dde2, 0.3, 0.45);
+      // Army green, for the only cargo any of these hulls carries where the
+      // cargo is visible: the vehicles chocked down the LST's well deck. Built
+      // for every ship rather than only that one so the flash/dispose contract
+      // stays a fixed five-material list.
+      const olive2 = makeAircraftMaterial(friendly ? 0x5f6b58 : 0x6e7568, 0.16, 0.86);
       const markings = new THREE.MeshBasicMaterial({ color: friendly ? 0xdcecff : 0xf0f5f8 });
       const extraMaterials = [];
 
@@ -19070,6 +19795,50 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Aft: low helo deck with the landing circle, no hangar block.
         add(geometry.panel, deck, 0, 8.1, 44, 12.4, 0.7, 26);
         add(geometry.shockRing, markings, 0, 8.55, 46, 5.6, 5.6, 1, -Math.PI / 2);
+      } else if (kind === "landingShip") {
+        // LST idiom at 165m, bow at -Z. Everything about the silhouette is
+        // chosen so the player can tell it from a warship in one glance at a
+        // kilometre, because the whole mission is a triage decision:
+        //   * a BLUNT bow instead of the knife bow every combatant here has,
+        //     with the bow ramp folded up flat against it,
+        //   * a long OPEN well deck amidships with vehicles visibly parked in
+        //     it - the cargo is the point, so it is drawn,
+        //   * the deckhouse and the single funnel shoved right aft, which is
+        //     the amphibious layout and the opposite of the Aegis' one big
+        //     forward block.
+        add(geometry.panel, hull, 0, 5, 0, 26, 10, 150);
+        add(geometry.panel, dark, 0, 1, 0, 26.6, 2, 151);
+        // Blunt bow: a squared-off block, then the ramp lying against it at a
+        // shallow angle. No shipBow wedge anywhere on this hull.
+        add(geometry.panel, hull, 0, 5.4, -78, 24, 10.8, 12);
+        add(geometry.panel, light, 0, 9.6, -84, 19, 1.4, 16, -0.42);
+        add(geometry.panel, dark, -10.5, 12.4, -74, 1.1, 9, 1.1);
+        add(geometry.panel, dark, 10.5, 12.4, -74, 1.1, 9, 1.1);
+        // Well deck: a sunken tank deck between two walkways, with four
+        // vehicles chocked down the middle of it.
+        add(geometry.panel, deck, -11, 10.6, -6, 4, 1.2, 116);
+        add(geometry.panel, deck, 11, 10.6, -6, 4, 1.2, 116);
+        add(geometry.panel, dark, 0, 9.4, -6, 18.5, 0.8, 116);
+        for (let i = 0; i < 4; i += 1) {
+          const pz = -52 + i * 27;
+          add(geometry.panel, olive2, 0, 11.4, pz, 7.4, 3.2, 13);
+          add(geometry.panel, dark, 0, 13.4, pz + 1.5, 5, 1.6, 5.6);
+        }
+        // Aft deckhouse, funnel and mast - the whole superstructure in the
+        // last quarter of the hull.
+        add(geometry.panel, house, 0, 14.4, 52, 21, 9, 30);
+        add(geometry.panel, house, 0, 21.4, 50, 15, 5, 18);
+        add(geometry.panel, dark, 0, 24.4, 50, 15.6, 1, 18.6);
+        add(geometry.panel, house, 7, 21.6, 64, 7, 13, 9);
+        add(geometry.panel, dark, 7, 28.6, 64, 7.6, 1.4, 9.6);
+        add(geometry.shipCylinder, dark, -8, 32, 52, 0.7, 9, 0.7);
+        add(geometry.panel, light, -8, 37, 52, 5.4, 2, 0.4, 0, 0, 0.2);
+        // The two gun tubs the subsystems sit on: one on the forecastle
+        // shoulder at z -54, one on the deckhouse roof at z +57.
+        add(geometry.shipCylinder, light, 0, 12.4, -54, 2.2, 2.4, 2.2);
+        add(geometry.panel, dark, 0, 14.6, -57.4, 0.5, 0.5, 6.4, -0.34);
+        add(geometry.shipCylinder, light, 0, 17.6, 57, 2, 2.2, 2);
+        add(geometry.panel, dark, 0, 19.8, 53.8, 0.5, 0.5, 6, 0.34);
       } else {
         // Carrier (~330m): full-length flight deck with painted runway decals,
         // starboard island, parked-aircraft clutter and sponsons.
@@ -19113,7 +19882,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return {
         group: root,
         flames: [],
-        standardMaterials: [hull, deck, house, dark, light],
+        standardMaterials: [hull, deck, house, dark, light, olive2],
         flameMaterial: markings,
         extraMaterials
       };
@@ -19230,6 +19999,76 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // Commander's cupola and its machine gun.
           add(geometry.shipCylinder, steel, 1.2, 5.2, 1.4, 0.8, 0.7, 0.8);
           add(geometry.panel, dark, 1.2, 5.6, 0.2, 0.24, 0.24, 2.4);
+        }
+      } else if (kind === "trainLoco" || kind === "trainFlak" || kind === "trainCar") {
+        // The three cars share a chassis - two bogies, a deck sill and end
+        // buffers - so a six-car train reads as ONE object at range and the
+        // superstructure is what tells the cars apart. Built nose-along -Z,
+        // which is the forward placeOnRoute drives.
+        //
+        // Every car is drawn to the same 20m length so the 21m pathOffset
+        // spacing in the mission table leaves a consistent 1m coupling gap
+        // whichever order the cars are put in.
+        const loco = kind === "trainLoco";
+        const flak = kind === "trainFlak";
+        add(geometry.panel, dark, 0, 0.75, -6.2, 5.6, 1.5, 5.2);
+        add(geometry.panel, dark, 0, 0.75, 6.2, 5.6, 1.5, 5.2);
+        add(geometry.panel, steel, 0, 1.15, -6.2, 6.2, 0.8, 4.2);
+        add(geometry.panel, steel, 0, 1.15, 6.2, 6.2, 0.8, 4.2);
+        add(geometry.panel, steel, 0, 1.9, 0, 6.4, 0.9, 19.2);
+        // Buffers and couplers at both ends, which is most of what makes a
+        // line of these read as coupled rather than as a queue.
+        for (const end of [-1, 1]) {
+          add(geometry.panel, dark, -1.5, 2.3, end * 10, 0.9, 0.9, 1.4);
+          add(geometry.panel, dark, 1.5, 2.3, end * 10, 0.9, 0.9, 1.4);
+          add(geometry.panel, dark, 0, 1.9, end * 10.4, 1.1, 1.1, 2.2);
+        }
+
+        if (loco) {
+          // Armoured diesel: a long slab bonnet, a raised cab set back, and a
+          // stack. Deliberately the tallest and darkest car so the head of the
+          // train is what the eye finds from 2km up.
+          add(geometry.panel, olive, 0, 4, -2.4, 6.2, 3.4, 13);
+          add(geometry.panel, olive, 0, 5.4, -2.4, 6.6, 1.2, 12, 0, 0, 0);
+          add(geometry.panel, steel, 0, 5.6, 5.4, 6, 6.4, 6.4);
+          add(geometry.panel, dark, 0, 8.5, 5.4, 6.4, 1, 6.8);
+          add(geometry.panel, dark, 0, 6.8, 2.4, 5.2, 2, 0.5);
+          add(geometry.shipCylinder, dark, 0, 6.6, -6.4, 0.75, 1.6, 0.75);
+          // Sloped armour skirts down each flank - the reason it is called an
+          // armoured train rather than a train.
+          add(geometry.panel, olive, -3.3, 3, 0, 0.8, 2.6, 18, 0, 0, 0.22);
+          add(geometry.panel, olive, 3.3, 3, 0, 0.8, 2.6, 18, 0, 0, -0.22);
+        } else if (flak) {
+          // Open-topped gondola with the sides folded down and a twin mount on
+          // a turntable amidships, barrels already at elevation so the tracer
+          // that leaves shipAaBurst starts where the gun is drawn.
+          add(geometry.panel, olive, 0, 3.1, 0, 6.4, 1.5, 19);
+          add(geometry.panel, olive, -3.1, 4, 0, 0.6, 3.2, 18.6, 0, 0, 0.3);
+          add(geometry.panel, olive, 3.1, 4, 0, 0.6, 3.2, 18.6, 0, 0, -0.3);
+          add(geometry.shipCylinder, steel, 0, 4.4, 0, 2.3, 1.4, 2.3);
+          for (const side of [-1, 1]) {
+            add(geometry.panel, dark, side * 0.9, 5.6, -2.6, 0.36, 0.36, 6.6, -0.5);
+            add(geometry.panel, steel, side * 0.9, 5.3, 0.9, 0.8, 0.8, 2.4);
+          }
+          // Its own tracking dish on the rear of the car. Reuses the search
+          // radar's spin hook, so it sweeps while the car is alive and stops
+          // dead the moment it is not - the tell that this car is the one
+          // shooting.
+          const flakDish = new THREE.Group();
+          flakDish.position.set(0, 5.4, 6.6);
+          const flakPlate = new THREE.Mesh(geometry.shipOctPlate, light);
+          flakPlate.scale.set(2.2, 0.3, 2.2);
+          flakPlate.rotation.x = -0.8;
+          flakDish.add(flakPlate);
+          root.add(flakDish);
+          dish = flakDish;
+        } else {
+          // Closed box van with a ribbed roof, sliding doors and a vent hood.
+          add(geometry.panel, olive, 0, 4.6, 0, 6.4, 5, 19);
+          add(geometry.panel, steel, 0, 7.3, 0, 6.8, 0.7, 19.4, 0.06);
+          add(geometry.panel, dark, -3.25, 4.4, 0, 0.35, 3.4, 6.4);
+          add(geometry.panel, dark, 3.25, 4.4, 0, 0.35, 3.4, 6.4);
+          add(geometry.panel, dark, 0, 7.9, -4.5, 2.2, 0.9, 2.2);
         }
       } else if (kind === "fuelTank") {
         // Two horizontal tanks side by side on a bund, joined by pipework.
