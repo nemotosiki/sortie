@@ -2224,13 +2224,122 @@
       cockpit: Object.freeze({ back: -4.8, height: 1.9, look: 96, lookHeight: 0.9, rollFollow: 0.9 })
     });
 
-    const ACE_TURN_SCALE = 1.2;
+    // ---- Enemy strength: airframe x role x skill -------------------------------
+    // Three independent layers, and only the first one is a stat table:
+    //
+    //   1. THE AIRFRAME (AIRCRAFT_TYPES). Shared with the player and never
+    //      rewritten. An enemy Su-57 is a player Su-57.
+    //   2. THE ROLE (this table). How much of that airframe the pilot actually
+    //      gets out of it. Multipliers only, applied at spawn to derived values -
+    //      the table itself is untouched.
+    //   3. THE SKILL TIER (SKILL_TIERS below). Not a multiplier on the aircraft:
+    //      the quality of the decisions the AI makes with it.
+    //
+    // The whole point of the split is that "a MiG-21 flown by an ace" and "an
+    // Su-57 flown by a conscript" are both expressible, and that a wave can be
+    // made annoying without being made tough.
+    //
+    // HP IS DELIBERATELY ABSENT. Nothing here scales health: the 98-per-missile
+    // quantum is a property of the airframe, so how many rounds a contact takes
+    // is always readable off the aircraft table no matter who is flying it.
+    // `trash` is not "dies in one hit", it is "cannot fly the jet it is in".
+    const ENEMY_ROLES = Object.freeze({
+      // The named pilots. turnScale 1.20 is the historic ACE_TURN_SCALE, moved
+      // here verbatim so every existing ace fight turns exactly as it did.
+      ace: Object.freeze({
+        turnScale: 1.20, speedScale: 1.00,
+        missileCooldownScale: 0.85, gunAccuracyScale: 1.10,
+        skill: "expert"
+      }),
+      // Ace wingmen and hand-picked squadrons: the airframe flown properly.
+      elite: Object.freeze({
+        turnScale: 1.05, speedScale: 1.00,
+        missileCooldownScale: 1.00, gunAccuracyScale: 1.08,
+        skill: "veteran"
+      }),
+      // The default, and the behaviour every enemy in the campaign had before
+      // this table existed. All ones on purpose: `line` must be a no-op.
+      line: Object.freeze({
+        turnScale: 1.00, speedScale: 1.00,
+        missileCooldownScale: 1.00, gunAccuracyScale: 1.00,
+        skill: "regular"
+      }),
+      // The interference. Flies at three quarters of what the airframe can do
+      // and shoots roughly half as often, so a flight of these is a nuisance
+      // behind the player and close to harmless in front of one - which is the
+      // condition for "ignore them and press on" to be a real decision.
+      trash: Object.freeze({
+        turnScale: 0.75, speedScale: 0.95,
+        missileCooldownScale: 2.00, gunAccuracyScale: 0.55,
+        skill: "rookie"
+      })
+    });
+
+    const DEFAULT_ENEMY_ROLE = "line";
+
+    // Skill is judgement, not performance. Two aircraft with the same role
+    // multipliers and different tiers fly the same airframe at the same rate and
+    // still are not equally dangerous, because one of them breaks when a missile
+    // is inbound and the other flies straight into it.
+    //
+    // `expert` is intentionally 1.0 on every FLIGHT-SHAPE field (evade, engage
+    // envelope, vertical). The ace's handling has to come out bit-identical to
+    // what it was before the tiers existed; what expert actually buys is the
+    // decision fields at the bottom - instant break, tighter launch envelope,
+    // better gunnery.
+    const SKILL_TIERS = Object.freeze({
+      // Flies flat, clumps up with its flight, chases past the point where it
+      // should have left, and never once breaks on a missile.
+      rookie: Object.freeze({
+        // "水平旋回だけ" - the vertical component of the pursuit solution is
+        // most of the way off, so it fights in one plane and bleeds speed.
+        verticalScale: 0.35,
+        // Does not spread out. `evadeLateral`/`evadeVertical` are what make a
+        // flight look like a flight rather than a gaggle.
+        evadeScale: 0.40,
+        engageScale: 1.00,
+        // Presses the chase long after a competent pilot would have extended.
+        disengageScale: 1.35,
+        gunAccuracyScale: 0.60,
+        // Tracers go wide instead of near-miss, which is how the player reads
+        // "this one cannot shoot" without a HUD label saying so.
+        aimScatterScale: 2.60,
+        // Shoots from angles that will never guide...
+        launchDotScale: 0.55,
+        missileEnvelopeScale: 1.00,
+        // ...but almost never gets round to it.
+        missileCooldownScale: 1.15,
+        breakChance: 0,
+        breakReaction: 99
+      }),
+      regular: Object.freeze({
+        verticalScale: 1.00, evadeScale: 1.00, engageScale: 1.00, disengageScale: 1.00,
+        gunAccuracyScale: 1.00, aimScatterScale: 1.00,
+        launchDotScale: 1.00, missileEnvelopeScale: 1.00, missileCooldownScale: 1.00,
+        // Reacts late and not every time.
+        breakChance: 0.80, breakReaction: 0.30
+      }),
+      veteran: Object.freeze({
+        verticalScale: 1.10, evadeScale: 1.05, engageScale: 1.05, disengageScale: 1.00,
+        gunAccuracyScale: 1.10, aimScatterScale: 0.80,
+        launchDotScale: 1.10, missileEnvelopeScale: 0.90, missileCooldownScale: 0.95,
+        breakChance: 0.95, breakReaction: 0.15
+      }),
+      expert: Object.freeze({
+        verticalScale: 1.00, evadeScale: 1.00, engageScale: 1.00, disengageScale: 1.00,
+        gunAccuracyScale: 1.15, aimScatterScale: 0.65,
+        // Will not take a shot that cannot guide, and does not waste one at the
+        // edge of the seeker's range either.
+        launchDotScale: 1.15, missileEnvelopeScale: 0.82, missileCooldownScale: 1.00,
+        breakChance: 1.00, breakReaction: 0
+      })
+    });
 
     // ---- Named pilots ---------------------------------------------------------
     // An ace is an identity bolted onto an airframe, never a different physics
     // table: whatever it flies keeps that aircraft's HP, speed and turn rate, and
-    // ACE_TURN_SCALE is the only stat bonus in the whole system. What a profile
-    // owns is the callsign, the paint, the evasion style and the radio.
+    // the `ace` role's turnScale is the only stat bonus in the whole system. What
+    // a profile owns is the callsign, the paint, the evasion style and the radio.
     //
     // `theme` is a PARTIAL, merged over the airframe's own enemy theme, so
     // `variant` (the model) and every geometry constant still come from the
@@ -3266,20 +3375,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     });
 
-    // The two stock fighter waves, now flown entirely by the other side's
-    // airframes. Each slot was replaced by its opposite number rather than by
-    // the nearest Russian jet in the abstract, so the waves weigh what they
-    // always weighed and every mission built on them keeps its difficulty:
+    // The two stock fighter waves. NO MISSION FLIES THESE ANY MORE - every
+    // sortie in the campaign now authors its own composition inline, because
+    // the whole point of the rework was that "every wave is these same three
+    // aircraft" was the thing the player could feel. They are kept as the
+    // resolver's fallback for an unrecognised preset name and as a stable
+    // target for the dev hooks, and that is all.
     //
-    //   air1  F-16 -> MiG-29A  F-15 -> Su-33      F-4 -> MiG-21bis  375 -> 398 HP
-    //   air2  F-22 -> Su-57    F-4 -> MiG-21bis  F-16 -> MiG-29A    425 -> 429 HP
-    //
-    // Su-33 rather than Su-35S in air1: the Flanker-D turns at exactly the
-    // Eagle's 34 deg/s, so the wave the player meets from m-glacier onward
-    // handles the way it always did. The Su-35S is held back for the late
-    // missions, which is where the campaign wants the step up. air2's leader
-    // is the slot IRONBACK flies, and Su-57 against F-22 is 196 HP at 40 deg/s
-    // against 200 at 39 - the closest like-for-like swap in the roster.
+    //   air1  MiG-29A / Su-33 / MiG-21bis   398 HP
+    //   air2  Su-57 (ace) / MiG-21bis / MiG-29A   429 HP
     const ENEMY_TYPE_ORDER = Object.freeze([
       Object.freeze(["mig29", "su33", "mig21"]),
       Object.freeze(["su57", "mig21", "mig29"])
@@ -3287,21 +3391,35 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // ---- Wave composition -----------------------------------------------------
     // A mission's `sequence` is an ordered list of wave entries. An entry is
-    // either a preset name - the four the campaign shipped with - or an inline
-    // `{ types: [...], ace?: bool }` object, which lets a mission field a mixed
-    // wave (bombers with a fighter escort, say) of any size without inventing a
-    // preset for it. Every consumer downstream reads the resolved descriptor, so
-    // "one wave = three aircraft" is no longer wired into target totals, target
-    // ids, briefing markers or the spawn layout.
+    // either a preset name or - in every mission the campaign now ships - an
+    // inline `{ types: [...], ... }` object, which lets a sortie field a mixed
+    // wave of any size without inventing a preset for it. Every consumer
+    // downstream reads the resolved descriptor, so "one wave = three aircraft"
+    // is nowhere in target totals, target ids, briefing markers or the layout.
+    //
+    // THE SHAPE THE CAMPAIGN IS AUTHORED IN:
+    //   - The designated targets (`tgt`, the default) are the SUBJECT of the
+    //     sortie and nothing else: two bombers, five hulls, seven vehicles, one
+    //     ace. They are what ACCOMPLISHED counts and the only thing that gates
+    //     the next wave.
+    //   - Around them go noticeably MORE undesignated contacts than there are
+    //     targets - roughly 1.5x to 2x - flagged `tgt: false` and `role:
+    //     "trash"`. Their job is to be in the way. Killing all of them wins
+    //     nothing; killing none of them costs nothing but the shooting they do
+    //     while the player works the real list.
+    //   - They arrive in batches on a `delay` rather than all at once, so the
+    //     board keeps changing. The total is authored and finite: nothing in
+    //     this system can re-queue a wave, so a sortie always ends.
     //
     // `band` is the wave's identity for spawn geometry and for the small speed
     // bonus later waves get; it is deliberately NOT the sequence index, because
-    // m04 flies "air2" as its only wave and its enemies have always been band 2.
+    // an ace's wave is band 2 wherever it sits in the list.
     //
-    // `idBase` pins the HUD target numbers each preset has always produced (air
-    // waves 1-3 and 4-6, the fleet 7-9) so every existing mission keeps its
-    // numbering; an inline entry takes the next free block instead. Ground
-    // installations own ids 21 and up, which is the ceiling on this allocator.
+    // `idBase` pins the HUD target numbers a wave produces; an entry that does
+    // not pin one takes the next free block. Ground installations own ids 21
+    // and up, so a mission WITH ground units must keep its air waves below
+    // that - the two long ones (m05, m-swarm) have no ground units and are
+    // free to run past it.
     const WAVE_PRESETS = Object.freeze({
       air1: Object.freeze({
         kind: "air", types: ENEMY_TYPE_ORDER[0], fleet: null,
@@ -3353,6 +3471,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // wave to be cleared. Escorts and CAP have to be on the board while
         // their charges are, or they are not escorting anything.
         concurrent: Boolean(entry.concurrent),
+        // Seconds this (concurrent) entry is held back after its principal
+        // spawns. 0 = together. This is the only way a mission can put a
+        // contact on the board on a clock rather than on a kill count, and it
+        // is what "削り切る前に次が来る" needs: a flight that arrives while the
+        // player is still working, not after they have finished.
+        //
+        // A delayed entry that never comes due is simply never spawned, which
+        // is the design - clearing the wave fast is how the player refuses it.
+        delay: Math.max(0, Number(entry.delay) || 0),
+        // ENEMY_ROLES key for every aircraft in the wave. Omitted = line, i.e.
+        // the airframe flown at its published numbers. `ace` is never written
+        // here; naming a pilot is what selects it.
+        role: ENEMY_ROLES[entry.role] ? entry.role : null,
+        // SKILL_TIERS key, independent of the role. Omitted = whatever the
+        // role defaults to.
+        skill: SKILL_TIERS[entry.skill] ? entry.skill : null,
         radio: entry.radio ? Object.freeze(entry.radio.map(Object.freeze)) : null
       });
     }
@@ -3392,6 +3526,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // Spawn geometry per band. Bands beyond 2 reuse the second set - the numbers
     // are a formation, not a per-wave identity.
+    // Geometry for waves bigger than one flight: each element of three sits
+    // this far to the side, this far above and this far behind the one before
+    // it. Sized against the layouts below - the sideways step is about half a
+    // slot, so elements interleave rather than screen each other.
+    const WAVE_ELEMENT_OFFSET = 110;
+    const WAVE_ELEMENT_STACK = 130;
+    const WAVE_ELEMENT_TRAIL = 240;
+
     const WAVE_LAYOUTS = Object.freeze({
       1: Object.freeze({
         distance: 820, distanceStep: 65,
@@ -4499,6 +4641,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const ENEMY_BREAK_DURATION = 1.6;
     // Measured from the moment the break starts, so a machine cannot chain them.
     const ENEMY_BREAK_COOLDOWN = 4.0;
+    // A tier that rolls badly and does NOT break is locked out for this long,
+    // rather than re-rolling on the next frame. Without it `breakChance` would
+    // be a per-frame die at 60 Hz, i.e. always 1.0, and the tiers would be
+    // indistinguishable in play.
+    const ENEMY_BREAK_MISS_COOLDOWN = 1.5;
     const ENEMY_BREAK_LATERAL = 380;
     const ENEMY_BREAK_JINK = 90;
     const ENEMY_BREAK_JINK_RATE = 7;
@@ -4566,6 +4713,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // aircraft" - the player plans a different sortie for one of these, and the
     // map is where they find that out.
     const HEAVY_AIR_TYPES = Object.freeze(new Set(["bomber", "transport", "tu95"]));
+
+    // Airframes that fly a STRIKE RUN when the mission is defending an airfield:
+    // spawned pointed at the field rather than at the player, and holding that
+    // line until they are shot down. Membership is "carries bombs", which is
+    // why the airlifter is in HEAVY_AIR_TYPES and not in here.
+    //
+    // The Bear was added when the campaign's opening sortie went Russian. It was
+    // written as a bare `key === "bomber"` test back when there was exactly one
+    // bomber in the game, and that test silently turned the Tu-95 into a
+    // fighter that flew at the player instead of at the base.
+    const STRIKE_AIR_TYPES = Object.freeze(new Set(["bomber", "tu95"]));
 
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
@@ -5630,26 +5788,38 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         key: "m01",
         world: "archipelagoDay",
         title: "FIRST CONTACT",
-        jp: "敵爆撃編隊が本基地へ直行中。護衛は旧式のMiG-21。爆撃機を撃墜し、基地を守れ。",
-        // The traditional Ace Combat first sortie: a bomber intercept. The
-        // bombers never turn to fight (engageRange 0) and the escort is the
-        // weakest airframe in the game - the MiG-21bis at 98 HP, below even
-        // the Phantom it replaced - so the tutorial teaches "hit the
-        // designated targets, ignore the rest" without being able to punish
-        // a first-time player for taking the lesson literally.
+        jp: "Tu-95編隊が本基地へ直行中。護衛は旧式のMiG-21が3。爆撃機を撃墜し、基地を守れ。",
+        // The traditional Ace Combat first sortie: a bomber intercept, and the
+        // mission that teaches the campaign's central reading - TGT is the
+        // subject of the sortie, everything else is weather.
+        //
+        // Tu-95 rather than the B-52 it opened with: the story bible names the
+        // Bear here, and it is the enemy's own heavy. Behaviourally identical
+        // (armored, engageRange 0, tail turret, 294 HP against 290), so the
+        // tail chase and the three-missile hull the tutorial is built around
+        // are unchanged.
+        //
+        // Three MiG-21s against two bombers is the campaign's gentlest TGT:
+        // trash ratio, 1:1.5. They are `trash` role, i.e. flying a Fishbed at
+        // three quarters of what a Fishbed can do, gun-armed only (the MiG-21
+        // has no ENEMY_MISSILE_PROFILES entry at all), and rookie-tier, so
+        // they neither lead their shots nor break. A first-time player can
+        // take "ignore the escort" literally and survive doing it.
         sequence: [
-          { types: ["bomber", "bomber"], band: 1, label: "BOMBER" },
+          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
           {
-            types: ["mig21", "mig21"], tgt: false, band: 2, label: "ESCORT", concurrent: true,
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash",
             radio: [
-              { speaker: "wingman", text: "護衛のMiG-21が2機！ 旧式だ、無理に相手をするな——爆撃機を先に落とせ！", id: "m01-escort-inbound" }
+              { speaker: "wingman", text: "護衛のMiG-21が3機！ 旧式だ、無理に相手をするな——爆撃機を先に落とせ！", id: "m01-escort-inbound" }
             ]
           }
         ],
         // A tail chase, so par has to cover closing the gap as well as killing:
         // ~40s to overhaul the formation plus two bomber kills at 3 missiles
         // each, well inside the ~3min the bombers need to reach the field.
-        parTime: 165,
+        // One more escort on the board than before, hence the small bump.
+        parTime: 180,
         hasOutro: false,
         map: { x: 0.27, y: 0.4 },
         // Tail chase: the player starts at +Z facing -Z, the bombers are ~800m
@@ -5672,9 +5842,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // overshoot past the field and turn around.
         battleCenter: { x: 0, z: -9900 },
         battleRadius: 13500,
-        briefing: "敵爆撃編隊が本基地へ向かっている——大型機2、護衛は旧式のMiG-21が2。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標は爆撃機のみ。護衛のMiG-21は無視して構わない。",
+        briefing: "敵爆撃編隊が本基地へ向かっている——Tu-95が2、護衛は旧式のMiG-21が3。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標はTu-95の2機だけだ。護衛は数が多いが、無視して構わない。",
         introRadio: [
-          { speaker: "command", text: "初任務だ。敵爆撃編隊、本基地へ直行中——投弾される前に叩き落とせ。", id: "m01-brief" },
+          { speaker: "command", text: "初任務だ。Tu-95が2機、本基地へ直行中——投弾される前に叩き落とせ。", id: "m01-brief" },
           { speaker: "wingman", text: "護衛のMiG-21は放っておいていい。爆撃機は逃げも隠れもしない、狙って撃つだけだ。", id: "m01-brief-wing" }
         ]
       },
@@ -5683,17 +5853,40 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "TWO-PRONGED",
         jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
-        // The first fighters the player ever dogfights. MiG-21bis throughout,
-        // with a single MiG-29A leading the second wave as the step up - the
-        // difficulty curve starts at the weakest airframe and climbs from here.
+        // The first fighters the player ever dogfights, and the first sortie
+        // where the TGT list is SHORTER than the contact list. Two designated
+        // leaders per prong; everything else on the board is trash-role
+        // interference that never has to be killed.
+        //
+        // Four designated against seven undesignated (1:1.75) is the campaign's
+        // default shape from here on. The step up from m01 is in the TGT tier -
+        // Flogger then Fulcrum, both two-missile hulls - not in the head count.
         sequence: [
-          { types: ["mig21", "mig21", "mig21"], band: 1, idBase: 0 },
-          { types: ["mig29", "mig21", "mig21"], band: 2, idBase: 3 }
+          { types: ["mig23", "mig23"], band: 1, idBase: 0 },
+          {
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 1, label: "FIRST PRONG",
+            concurrent: true, role: "trash"
+          },
+          { types: ["mig29", "mig29"], band: 2 },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "SECOND PRONG",
+            concurrent: true, role: "trash"
+          },
+          // Arrives while the player is still working the second prong rather
+          // than after it - the "削り切る前に次が来る" beat. Outrunning the
+          // clock means never meeting it, which is the reward for being quick.
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 40,
+            radio: [
+              { speaker: "wingman", text: "レーダーにもう2機！ 数だけだ、指定目標から目を離すな！", id: "m02-reinforce" }
+            ]
+          }
         ],
-        parTime: 210,
+        parTime: 250,
         hasOutro: false,
         map: { x: 0.5, y: 0.27 },
-        briefing: "敵は二正面攻勢を仕掛けてきた。第1波を叩いた直後、増援の第2波が到達する。\n補給は無い。弾を数えながら、連続迎撃せよ。"
+        briefing: "敵は二正面攻勢を仕掛けてきた。第1波を叩いた直後、増援の第2波が到達する。\n指定目標は各波の先導機だけ——MiG-23が2、MiG-29が2の計4機。\n周りのMiG-21は数を撃ってくるが、腕は素人だ。付き合う必要はない。\n補給は無い。弾を数えながら、連続迎撃せよ。"
       },
       {
         key: "m03",
@@ -5710,34 +5903,77 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // with a patrol circuit tight enough that it orbits the ships
             // instead of roaming, so the pressure while the player works the
             // hulls comes from something that will not be drawn away.
-            types: ["su33", "su33"], tgt: false, band: 1, label: "CAP", concurrent: true,
+            //
+            // `trash` here is not "a weak aircraft" - a Flanker-D is a
+            // two-missile hull whichever way it is flown, and that is left
+            // alone. It is a deck crew scrambled into the middle of a strike:
+            // three quarters of the airframe's turn, missiles at half cadence,
+            // no break. The player can fly through them to reach the hulls.
+            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
+            concurrent: true, role: "trash",
             radio: [
               { speaker: "wingman", text: "艦隊上空にCAPだ！ 相手をしなくてもいい——狙いは艦隊だぞ！", id: "m03-cap-inbound" }
             ]
+          },
+          // Relief on a clock, in two more batches. The fleet does not run out
+          // of aircraft while it is alive, but it does not have infinitely many
+          // either: eight, authored, and then no more.
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 70,
+            radio: [
+              { speaker: "wingman", text: "交代のCAPが上がってきた！ 相手にするな、艦を沈めろ！", id: "m03-cap-relief" }
+            ]
+          },
+          {
+            types: ["su33", "mig21", "mig21"], tgt: false, band: 1, label: "DECK LAUNCH",
+            concurrent: true, role: "trash", delay: 150
           }
         ],
-        parTime: 250,
+        parTime: 285,
         hasOutro: false,
         map: { x: 0.71, y: 0.56 },
-        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2、フリゲート2の計5隻。\n艦隊上空にはCAPが張り付いている——交戦は任意だ、目標はあくまで艦隊。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。\nフリゲートは単装ランチャーで発射間隔が長い——後回しでいい。"
+        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2、フリゲート2の計5隻。\n指定目標はこの5隻だけだ。艦隊上空のCAPは何度でも上がってくるが、落とす義務は無い。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。\nフリゲートは単装ランチャーで発射間隔が長い——後回しでいい。"
       },
       {
         key: "m-glacier",
         world: "glacierCanyon",
         title: "GLACIER RUN",
         jp: "氷河回廊に敵のレーダー網。谷底を這うように侵攻し、壁のSAMサイトごと制圧せよ。",
-        // Second wave: the ground-attack pair that the radar net was there to
-        // protect, plus one escort. A Frogfoot is the right opponent for a
-        // canyon - it is slow enough to be caught in one and takes three
-        // missiles, so the fight happens between the walls rather than above
-        // them, and it arrives AFTER the SAM belt rather than alongside it.
+        // The designated list is the four installations plus the ground-attack
+        // pair the radar net existed to protect - six, and not one of the
+        // fighters. A Frogfoot is the right opponent for a canyon: slow enough
+        // to be caught in one and three missiles to kill, so the fight happens
+        // between the walls rather than above them, and it arrives AFTER the
+        // SAM belt rather than alongside it (wave 2 waits on every TGT being
+        // dead, and the installations are TGT).
+        //
+        // Ten trash-role fighters against those six, split canyon-level and
+        // high, arriving in four batches. They are what makes a low pass down
+        // the corridor cost something without ever being the reason the sortie
+        // is not finished.
         sequence: [
-          "air1",
-          { types: ["su25", "su25", "mig23"], band: 2, label: "FROGFOOT" }
+          {
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 1, label: "CANYON PATROL",
+            role: "trash"
+          },
+          {
+            types: ["mig21", "mig29"], tgt: false, band: 2, label: "HIGH CAP",
+            concurrent: true, role: "trash", delay: 75
+          },
+          { types: ["su25", "su25"], band: 2, label: "FROGFOOT" },
+          {
+            types: ["mig23", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 45
+          }
         ],
-        // Three more kills, two of them 294 HP, on top of the original patrol
-        // and the four installations.
-        parTime: 320,
+        // Four installations and two 294 HP hulls, flown through ten fighters
+        // the player is under no obligation to engage.
+        parTime: 335,
         hasOutro: false,
         map: { x: 0.18, y: 0.22 },
         // The canyon walls are a staggered ladder 600m apart, so one site per
@@ -5750,7 +5986,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           { id: 23, type: "samSite", x: -287, z: -2000, heading: -1.57 },
           { id: 24, type: "radarSite", x: 295, z: -2600, heading: 1.57 }
         ],
-        briefing: "氷河回廊の尾根に敵レーダー網が敷かれ、輸送路が塞がれている。\n谷底を低空で駆け抜ければSAMの射線は切れる。\n壁のレーダーサイトとSAMを黙らせ、上空の哨戒機も排除せよ。\n防空網を潰した頃、対地攻撃機Su-25が上がってくる。低速で鈍重だが装甲は極めて厚い——ミサイル3発を覚悟しろ。",
+        briefing: "氷河回廊の尾根に敵レーダー網が敷かれ、輸送路が塞がれている。\n谷底を低空で駆け抜ければSAMの射線は切れる。\n指定目標は壁のレーダーサイトとSAMの4基、そして後から上がってくるSu-25が2機。\n谷にも上空にも敵戦闘機が居るが、こいつらは目標ではない。撃ち合いに乗るな。\n防空網を潰した頃、対地攻撃機Su-25が上がってくる。低速で鈍重だが装甲は極めて厚い——ミサイル3発を覚悟しろ。",
         // Separate from `briefing`: these fire over the radio once the player is
         // already airborne, so they stay a compressed re-statement of the board.
         introRadio: [
@@ -5763,8 +5999,43 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "nightBase",
         title: "NIGHT RAID",
         jp: "敵前線基地への夜間強襲。防空網と燃料庫を焼き払い、基地を機能停止に追い込め。",
-        sequence: ["air1"],
-        parTime: 300,
+        // A base raid: the eleven installations ARE the mission, and not one
+        // aircraft on this board is a designated target. Ten of them, in four
+        // batches on a clock, exist to make the attack runs cost something -
+        // the player has to keep breaking off the strike to stay alive, and
+        // the base does not blow itself up while that is happening.
+        //
+        // The ratio is inverted relative to the rest of the campaign (11 TGT to
+        // 10 trash rather than 1:1.5-2) because the TGT list is a fixed piece of
+        // terrain. Matching the guideline literally would mean seventeen
+        // fighters over one airfield, which is a different mission.
+        //
+        // Every entry after the first is `concurrent`: a non-TGT wave that is
+        // not concurrent would never spawn at all, because the sequence only
+        // advances when the designated targets are gone - and by then the
+        // sortie is over.
+        sequence: [
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "NIGHT CAP",
+            role: "trash"
+          },
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "ALERT FIVE",
+            concurrent: true, role: "trash", delay: 50,
+            radio: [
+              { speaker: "wingman", text: "滑走路から上がってきた！ 迎撃機だ——地上目標を先に潰せ！", id: "night-alert-five" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 1, label: "SCRAMBLE",
+            concurrent: true, role: "trash", delay: 110
+          },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SECOND SCRAMBLE",
+            concurrent: true, role: "trash", delay: 175
+          }
+        ],
+        parTime: 330,
         hasOutro: false,
         map: { x: 0.60, y: 0.74 },
         // Laid out around the plateau centre (900, -1200): SAMs on a diagonal,
@@ -5790,7 +6061,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           { x: 930, z: -1278 },
           { x: 1012, z: -1325 }
         ],
-        briefing: "夜間強襲作戦。月明かりを背に敵前線基地へ侵入する。\n対空砲火に注意。燃料庫に火が入れば誘爆が基地を飲み込むはずだ。\n地上目標をすべて破壊し、夜間CAPも撃墜せよ。",
+        briefing: "夜間強襲作戦。月明かりを背に敵前線基地へ侵入する。\n対空砲火に注意。燃料庫に火が入れば誘爆が基地を飲み込むはずだ。\n指定目標は地上の11目標のみ。上がってくる迎撃機は目標ではない。\n奴らは断続的にスクランブルしてくる。全部落とそうとするな——基地を潰せば終わりだ。",
         introRadio: [
           { speaker: "command", text: "夜間強襲だ。月明かりを背に、敵前線基地を機能停止させろ。", id: "night-brief" },
           { speaker: "wingman", text: "対空砲火に気をつけろ。燃料庫に火が入れば連鎖するはずだ！", id: "night-brief-wing" }
@@ -5810,13 +6081,43 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // scripted post-stall is a manoeuvre this airframe is known for.
         // `band` and `idBase` reproduce air2's, so the HUD target numbers and
         // the wave's spawn geometry are unchanged.
+        // The duel. Story bible 19: the designated target is the ace and only
+        // the ace - his wingmen are there to be in the way. So totalTargets is
+        // 1, and the moment IRONBACK goes down the sortie is over no matter
+        // how many Fishbeds are still circling.
+        //
+        // Six of them, in three batches on a clock, so the fight never settles
+        // into a clean one-versus-one: something arrives roughly every 50
+        // seconds to spoil a gun solution. All trash-role - the interference
+        // has to be interference, not a second fight.
+        //
+        // `idBase: 3` keeps the ace on TGT 4, the number this mission has
+        // always printed for him.
         sequence: [
-          { types: ["su57", "mig29", "mig29"], ace: true, band: 2, idBase: 3 }
+          { types: ["su57"], ace: true, band: 2, idBase: 3 },
+          {
+            types: ["mig29", "mig29"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash", idBase: 0,
+            radio: [
+              { speaker: "wingman", text: "僚機が2機付いてる！ そっちは相手にするな——狙いはIRONBACKだけだ！", id: "m04-wingmen" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "INTERFERENCE",
+            concurrent: true, role: "trash", delay: 45
+          },
+          {
+            types: ["mig23", "mig21"], tgt: false, band: 2, label: "INTERFERENCE",
+            concurrent: true, role: "trash", delay: 105,
+            radio: [
+              { speaker: "wingman", text: "また湧いてきた！ 決着をつけろ、{nickname}——奴を落とせば終わりだ！", id: "m04-interference-2" }
+            ]
+          }
         ],
-        parTime: 135,
+        parTime: 165,
         hasOutro: false,
         map: { x: 0.42, y: 0.65 },
-        briefing: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入した。\n奴は今まで12機を墜としている。次を君にするな。\n編隊ごと撃墜せよ。"
+        briefing: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入した。\n奴は今まで12機を墜としている。次を君にするな。\n指定目標はIRONBACK機ただ1機。僚機は次々に上がってくるが、相手をする必要はない。\n奴らは決闘を邪魔しに来るだけだ。振り切って、本命を落とせ。"
       },
       {
         key: "m05",
@@ -5827,13 +6128,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // had) and a second one leading the fleet's CAP, so the last leg is
         // not a pure ground-attack run any more.
         sequence: [
-          "air1",
-          "air2",
-          "naval",
+          // Vanguard. Two designated leaders and a flight of trash behind them.
+          { types: ["mig29", "su33"], band: 1, label: "VANGUARD" },
+          {
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          // IRONBACK, alone on the TGT list exactly as in his own sortie.
+          { types: ["su57"], ace: true, band: 2 },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 55
+          },
+          // Written inline rather than as the "naval" preset so it takes the
+          // next free id block: this sortie now spawns enough contacts ahead of
+          // the fleet that the preset's pinned 7-11 would collide with them.
+          { kind: "naval", band: 3, label: "FLEET" },
           // The fleet's own CAP, led by a second ace. Su-35S over Su-33 is the
           // enemy's best pair and lands within 3% of the F-22/F-15 it replaces
-          // (361 HP against 350), so the last leg is as hard as it was.
+          // (361 HP against 350), so the last leg is as hard as it was. Left at
+          // line/ace role - LONGBOW is not interference, he is a reason to
+          // stay high.
           { types: ["su35", "su33"], ace: "longbow", tgt: false, band: 2, label: "FLEET CAP", concurrent: true },
+          {
+            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "DECK LAUNCH",
+            concurrent: true, role: "trash", delay: 80
+          },
           // The last thing the campaign puts in front of the player. Su-57 in
           // the ace slot is the hardest single opponent in the game: turn 40 -
           // past the player Raptor's 39 - with ACE_TURN_SCALE 1.2 on top of it,
@@ -5842,53 +6166,85 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // out-turns it, so breaking away from the Felon flies the player into
           // the Berkut. Both are two-missile hulls, which is the concession -
           // this wave is meant to be hard to hit, not long to grind down.
-          { types: ["su57", "su47"], ace: "vulture", band: 2, label: "FELON" }
+          { types: ["su57", "su47"], ace: "vulture", band: 2, label: "FELON" },
+          // The last wave is eight aircraft on the board at once - the two
+          // designated Felon-flight jets plus six trash - which is the
+          // "総力戦" the finale is named for. The trash is what makes eight
+          // survivable: six aircraft flying at 0.75 turn with missiles at half
+          // cadence is pressure, not a second pair of aces.
+          {
+            types: ["mig29", "mig21", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
+            concurrent: true, role: "trash", delay: 45
+          }
         ],
-        parTime: 520,
+        parTime: 620,
         hasOutro: true,
         map: { x: 0.8, y: 0.34 },
-        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
+        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n指定目標は10。先導機2、IRONBACK、艦隊5隻、そして最後のSu-57編隊だ。\nそれ以外は全て雑魚だ。数は多いが腕は素人——付き合えば時間だけが溶ける。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
       },
       {
         key: "m-intercept",
         world: "archipelagoDay",
         title: "BOMBER STREAM",
         jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
-        // First mission with mixed waves: two bombers and one escort fighter per
-        // wave, written as inline type lists rather than a preset.
-        // The escorts are Russian now: a Fulcrum on the first wave and a
-        // Fishbed on the second. The MiG-21 is the softer of the two on
-        // purpose - it is gun-armed only - so the second wave's difficulty
-        // stays where it was even though the player meets it later and lower
-        // on ammunition. Net change across both waves is -25 HP out of 1015.
+        // Story bible 17: a mass raid aimed at BABEL itself. Six Tu-95s, two
+        // per wave, and they are the entire designated list - twelve escorts
+        // across the three waves are not. 1:2 exactly, the top of the band.
+        //
+        // All six heavies are Bears now rather than three waves of mixed
+        // B-52/Tu-95. Same 294-class hull, same tail turret, same three-missile
+        // lesson - but the enemy flies its own aircraft, which is the point of
+        // the faction split, and one silhouette repeated six times is what a
+        // bomber STREAM looks like.
         sequence: [
-          { types: ["bomber", "bomber", "mig29"] },
-          { types: ["bomber", "bomber", "mig21"] },
-          // Third wave: the heavies the mission is named for, flown by a
-          // different aircraft. The Tu-95 has the same 294-class hull and the
-          // same tail turret as the B-52s ahead of it, so the lesson the first
-          // two waves taught still applies - but four turning propeller discs
-          // make it unmistakable which two the player is looking at, which is
-          // the entire reason a second heavy bomber exists in the roster.
-          { types: ["tu95", "tu95", "mig23"], band: 2, label: "BEAR" }
+          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
+          {
+            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig29", "mig23", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 50
+          },
+          // The last pair carries the heaviest cover in the mission: four
+          // fighters on the board with them from the first second, so the
+          // player has to work the stream through a screen rather than pick
+          // the bombers off in the open.
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
+          {
+            types: ["mig29", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "TOP COVER",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "最終波、護衛が厚い！ 4機だ——抜けろ、爆撃機だけ狙え！", id: "intercept-top-cover" }
+            ]
+          }
         ],
         // No time limit - the bombers do not run. Par carries the pressure, the
-        // way AC7's own bomber-stream scoring missions do. Three waves now, and
-        // the third is two more three-missile hulls plus an escort.
-        parTime: 370,
+        // way AC7's own bomber-stream scoring missions do. Six three-missile
+        // hulls, flown through twelve fighters that never have to be killed.
+        parTime: 410,
         hasOutro: false,
         map: { x: 0.34, y: 0.16 },
-        briefing: "高高度に大型機の反応——敵の重爆撃編隊が本土へ向かっている。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。\n第3波はTu-95——二重反転プロペラ4基で飛ぶ旧ソ連製の重爆だ。頑丈さも尾部銃座も先の2波と同じだと思え。",
+        briefing: "高高度に大型機の反応——敵の重爆撃編隊Tu-95が6機、本土へ向かっている。\n指定目標はこの6機だけだ。護衛は12機付いているが、1機も落とさなくても作戦は成立する。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。\n二重反転プロペラ4基で飛ぶ旧ソ連製の重爆だ。3波に分かれて来る——最終波の護衛が最も厚い。",
         introRadio: [
           { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
-          { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
+          { speaker: "wingman", text: "護衛が張り付いてる。だが相手をする必要はない——隙間を抜けて爆撃機に取り付け！", id: "intercept-brief-wing" }
         ]
       },
       {
         key: "m-swarm",
         world: "nightBase",
         title: "UAV SWARM",
-        jp: "敵の無人機群が夜間に展開。UAV6機を2波で迎撃せよ。地上目標は無い、純粋な空戦だ。",
+        jp: "敵の無人機群が夜間に展開。指定のUAV6機を撃墜せよ。地上目標は無い、純粋な空戦だ。",
         // The swarm mission, and the first sortie in the campaign with nothing
         // on the ground at all. Six UAVs in two waves of three: each dies to a
         // single missile, and none of them can be out-turned by any airframe in
@@ -5905,6 +6261,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           { types: ["uav", "uav", "uav"], band: 1, idBase: 0, label: "UAV" },
           {
             types: ["transport"], tgt: false, band: 1, label: "DRONE CARRIER", concurrent: true,
+            role: "trash",
             // Numbered outside the objective block on purpose: the six drones
             // own TGT 1-6, so a bonus contact must not take a number out of
             // that run. 16 is clear of the wave blocks and of the ground
@@ -5914,17 +6271,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               { speaker: "wingman", text: "でかい反応が1つ……無人機の母機だ！ 武装は無い、指定目標でもない——余裕があれば落とせ！", id: "swarm-carrier-inbound" }
             ]
           },
-          { types: ["uav", "uav", "uav"], band: 2, idBase: 3, label: "UAV" }
+          // Undesignated drones, released from the carrier while the player is
+          // still on the first three. Drones rather than fighters on purpose:
+          // story bible 12 is "墜としても誰も死なない", and putting crewed
+          // escorts out here would take that away. Ids are pinned into the
+          // 16-and-up block so the six designated drones keep TGT 1-6.
+          {
+            types: ["uav", "uav", "uav"], tgt: false, band: 2, label: "DRONE",
+            concurrent: true, role: "trash", delay: 30, idBase: 16,
+            radio: [
+              { speaker: "wingman", text: "母機が追加を放出した！ そっちは指定目標じゃない——数に釣られるな！", id: "swarm-extra-drones" }
+            ]
+          },
+          { types: ["uav", "uav", "uav"], band: 2, idBase: 3, label: "UAV" },
+          {
+            types: ["uav", "uav", "uav", "uav", "uav"], tgt: false, band: 1, label: "DRONE",
+            concurrent: true, role: "trash", delay: 25, idBase: 19
+          }
         ],
         // Six kills against targets that cannot be out-turned, in two waves,
-        // with a transit between them. Roughly m02's clock (210) less the time
-        // a drone does not survive: one hit each rather than three.
-        parTime: 205,
+        // with a transit between them, now flown through nine more drones that
+        // do not count. Roughly m02's clock less the time a drone does not
+        // survive: one hit each rather than three.
+        parTime: 250,
         hasOutro: false,
         map: { x: 0.57, y: 0.72 },
-        briefing: "夜間、前線基地上空に多数の小型反応——敵の無人戦闘機だ。\n3機ずつ、2波で来る。装甲は無く1発で落ちるが、旋回はこちらの全機を上回る。\n後ろに張り付こうとするな。追い回した時点で相手の土俵だ。\n複数同時ロックの兵装があるなら、今日がその日だ——1回の斉射で1波を消せる。\n母機らしい大型機が1機。無指定目標だが、落とせば加点になる。",
+        briefing: "夜間、前線基地上空に多数の小型反応——敵の無人戦闘機だ。\n指定目標は6機。ただし母機が追加を放出してくる——画面上の数は指定目標の倍以上になる。\n装甲は無く1発で落ちるが、旋回はこちらの全機を上回る。\n後ろに張り付こうとするな。追い回した時点で相手の土俵だ。\n複数同時ロックの兵装があるなら、今日がその日だ——1回の斉射で1波を消せる。\n母機らしい大型機が1機。無指定目標だが、落とせば加点になる。",
         introRadio: [
-          { speaker: "command", text: "小型高機動の反応が多数。無人機だ——数で来るぞ、1機ずつ丁寧に処理しろ。", id: "swarm-brief" },
+          { speaker: "command", text: "小型高機動の反応が多数。無人機だ——数で来るぞ、指定目標だけ数えろ。", id: "swarm-brief" },
           { speaker: "wingman", text: "旋回でこいつらに勝てる機体は無い。追いかけっこはするな、正面から撃て！", id: "swarm-brief-wing" }
         ]
       },
@@ -5941,24 +6315,39 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         //
         // The CAP is deliberately NOT a designated target. The column is the
         // objective; the fighters are a decision, exactly as in m03.
+        // Eight designated ground targets against eight trash-role fighters
+        // arriving in three batches. The Su-35S that used to lead this CAP is
+        // gone: a heavy Flanker sitting over the column made the run about the
+        // air fight, and the fighters here are supposed to be the thing that
+        // stops a clean strafing pass, not the thing the mission is about.
+        //
+        // Every entry after the first is `concurrent` - a non-TGT wave that is
+        // not would never spawn, since the sequence only advances when the
+        // designated targets are gone.
         sequence: [
           {
-            // Late-campaign CAP, so this is where the Su-35S belongs: the
-            // heavy Flanker over land, with a Fulcrum on its wing. Harder than
-            // the F-16/F-15 pair it replaces (331 HP against 250), which is
-            // the point - the player meets this one at the end of the run, and
-            // it is optional anyway.
-            types: ["mig29", "su35"], tgt: false, band: 2, label: "CAP",
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "CAP", role: "trash",
             radio: [
               { speaker: "wingman", text: "上空にCAP！ 付き合う必要はない——狙いは車列だ！", id: "convoy-cap-inbound" }
             ]
+          },
+          {
+            types: ["mig21", "mig21", "mig23", "mig21"], tgt: false, band: 1, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 60,
+            radio: [
+              { speaker: "wingman", text: "増援のCAPだ、4機！ 低空に入りづらくなるぞ——先に対空戦車を潰せ！", id: "convoy-cap-relief" }
+            ]
+          },
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 140
           }
         ],
         // Nothing here runs away, so the pressure is scoring pressure. Par
         // covers the ~25s ingress plus eight ground kills at ground-attack
         // pace, which is the shape AC7's own convoy mission uses (a score
         // attack, not a countdown).
-        parTime: 275,
+        parTime: 300,
         hasOutro: false,
         map: { x: 0.14, y: 0.44 },
         // The road, authored once and shared by every vehicle in the column:
@@ -6007,7 +6396,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // spawn points, which would drift north with the column's tail.
         battleCenter: { x: -100, z: -2650 },
         battleRadius: 9000,
-        briefing: "敵機甲部隊が海岸平野に上陸、北端から南岸へ縦断中。\n車列は戦車5、対空戦車2の計7両。速度は遅いが、止まらない。\n対空戦車は撃ってくる——射程600、低空で正面から入れば削られる。\n戦車の主砲は君を狙わない。怖いのは対空戦車と、西の稜線のSAMサイトだ。\n指定目標は車列7両とSAMサイトの計8。上空のCAPは無視して構わない。",
+        briefing: "敵機甲部隊が海岸平野に上陸、北端から南岸へ縦断中。\n車列は戦車5、対空戦車2の計7両。速度は遅いが、止まらない。\n対空戦車は撃ってくる——射程600、低空で正面から入れば削られる。\n戦車の主砲は君を狙わない。怖いのは対空戦車と、西の稜線のSAMサイトだ。\n指定目標は車列7両とSAMサイトの計8。上空のCAPは3度に分けて上がってくるが、全て無指定目標だ。\n奴らは進入を邪魔しに来るだけで、落とす価値は無い。車列を止めろ。",
         introRadio: [
           { speaker: "command", text: "海岸平野に敵機甲部隊。南岸に抜けられたら前線が崩れる——車列を潰せ。", id: "convoy-brief" },
           { speaker: "wingman", text: "対空戦車が混ざってる！ 先に潰さないと低空に入れないぞ！", id: "convoy-brief-wing" }
@@ -6067,6 +6456,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     let currentMissionIndex = 0;
     let missionWaveIndex = 0;
+    // Wave entries whose `delay` has not run out yet: { timer, wave }. Filled
+    // by spawnMissionWave, drained by updatePendingWaves, cleared whenever a
+    // new wave the player must clear goes on the board.
+    const pendingWaves = [];
     // Next free HUD target id block, and how many wave targets the sortie has
     // put on the board so far. Both are per-sortie and reset in startMission.
     let waveIdCursor = 0;
@@ -6839,6 +7232,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       banner: { visible: false, text: "", timer: 0, pending: null },
       outcomePending: { active: false, timer: 0 },
       aircraftCatalog: [...AIRCRAFT_ORDER],
+      // Every mission's resolved wave list, flat, for the composition probe.
+      // Static: MISSIONS is frozen at boot, so this never needs syncing.
+      missionTable: MISSIONS.map((mission) => ({
+        key: mission.key,
+        title: mission.title,
+        parTime: mission.parTime,
+        totalTargets: mission.totalTargets,
+        totalContacts: mission.totalContacts,
+        waveCount: mission.waveCount,
+        groundUnits: mission.groundUnits ? mission.groundUnits.length : 0,
+        groundTargets: mission.groundUnits ? mission.groundUnits.filter(isTgtEntry).length : 0,
+        waves: mission.waves.map((wave) => ({
+          kind: wave.kind,
+          size: waveSizeOf(wave),
+          types: wave.kind === "naval" ? [...wave.fleet] : [...wave.types],
+          tgt: isTgtEntry(wave),
+          concurrent: wave.concurrent,
+          delay: wave.delay || 0,
+          band: wave.band,
+          ace: wave.ace,
+          role: wave.role || (wave.ace ? "ace" : "line"),
+          skill: wave.skill,
+          label: wave.label
+        }))
+      })),
+      enemyRoles: JSON.parse(JSON.stringify(ENEMY_ROLES)),
+      skillTiers: JSON.parse(JSON.stringify(SKILL_TIERS)),
       selectedAircraft: selectedAircraftId,
       loadout: {
         aircraftId: selectedAircraftId,
@@ -7035,6 +7455,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.maxHp = Math.max(enemy.maxHp, hp);
           return enemy.hp;
         },
+        // The mirror of forceSetEnemyHp, and it exists for one reason: any
+        // probe that measures how OFTEN an enemy shoots has to sit in front of
+        // it for a minute or more, which no 100 HP aircraft survives. Without
+        // this the missile-cadence comparison between roles cannot be run for
+        // long enough to mean anything.
+        forceSetHealth: (hp) => {
+          if (gameState !== STATE_PLAYING) return false;
+          health = THREE.MathUtils.clamp(hp, 1, PLAYER_MAX_HEALTH);
+          return health;
+        },
+        // Puts aircraft on the board WITHOUT touching the mission sequence.
+        // forceSpawnAirWave goes through spawnMissionWave, which is the right
+        // thing for exercising the real spawn path but the wrong thing for a
+        // role comparison: it advances the wave cursor and drags the mission's
+        // own concurrent followers in with it, so the board ends up holding
+        // the mission's trash as well as the probe's aircraft. This one calls
+        // the layout directly and pins ids well clear of everything.
+        forceSpawnRoleWave: (types, options = {}) => {
+          if (gameState !== STATE_PLAYING) return false;
+          if (!Array.isArray(types) || types.length === 0 || types.length > 16) return false;
+          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          if (!options.keep) {
+            for (const enemy of enemies) {
+              if (!enemy.alive) continue;
+              enemy.alive = false;
+              enemy.deadTimer = 0.2;
+              enemy.hitbox.visible = false;
+              if (enemy.model) enemy.model.group.visible = false;
+            }
+            resetLock();
+            preferredTargetId = null;
+          }
+          const wave = normalizeWaveEntry({ ...options, kind: "air", types });
+          const idBase = waveIdCursor;
+          waveIdCursor += types.length;
+          spawnWave(wave, wave.band || 2, idBase);
+          return enemies.filter((enemy) => enemy.alive && !enemy.surface)
+            .slice(-types.length).map((enemy) => enemy.id);
+        },
+        // Between-wave restock, on demand. A probe that has to watch what an
+        // aircraft does about incoming missiles needs more of them than one
+        // load carries.
+        forceRestockMissiles: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          missileCount = PLAYER_MISSILE_CAPACITY;
+          loadedMissiles = Math.min(MISSILE_TUBE_COUNT, PLAYER_MISSILE_CAPACITY);
+          missileReloadTimers.length = 0;
+          return missileCount;
+        },
+        // Everything a role/skill assignment derived, per living aircraft.
+        // Reads the spec the spawner actually built, so it is proof about this
+        // aircraft rather than a restatement of the tables.
+        roleProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          roleId: enemy.spec.roleId,
+          skillId: enemy.spec.skillId,
+          // HP must always be the airframe's own number - the whole point of
+          // keeping multipliers off health.
+          maxHp: enemy.maxHp,
+          tableHp: ENEMY_TYPES[enemy.type] ? ENEMY_TYPES[enemy.type].hp : null,
+          patrolTurnDeg: Number(THREE.MathUtils.radToDeg(enemy.spec.patrolTurn).toFixed(4)),
+          pursuitTurnDeg: Number(THREE.MathUtils.radToDeg(enemy.spec.pursuitTurn).toFixed(4)),
+          tablePursuitTurnDeg: ENEMY_TYPES[enemy.type]
+            ? Number(THREE.MathUtils.radToDeg(ENEMY_TYPES[enemy.type].pursuitTurn).toFixed(4))
+            : null,
+          missileCooldownScale: enemy.spec.missileCooldownScale,
+          missileEnvelope: enemy.spec.missileEnvelope,
+          launchDotScale: enemy.spec.missileLaunchDotScale,
+          maxHitChance: Number(enemy.spec.maxHitChance.toFixed(4)),
+          aimScatter: enemy.spec.aimScatter,
+          breakChance: enemy.spec.breakChance,
+          breakReaction: enemy.spec.breakReaction,
+          evadeLateral: Number(enemy.spec.evadeLateral.toFixed(2)),
+          verticalAmplitude: Number(enemy.spec.verticalAmplitude.toFixed(2)),
+          mode: enemy.mode,
+          breaking: enemy.mode === "break"
+        })),
         // Spawns an arbitrary air wave mid-sortie. The roster is much larger
         // than any one mission fields, so a gate that has to see a specific
         // airframe needs a way to put it on the board without flying the whole
@@ -7286,8 +7784,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // all - and never a test-only one.
         forceSpawnAirWave: (types, options = {}) => {
           if (gameState !== STATE_PLAYING) return false;
-          if (!Array.isArray(types) || types.length === 0 || types.length > 6) return false;
+          // Ceiling raised from 6 with the wave rework: the campaign now
+          // authors waves of up to nine, and the fps probe has to be able to
+          // put a worst-case board up in one call.
+          if (!Array.isArray(types) || types.length === 0 || types.length > 16) return false;
           if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          // `keep` leaves what is already flying alone, which is the only way
+          // to measure the frame cost of N aircraft at once rather than the
+          // frame cost of the last wave spawned.
+          if (options.keep) {
+            spawnMissionWave(normalizeWaveEntry({ ...options, kind: "air", types }));
+            return enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
+          }
           // Board cleared the same way forceNavalWave does it, but WITHOUT its
           // `kills = waveTargetsSpawned` line. That hook fires once; this one
           // is called in a loop, and since ACCOMPLISHED is `kills >=
@@ -8763,6 +9271,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveIdCursor = 0;
       waveTargetsSpawned = 0;
       spawningTgt = true;
+      pendingWaves.length = 0;
       bomberFirstKillFired = false;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
@@ -9866,12 +10375,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // anything is built so a silenced ship costs nothing per attempt.
       if (shipVlsSilenced(enemy)) return false;
 
+      // Skill decides which shots are worth taking. A veteran or an ace will
+      // not launch at the ragged edge of the seeker's range or off a bad
+      // angle; a rookie will, and wastes the round. Ships and installations
+      // have no tier, so both scales fall back to 1 and their envelope is
+      // exactly the profile's.
+      const envelope = enemy.spec.missileEnvelope || 1;
+      const launchDot = profile.launchDot * (enemy.spec.missileLaunchDotScale || 1);
       tmpV1.copy(player.position).sub(enemy.group.position);
       const distance = tmpV1.length();
-      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range) return false;
+      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range * envelope) return false;
       tmpV1.multiplyScalar(1 / distance);
       forwardOf(enemy.group, tmpV2);
-      if (tmpV2.dot(tmpV1) < profile.launchDot) return false;
+      if (tmpV2.dot(tmpV1) < launchDot) return false;
 
       rightOf(enemy.group, tmpV3);
       upOf(enemy.group, tmpV4);
@@ -10268,34 +10784,74 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const layout = WAVE_LAYOUTS[Math.min(band, 2)] || WAVE_LAYOUTS[1];
 
       for (let i = 0; i < count; i += 1) {
-        const lateral = count === 3 ? layout.lateral[i] : (i - (count - 1) / 2) * layout.lateralStep;
-        const altitude = count === 3 ? layout.altitude[i] : layout.altitude[i % layout.altitude.length];
+        let lateral;
+        let altitude;
+        let depth = layout.distance + i * layout.distanceStep;
+        if (count === 3) {
+          // The historic three-ship, spelled out slot by slot. Untouched so
+          // every wave the campaign shipped with spawns where it always did.
+          lateral = layout.lateral[i];
+          altitude = layout.altitude[i];
+        } else {
+          // Anything else is laid out as ELEMENTS OF THREE stacked behind and
+          // above one another, not as one rank. Nine aircraft on a single line
+          // at this spacing would be 1.5km wide - half of it outside the
+          // player's forward view and unreadable as a formation. Stacked, a
+          // big wave reads as "three flights", which is both what it is and
+          // what the player has to solve.
+          const element = Math.floor(i / 3);
+          const slot = i % 3;
+          const inElement = Math.min(count - element * 3, 3);
+          lateral = (slot - (inElement - 1) / 2) * layout.lateralStep
+            + (element === 0 ? 0 : (element % 2 ? WAVE_ELEMENT_OFFSET : -WAVE_ELEMENT_OFFSET));
+          altitude = layout.altitude[slot % layout.altitude.length] + element * WAVE_ELEMENT_STACK;
+          depth += element * WAVE_ELEMENT_TRAIL;
+        }
         const position = new THREE.Vector3().copy(player.position)
-          .addScaledVector(spawnForward, layout.distance + i * layout.distanceStep)
+          .addScaledVector(spawnForward, depth)
           .addScaledVector(spawnRight, lateral)
           .addScaledVector(spawnUp, altitude);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, band, i, waveTypes[i], i === wave.aceSlot ? wave.ace : null, idBase);
+        spawnEnemy(
+          position, band, i, waveTypes[i],
+          i === wave.aceSlot ? wave.ace : null, idBase,
+          wave.role, wave.skill
+        );
       }
     }
 
-    function spawnEnemy(position, wave, slot, typeKey, aceId = null, idBase = 0) {
+    function spawnEnemy(position, wave, slot, typeKey, aceId = null, idBase = 0, roleId = null, skillId = null) {
       enemySerial += 1;
       const id = idBase + slot + 1;
       const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.f16;
       const acePilot = aceProfileOf(aceId);
       const isAce = Boolean(acePilot);
+      // A named pilot IS the ace role - a wave never has to say so twice, and a
+      // callsign can never end up flying as line or trash by omission.
+      const resolvedRoleId = isAce
+        ? "ace"
+        : (ENEMY_ROLES[roleId] ? roleId : DEFAULT_ENEMY_ROLE);
+      const role = ENEMY_ROLES[resolvedRoleId];
+      // A wave may name a tier independently of the role - "a MiG-21, but the
+      // man in it is first rate" is a legitimate thing for a mission to want.
+      // Unstated, the role's own default applies.
+      const resolvedSkillId = SKILL_TIERS[skillId] ? skillId : role.skill;
+      const skill = SKILL_TIERS[resolvedSkillId];
       // The ace flies the same airframe, just sharper - never a different
-      // physics table. ACE_TURN_SCALE is the only stat bonus it gets, and the
-      // fields listed here are the only ones a callsign owns.
+      // physics table. The role's turnScale is the only stat bonus it gets, and
+      // the fields listed here are the only ones a callsign owns.
       //
       // `label` is deliberately absent: it stays the airframe designation so
       // the HUD reads "Su-37 VULTURE". The theme is a merge, not a replace, so
       // `variant` and every other model constant still come from the aircraft
       // and a profile can be flown by anything in the hangar.
-      const spec = isAce
-        ? Object.freeze({
-            ...baseSpec,
+      //
+      // Everything after the ace block is the role/skill derivation, and it is
+      // done HERE, once, on a copy - ENEMY_TYPES and AIRCRAFT_TYPES are never
+      // written to, so the airframe's published numbers stay the truth about
+      // the airframe and these stay the truth about this one aircraft.
+      const identity = isAce
+        ? {
             role: acePilot.role,
             behavior: acePilot.behavior,
             evadeLateral: acePilot.evadeLateral,
@@ -10303,11 +10859,41 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             evadeFrequency: acePilot.evadeFrequency,
             radarColor: acePilot.radarColor,
             tracerColor: acePilot.tracerColor,
-            theme: Object.freeze({ ...baseSpec.theme, ...acePilot.theme }),
-            patrolTurn: baseSpec.patrolTurn * ACE_TURN_SCALE,
-            pursuitTurn: baseSpec.pursuitTurn * ACE_TURN_SCALE
-          })
-        : baseSpec;
+            theme: Object.freeze({ ...baseSpec.theme, ...acePilot.theme })
+          }
+        : null;
+      const merged = identity ? { ...baseSpec, ...identity } : baseSpec;
+      // `line` + `regular` is all ones on every field below, so an unannotated
+      // enemy comes out of this identical to the frozen table entry it started
+      // from - which is why the whole campaign could be left un-annotated.
+      const spec = Object.freeze({
+        ...merged,
+        roleId: resolvedRoleId,
+        skillId: resolvedSkillId,
+        // --- Role: how much of the airframe the pilot gets out of it ---------
+        patrolTurn: merged.patrolTurn * role.turnScale,
+        pursuitTurn: merged.pursuitTurn * role.turnScale,
+        patrolSpeed: merged.patrolSpeed * role.speedScale,
+        maxSpeed: merged.maxSpeed * role.speedScale,
+        // --- Skill: the shape of the fight it flies --------------------------
+        engageRange: merged.engageRange * skill.engageScale,
+        disengageRange: merged.disengageRange * skill.disengageScale,
+        verticalBias: merged.verticalBias * skill.verticalScale,
+        verticalAmplitude: merged.verticalAmplitude * skill.verticalScale,
+        evadeLateral: merged.evadeLateral * skill.evadeScale,
+        evadeVertical: merged.evadeVertical * skill.evadeScale,
+        // --- Gunnery: role sets the hand, skill sets the eye -----------------
+        hitChanceScale: merged.hitChanceScale * role.gunAccuracyScale * skill.gunAccuracyScale,
+        maxHitChance: merged.maxHitChance * role.gunAccuracyScale * skill.gunAccuracyScale,
+        aimScatter: skill.aimScatterScale,
+        // --- Missiles: role sets how often, skill sets how well --------------
+        missileCooldownScale: role.missileCooldownScale * skill.missileCooldownScale,
+        missileLaunchDotScale: skill.launchDotScale,
+        missileEnvelope: skill.missileEnvelopeScale,
+        // --- Missile defence --------------------------------------------------
+        breakChance: skill.breakChance,
+        breakReaction: skill.breakReaction
+      });
       const root = new THREE.Group();
       root.position.copy(position);
       root.userData.enemyType = spec.key;
@@ -10315,7 +10901,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Fighters spawn nose-on to the player. A bomber already on a strike run
       // does not: it is pointed at the field it is attacking, which is what
       // puts the player behind it looking at its tail.
-      const strikeSpawn = spec.key === "bomber" && friendlyBase;
+      const strikeSpawn = STRIKE_AIR_TYPES.has(spec.key) && friendlyBase;
       if (strikeSpawn) tmpV1.set(friendlyBase.x, position.y, friendlyBase.z).sub(position).normalize();
       else tmpV1.copy(player.position).sub(position).normalize();
       root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
@@ -10376,6 +10962,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         breakCooldown: 0,
         breakSide: 1,
         breakAxis: new THREE.Vector3(1, 0, 0),
+        // How long this pilot still needs to notice the round that is already
+        // on its way. Reset while nothing is inbound, counted down while
+        // something is - so the tier's reaction time is spent per threat, not
+        // per frame. A rookie's 99 never runs out inside a missile's life.
+        breakReact: spec.breakReaction,
         // Post-stall script state. Carried by every aircraft so the probe and the
         // hook can read it uniformly; only the ace ever sets it.
         postStallTimer: 0,
@@ -10406,7 +10997,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // strike run: it aims at the field and holds that line until it is shot
       // down. Slot spreads the aim points so the pair arrives line abreast
       // rather than stacked on one pixel.
-      if (spec.key === "bomber" && friendlyBase) {
+      if (STRIKE_AIR_TYPES.has(spec.key) && friendlyBase) {
         const bomber = enemies[enemies.length - 1];
         bomber.strikeTarget = new THREE.Vector3(
           friendlyBase.x + (slot - 0.5) * 120,
@@ -10955,6 +11546,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         mode: drive ? "convoy" : "static",
         baseHeading: headingRad,
         vlsSide: 1,
+        // Ships carry destructible mounts; installations and vehicles do not.
+        // The array still has to EXIST, because updateEnemies walks
+        // `enemy.subsystems` for every surface contact - ship or not - and an
+        // undefined here threw a TypeError out of the enemy loop on every
+        // frame of every ground mission (m-glacier, m-night, m-convoy),
+        // abandoning the rest of that frame's enemy updates.
+        subsystems: [],
         waypoints: [],
         waypointIndex: 0,
         // Baked ground polyline, how far along it this vehicle is, and a
@@ -11094,8 +11692,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // spawner and owns its inbound banner/radio, so any mission can compose
     // air and naval waves in any order. Takes a resolved descriptor
     // (mission.waves[i] or a WAVE_PRESETS member), never a raw string.
+    // Advances the sequence cursor over one wave and everything riding on it.
+    // A concurrent follower goes on the board immediately; one with a `delay`
+    // is parked in `pendingWaves` and put there by the clock instead.
     function spawnMissionWave(wave) {
       missionWaveIndex += 1;
+      deployWave(wave);
+
+      // The cursor is walked past the whole concurrent run here rather than
+      // recursing, because a delayed entry has to be stepped over WITHOUT
+      // being spawned - and the entry after it still belongs to this
+      // engagement. Bounded by the sequence length; every pass advances.
+      const mission = MISSIONS[currentMissionIndex];
+      let next = mission.waves[missionWaveIndex];
+      while (next && next.concurrent) {
+        missionWaveIndex += 1;
+        if (next.delay > 0) pendingWaves.push({ timer: next.delay, wave: next });
+        else deployWave(next);
+        next = mission.waves[missionWaveIndex];
+      }
+    }
+
+    function deployWave(wave) {
+      // A new wave the player has to clear ends the previous engagement, and
+      // anything still queued against it is off. Otherwise a reinforcement the
+      // player OUTRAN would turn up in the middle of the next wave, unowned by
+      // anything the mission said.
+      if (!wave.concurrent) pendingWaves.length = 0;
       // The readout counts waves the player has to clear, so a concurrent
       // escort does not advance it - it arrived with the wave already showing.
       if (!wave.concurrent) waveNumber += 1;
@@ -11168,7 +11791,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             "wingman",
             "護衛機だ！ 相手をする必要はない——指定目標を優先しろ！",
             RADIO_PRIORITY.NORMAL,
-            `wave-escort-inbound-${missionWaveIndex}`
+            `wave-escort-inbound-${wave.label || missionWaveIndex}`
           );
         } else if (!first) {
           triggerRadioLine(
@@ -11180,13 +11803,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
       spawningTgt = true;
+    }
 
-      // Any entries flagged `concurrent` immediately after this one join the
-      // same engagement. Recursion is bounded by the sequence length, and each
-      // pass advances missionWaveIndex, so it always terminates.
-      const mission = MISSIONS[currentMissionIndex];
-      const next = mission.waves[missionWaveIndex];
-      if (next && next.concurrent) spawnMissionWave(next);
+    // Reinforcements on a clock. Ticked only while the sortie is actually being
+    // flown, so a pause, the outro or the ACCOMPLISHED hold cannot make one
+    // arrive. The list is finite by construction - a mission authors a fixed
+    // number of delayed entries and nothing ever re-queues one - so there is no
+    // way to build an endless spawner out of this.
+    function updatePendingWaves(dt) {
+      for (let i = pendingWaves.length - 1; i >= 0; i -= 1) {
+        const queued = pendingWaves[i];
+        queued.timer -= dt;
+        if (queued.timer > 0) continue;
+        pendingWaves.splice(i, 1);
+        deployWave(queued.wave);
+      }
     }
 
     // ---- AI airframe animation ------------------------------------------------
@@ -11350,7 +11981,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         } else if (enemyBreakEnabled && enemy.breakCooldown <= 0) {
           const threat = closingPlayerMissile(enemy);
-          if (threat) startBreak(enemy, threat);
+          if (!threat) {
+            // Nothing inbound: the reaction clock is reloaded, so the delay is
+            // paid once per incoming round rather than once per sortie.
+            enemy.breakReact = spec.breakReaction;
+          } else if (spec.breakChance > 0) {
+            enemy.breakReact -= dt;
+            if (enemy.breakReact <= 0) {
+              enemy.breakReact = spec.breakReaction;
+              // Rolled once the delay is up, not every frame: a tier that
+              // misses this round is committed to eating it, which is what
+              // "たまに" has to mean if the player is to see the difference.
+              if (Math.random() < spec.breakChance) startBreak(enemy, threat);
+              else enemy.breakCooldown = ENEMY_BREAK_MISS_COOLDOWN;
+            }
+          }
+          // spec.breakChance === 0 (rookie) never enters either arm: it flies
+          // the pursuit solution straight into the missile.
         }
 
         const leader = spec.behavior === "formation"
@@ -11483,9 +12130,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (enemy.missileCooldown <= 0) {
         const profile = ENEMY_MISSILE_PROFILES[enemy.type];
         const launched = attemptEnemyMissile(enemy);
+        // Role x skill decides how often this aircraft is even ALLOWED to think
+        // about a launch. Trash sits at ~2x the airframe's own cadence, which
+        // is what "滅多に撃たない" is: the same missile, half as often. The
+        // retry interval scales too, or a trash pilot with a bad angle would
+        // re-attempt at the line cadence and give the scale away.
+        const scale = enemy.spec.missileCooldownScale || 1;
         enemy.missileCooldown = launched && profile
-          ? profile.cooldownMin + Math.random() * profile.cooldownSpread
-          : 1.15 + Math.random() * 0.85;
+          ? (profile.cooldownMin + Math.random() * profile.cooldownSpread) * scale
+          : (1.15 + Math.random() * 0.85) * scale;
       }
     }
 
@@ -12111,10 +12764,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const end = player.position.clone();
 
       if (!hit) {
+        // How wide a miss looks. A rookie's burst goes visibly past the
+        // canopy; an expert's is a near miss the player feels. Ships and
+        // ground guns have no tier and keep the original spread.
+        const scatter = spec.aimScatter || 1;
         end.add(new THREE.Vector3(
-          (Math.random() - 0.5) * 34,
-          (Math.random() - 0.5) * 24,
-          (Math.random() - 0.5) * 34
+          (Math.random() - 0.5) * 34 * scatter,
+          (Math.random() - 0.5) * 24 * scatter,
+          (Math.random() - 0.5) * 34 * scatter
         ));
       }
 
@@ -12252,7 +12909,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         "success"
       );
       if (enemy.type === "carrier") startAceKillCam(enemy);
-      if (enemy.type === "bomber" && !bomberFirstKillFired) {
+      if (STRIKE_AIR_TYPES.has(enemy.type) && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
         triggerRadioLine(
           "command",
@@ -12409,6 +13066,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         updateOutro(dt);
         return;
       }
+      updatePendingWaves(dt);
       updateStrikeThreat();
       // Only designated targets hold the mission open. A surviving escort or
       // CAP keeps fighting - and keeps being worth bonus points - but it can
@@ -13865,6 +14523,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wave: waveNumber,
         waveCursor: missionWaveIndex,
         waves: MISSIONS[currentMissionIndex].waveCount,
+        // Reinforcements authored with a `delay` that have not come due yet.
+        pendingWaves: pendingWaves.length,
         rank: lastMissionRank,
         cursor: missionCursor,
         elapsed: missionElapsed,
@@ -13873,7 +14533,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         totalContacts: MISSIONS[currentMissionIndex].totalContacts,
         waveCount: MISSIONS[currentMissionIndex].waveCount,
         enemies: enemies.filter((enemy) => enemy.alive)
-          .map((enemy) => ({ id: enemy.id, type: enemy.type, tgt: isTgtEntry(enemy), isAce: enemy.isAce })),
+          .map((enemy) => ({
+            id: enemy.id, type: enemy.type, tgt: isTgtEntry(enemy), isAce: enemy.isAce,
+            // Role and tier are never shown to the player - the aircraft is
+            // supposed to just feel weak or lethal - but the probe has to be
+            // able to prove the multipliers landed on the right contacts.
+            roleId: enemy.spec.roleId || null,
+            skillId: enemy.spec.skillId || null,
+            hp: enemy.hp,
+            maxHp: enemy.maxHp,
+            pursuitTurnDeg: enemy.spec.pursuitTurn
+              ? Number(THREE.MathUtils.radToDeg(enemy.spec.pursuitTurn).toFixed(3))
+              : null,
+            breakChance: enemy.spec.breakChance ?? null,
+            missileCooldownScale: enemy.spec.missileCooldownScale ?? null,
+            breaking: enemy.mode === "break"
+          })),
         unlocked: MISSIONS.map((mission, index) => isMissionUnlocked(index))
       };
       hook.briefing.active = gameState === STATE_BRIEFING;
