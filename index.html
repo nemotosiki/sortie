@@ -6002,6 +6002,192 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             distance: [1400, 3600]
           }
         }
+      },
+
+      // Inland desert, high sun (M11). Built for the airbase strike: the whole
+      // centre of the map is one enormous, nearly flat sand pan for the base to
+      // stand on, ringed by dunes, and the "sea" is pushed so far out that from
+      // over the base there is nothing but sand to the haze line.
+      //
+      // Three things make this read as desert rather than as a beige version of
+      // the coastal plain:
+      //   1. The terrain style has no green in it at all. `grass` is dry scrub
+      //      ochre and `sand` is pale bleached sand, so the height/slope blend
+      //      in makeTerrainMaterial lands somewhere between two sands wherever
+      //      it used to land between sand and vegetation. `rockSlope` opens
+      //      late (0.34-0.82) so only genuinely steep faces darken to rock -
+      //      the dune flanks stay sand the way real dunes do.
+      //   2. `macroRepeat` is dropped to 2.2 and `fineRepeat` raised to 24.
+      //      That widens the low-frequency band of the procedural detail into
+      //      long, slow undulations - dune swell - while keeping a fine grain
+      //      on top of it. `normalStrength` is up at 0.62, which is what makes
+      //      the swell catch the light instead of reading as a painted-on
+      //      pattern under a sun this high.
+      //   3. Fog is a warm sand colour, not a blue one, and it starts EARLY
+      //      (near 900) with a long tail. That is the dust haze: distance goes
+      //      the colour of the ground rather than the colour of the sky, which
+      //      is the single strongest desert cue available at this budget.
+      desertBasin: {
+        label: "DESERT BASIN",
+        clearColor: 0xc7a97a,
+        // Bleached white-hot near the sun, deepening to a dusty blue overhead.
+        // The band just above the horizon (0.5-0.6) is deliberately the palest
+        // part of the gradient: that is the dust in the air lit from behind.
+        sky: [[0, "#2f5f8f"], [0.3, "#79a3c2"], [0.46, "#c8cfc6"], [0.52, "#e6d6b0"], [0.62, "#d8bd8e"], [1, "#a8875f"]],
+        atmosphere: { seed: 0x6e3b71, noise: 0.03, haze: 0.34, thinClouds: 8, cloudOpacity: 0.05, cloudBand: [0.5, 0.72], cloudTint: 0xf4e2c0 },
+        // The dust haze. `near` is the shortest of any daylight map on purpose
+        // - past ~900m everything starts going the colour of the sand - and the
+        // long far keeps the dune ring visible as a suggestion rather than
+        // cutting it off, which is what a sandstorm horizon actually looks like.
+        fog: { color: 0xd9bb8b, near: 900, far: 5200 },
+        // High and almost overhead: midday desert, short shadows, hard light.
+        sun: {
+          position: [620, 2100, -1500], color: 0xfff4d2, radius: 96,
+          glare: [
+            { scale: 1900, color: 0xffe6ae, opacity: 0.62 },
+            { scale: 520, color: 0xfffdf2, opacity: 0.98 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        // A glitter road is sunlight scattering off water and there is no water
+        // on this map, so it is suppressed to the point of invisibility. It
+        // cannot simply be dropped - the builder assumes a preset supplies one
+        // - so opacity carries the intent and the geometry stays out of the way
+        // by being tiny. `null` here would be the better shape; that is a
+        // change to createWorld, and this preset is not the place for it.
+        sunRoad: {
+          color: 0xe8d0a4, opacity: 0, width: 10, length: 10,
+          rotationY: 0, position: [0, 0.4, 0]
+        },
+        // ★ THIS IS NOT WATER. This map is inland, and the "ocean" plane is
+        // the only geometry the engine has that extends to the horizon - so it
+        // is dressed as the desert floor itself rather than removed. Every
+        // other map's sea becomes this map's sand sheet: the pan the base
+        // stands on is an 8m rise out of it, and the two are close enough in
+        // tone that the join reads as a shelf in the sand rather than a
+        // coastline.
+        //
+        // The values are chosen to kill every cue that says "liquid":
+        //   - `metalness` 0 and `roughness` 0.98 - sand has no specular
+        //     highlight, and any at all is instantly read as water.
+        //   - `normalScale` near zero (0.06/0.09) - the crossing-wave normal
+        //     map cannot be removed per-preset, so it is flattened until it
+        //     contributes only the faintest ripple, which passes as wind
+        //     texture on sand.
+        //   - `normalSpeed` an order of magnitude below every other map, so
+        //     what little relief remains barely crawls. Waves move; dunes do
+        //     not.
+        //   - `bright`/`dark` are two sands rather than a foam-and-depth pair,
+        //     so the speckle texture reads as grain instead of chop.
+        ocean: {
+          base: "#cbaf7e", bright: "230, 208, 166", dark: "160, 133, 94",
+          repeat: 26, roughness: 0.98, metalness: 0,
+          normalRepeat: 30, normalScale: [0.06, 0.09], normalSpeed: [0.0006, 0.0002], normalSeed: 0x6e3b72
+        },
+        // No green anywhere. `peak` is the colour of the pan the base stands on
+        // (the plateau cap sits at height fraction 1.0, so `peak` is literally
+        // the ground the player strafes), `snow` is unused but kept as a bleached
+        // salt-flat white so a stray sample can never introduce a cold colour.
+        terrain: {
+          seed: 0x6e3b73, sand: 0xe0c894, grass: 0xc9a86d, rock: 0x9a7c55,
+          peak: 0xd2b381, snow: 0xf3ead6, fineRepeat: 24, macroRepeat: 2.2,
+          normalRepeat: 26, normalStrength: 0.62, islandNormalStrength: 0.34,
+          rockSlope: [0.34, 0.82], shoreHeight: 0.2, snowSoftness: 0.08
+        },
+        // Bounce off sand is strong and warm, which is why `hemi.ground` is a
+        // bright ochre rather than the near-black every other map uses: in a
+        // desert the underside of an aircraft is lit, and that is most of what
+        // sells the light. The fill is warm too - there is no blue sky bounce
+        // worth speaking of through this much dust.
+        lights: {
+          hemi: { sky: 0xfff0cf, ground: 0x8a6b40, intensity: 2.5 },
+          key: { color: 0xfff6df, intensity: 3.3, position: [500, 1600, -600] },
+          fill: { color: 0xffc98a, intensity: 0.65, position: [-700, 300, 800] }
+        },
+        mountains: {
+          // The dune ring. Wide and low relative to every other map's peaks
+          // (radius up to 520 against heights of 90-210) so they read as
+          // heaped sand rather than as rock, and set well outside the pan so
+          // nothing can intrude on the base.
+          // distance starts past the pan's own footprint (r 3000 around
+          // (0,-1500)) plus a dune's own radius, so the ring can never be
+          // drawn into the ground the base stands on.
+          count: 11, radius: [260, 520], height: [90, 210], distance: [4100, 5600],
+          snowyAbove: 9999, snowLine: 0.72, roughness: 0.97,
+          // Four sands and a shadow tone. `peak` matches the pan so a dune
+          // crest and the floor are the same material seen at two angles.
+          palette: { low: 0xcaa972, mid: 0xd9bb85, rock: 0xa8875c, peak: 0xe4cb9c, snow: 0xf3ead6 },
+          corridor: null,
+          // The pan the base stands on. Two numbers here are load-bearing and
+          // both were measured before they were written.
+          //
+          // ★ HEIGHT = 8. surfaceHeightAt - the sampler spawnGroundUnit uses
+          // for installations - clamps its result to `mountain.h`, which
+          // buildWorld sets to 0.92 x height. On a FLAT top the mesh sits at
+          // the full height, so every structure placed on a plateau cap is
+          // buried by 0.08 x height. That is 7.36m on the night map's 92m
+          // plateau, which is the m-night sinking bug: a 6m bunker is
+          // underground. The fix used here is to make the number itself
+          // irrelevant - at 8m tall the entire clamp is 0.64m, less than the
+          // ground clearance of every model in GROUND_TYPES, so the base can
+          // stand anywhere on the pan and still read as sitting on it.
+          // debug.groundProbe() reports it per unit and it is 0.640 across the
+          // board. A desert pan wants to be nearly level with its surroundings
+          // anyway, so nothing is given up for this.
+          //
+          // ★ RADIUS = 3000 with topRadius 0.86. The mesh is not a disc: it is
+          // scaled by `depth = radius x (0.75..1.10)` on Z and then displaced
+          // by two angular harmonics, so its flat top ends anywhere between
+          // ~0.62r and ~0.96r depending on bearing. Authoring against the
+          // nominal radius is exactly how the first layout ended up standing on
+          // open water. So the pan is oversized relative to the base, and every
+          // installation is inside 1500m of the centre - comfortably within the
+          // flat top on the WORST bearing, which the radial scan puts at
+          // ~1600m.
+          plateau: {
+            radius: [3000, 3000], height: [8, 8], topRadius: 0.86,
+            at: [0, -1500], snowyAbove: 9999
+          }
+        },
+        islands: { count: 4, stone: 0xbfa06c, green: 0xc9a86d },
+        // Thin, high and few. A desert noon sky is not empty, but it has
+        // nothing in it that casts a shadow worth the name.
+        clouds: {
+          scale: 1.2, hero: true, color: 0xf7ecd8, opacity: 0.42,
+          cirrusColor: 0xf2e3c8, cirrusOpacity: 0.22,
+          texture: { seed: 0x6e3b74, contrast: 0.86, underside: 0.24, softness: 1.12 }
+        },
+        decor: {
+          seed: 0x7e4c08,
+          // Fences the entire pan plus its skirt. Everything the mission puts
+          // on the ground lives inside this circle, and the decoration pass
+          // knows nothing about ground targets - so nothing is allowed to grow
+          // anywhere near them, exactly as the night base does it.
+          keepClear: [{ x: 0, z: -1500, r: 3400 }],
+          // Outlying dune fields, beyond the ring, to break the horizon into
+          // layers. Wide and shallow like the ring itself.
+          extraIslands: {
+            count: 14, radius: [180, 420], height: [26, 84], distance: [3600, 5400]
+          },
+          // No shore. The decoration pass's "shore" is a two-ring beach drawn
+          // where land meets sea, and on a map whose sea IS sand it would put a
+          // pale disc around every dune for no reason. What the ring is for -
+          // separating land from water - has no work to do here.
+          shore: null,
+          // No trees. Nothing grows here, and a palm belt would fight the
+          // "航空基地しかない" reading the mission is built on.
+          trees: null,
+          // Wind-scoured rock, scattered wide. These are the only hard edges on
+          // the ground outside the base, which is what gives a low pass its
+          // sense of speed over otherwise featureless sand.
+          rocks: { count: 34, color: 0x8f7450, scale: [10, 32] },
+          extraClouds: {
+            towers: 2, towerSize: [60, 100], towerBase: 900,
+            stratus: 5, stratusSize: [220, 380], stratusBase: 1700,
+            distance: [1800, 4200]
+          }
+        }
       }
     });
 
@@ -6624,6 +6810,134 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         introRadio: [
           { speaker: "command", text: "海岸平野に敵機甲部隊。南岸に抜けられたら前線が崩れる——車列を潰せ。", id: "convoy-brief" },
           { speaker: "wingman", text: "対空戦車が混ざってる！ 先に潰さないと低空に入れないぞ！", id: "convoy-brief-wing" }
+        ]
+      },
+      {
+        key: "m-desert",
+        world: "desertBasin",
+        title: "SANDSTORM",
+        jp: "内陸の砂漠に敵航空基地。SAM網を剥がし、飛行場を機能停止に追い込め。",
+        // Story bible 11. The second base raid of the campaign and the answer
+        // to the first one: NIGHT RAID was a strike the dark hid, this is the
+        // same job done in the open, at noon, with nothing between the player
+        // and a live air-defence network but distance.
+        //
+        // The read is inverted from m-night in one specific way. There the
+        // fighters were an afterthought scrambling off a base already burning;
+        // here the base is a fighter station that is awake, so the interference
+        // arrives in strength and keeps arriving. What does NOT change is which
+        // half of the board is the mission: the twelve installations are the
+        // designated list and not one aircraft is on it.
+        //
+        // 12 TGT against 19 non-TGT fighters. The guideline ratio (1:1.5-2) is
+        // written for missions whose TGT list is aircraft; a fixed piece of
+        // terrain is a different shape, and m-night's note explains why. This
+        // one still lands inside the band at 1:1.58 - the airbase is supposed
+        // to be the hardest ground target in the campaign so far, and the way
+        // that is expressed is air cover, not tougher buildings.
+        //
+        // Every entry after the first is `concurrent`: a non-TGT wave that is
+        // not concurrent would never spawn at all, because the sequence only
+        // advances when the designated targets are gone - and by then the
+        // sortie is over. Same constraint m-night and m-convoy work under.
+        sequence: [
+          // Already up when the player arrives - a standing patrol over its own
+          // field, which is what an alert fighter station looks like at noon.
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "BARCAP",
+            role: "trash",
+            radio: [
+              { speaker: "wingman", text: "基地上空にCAPだ、3機！ 付き合うな——狙いは滑走路とSAMだぞ！", id: "desert-barcap" }
+            ]
+          },
+          // Scrambled off the field the player is attacking. Deliberately the
+          // earliest reinforcement in any base mission (40s against m-night's
+          // 50): the station is awake, and the first pass has to be paid for.
+          {
+            types: ["mig29", "mig23", "mig21"], tgt: false, band: 2, label: "SCRAMBLE",
+            concurrent: true, role: "trash", delay: 40,
+            radio: [
+              { speaker: "wingman", text: "滑走路から上がってきた！ 3機——上は俺が引き受ける、地上を潰せ！", id: "desert-scramble" }
+            ]
+          },
+          // The relief flight, from a field the player is not attacking.
+          {
+            types: ["mig23", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ALERT FLIGHT",
+            concurrent: true, role: "trash", delay: 95
+          },
+          // The heaviest batch, and the only one with a Flanker in it. It
+          // arrives around the point where the SAM belt should be down and the
+          // player is working the flight line - i.e. lowest and slowest.
+          {
+            types: ["su33", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SECOND SCRAMBLE",
+            concurrent: true, role: "trash", delay: 160,
+            radio: [
+              { speaker: "command", text: "HAMMER 1、砂塵の中に新たな機影——4機、うち1機は重い。高度を捨てるな。", id: "desert-second-scramble" }
+            ]
+          },
+          // The last of it. Authored, finite, and timed so a player working at
+          // par has the base nearly down before it lands.
+          {
+            types: ["mig29", "mig21", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
+            concurrent: true, role: "trash", delay: 240
+          }
+        ],
+        // Twelve ground kills at ground-attack pace, flown through nineteen
+        // fighters that never have to be engaged, on a map with no cover. Par
+        // sits between m-night's 330 (eleven targets, ten fighters, and the
+        // dark to hide in) and m-convoy's scoring pressure.
+        parTime: 360,
+        hasOutro: false,
+        map: { x: 0.24, y: 0.82 },
+        // The airbase, laid out on the sand pan centred at (0, -1500).
+        //
+        // ★ Every unit here is inside 1500m of the pan centre. That is not a
+        // stylistic choice, it is the sinking gate. The plateau mesh is an
+        // elliptical, angularly-displaced cone whose flat top ends between
+        // ~0.62r and ~0.96r depending on bearing (measured by radial scan);
+        // authoring against the nominal 3000m radius is exactly how the first
+        // draft of this layout ended up with nine of twelve structures standing
+        // on open water. 1500m clears the flat top on the WORST bearing with
+        // 100m to spare. The pan's own height is 8m for the second half of the
+        // gate - see the plateau note in desertBasin - so the 0.92h clamp in
+        // surfaceHeightAt costs 0.64m rather than m-night's 7.36m, and nothing
+        // here is buried. debug.groundProbe() measures both numbers per unit.
+        //
+        // The shape is a strike corridor, not a compound: the player runs in
+        // from +Z, meets the SAM belt first, then the radars, then the guns,
+        // and the flight line is last and deepest. Killing the near belt buys
+        // the altitude to work the rest, which is the mission's whole lesson.
+        groundUnits: [
+          // --- The SAM belt. Nearest the ingress and spread 2.4km wide, so no
+          // single pass defeats more than two of them and the player has to
+          // come back around into a net that is still partly alive.
+          { id: 21, type: "samSite", x: -1180, z: -640, heading: 2.72 },
+          { id: 22, type: "samSite", x: -40, z: -380, heading: 3.1 },
+          { id: 23, type: "samSite", x: 1150, z: -700, heading: -2.66 },
+          { id: 24, type: "samSite", x: 1420, z: -1720, heading: -1.62 },
+          // --- Radar. The net the SAMs see through, set behind the belt.
+          { id: 25, type: "radarSite", x: -700, z: -1250, heading: 2.4 },
+          { id: 26, type: "radarSite", x: 780, z: -1280, heading: -2.4 },
+          // --- Guns, ringing the flight line at the range they are dangerous
+          // at (600m), so the last strafing pass is the expensive one.
+          { id: 27, type: "aaGun", x: -1140, z: -1900, heading: 1.6 },
+          { id: 28, type: "aaGun", x: 20, z: -1680, heading: 3.1 },
+          { id: 29, type: "aaGun", x: 1100, z: -2140, heading: -1.5 },
+          // --- The flight line, deepest: two hardened shelters and the fuel
+          // farm they feed, packed well inside the 90m cook-off radius so the
+          // farm chains into the shelters the way the night base's tanks do.
+          { id: 30, type: "bunker", x: -300, z: -2420, heading: 0.06 },
+          { id: 31, type: "bunker", x: 260, z: -2450, heading: -0.06 },
+          { id: 32, type: "fuelTank", x: -20, z: -2440, heading: 0 }
+        ],
+        // Centred between the spawn (z +620) and the flight line (z -2450)
+        // rather than on the pan, so the whole run sits inside the 90% ring.
+        battleCenter: { x: 0, z: -1200 },
+        battleRadius: 7500,
+        briefing: "砂漠を越えた内陸に、敵の航空基地がある。夜の闇は無い——真昼の、遮る物のない空だ。\n地表は砂塵で霞んでいる。だが向こうもこちらを見ている。奇襲は成立しない。\n指定目標は地上の12目標——SAMサイト4、レーダー2、対空砲3、掩体壕2、燃料庫1。\nSAM網を先に剥がせ。射線が通ったままの低空侵入は自殺行為だ。\n基地上空にはCAPが張り付き、滑走路からも次々と上がってくる。だが奴らは目標ではない。\n迎撃機は全部で19機来る。全て相手にすれば弾が尽きる——飛行場を潰せば終わりだ。",
+        introRadio: [
+          { speaker: "command", text: "こちらSKYEYE。砂漠の航空基地を制圧する——まずSAM網を剥がせ。", id: "desert-brief" },
+          { speaker: "wingman", text: "遮蔽物ゼロ、砂塵で足元も見えん。低く入るならSAMを先に黙らせろよ！", id: "desert-brief-wing" }
         ]
       }
     ].map((mission) => {
@@ -8015,6 +8329,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             };
           });
         },
+        // Every STATIC ground installation, with the height it was placed at
+        // measured against a fresh raycast of the terrain under it. `sink`
+        // positive means the structure is below the mesh surface, i.e. buried -
+        // the m-night failure mode, where surfaceHeightAt's 0.92h summit clamp
+        // drops a building 8% of the plateau's height into the ground. `capped`
+        // is what the placement sampler returned and `top` is the unclamped
+        // mesh; the two being equal is what "sited on the skirt" means, and is
+        // the gate a base layout has to pass.
+        groundProbe: () => enemies
+          .filter((enemy) => enemy.ground && !enemy.route)
+          .map((enemy) => {
+            const position = enemy.group.position;
+            const top = surfaceTopAt(position.x, position.z);
+            const capped = surfaceHeightAt(position.x, position.z);
+            return {
+              id: enemy.id,
+              type: enemy.type,
+              alive: enemy.alive,
+              x: Number(position.x.toFixed(2)),
+              y: Number(position.y.toFixed(3)),
+              z: Number(position.z.toFixed(2)),
+              top: Number(top.toFixed(3)),
+              capped: Number(capped.toFixed(3)),
+              sink: Number((top - position.y).toFixed(4)),
+              clampLoss: Number((top - capped).toFixed(4))
+            };
+          }),
         // Walks a live vehicle's whole baked road and re-measures the ground
         // under every sample plus the midpoint between samples. The midpoints
         // are the part that matters: they are where linear interpolation could
