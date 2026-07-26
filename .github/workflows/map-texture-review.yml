@@ -1,0 +1,184 @@
+name: Map texture visual review
+
+on:
+  push:
+    branches:
+      - chatgpt/map-texture-review-20260726-a
+    paths:
+      - .github/workflows/map-texture-review.yml
+      - _chatgpt_runner/**
+      - '!_chatgpt_runner/result.json'
+
+permissions:
+  contents: write
+
+env:
+  TARGET_BRANCH: chatgpt/map-texture-upgrade
+  RUNNER_BRANCH: chatgpt/map-texture-review-20260726-a
+
+jobs:
+  patch-test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out runner branch
+        uses: actions/checkout@v4
+        with:
+          path: runner
+          fetch-depth: 0
+
+      - name: Check out target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          path: target
+          fetch-depth: 0
+
+      - name: Prepare artifacts and extract review tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p runner/artifacts /tmp/map_texture_tools
+          cat runner/_chatgpt_runner/apply_patch.py.b64.* | base64 --decode | gzip --decompress > /tmp/map_texture_tools/apply_patch.py
+          cat runner/_chatgpt_runner/visual_test.mjs.b64.* | base64 --decode | gzip --decompress > /tmp/map_texture_tools/visual_test.mjs
+          chmod +x /tmp/map_texture_tools/apply_patch.py
+          python3 -m py_compile /tmp/map_texture_tools/apply_patch.py
+          node --check /tmp/map_texture_tools/visual_test.mjs
+
+      - name: Apply ocean, terrain and sky correction
+        id: patch
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp target/index.html target/index.before.html
+          python3 /tmp/map_texture_tools/apply_patch.py target/index.html | tee runner/artifacts/patch.log
+          git -C target diff --check
+          test "$(git -C target diff --name-only)" = "index.html"
+          test -z "$(git -C target ls-files --others --exclude-standard | grep -v '^index.before.html$' || true)"
+
+      - name: Set up Node.js
+        if: steps.patch.outcome == 'success'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright Chromium
+        if: steps.patch.outcome == 'success'
+        shell: bash
+        working-directory: runner
+        run: |
+          npm init -y >/dev/null
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start static server
+        if: steps.patch.outcome == 'success'
+        shell: bash
+        run: |
+          python3 -m http.server 4173 --directory target > runner/artifacts/server.log 2>&1 &
+          echo $! > runner/artifacts/server.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/index.html >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat runner/artifacts/server.log
+          exit 1
+
+      - name: Capture 24 comparison frames and run regression gates
+        id: visual
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          SORTIE_BASE_URL: http://127.0.0.1:4173
+          SORTIE_ARTIFACT_DIR: ${{ github.workspace }}/runner/artifacts
+        run: node /tmp/map_texture_tools/visual_test.mjs
+
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-texture-review-${{ github.run_id }}
+          path: runner/artifacts
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish tested index.html to target branch
+        id: publish
+        if: steps.patch.outcome == 'success' && steps.visual.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm target/index.before.html
+          test "$(git -C target status --short)" = " M index.html"
+          git -C target config user.name "ChatGPT"
+          git -C target config user.email "noreply@openai.com"
+          git -C target add -- index.html
+          cat > /tmp/commit-message.txt <<MSG
+          Fix ocean normals and atmospheric tiling
+
+          - correct generated tangent-space normals to neutral blue orientation
+          - blend three independently rotated/scrolled ocean normal octaves
+          - fade wave and terrain normal strength with view distance
+          - enable mipmaps, trilinear filtering and renderer-max anisotropy
+          - replace directional ocean/sky marks with isotropic procedural noise
+          - reduce thin-cloud density and brightness across all four presets
+
+          Validated in GitHub Actions run ${GITHUB_RUN_ID}: four presets at low,
+          medium and high altitude, FPS >=55, unchanged surfaceHeightAt samples,
+          world-fixed ocean UVs, stable disposeWorld memory and zero page errors.
+          MSG
+          sed -i 's/^          //' /tmp/commit-message.txt
+          git -C target commit -F /tmp/commit-message.txt
+          git -C target push origin "HEAD:${TARGET_BRANCH}"
+          echo "commit=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Record run result on runner branch
+        if: always()
+        shell: bash
+        env:
+          PATCH_OUTCOME: ${{ steps.patch.outcome }}
+          VISUAL_OUTCOME: ${{ steps.visual.outcome }}
+          PUBLISH_OUTCOME: ${{ steps.publish.outcome }}
+          PUBLISHED_COMMIT: ${{ steps.publish.outputs.commit }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path('runner/artifacts/report.json')
+          visual_report = None
+          if report_path.exists():
+              try:
+                  visual_report = json.loads(report_path.read_text(encoding='utf-8'))
+              except Exception as exc:
+                  visual_report = {'parseError': str(exc)}
+          result = {
+              'runId': int(os.environ['GITHUB_RUN_ID']),
+              'runAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+              'patch': os.environ.get('PATCH_OUTCOME', 'unknown'),
+              'visual': os.environ.get('VISUAL_OUTCOME', 'unknown'),
+              'publish': os.environ.get('PUBLISH_OUTCOME', 'unknown'),
+              'publishedCommit': os.environ.get('PUBLISHED_COMMIT') or None,
+              'artifact': f"map-texture-review-{os.environ['GITHUB_RUN_ID']}",
+              'visualReport': visual_report,
+          }
+          Path('runner/map-texture-run-result.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n'
+          )
+          PY
+          git -C runner config user.name "ChatGPT"
+          git -C runner config user.email "noreply@openai.com"
+          git -C runner add -- map-texture-run-result.json
+          git -C runner commit -m "Record map texture review run ${GITHUB_RUN_ID}" || true
+          git -C runner push origin "HEAD:${RUNNER_BRANCH}"
+
+      - name: Remove temporary runner branch after successful publish
+        if: steps.publish.outcome == 'success'
+        shell: bash
+        run: git -C runner push origin --delete "${RUNNER_BRANCH}"
