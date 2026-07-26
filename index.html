@@ -7373,6 +7373,61 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
+        key: "m03",
+        world: "sunsetOcean",
+        title: "FLEET DESTRUCTION",
+        jp: "敵機動部隊を捕捉した。空母1、イージス艦2、フリゲート2。対艦攻撃で殲滅せよ。",
+        act: 1,
+        storyNo: 4,
+        story: "反攻の第一手だ。INDEPENDENCEから発艦し、敵機動部隊を叩く。\n進入路の浅瀬には、直角に組まれた石が沈んでいる。",
+        epilogue: [
+          "敵機動部隊、全艦沈黙。反攻の第一手は通った。",
+          "海底の石組みの写真が回ってきた。HAMMER 2は「自然にできる形じゃないよな」と言ったきり黙っている。",
+          "戦闘記録の隅に、交戦しなかった機影が1つ。管制はそこに『IRONBACK』とだけ書き込んだ。"
+        ],
+        // The fleet is the objective; its CAP is not. Both are on the board from
+        // the first second - a task force with no air cover was the thing that
+        // read as wrong - but only the hulls gate ACCOMPLISHED.
+        sequence: [
+          "naval",
+          {
+            // Su-33: the airframe exists for this wave. Carrier air defence
+            // with a patrol circuit tight enough that it orbits the ships
+            // instead of roaming, so the pressure while the player works the
+            // hulls comes from something that will not be drawn away.
+            //
+            // `trash` here is not "a weak aircraft" - a Flanker-D is a
+            // two-missile hull whichever way it is flown, and that is left
+            // alone. It is a deck crew scrambled into the middle of a strike:
+            // three quarters of the airframe's turn, missiles at half cadence,
+            // no break. The player can fly through them to reach the hulls.
+            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "艦隊上空にCAPだ！ 相手をしなくてもいい——狙いは艦隊だぞ！", id: "m03-cap-inbound" }
+            ]
+          },
+          // Relief on a clock, in two more batches. The fleet does not run out
+          // of aircraft while it is alive, but it does not have infinitely many
+          // either: eight, authored, and then no more.
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 70,
+            radio: [
+              { speaker: "wingman", text: "交代のCAPが上がってきた！ 相手にするな、艦を沈めろ！", id: "m03-cap-relief" }
+            ]
+          },
+          {
+            types: ["su33", "mig21", "mig21"], tgt: false, band: 1, label: "DECK LAUNCH",
+            concurrent: true, role: "trash", delay: 150
+          }
+        ],
+        parTime: 285,
+        hasOutro: false,
+        map: { x: 0.71, y: 0.56 },
+        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2、フリゲート2の計5隻。\n指定目標はこの5隻だけだ。艦隊上空のCAPは何度でも上がってくるが、落とす義務は無い。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。\nフリゲートは単装ランチャーで発射間隔が長い——後回しでいい。"
+      },
+      {
         key: "m-boats",
         world: "archipelagoDay",
         title: "SHALLOW WATER",
@@ -7429,61 +7484,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           { speaker: "command", text: "SKYEYEより。浅瀬にミサイル艇6隻。散開している——一隻ずつ潰せ。", id: "boats-brief" },
           { speaker: "wingman", text: "ちょろちょろ動く的だぞ。ミサイルがもったいない、機銃で行けるやつは機銃で行け。", id: "boats-brief-wing" }
         ]
-      },
-      {
-        key: "m03",
-        world: "sunsetOcean",
-        title: "FLEET DESTRUCTION",
-        jp: "敵機動部隊を捕捉した。空母1、イージス艦2、フリゲート2。対艦攻撃で殲滅せよ。",
-        act: 1,
-        storyNo: 4,
-        story: "反攻の第一手だ。INDEPENDENCEから発艦し、敵機動部隊を叩く。\n進入路の浅瀬には、直角に組まれた石が沈んでいる。",
-        epilogue: [
-          "敵機動部隊、全艦沈黙。反攻の第一手は通った。",
-          "海底の石組みの写真が回ってきた。HAMMER 2は「自然にできる形じゃないよな」と言ったきり黙っている。",
-          "戦闘記録の隅に、交戦しなかった機影が1つ。管制はそこに『IRONBACK』とだけ書き込んだ。"
-        ],
-        // The fleet is the objective; its CAP is not. Both are on the board from
-        // the first second - a task force with no air cover was the thing that
-        // read as wrong - but only the hulls gate ACCOMPLISHED.
-        sequence: [
-          "naval",
-          {
-            // Su-33: the airframe exists for this wave. Carrier air defence
-            // with a patrol circuit tight enough that it orbits the ships
-            // instead of roaming, so the pressure while the player works the
-            // hulls comes from something that will not be drawn away.
-            //
-            // `trash` here is not "a weak aircraft" - a Flanker-D is a
-            // two-missile hull whichever way it is flown, and that is left
-            // alone. It is a deck crew scrambled into the middle of a strike:
-            // three quarters of the airframe's turn, missiles at half cadence,
-            // no break. The player can fly through them to reach the hulls.
-            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
-            concurrent: true, role: "trash",
-            radio: [
-              { speaker: "wingman", text: "艦隊上空にCAPだ！ 相手をしなくてもいい——狙いは艦隊だぞ！", id: "m03-cap-inbound" }
-            ]
-          },
-          // Relief on a clock, in two more batches. The fleet does not run out
-          // of aircraft while it is alive, but it does not have infinitely many
-          // either: eight, authored, and then no more.
-          {
-            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "CAP RELIEF",
-            concurrent: true, role: "trash", delay: 70,
-            radio: [
-              { speaker: "wingman", text: "交代のCAPが上がってきた！ 相手にするな、艦を沈めろ！", id: "m03-cap-relief" }
-            ]
-          },
-          {
-            types: ["su33", "mig21", "mig21"], tgt: false, band: 1, label: "DECK LAUNCH",
-            concurrent: true, role: "trash", delay: 150
-          }
-        ],
-        parTime: 285,
-        hasOutro: false,
-        map: { x: 0.71, y: 0.56 },
-        briefing: "偵察衛星が敵機動部隊を捕捉。空母1、護衛のイージス艦2、フリゲート2の計5隻。\n指定目標はこの5隻だけだ。艦隊上空のCAPは何度でも上がってくるが、落とす義務は無い。\n日没の逆光を利用して接近し、対艦攻撃で殲滅せよ。\nイージスのSAMは垂直発射だ。発射煙を見たら即座に回避機動を取れ。\nフリゲートは単装ランチャーで発射間隔が長い——後回しでいい。"
       },
       {
         key: "m-glacier",
@@ -7715,6 +7715,114 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
+        key: "m-convoy",
+        world: "coastalPlain",
+        title: "IRON COLUMN",
+        jp: "敵機甲部隊が海岸平野を縦断中。対空戦車を伴う車列を、南岸へ抜けられる前に殲滅せよ。",
+        act: 2,
+        storyNo: 9,
+        story: "敵機甲部隊が上陸した。海岸平野を縦断し、南岸へ抜けようとしている。\n抜けられたら、この島の前線は無くなる。",
+        epilogue: [
+          "機甲部隊は海岸平野で停止。南岸の防衛線は保たれた。",
+          "焼けた車両から、この島の漁村の地図が出てきた。書き込みは補給路のものだった。",
+          "HAMMER 2は何も言わなかった。着艦してからも、しばらく黙っていた。"
+        ],
+        // The first mission whose targets move on the ground. Everything the
+        // player has learned about ground attack still applies - these are the
+        // same lock-on, the same gun, the same missile quantum - but the aim
+        // point leads now, and the column shoots back from two of its seven
+        // vehicles.
+        //
+        // The CAP is deliberately NOT a designated target. The column is the
+        // objective; the fighters are a decision, exactly as in m03.
+        // Eight designated ground targets against eight trash-role fighters
+        // arriving in three batches. The Su-35S that used to lead this CAP is
+        // gone: a heavy Flanker sitting over the column made the run about the
+        // air fight, and the fighters here are supposed to be the thing that
+        // stops a clean strafing pass, not the thing the mission is about.
+        //
+        // Every entry after the first is `concurrent` - a non-TGT wave that is
+        // not would never spawn, since the sequence only advances when the
+        // designated targets are gone.
+        sequence: [
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "CAP", role: "trash",
+            radio: [
+              { speaker: "wingman", text: "上空にCAP！ 付き合う必要はない——狙いは車列だ！", id: "convoy-cap-inbound" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21", "mig23", "mig21"], tgt: false, band: 1, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 60,
+            radio: [
+              { speaker: "wingman", text: "増援のCAPだ、4機！ 低空に入りづらくなるぞ——先に対空戦車を潰せ！", id: "convoy-cap-relief" }
+            ]
+          },
+          {
+            types: ["mig29", "mig21"], tgt: false, band: 2, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 140
+          }
+        ],
+        // Nothing here runs away, so the pressure is scoring pressure. Par
+        // covers the ~25s ingress plus eight ground kills at ground-attack
+        // pace, which is the shape AC7's own convoy mission uses (a score
+        // attack, not a countdown).
+        parTime: 300,
+        hasOutro: false,
+        map: { x: 0.14, y: 0.44 },
+        // The road, authored once and shared by every vehicle in the column:
+        // 2.7km diagonally across the plain, from the northern shelf down to
+        // the southern one. Waypoint spacing is loose on purpose - spawn time
+        // cuts every leg into 12m steps and samples the terrain at each one,
+        // so these eleven points only have to describe the road's shape.
+        //
+        // Both ends stop short of the water on purpose. This island's edge is
+        // not a beach, it is an ~18m step where the terrain mesh ends, and a
+        // road taken over it would leave vehicles hanging in the air between
+        // two samples. The route was measured before it was written: on this
+        // line the baked road matches the mesh to 0.000m at every sample AND
+        // at every midpoint between samples.
+        convoyRoad: [
+          [10, -1420], [-40, -1560], [-110, -1760], [-200, -2000],
+          [-280, -2350], [-290, -2700], [-190, -3000], [-20, -3260],
+          [200, -3480], [330, -3700], [370, -3880]
+        ],
+        // One speed for the whole column, because a march moves at the pace of
+        // its slowest vehicle - the AD TANK's 13. Per-type `mobile.speed` is
+        // what a vehicle does on its own; a convoy that used it would tear
+        // itself apart within a minute, with the tanks' 15 pulling away from
+        // their own air cover.
+        convoySpeed: 13,
+        // `pathOffset` is how far along that road each vehicle starts, which
+        // is also what holds the column's 170m interval: they share the road
+        // and differ only by distance, so nothing can concertina. Air-defence
+        // vehicles ride third and sixth, the way a real march spreads its
+        // cover rather than bunching it at one end.
+        groundUnits: [
+          { id: 21, type: "tank", pathOffset: 1060 },
+          { id: 22, type: "tank", pathOffset: 890 },
+          { id: 23, type: "adTank", pathOffset: 720 },
+          { id: 24, type: "tank", pathOffset: 550 },
+          { id: 25, type: "tank", pathOffset: 380 },
+          { id: 26, type: "adTank", pathOffset: 210 },
+          { id: 27, type: "tank", pathOffset: 40 },
+          // The battery covering the beachhead. It sits on the western rim,
+          // ON THE SLOPE rather than on the flat top: the slope is the one
+          // place the capped sampler and the mesh agree exactly, so the
+          // installation stands on the ground with no allowance made for it.
+          { id: 28, type: "samSite", x: -1080, z: -2600, heading: 1.35 }
+        ],
+        // Centred on the middle of the road rather than on the mean of the
+        // spawn points, which would drift north with the column's tail.
+        battleCenter: { x: -100, z: -2650 },
+        battleRadius: 9000,
+        briefing: "敵機甲部隊が海岸平野に上陸、北端から南岸へ縦断中。\n車列は戦車5、対空戦車2の計7両。速度は遅いが、止まらない。\n対空戦車は撃ってくる——射程600、低空で正面から入れば削られる。\n戦車の主砲は君を狙わない。怖いのは対空戦車と、西の稜線のSAMサイトだ。\n指定目標は車列7両とSAMサイトの計8。上空のCAPは3度に分けて上がってくるが、全て無指定目標だ。\n奴らは進入を邪魔しに来るだけで、落とす価値は無い。車列を止めろ。",
+        introRadio: [
+          { speaker: "command", text: "海岸平野に敵機甲部隊。南岸に抜けられたら前線が崩れる——車列を潰せ。", id: "convoy-brief" },
+          { speaker: "wingman", text: "対空戦車が混ざってる！ 先に潰さないと低空に入れないぞ！", id: "convoy-brief-wing" }
+        ]
+      },
+      {
         key: "m-train",
         world: "desertBasin",
         title: "STEEL SNAKE",
@@ -7833,304 +7941,139 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
-        key: "m-landing",
-        world: "sunsetOcean",
-        title: "BEACHHEAD",
-        jp: "揚陸艦団が海岸へ向かっている。上陸される前に沈めろ——時間との戦いだ。",
-        // Campaign 14, ACT 3 ("守れないものが出てくる"). Story bible: "揚陸艦団の
-        // 上陸阻止。時間との戦い."
+        key: "m-desert",
+        world: "desertBasin",
+        title: "SANDSTORM",
+        jp: "内陸の砂漠に敵航空基地。SAM網を剥がし、飛行場を機能停止に追い込め。",
+        act: 2,
+        storyNo: 11,
+        story: "内陸の砂漠に敵航空基地。遮る物は何も無く、奇襲も成立しない。\n真昼の、隠れる場所の無い空だ。",
+        epilogue: [
+          "砂漠の航空基地は機能停止。内陸から上がってくる機体は、当分いない。",
+          "掩体壕の壁に、整備兵の落書きが残っていた——「塔は倒れる。人は残る」",
+          "誰が書いたのかは分からない。同じ一文が、この戦争で何度か出てくる。"
+        ],
+        // Story bible 11. The second base raid of the campaign and the answer
+        // to the first one: NIGHT RAID was a strike the dark hid, this is the
+        // same job done in the open, at noon, with nothing between the player
+        // and a live air-defence network but distance.
         //
-        // The first sortie in the campaign whose objective has a CLOCK attached
-        // to the objective itself rather than to a par time. FLEET DESTRUCTION
-        // put five hulls on the water and let the player take as long as the
-        // ammunition lasted; these five are 1.7km from a shore they will reach
-        // in about three minutes whatever the player does about it, and each
-        // one that gets there costs a thousand points and cannot be undone.
+        // The read is inverted from m-night in one specific way. There the
+        // fighters were an afterthought scrambling off a base already burning;
+        // here the base is a fighter station that is awake, so the interference
+        // arrives in strength and keeps arriving. What does NOT change is which
+        // half of the board is the mission: the twelve installations are the
+        // designated list and not one aircraft is on it.
         //
-        // What lands is NOT deleted and does not stop being a target - see
-        // updateLandingThreat. That is deliberate and it is what makes the
-        // mission readable: the objective total never moves, so the player is
-        // never punished twice, and the thing they lost by being slow is
-        // exactly the thing the debrief shows them.
+        // 12 TGT against 19 non-TGT fighters. The guideline ratio (1:1.5-2) is
+        // written for missions whose TGT list is aircraft; a fixed piece of
+        // terrain is a different shape, and m-night's note explains why. This
+        // one still lands inside the band at 1:1.58 - the airbase is supposed
+        // to be the hardest ground target in the campaign so far, and the way
+        // that is expressed is air cover, not tougher buildings.
         //
-        // Five designated hulls against ten undesignated contacts (three escort
-        // warships and seven fighters) is 1:2.0 - the top of the 1:1.5-2 band,
-        // where CITY LIGHTS also sits, and for the same reason: the interference
-        // IS the difficulty here. There is no way to make a 9 m/s target hard
-        // except to make reaching it cost time.
+        // Every entry after the first is `concurrent`: a non-TGT wave that is
+        // not concurrent would never spawn at all, because the sequence only
+        // advances when the designated targets are gone - and by then the
+        // sortie is over. Same constraint m-night and m-convoy work under.
         sequence: [
-          // The landing group. Anchored 2.1km off the beach and pointed
-          // straight at it, in line abreast, so the whole force is visible as
-          // one shape from the spawn and the player can see it is going
-          // somewhere.
+          // Already up when the player arrives - a standing patrol over its own
+          // field, which is what an alert fighter station looks like at noon.
           {
-            kind: "naval", fleet: ["landingShip", "landingShip", "landingShip", "landingShip", "landingShip"],
-            band: 3, label: "LANDING GROUP",
-            at: [-500, -1000], facing: [1650, -1000],
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "BARCAP",
+            role: "trash",
             radio: [
-              { speaker: "command", text: "レーダーに水上反応——大型5、低速。揚陸艦だ。針路は海岸、まっすぐ来ている。", id: "landing-group-inbound" },
-              { speaker: "wingman", text: "あれ全部、戦車を積んでるのか……装甲は薄いはずだ、ミサイル2発で沈む。数えて撃て！", id: "landing-group-brief" }
+              { speaker: "wingman", text: "基地上空にCAPだ、3機！ 付き合うな——狙いは滑走路とSAMだぞ！", id: "desert-barcap" }
             ]
           },
-          // The screen, seaward of the group and steaming up the coast rather
-          // than at it - an escort that beached itself alongside its charges
-          // would be a bug the player could see. Not designated: an Aegis is a
-          // reason to fly higher, not a reason to spend missiles.
+          // Scrambled off the field the player is attacking. Deliberately the
+          // earliest reinforcement in any base mission (40s against m-night's
+          // 50): the station is awake, and the first pass has to be paid for.
           {
-            kind: "naval", fleet: ["aegis", "frigate", "frigate"],
-            tgt: false, band: 3, label: "ESCORT SCREEN", concurrent: true,
-            at: [-950, -1000], facing: [-950, 600],
+            types: ["mig29", "mig23", "mig21"], tgt: false, band: 2, label: "SCRAMBLE",
+            concurrent: true, role: "trash", delay: 40,
             radio: [
-              { speaker: "wingman", text: "護衛艦艇3隻、イージスが混ざってる！ SAMに気をつけろ——だが目標じゃない、揚陸艦だ！", id: "landing-escort-screen" }
+              { speaker: "wingman", text: "滑走路から上がってきた！ 3機——上は俺が引き受ける、地上を潰せ！", id: "desert-scramble" }
             ]
           },
+          // The relief flight, from a field the player is not attacking.
           {
-            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
-            concurrent: true, role: "trash",
+            types: ["mig23", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ALERT FLIGHT",
+            concurrent: true, role: "trash", delay: 95
+          },
+          // The heaviest batch, and the only one with a Flanker in it. It
+          // arrives around the point where the SAM belt should be down and the
+          // player is working the flight line - i.e. lowest and slowest.
+          {
+            types: ["su33", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SECOND SCRAMBLE",
+            concurrent: true, role: "trash", delay: 160,
             radio: [
-              { speaker: "wingman", text: "上空にCAP！ 相手をしてる時間は無いぞ——ランプが下りる前に沈めろ！", id: "landing-cap-inbound" }
+              { speaker: "command", text: "HAMMER 1、砂塵の中に新たな機影——4機、うち1機は重い。高度を捨てるな。", id: "desert-second-scramble" }
             ]
           },
-          // Timed to land while the first two or three hulls are still afloat,
-          // i.e. exactly when breaking off costs the most.
+          // The last of it. Authored, finite, and timed so a player working at
+          // par has the base nearly down before it lands.
           {
-            types: ["mig21", "mig21", "mig23"], tgt: false, band: 2, label: "CAP RELIEF",
-            concurrent: true, role: "trash", delay: 55
-          },
-          {
-            types: ["mig29", "mig21"], tgt: false, band: 1, label: "SECOND FLIGHT",
-            concurrent: true, role: "trash", delay: 130
+            types: ["mig29", "mig21", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
+            concurrent: true, role: "trash", delay: 240
           }
         ],
-        // Ten missiles' worth of hull (five at 196) plus the run in, flown
-        // through a live escort screen. Shorter than m03's 285 despite the same
-        // hull count, because the real limit here is the ~190s the group takes
-        // to reach the sand - par has to sit near that, or the S rank would be
-        // handed to a player who let the whole force land.
-        parTime: 240,
+        // Twelve ground kills at ground-attack pace, flown through nineteen
+        // fighters that never have to be engaged, on a map with no cover. Par
+        // sits between m-night's 330 (eleven targets, ten fighters, and the
+        // dark to hide in) and m-convoy's scoring pressure.
+        parTime: 360,
         hasOutro: false,
-        map: { x: 0.78, y: 0.48 },
-        // What is being defended. `style: "beach"` swaps the runway for a sand
-        // shelf with allied positions on it; everything else about the mechanic
-        // (the blue HUD diamond, failRadius, the breach bookkeeping, the score
-        // deduction) is the shared code m01 and m-city already use, because
-        // what is defended was only ever a labelled coordinate.
+        map: { x: 0.24, y: 0.82 },
+        // The airbase, laid out on the sand pan centred at (0, -1500).
         //
-        // heading PI/2 puts the beach's local -Z (seaward, the same convention
-        // every heading in this file uses) along world -X, i.e. facing the
-        // group that is steaming at it. failRadius 430 is where an LST's BOW
-        // touches the sand rather than where its centre does: the hull is 165m
-        // and the dry beach starts 350m from the aim point.
-        friendlyBase: {
-          x: 1650, z: -1000, heading: Math.PI / 2,
-          label: "ALLIED BEACH", failRadius: 430, style: "beach"
-        },
-        // Laid over the run rather than centred on the player: spawn is z +620,
-        // the group starts at x -500 and the beach is at x +1650, so the arena
-        // has to cover the whole width of the approach.
-        battleCenter: { x: 600, z: -700 },
-        battleRadius: 6500,
-        briefing: "敵の揚陸艦団が水平線に現れた。狙いはこの海岸だ——連合がまだ保持している最後の砂浜。\n夕日は君の背中にある。向こうからは逆光だ。使え。\n指定目標は揚陸艦5隻のみ。速力は遅い。だが止まらない。\n着岸を許しても作戦は続く——ただし海岸は取られ、その分は君の評価から引かれる。\n護衛はイージス1、フリゲート2、上空にCAPが7機。全て無指定目標だ。\n揚陸艦の装甲は薄い。ミサイル2発で沈む——沈める時間が残っていれば、の話だ。",
+        // ★ Every unit here is inside 1500m of the pan centre. That is not a
+        // stylistic choice, it is the sinking gate. The plateau mesh is an
+        // elliptical, angularly-displaced cone whose flat top ends between
+        // ~0.62r and ~0.96r depending on bearing (measured by radial scan);
+        // authoring against the nominal 3000m radius is exactly how the first
+        // draft of this layout ended up with nine of twelve structures standing
+        // on open water. 1500m clears the flat top on the WORST bearing with
+        // 100m to spare. The pan's own height is 8m for the second half of the
+        // gate - see the plateau note in desertBasin - so the 0.92h clamp in
+        // surfaceHeightAt costs 0.64m rather than m-night's 7.36m, and nothing
+        // here is buried. debug.groundProbe() measures both numbers per unit.
+        //
+        // The shape is a strike corridor, not a compound: the player runs in
+        // from +Z, meets the SAM belt first, then the radars, then the guns,
+        // and the flight line is last and deepest. Killing the near belt buys
+        // the altitude to work the rest, which is the mission's whole lesson.
+        groundUnits: [
+          // --- The SAM belt. Nearest the ingress and spread 2.4km wide, so no
+          // single pass defeats more than two of them and the player has to
+          // come back around into a net that is still partly alive.
+          { id: 21, type: "samSite", x: -1180, z: -640, heading: 2.72 },
+          { id: 22, type: "samSite", x: -40, z: -380, heading: 3.1 },
+          { id: 23, type: "samSite", x: 1150, z: -700, heading: -2.66 },
+          { id: 24, type: "samSite", x: 1420, z: -1720, heading: -1.62 },
+          // --- Radar. The net the SAMs see through, set behind the belt.
+          { id: 25, type: "radarSite", x: -700, z: -1250, heading: 2.4 },
+          { id: 26, type: "radarSite", x: 780, z: -1280, heading: -2.4 },
+          // --- Guns, ringing the flight line at the range they are dangerous
+          // at (600m), so the last strafing pass is the expensive one.
+          { id: 27, type: "aaGun", x: -1140, z: -1900, heading: 1.6 },
+          { id: 28, type: "aaGun", x: 20, z: -1680, heading: 3.1 },
+          { id: 29, type: "aaGun", x: 1100, z: -2140, heading: -1.5 },
+          // --- The flight line, deepest: two hardened shelters and the fuel
+          // farm they feed, packed well inside the 90m cook-off radius so the
+          // farm chains into the shelters the way the night base's tanks do.
+          { id: 30, type: "bunker", x: -300, z: -2420, heading: 0.06 },
+          { id: 31, type: "bunker", x: 260, z: -2450, heading: -0.06 },
+          { id: 32, type: "fuelTank", x: -20, z: -2440, heading: 0 }
+        ],
+        // Centred between the spawn (z +620) and the flight line (z -2450)
+        // rather than on the pan, so the whole run sits inside the 90% ring.
+        battleCenter: { x: 0, z: -1200 },
+        battleRadius: 7500,
+        briefing: "砂漠を越えた内陸に、敵の航空基地がある。夜の闇は無い——真昼の、遮る物のない空だ。\n地表は砂塵で霞んでいる。だが向こうもこちらを見ている。奇襲は成立しない。\n指定目標は地上の12目標——SAMサイト4、レーダー2、対空砲3、掩体壕2、燃料庫1。\nSAM網を先に剥がせ。射線が通ったままの低空侵入は自殺行為だ。\n基地上空にはCAPが張り付き、滑走路からも次々と上がってくる。だが奴らは目標ではない。\n迎撃機は全部で19機来る。全て相手にすれば弾が尽きる——飛行場を潰せば終わりだ。",
         introRadio: [
-          { speaker: "command", text: "SKYEYEより全機。揚陸艦5隻、本隊は真っ直ぐ海岸へ向かっている。時間が無い——沈めろ。", id: "landing-brief" },
-          { speaker: "wingman", text: "護衛は邪魔だが、付き合ってる暇はないぞ。ランプが下りたら、あの砂浜はもう戻ってこない。", id: "landing-brief-wing" }
-        ]
-      },
-      {
-        key: "m04",
-        world: "archipelagoDay",
-        title: "IRONBACK",
-        jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
-        act: 4,
-        storyNo: 19,
-        story: "宿敵との決着だ。同じ空域、同じ時刻、同じ雲。\nこの戦争で一度も届かなかった、ただ一つの機影。",
-        epilogue: [
-          "IRONBACK機は被弾し、雲へ消えた。残骸は見つかっていない。",
-          "SKYEYEは記録にこう残した——「……墜ちてない。あれは墜ちてない」",
-          "北方連邦軍の通信は、その夜だけ一度も彼の名を呼ばなかった。"
-        ],
-        // Was the "air2" preset (F-22 / F-4 / F-16), written inline so the
-        // wingmen could be picked for this fight rather than inherited. The
-        // ace flies the Felon, the same jet he flies in air2 and in m05's last
-        // wave - the player has to be able to recognise IRONBACK's aircraft on
-        // sight for the callsign to mean anything. 196 HP against the Raptor's
-        // 200 keeps him in the two-missile band he was always in, and the
-        // scripted post-stall is a manoeuvre this airframe is known for.
-        // `band` and `idBase` reproduce air2's, so the HUD target numbers and
-        // the wave's spawn geometry are unchanged.
-        // The duel. Story bible 19: the designated target is the ace and only
-        // the ace - his wingmen are there to be in the way. So totalTargets is
-        // 1, and the moment IRONBACK goes down the sortie is over no matter
-        // how many Fishbeds are still circling.
-        //
-        // Six of them, in three batches on a clock, so the fight never settles
-        // into a clean one-versus-one: something arrives roughly every 50
-        // seconds to spoil a gun solution. All trash-role - the interference
-        // has to be interference, not a second fight.
-        //
-        // `idBase: 3` keeps the ace on TGT 4, the number this mission has
-        // always printed for him.
-        sequence: [
-          { types: ["su57"], ace: true, band: 2, idBase: 3 },
-          {
-            types: ["mig29", "mig29"], tgt: false, band: 2, label: "SICKLE",
-            concurrent: true, role: "trash", idBase: 0,
-            radio: [
-              { speaker: "wingman", text: "僚機が2機付いてる！ そっちは相手にするな——狙いはIRONBACKだけだ！", id: "m04-wingmen" }
-            ]
-          },
-          {
-            types: ["mig21", "mig21"], tgt: false, band: 1, label: "INTERFERENCE",
-            concurrent: true, role: "trash", delay: 45
-          },
-          {
-            types: ["mig23", "mig21"], tgt: false, band: 2, label: "INTERFERENCE",
-            concurrent: true, role: "trash", delay: 105,
-            radio: [
-              { speaker: "wingman", text: "また湧いてきた！ 決着をつけろ、{nickname}——奴を落とせば終わりだ！", id: "m04-interference-2" }
-            ]
-          }
-        ],
-        parTime: 165,
-        hasOutro: false,
-        map: { x: 0.42, y: 0.65 },
-        briefing: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入した。\n奴は今まで12機を墜としている。次を君にするな。\n指定目標はIRONBACK機ただ1機。僚機は次々に上がってくるが、相手をする必要はない。\n奴らは決闘を邪魔しに来るだけだ。振り切って、本命を落とせ。"
-      },
-      {
-        key: "m05",
-        world: "archipelagoDay",
-        title: "FINAL SORTIE",
-        jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
-        act: 4,
-        storyNo: 20,
-        story: "総力戦。ここを凌げば、この海の戦争は終わる。\n塔は、まだ立っている。",
-        epilogue: [
-          "北方連邦軍、全戦線で撤退を開始。BABELは無傷のまま残った。",
-          "アルバン技師長は泣いて喜んだ。これでもう誰も撃たなくて済む、と。SKYEYEは何も言わなかった。",
-          "この海の全ての空が、一つの管制の下に入った。命令書の署名だけが、最後まで誰のものか分からないままだ。"
-        ],
-        // Late-campaign difficulty: an ace in the second wave (as it always
-        // had) and a second one leading the fleet's CAP, so the last leg is
-        // not a pure ground-attack run any more.
-        sequence: [
-          // Vanguard. Two designated leaders and a flight of trash behind them.
-          { types: ["mig29", "su33"], band: 1, label: "VANGUARD" },
-          {
-            types: ["mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
-            concurrent: true, role: "trash"
-          },
-          // IRONBACK, alone on the TGT list exactly as in his own sortie.
-          { types: ["su57"], ace: true, band: 2 },
-          {
-            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
-            concurrent: true, role: "trash"
-          },
-          {
-            types: ["mig21", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
-            concurrent: true, role: "trash", delay: 55
-          },
-          // Written inline rather than as the "naval" preset so it takes the
-          // next free id block: this sortie now spawns enough contacts ahead of
-          // the fleet that the preset's pinned 7-11 would collide with them.
-          { kind: "naval", band: 3, label: "FLEET" },
-          // The fleet's own CAP, led by a second ace. Su-35S over Su-33 is the
-          // enemy's best pair and lands within 3% of the F-22/F-15 it replaces
-          // (361 HP against 350), so the last leg is as hard as it was. Left at
-          // line/ace role - LONGBOW is not interference, he is a reason to
-          // stay high.
-          { types: ["su35", "su33"], ace: "longbow", tgt: false, band: 2, label: "FLEET CAP", concurrent: true },
-          {
-            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "DECK LAUNCH",
-            concurrent: true, role: "trash", delay: 80
-          },
-          // The last thing the campaign puts in front of the player. Su-57 in
-          // the ace slot is the hardest single opponent in the game: turn 40 -
-          // past the player Raptor's 39 - with ACE_TURN_SCALE 1.2 on top of it,
-          // the longest engage envelope of any fighter, and the best missile in
-          // ENEMY_MISSILE_PROFILES. Its wingman is the one airframe that
-          // out-turns it, so breaking away from the Felon flies the player into
-          // the Berkut. Both are two-missile hulls, which is the concession -
-          // this wave is meant to be hard to hit, not long to grind down.
-          { types: ["su57", "su47"], ace: "vulture", band: 2, label: "FELON" },
-          // The last wave is eight aircraft on the board at once - the two
-          // designated Felon-flight jets plus six trash - which is the
-          // "総力戦" the finale is named for. The trash is what makes eight
-          // survivable: six aircraft flying at 0.75 turn with missiles at half
-          // cadence is pressure, not a second pair of aces.
-          {
-            types: ["mig29", "mig21", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
-            concurrent: true, role: "trash"
-          },
-          {
-            types: ["mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
-            concurrent: true, role: "trash", delay: 45
-          }
-        ],
-        parTime: 620,
-        hasOutro: true,
-        map: { x: 0.8, y: 0.34 },
-        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n指定目標は10。先導機2、IRONBACK、艦隊5隻、そして最後のSu-57編隊だ。\nそれ以外は全て雑魚だ。数は多いが腕は素人——付き合えば時間だけが溶ける。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
-      },
-      {
-        key: "m-intercept",
-        world: "archipelagoDay",
-        title: "BOMBER STREAM",
-        jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
-        act: 3,
-        storyNo: 17,
-        story: "大規模爆撃編隊。狙いは統合管制塔BABELそのものだ。\n塔を守れ——それがこの戦争を終わらせる唯一の物だと、上は言っている。",
-        epilogue: [
-          "爆撃編隊は全機撃墜。BABELの足場には破片ひとつ落ちなかった。",
-          "その夜、SKYEYEは作戦命令書の署名欄を長いこと見ていた。",
-          "塔の建設を承認した委員会と、塔の破壊を要求した委員会。署名の形が同じだった。"
-        ],
-        // Story bible 17: a mass raid aimed at BABEL itself. Six Tu-95s, two
-        // per wave, and they are the entire designated list - twelve escorts
-        // across the three waves are not. 1:2 exactly, the top of the band.
-        //
-        // All six heavies are Bears now rather than three waves of mixed
-        // B-52/Tu-95. Same 294-class hull, same tail turret, same three-missile
-        // lesson - but the enemy flies its own aircraft, which is the point of
-        // the faction split, and one silhouette repeated six times is what a
-        // bomber STREAM looks like.
-        sequence: [
-          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
-          {
-            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "ESCORT",
-            concurrent: true, role: "trash"
-          },
-          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
-          {
-            types: ["mig21", "mig21"], tgt: false, band: 2, label: "ESCORT",
-            concurrent: true, role: "trash"
-          },
-          {
-            types: ["mig29", "mig23", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
-            concurrent: true, role: "trash", delay: 50
-          },
-          // The last pair carries the heaviest cover in the mission: four
-          // fighters on the board with them from the first second, so the
-          // player has to work the stream through a screen rather than pick
-          // the bombers off in the open.
-          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
-          {
-            types: ["mig29", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "TOP COVER",
-            concurrent: true, role: "trash",
-            radio: [
-              { speaker: "wingman", text: "最終波、護衛が厚い！ 4機だ——抜けろ、爆撃機だけ狙え！", id: "intercept-top-cover" }
-            ]
-          }
-        ],
-        // No time limit - the bombers do not run. Par carries the pressure, the
-        // way AC7's own bomber-stream scoring missions do. Six three-missile
-        // hulls, flown through twelve fighters that never have to be killed.
-        parTime: 410,
-        hasOutro: false,
-        map: { x: 0.34, y: 0.16 },
-        briefing: "高高度に大型機の反応——敵の重爆撃編隊Tu-95が6機、本土へ向かっている。\n指定目標はこの6機だけだ。護衛は12機付いているが、1機も落とさなくても作戦は成立する。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。\n二重反転プロペラ4基で飛ぶ旧ソ連製の重爆だ。3波に分かれて来る——最終波の護衛が最も厚い。",
-        introRadio: [
-          { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
-          { speaker: "wingman", text: "護衛が張り付いてる。だが相手をする必要はない——隙間を抜けて爆撃機に取り付け！", id: "intercept-brief-wing" }
+          { speaker: "command", text: "砂漠の航空基地を制圧する——まずSAM網を剥がせ。", id: "desert-brief" },
+          { speaker: "wingman", text: "遮蔽物ゼロ、砂塵で足元も見えん。低く入るならSAMを先に黙らせろよ！", id: "desert-brief-wing" }
         ]
       },
       {
@@ -8313,95 +8256,107 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
-        key: "m-carrier",
+        key: "m-landing",
         world: "sunsetOcean",
-        title: "HOME PLATE",
-        jp: "母艦CV-71 INDEPENDENCEが対艦攻撃を受ける。攻撃機の波状攻撃から母艦を守り切れ。",
-        // Campaign 16, and the mirror of m03: that sortie was the player
-        // sinking a task force, this one is the enemy trying to sink theirs.
-        // The carrier the player has launched from since FLEET DESTRUCTION
-        // stops being scenery here - it has hull integrity, it takes anti-ship
-        // missiles, and if it goes down the sortie is over.
+        title: "BEACHHEAD",
+        jp: "揚陸艦団が海岸へ向かっている。上陸される前に沈めろ——時間との戦いだ。",
+        // Campaign 14, ACT 3 ("守れないものが出てくる"). Story bible: "揚陸艦団の
+        // 上陸阻止。時間との戦い."
         //
-        // What makes it a defence rather than a dogfight: the six designated
-        // aircraft are the strike package, they fly at the SHIP and not at the
-        // player, and their round is ANTI_SHIP_MISSILE_PROFILE - launched from
-        // 1800 m, one every ~16 s per attacker, 520 damage against a 4200 HP
-        // hull. Eight hits sink her. The arithmetic is the mission: the player
-        // has to break up launches, not win a merge.
+        // The first sortie in the campaign whose objective has a CLOCK attached
+        // to the objective itself rather than to a par time. FLEET DESTRUCTION
+        // put five hulls on the water and let the player take as long as the
+        // ammunition lasted; these five are 1.7km from a shore they will reach
+        // in about three minutes whatever the player does about it, and each
+        // one that gets there costs a thousand points and cannot be undone.
         //
-        // Frogfoots and Bears rather than fighters, because a strike package
-        // has to LOOK slow and heavy from the cockpit - and because both are
-        // three-missile hulls, so each attacker is a real commitment while
-        // eleven escorts are trying to keep the player off them. 6:11 is
-        // 1:1.83, the default shape.
+        // What lands is NOT deleted and does not stop being a target - see
+        // updateLandingThreat. That is deliberate and it is what makes the
+        // mission readable: the objective total never moves, so the player is
+        // never punished twice, and the thing they lost by being slow is
+        // exactly the thing the debrief shows them.
+        //
+        // Five designated hulls against ten undesignated contacts (three escort
+        // warships and seven fighters) is 1:2.0 - the top of the 1:1.5-2 band,
+        // where CITY LIGHTS also sits, and for the same reason: the interference
+        // IS the difficulty here. There is no way to make a 9 m/s target hard
+        // except to make reaching it cost time.
         sequence: [
-          // First run-in. Two Frogfoots, already tracking the ship.
+          // The landing group. Anchored 2.1km off the beach and pointed
+          // straight at it, in line abreast, so the whole force is visible as
+          // one shape from the spawn and the player can see it is going
+          // somewhere.
           {
-            types: ["su25", "su25"], band: 1, idBase: 0, label: "STRIKE",
-            hunt: "ship",
+            kind: "naval", fleet: ["landingShip", "landingShip", "landingShip", "landingShip", "landingShip"],
+            band: 3, label: "LANDING GROUP",
+            at: [-500, -1000], facing: [1650, -1000],
             radio: [
-              { speaker: "command", text: "SKYEYEより全機——対艦攻撃編隊を探知。目標はINDEPENDENCEだ。母艦を守れ！", id: "carrier-strike-1" }
+              { speaker: "command", text: "レーダーに水上反応——大型5、低速。揚陸艦だ。針路は海岸、まっすぐ来ている。", id: "landing-group-inbound" },
+              { speaker: "wingman", text: "あれ全部、戦車を積んでるのか……装甲は薄いはずだ、ミサイル2発で沈む。数えて撃て！", id: "landing-group-brief" }
+            ]
+          },
+          // The screen, seaward of the group and steaming up the coast rather
+          // than at it - an escort that beached itself alongside its charges
+          // would be a bug the player could see. Not designated: an Aegis is a
+          // reason to fly higher, not a reason to spend missiles.
+          {
+            kind: "naval", fleet: ["aegis", "frigate", "frigate"],
+            tgt: false, band: 3, label: "ESCORT SCREEN", concurrent: true,
+            at: [-950, -1000], facing: [-950, 600],
+            radio: [
+              { speaker: "wingman", text: "護衛艦艇3隻、イージスが混ざってる！ SAMに気をつけろ——だが目標じゃない、揚陸艦だ！", id: "landing-escort-screen" }
             ]
           },
           {
-            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
-            concurrent: true, role: "trash", idBase: 10,
+            types: ["su33", "mig29"], tgt: false, band: 1, label: "CAP",
+            concurrent: true, role: "trash",
             radio: [
-              { speaker: "wingman", text: "護衛が張り付いてる！ 相手をしてる暇は無いぞ——攻撃機だ、攻撃機を止めろ！", id: "carrier-escort-1" }
+              { speaker: "wingman", text: "上空にCAP！ 相手をしてる時間は無いぞ——ランプが下りる前に沈めろ！", id: "landing-cap-inbound" }
             ]
           },
+          // Timed to land while the first two or three hulls are still afloat,
+          // i.e. exactly when breaking off costs the most.
           {
-            types: ["mig29", "mig29"], tgt: false, band: 2, label: "ESCORT",
-            concurrent: true, role: "trash", delay: 40, idBase: 12
-          },
-          // Second run-in: the heavies. A Bear carries the longest-ranged
-          // thing on the board and does not manoeuvre at all - it just keeps
-          // flying at the ship until it is dead.
-          {
-            types: ["tu95", "tu95"], band: 2, idBase: 2, label: "STRIKE",
-            hunt: "ship",
-            radio: [
-              { speaker: "command", text: "第2波、Tu-95が2機——対艦ミサイル母機だ。射点に入られる前に落とせ！", id: "carrier-strike-2" }
-            ]
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 2, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 55
           },
           {
-            types: ["mig21", "mig21", "su33"], tgt: false, band: 2, label: "ESCORT",
-            concurrent: true, role: "trash", idBase: 14
-          },
-          {
-            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
-            concurrent: true, role: "trash", delay: 35, idBase: 17
-          },
-          // Last run-in, with the only element in the sortie flown at the full
-          // airframe: a Su-35 pair at `line`. They are not the objective and
-          // never will be - but they are the reason the last two Frogfoots are
-          // hard to reach, and answering them costs hull.
-          {
-            types: ["su25", "su25"], band: 1, idBase: 4, label: "STRIKE",
-            hunt: "ship",
-            radio: [
-              { speaker: "command", text: "最終波だ。攻撃機2、上位掩護にSu-35が2——INDEPENDENCEはもう限界を越えている！", id: "carrier-strike-3" }
-            ]
-          },
-          {
-            types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
-            concurrent: true, role: "line", idBase: 19,
-            radio: [
-              { speaker: "wingman", text: "上からSu-35！ こいつらは本気だ——だが母艦が先だ、攻撃機を優先しろ！", id: "carrier-topcover" }
-            ]
+            types: ["mig29", "mig21"], tgt: false, band: 1, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 130
           }
         ],
-        // Six 294 HP hulls at three missiles each - the same hull count as
-        // m-city but every one of them armoured - flown while never letting
-        // the fight drift far from a ship that cannot move out of the way.
-        parTime: 340,
+        // Ten missiles' worth of hull (five at 196) plus the run in, flown
+        // through a live escort screen. Shorter than m03's 285 despite the same
+        // hull count, because the real limit here is the ~190s the group takes
+        // to reach the sand - par has to sit near that, or the S rank would be
+        // handed to a player who let the whole force land.
+        parTime: 240,
         hasOutro: false,
-        map: { x: 0.86, y: 0.66 },
-        briefing: "母艦CV-71 INDEPENDENCE——君がこの戦争で何度も帰ってきた甲板だ。今日はそこが狙われる。\n敵の対艦攻撃編隊が3波で来る。Su-25が4、Tu-95が2の計6機が指定目標だ。\n奴らは君を見ていない。母艦しか見ていない。1800mから対艦ミサイルを撃ってくる。\n護衛は11機。落とす義務は無いが、張り付かれれば攻撃機に手が届かなくなる。\n被弾は減点で済む。だが沈められたら——帰る場所が無くなる。\n発射母機を落とせ。飛んでくるミサイルを追うな、撃つ前の機体を落とせ。",
+        map: { x: 0.78, y: 0.48 },
+        // What is being defended. `style: "beach"` swaps the runway for a sand
+        // shelf with allied positions on it; everything else about the mechanic
+        // (the blue HUD diamond, failRadius, the breach bookkeeping, the score
+        // deduction) is the shared code m01 and m-city already use, because
+        // what is defended was only ever a labelled coordinate.
+        //
+        // heading PI/2 puts the beach's local -Z (seaward, the same convention
+        // every heading in this file uses) along world -X, i.e. facing the
+        // group that is steaming at it. failRadius 430 is where an LST's BOW
+        // touches the sand rather than where its centre does: the hull is 165m
+        // and the dry beach starts 350m from the aim point.
+        friendlyBase: {
+          x: 1650, z: -1000, heading: Math.PI / 2,
+          label: "ALLIED BEACH", failRadius: 430, style: "beach"
+        },
+        // Laid over the run rather than centred on the player: spawn is z +620,
+        // the group starts at x -500 and the beach is at x +1650, so the arena
+        // has to cover the whole width of the approach.
+        battleCenter: { x: 600, z: -700 },
+        battleRadius: 6500,
+        briefing: "敵の揚陸艦団が水平線に現れた。狙いはこの海岸だ——連合がまだ保持している最後の砂浜。\n夕日は君の背中にある。向こうからは逆光だ。使え。\n指定目標は揚陸艦5隻のみ。速力は遅い。だが止まらない。\n着岸を許しても作戦は続く——ただし海岸は取られ、その分は君の評価から引かれる。\n護衛はイージス1、フリゲート2、上空にCAPが7機。全て無指定目標だ。\n揚陸艦の装甲は薄い。ミサイル2発で沈む——沈める時間が残っていれば、の話だ。",
         introRadio: [
-          { speaker: "command", text: "SKYEYEより。低空に対艦編隊——目標はHOME PLATE、我々の母艦だ。全機、直ちに迎撃せよ。", id: "carrier-brief" },
-          { speaker: "wingman", text: "あの甲板が無くなったら、俺たちは海に降りるしかない。……絶対に沈めさせるな。", id: "carrier-brief-wing" }
+          { speaker: "command", text: "SKYEYEより全機。揚陸艦5隻、本隊は真っ直ぐ海岸へ向かっている。時間が無い——沈めろ。", id: "landing-brief" },
+          { speaker: "wingman", text: "護衛は邪魔だが、付き合ってる暇はないぞ。ランプが下りたら、あの砂浜はもう戻ってこない。", id: "landing-brief-wing" }
         ]
       },
       {
@@ -8528,111 +8483,157 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
-        key: "m-convoy",
-        world: "coastalPlain",
-        title: "IRON COLUMN",
-        jp: "敵機甲部隊が海岸平野を縦断中。対空戦車を伴う車列を、南岸へ抜けられる前に殲滅せよ。",
-        act: 2,
-        storyNo: 9,
-        story: "敵機甲部隊が上陸した。海岸平野を縦断し、南岸へ抜けようとしている。\n抜けられたら、この島の前線は無くなる。",
-        epilogue: [
-          "機甲部隊は海岸平野で停止。南岸の防衛線は保たれた。",
-          "焼けた車両から、この島の漁村の地図が出てきた。書き込みは補給路のものだった。",
-          "HAMMER 2は何も言わなかった。着艦してからも、しばらく黙っていた。"
-        ],
-        // The first mission whose targets move on the ground. Everything the
-        // player has learned about ground attack still applies - these are the
-        // same lock-on, the same gun, the same missile quantum - but the aim
-        // point leads now, and the column shoots back from two of its seven
-        // vehicles.
+        key: "m-carrier",
+        world: "sunsetOcean",
+        title: "HOME PLATE",
+        jp: "母艦CV-71 INDEPENDENCEが対艦攻撃を受ける。攻撃機の波状攻撃から母艦を守り切れ。",
+        // Campaign 16, and the mirror of m03: that sortie was the player
+        // sinking a task force, this one is the enemy trying to sink theirs.
+        // The carrier the player has launched from since FLEET DESTRUCTION
+        // stops being scenery here - it has hull integrity, it takes anti-ship
+        // missiles, and if it goes down the sortie is over.
         //
-        // The CAP is deliberately NOT a designated target. The column is the
-        // objective; the fighters are a decision, exactly as in m03.
-        // Eight designated ground targets against eight trash-role fighters
-        // arriving in three batches. The Su-35S that used to lead this CAP is
-        // gone: a heavy Flanker sitting over the column made the run about the
-        // air fight, and the fighters here are supposed to be the thing that
-        // stops a clean strafing pass, not the thing the mission is about.
+        // What makes it a defence rather than a dogfight: the six designated
+        // aircraft are the strike package, they fly at the SHIP and not at the
+        // player, and their round is ANTI_SHIP_MISSILE_PROFILE - launched from
+        // 1800 m, one every ~16 s per attacker, 520 damage against a 4200 HP
+        // hull. Eight hits sink her. The arithmetic is the mission: the player
+        // has to break up launches, not win a merge.
         //
-        // Every entry after the first is `concurrent` - a non-TGT wave that is
-        // not would never spawn, since the sequence only advances when the
-        // designated targets are gone.
+        // Frogfoots and Bears rather than fighters, because a strike package
+        // has to LOOK slow and heavy from the cockpit - and because both are
+        // three-missile hulls, so each attacker is a real commitment while
+        // eleven escorts are trying to keep the player off them. 6:11 is
+        // 1:1.83, the default shape.
         sequence: [
+          // First run-in. Two Frogfoots, already tracking the ship.
           {
-            types: ["mig29", "mig21"], tgt: false, band: 2, label: "CAP", role: "trash",
+            types: ["su25", "su25"], band: 1, idBase: 0, label: "STRIKE",
+            hunt: "ship",
             radio: [
-              { speaker: "wingman", text: "上空にCAP！ 付き合う必要はない——狙いは車列だ！", id: "convoy-cap-inbound" }
+              { speaker: "command", text: "SKYEYEより全機——対艦攻撃編隊を探知。目標はINDEPENDENCEだ。母艦を守れ！", id: "carrier-strike-1" }
             ]
           },
           {
-            types: ["mig21", "mig21", "mig23", "mig21"], tgt: false, band: 1, label: "CAP RELIEF",
-            concurrent: true, role: "trash", delay: 60,
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash", idBase: 10,
             radio: [
-              { speaker: "wingman", text: "増援のCAPだ、4機！ 低空に入りづらくなるぞ——先に対空戦車を潰せ！", id: "convoy-cap-relief" }
+              { speaker: "wingman", text: "護衛が張り付いてる！ 相手をしてる暇は無いぞ——攻撃機だ、攻撃機を止めろ！", id: "carrier-escort-1" }
             ]
           },
           {
-            types: ["mig29", "mig21"], tgt: false, band: 2, label: "SECOND FLIGHT",
-            concurrent: true, role: "trash", delay: 140
+            types: ["mig29", "mig29"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash", delay: 40, idBase: 12
+          },
+          // Second run-in: the heavies. A Bear carries the longest-ranged
+          // thing on the board and does not manoeuvre at all - it just keeps
+          // flying at the ship until it is dead.
+          {
+            types: ["tu95", "tu95"], band: 2, idBase: 2, label: "STRIKE",
+            hunt: "ship",
+            radio: [
+              { speaker: "command", text: "第2波、Tu-95が2機——対艦ミサイル母機だ。射点に入られる前に落とせ！", id: "carrier-strike-2" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21", "su33"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash", idBase: 14
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash", delay: 35, idBase: 17
+          },
+          // Last run-in, with the only element in the sortie flown at the full
+          // airframe: a Su-35 pair at `line`. They are not the objective and
+          // never will be - but they are the reason the last two Frogfoots are
+          // hard to reach, and answering them costs hull.
+          {
+            types: ["su25", "su25"], band: 1, idBase: 4, label: "STRIKE",
+            hunt: "ship",
+            radio: [
+              { speaker: "command", text: "最終波だ。攻撃機2、上位掩護にSu-35が2——INDEPENDENCEはもう限界を越えている！", id: "carrier-strike-3" }
+            ]
+          },
+          {
+            types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
+            concurrent: true, role: "line", idBase: 19,
+            radio: [
+              { speaker: "wingman", text: "上からSu-35！ こいつらは本気だ——だが母艦が先だ、攻撃機を優先しろ！", id: "carrier-topcover" }
+            ]
           }
         ],
-        // Nothing here runs away, so the pressure is scoring pressure. Par
-        // covers the ~25s ingress plus eight ground kills at ground-attack
-        // pace, which is the shape AC7's own convoy mission uses (a score
-        // attack, not a countdown).
-        parTime: 300,
+        // Six 294 HP hulls at three missiles each - the same hull count as
+        // m-city but every one of them armoured - flown while never letting
+        // the fight drift far from a ship that cannot move out of the way.
+        parTime: 340,
         hasOutro: false,
-        map: { x: 0.14, y: 0.44 },
-        // The road, authored once and shared by every vehicle in the column:
-        // 2.7km diagonally across the plain, from the northern shelf down to
-        // the southern one. Waypoint spacing is loose on purpose - spawn time
-        // cuts every leg into 12m steps and samples the terrain at each one,
-        // so these eleven points only have to describe the road's shape.
-        //
-        // Both ends stop short of the water on purpose. This island's edge is
-        // not a beach, it is an ~18m step where the terrain mesh ends, and a
-        // road taken over it would leave vehicles hanging in the air between
-        // two samples. The route was measured before it was written: on this
-        // line the baked road matches the mesh to 0.000m at every sample AND
-        // at every midpoint between samples.
-        convoyRoad: [
-          [10, -1420], [-40, -1560], [-110, -1760], [-200, -2000],
-          [-280, -2350], [-290, -2700], [-190, -3000], [-20, -3260],
-          [200, -3480], [330, -3700], [370, -3880]
-        ],
-        // One speed for the whole column, because a march moves at the pace of
-        // its slowest vehicle - the AD TANK's 13. Per-type `mobile.speed` is
-        // what a vehicle does on its own; a convoy that used it would tear
-        // itself apart within a minute, with the tanks' 15 pulling away from
-        // their own air cover.
-        convoySpeed: 13,
-        // `pathOffset` is how far along that road each vehicle starts, which
-        // is also what holds the column's 170m interval: they share the road
-        // and differ only by distance, so nothing can concertina. Air-defence
-        // vehicles ride third and sixth, the way a real march spreads its
-        // cover rather than bunching it at one end.
-        groundUnits: [
-          { id: 21, type: "tank", pathOffset: 1060 },
-          { id: 22, type: "tank", pathOffset: 890 },
-          { id: 23, type: "adTank", pathOffset: 720 },
-          { id: 24, type: "tank", pathOffset: 550 },
-          { id: 25, type: "tank", pathOffset: 380 },
-          { id: 26, type: "adTank", pathOffset: 210 },
-          { id: 27, type: "tank", pathOffset: 40 },
-          // The battery covering the beachhead. It sits on the western rim,
-          // ON THE SLOPE rather than on the flat top: the slope is the one
-          // place the capped sampler and the mesh agree exactly, so the
-          // installation stands on the ground with no allowance made for it.
-          { id: 28, type: "samSite", x: -1080, z: -2600, heading: 1.35 }
-        ],
-        // Centred on the middle of the road rather than on the mean of the
-        // spawn points, which would drift north with the column's tail.
-        battleCenter: { x: -100, z: -2650 },
-        battleRadius: 9000,
-        briefing: "敵機甲部隊が海岸平野に上陸、北端から南岸へ縦断中。\n車列は戦車5、対空戦車2の計7両。速度は遅いが、止まらない。\n対空戦車は撃ってくる——射程600、低空で正面から入れば削られる。\n戦車の主砲は君を狙わない。怖いのは対空戦車と、西の稜線のSAMサイトだ。\n指定目標は車列7両とSAMサイトの計8。上空のCAPは3度に分けて上がってくるが、全て無指定目標だ。\n奴らは進入を邪魔しに来るだけで、落とす価値は無い。車列を止めろ。",
+        map: { x: 0.86, y: 0.66 },
+        briefing: "母艦CV-71 INDEPENDENCE——君がこの戦争で何度も帰ってきた甲板だ。今日はそこが狙われる。\n敵の対艦攻撃編隊が3波で来る。Su-25が4、Tu-95が2の計6機が指定目標だ。\n奴らは君を見ていない。母艦しか見ていない。1800mから対艦ミサイルを撃ってくる。\n護衛は11機。落とす義務は無いが、張り付かれれば攻撃機に手が届かなくなる。\n被弾は減点で済む。だが沈められたら——帰る場所が無くなる。\n発射母機を落とせ。飛んでくるミサイルを追うな、撃つ前の機体を落とせ。",
         introRadio: [
-          { speaker: "command", text: "海岸平野に敵機甲部隊。南岸に抜けられたら前線が崩れる——車列を潰せ。", id: "convoy-brief" },
-          { speaker: "wingman", text: "対空戦車が混ざってる！ 先に潰さないと低空に入れないぞ！", id: "convoy-brief-wing" }
+          { speaker: "command", text: "SKYEYEより。低空に対艦編隊——目標はHOME PLATE、我々の母艦だ。全機、直ちに迎撃せよ。", id: "carrier-brief" },
+          { speaker: "wingman", text: "あの甲板が無くなったら、俺たちは海に降りるしかない。……絶対に沈めさせるな。", id: "carrier-brief-wing" }
+        ]
+      },
+      {
+        key: "m-intercept",
+        world: "archipelagoDay",
+        title: "BOMBER STREAM",
+        jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
+        act: 3,
+        storyNo: 17,
+        story: "大規模爆撃編隊。狙いは統合管制塔BABELそのものだ。\n塔を守れ——それがこの戦争を終わらせる唯一の物だと、上は言っている。",
+        epilogue: [
+          "爆撃編隊は全機撃墜。BABELの足場には破片ひとつ落ちなかった。",
+          "その夜、SKYEYEは作戦命令書の署名欄を長いこと見ていた。",
+          "塔の建設を承認した委員会と、塔の破壊を要求した委員会。署名の形が同じだった。"
+        ],
+        // Story bible 17: a mass raid aimed at BABEL itself. Six Tu-95s, two
+        // per wave, and they are the entire designated list - twelve escorts
+        // across the three waves are not. 1:2 exactly, the top of the band.
+        //
+        // All six heavies are Bears now rather than three waves of mixed
+        // B-52/Tu-95. Same 294-class hull, same tail turret, same three-missile
+        // lesson - but the enemy flies its own aircraft, which is the point of
+        // the faction split, and one silhouette repeated six times is what a
+        // bomber STREAM looks like.
+        sequence: [
+          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
+          {
+            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig29", "mig23", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 50
+          },
+          // The last pair carries the heaviest cover in the mission: four
+          // fighters on the board with them from the first second, so the
+          // player has to work the stream through a screen rather than pick
+          // the bombers off in the open.
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
+          {
+            types: ["mig29", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "TOP COVER",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "最終波、護衛が厚い！ 4機だ——抜けろ、爆撃機だけ狙え！", id: "intercept-top-cover" }
+            ]
+          }
+        ],
+        // No time limit - the bombers do not run. Par carries the pressure, the
+        // way AC7's own bomber-stream scoring missions do. Six three-missile
+        // hulls, flown through twelve fighters that never have to be killed.
+        parTime: 410,
+        hasOutro: false,
+        map: { x: 0.34, y: 0.16 },
+        briefing: "高高度に大型機の反応——敵の重爆撃編隊Tu-95が6機、本土へ向かっている。\n指定目標はこの6機だけだ。護衛は12機付いているが、1機も落とさなくても作戦は成立する。\n爆撃機は鈍重だが極めて頑丈だ。通常ミサイルで3発、機銃なら長い一連射を覚悟しろ。\n尾部に防御銃座がある。真後ろに居座るな。\n二重反転プロペラ4基で飛ぶ旧ソ連製の重爆だ。3波に分かれて来る——最終波の護衛が最も厚い。",
+        introRadio: [
+          { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
+          { speaker: "wingman", text: "護衛が張り付いてる。だが相手をする必要はない——隙間を抜けて爆撃機に取り付け！", id: "intercept-brief-wing" }
         ]
       },
       {
@@ -8727,142 +8728,140 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
-        key: "m-desert",
-        world: "desertBasin",
-        title: "SANDSTORM",
-        jp: "内陸の砂漠に敵航空基地。SAM網を剥がし、飛行場を機能停止に追い込め。",
-        act: 2,
-        storyNo: 11,
-        story: "内陸の砂漠に敵航空基地。遮る物は何も無く、奇襲も成立しない。\n真昼の、隠れる場所の無い空だ。",
+        key: "m04",
+        world: "archipelagoDay",
+        title: "IRONBACK",
+        jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
+        act: 4,
+        storyNo: 19,
+        story: "宿敵との決着だ。同じ空域、同じ時刻、同じ雲。\nこの戦争で一度も届かなかった、ただ一つの機影。",
         epilogue: [
-          "砂漠の航空基地は機能停止。内陸から上がってくる機体は、当分いない。",
-          "掩体壕の壁に、整備兵の落書きが残っていた——「塔は倒れる。人は残る」",
-          "誰が書いたのかは分からない。同じ一文が、この戦争で何度か出てくる。"
+          "IRONBACK機は被弾し、雲へ消えた。残骸は見つかっていない。",
+          "SKYEYEは記録にこう残した——「……墜ちてない。あれは墜ちてない」",
+          "北方連邦軍の通信は、その夜だけ一度も彼の名を呼ばなかった。"
         ],
-        // Story bible 11. The second base raid of the campaign and the answer
-        // to the first one: NIGHT RAID was a strike the dark hid, this is the
-        // same job done in the open, at noon, with nothing between the player
-        // and a live air-defence network but distance.
+        // Was the "air2" preset (F-22 / F-4 / F-16), written inline so the
+        // wingmen could be picked for this fight rather than inherited. The
+        // ace flies the Felon, the same jet he flies in air2 and in m05's last
+        // wave - the player has to be able to recognise IRONBACK's aircraft on
+        // sight for the callsign to mean anything. 196 HP against the Raptor's
+        // 200 keeps him in the two-missile band he was always in, and the
+        // scripted post-stall is a manoeuvre this airframe is known for.
+        // `band` and `idBase` reproduce air2's, so the HUD target numbers and
+        // the wave's spawn geometry are unchanged.
+        // The duel. Story bible 19: the designated target is the ace and only
+        // the ace - his wingmen are there to be in the way. So totalTargets is
+        // 1, and the moment IRONBACK goes down the sortie is over no matter
+        // how many Fishbeds are still circling.
         //
-        // The read is inverted from m-night in one specific way. There the
-        // fighters were an afterthought scrambling off a base already burning;
-        // here the base is a fighter station that is awake, so the interference
-        // arrives in strength and keeps arriving. What does NOT change is which
-        // half of the board is the mission: the twelve installations are the
-        // designated list and not one aircraft is on it.
+        // Six of them, in three batches on a clock, so the fight never settles
+        // into a clean one-versus-one: something arrives roughly every 50
+        // seconds to spoil a gun solution. All trash-role - the interference
+        // has to be interference, not a second fight.
         //
-        // 12 TGT against 19 non-TGT fighters. The guideline ratio (1:1.5-2) is
-        // written for missions whose TGT list is aircraft; a fixed piece of
-        // terrain is a different shape, and m-night's note explains why. This
-        // one still lands inside the band at 1:1.58 - the airbase is supposed
-        // to be the hardest ground target in the campaign so far, and the way
-        // that is expressed is air cover, not tougher buildings.
-        //
-        // Every entry after the first is `concurrent`: a non-TGT wave that is
-        // not concurrent would never spawn at all, because the sequence only
-        // advances when the designated targets are gone - and by then the
-        // sortie is over. Same constraint m-night and m-convoy work under.
+        // `idBase: 3` keeps the ace on TGT 4, the number this mission has
+        // always printed for him.
         sequence: [
-          // Already up when the player arrives - a standing patrol over its own
-          // field, which is what an alert fighter station looks like at noon.
+          { types: ["su57"], ace: true, band: 2, idBase: 3 },
           {
-            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "BARCAP",
-            role: "trash",
+            types: ["mig29", "mig29"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash", idBase: 0,
             radio: [
-              { speaker: "wingman", text: "基地上空にCAPだ、3機！ 付き合うな——狙いは滑走路とSAMだぞ！", id: "desert-barcap" }
+              { speaker: "wingman", text: "僚機が2機付いてる！ そっちは相手にするな——狙いはIRONBACKだけだ！", id: "m04-wingmen" }
             ]
           },
-          // Scrambled off the field the player is attacking. Deliberately the
-          // earliest reinforcement in any base mission (40s against m-night's
-          // 50): the station is awake, and the first pass has to be paid for.
           {
-            types: ["mig29", "mig23", "mig21"], tgt: false, band: 2, label: "SCRAMBLE",
-            concurrent: true, role: "trash", delay: 40,
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "INTERFERENCE",
+            concurrent: true, role: "trash", delay: 45
+          },
+          {
+            types: ["mig23", "mig21"], tgt: false, band: 2, label: "INTERFERENCE",
+            concurrent: true, role: "trash", delay: 105,
             radio: [
-              { speaker: "wingman", text: "滑走路から上がってきた！ 3機——上は俺が引き受ける、地上を潰せ！", id: "desert-scramble" }
+              { speaker: "wingman", text: "また湧いてきた！ 決着をつけろ、{nickname}——奴を落とせば終わりだ！", id: "m04-interference-2" }
             ]
-          },
-          // The relief flight, from a field the player is not attacking.
-          {
-            types: ["mig23", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ALERT FLIGHT",
-            concurrent: true, role: "trash", delay: 95
-          },
-          // The heaviest batch, and the only one with a Flanker in it. It
-          // arrives around the point where the SAM belt should be down and the
-          // player is working the flight line - i.e. lowest and slowest.
-          {
-            types: ["su33", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SECOND SCRAMBLE",
-            concurrent: true, role: "trash", delay: 160,
-            radio: [
-              { speaker: "command", text: "HAMMER 1、砂塵の中に新たな機影——4機、うち1機は重い。高度を捨てるな。", id: "desert-second-scramble" }
-            ]
-          },
-          // The last of it. Authored, finite, and timed so a player working at
-          // par has the base nearly down before it lands.
-          {
-            types: ["mig29", "mig21", "mig21", "mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
-            concurrent: true, role: "trash", delay: 240
           }
         ],
-        // Twelve ground kills at ground-attack pace, flown through nineteen
-        // fighters that never have to be engaged, on a map with no cover. Par
-        // sits between m-night's 330 (eleven targets, ten fighters, and the
-        // dark to hide in) and m-convoy's scoring pressure.
-        parTime: 360,
+        parTime: 165,
         hasOutro: false,
-        map: { x: 0.24, y: 0.82 },
-        // The airbase, laid out on the sand pan centred at (0, -1500).
-        //
-        // ★ Every unit here is inside 1500m of the pan centre. That is not a
-        // stylistic choice, it is the sinking gate. The plateau mesh is an
-        // elliptical, angularly-displaced cone whose flat top ends between
-        // ~0.62r and ~0.96r depending on bearing (measured by radial scan);
-        // authoring against the nominal 3000m radius is exactly how the first
-        // draft of this layout ended up with nine of twelve structures standing
-        // on open water. 1500m clears the flat top on the WORST bearing with
-        // 100m to spare. The pan's own height is 8m for the second half of the
-        // gate - see the plateau note in desertBasin - so the 0.92h clamp in
-        // surfaceHeightAt costs 0.64m rather than m-night's 7.36m, and nothing
-        // here is buried. debug.groundProbe() measures both numbers per unit.
-        //
-        // The shape is a strike corridor, not a compound: the player runs in
-        // from +Z, meets the SAM belt first, then the radars, then the guns,
-        // and the flight line is last and deepest. Killing the near belt buys
-        // the altitude to work the rest, which is the mission's whole lesson.
-        groundUnits: [
-          // --- The SAM belt. Nearest the ingress and spread 2.4km wide, so no
-          // single pass defeats more than two of them and the player has to
-          // come back around into a net that is still partly alive.
-          { id: 21, type: "samSite", x: -1180, z: -640, heading: 2.72 },
-          { id: 22, type: "samSite", x: -40, z: -380, heading: 3.1 },
-          { id: 23, type: "samSite", x: 1150, z: -700, heading: -2.66 },
-          { id: 24, type: "samSite", x: 1420, z: -1720, heading: -1.62 },
-          // --- Radar. The net the SAMs see through, set behind the belt.
-          { id: 25, type: "radarSite", x: -700, z: -1250, heading: 2.4 },
-          { id: 26, type: "radarSite", x: 780, z: -1280, heading: -2.4 },
-          // --- Guns, ringing the flight line at the range they are dangerous
-          // at (600m), so the last strafing pass is the expensive one.
-          { id: 27, type: "aaGun", x: -1140, z: -1900, heading: 1.6 },
-          { id: 28, type: "aaGun", x: 20, z: -1680, heading: 3.1 },
-          { id: 29, type: "aaGun", x: 1100, z: -2140, heading: -1.5 },
-          // --- The flight line, deepest: two hardened shelters and the fuel
-          // farm they feed, packed well inside the 90m cook-off radius so the
-          // farm chains into the shelters the way the night base's tanks do.
-          { id: 30, type: "bunker", x: -300, z: -2420, heading: 0.06 },
-          { id: 31, type: "bunker", x: 260, z: -2450, heading: -0.06 },
-          { id: 32, type: "fuelTank", x: -20, z: -2440, heading: 0 }
+        map: { x: 0.42, y: 0.65 },
+        briefing: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入した。\n奴は今まで12機を墜としている。次を君にするな。\n指定目標はIRONBACK機ただ1機。僚機は次々に上がってくるが、相手をする必要はない。\n奴らは決闘を邪魔しに来るだけだ。振り切って、本命を落とせ。"
+      },
+      {
+        key: "m05",
+        world: "archipelagoDay",
+        title: "FINAL SORTIE",
+        jp: "総力戦。敵航空戦力とIRONBACK、続いて敵艦隊——全てを叩き、空と海を取り戻す。",
+        act: 4,
+        storyNo: 20,
+        story: "総力戦。ここを凌げば、この海の戦争は終わる。\n塔は、まだ立っている。",
+        epilogue: [
+          "北方連邦軍、全戦線で撤退を開始。BABELは無傷のまま残った。",
+          "アルバン技師長は泣いて喜んだ。これでもう誰も撃たなくて済む、と。SKYEYEは何も言わなかった。",
+          "この海の全ての空が、一つの管制の下に入った。命令書の署名だけが、最後まで誰のものか分からないままだ。"
         ],
-        // Centred between the spawn (z +620) and the flight line (z -2450)
-        // rather than on the pan, so the whole run sits inside the 90% ring.
-        battleCenter: { x: 0, z: -1200 },
-        battleRadius: 7500,
-        briefing: "砂漠を越えた内陸に、敵の航空基地がある。夜の闇は無い——真昼の、遮る物のない空だ。\n地表は砂塵で霞んでいる。だが向こうもこちらを見ている。奇襲は成立しない。\n指定目標は地上の12目標——SAMサイト4、レーダー2、対空砲3、掩体壕2、燃料庫1。\nSAM網を先に剥がせ。射線が通ったままの低空侵入は自殺行為だ。\n基地上空にはCAPが張り付き、滑走路からも次々と上がってくる。だが奴らは目標ではない。\n迎撃機は全部で19機来る。全て相手にすれば弾が尽きる——飛行場を潰せば終わりだ。",
-        introRadio: [
-          { speaker: "command", text: "砂漠の航空基地を制圧する——まずSAM網を剥がせ。", id: "desert-brief" },
-          { speaker: "wingman", text: "遮蔽物ゼロ、砂塵で足元も見えん。低く入るならSAMを先に黙らせろよ！", id: "desert-brief-wing" }
-        ]
-      }
-    ].map((mission) => {
+        // Late-campaign difficulty: an ace in the second wave (as it always
+        // had) and a second one leading the fleet's CAP, so the last leg is
+        // not a pure ground-attack run any more.
+        sequence: [
+          // Vanguard. Two designated leaders and a flight of trash behind them.
+          { types: ["mig29", "su33"], band: 1, label: "VANGUARD" },
+          {
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          // IRONBACK, alone on the TGT list exactly as in his own sortie.
+          { types: ["su57"], ace: true, band: 2 },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "REINFORCEMENT",
+            concurrent: true, role: "trash", delay: 55
+          },
+          // Written inline rather than as the "naval" preset so it takes the
+          // next free id block: this sortie now spawns enough contacts ahead of
+          // the fleet that the preset's pinned 7-11 would collide with them.
+          { kind: "naval", band: 3, label: "FLEET" },
+          // The fleet's own CAP, led by a second ace. Su-35S over Su-33 is the
+          // enemy's best pair and lands within 3% of the F-22/F-15 it replaces
+          // (361 HP against 350), so the last leg is as hard as it was. Left at
+          // line/ace role - LONGBOW is not interference, he is a reason to
+          // stay high.
+          { types: ["su35", "su33"], ace: "longbow", tgt: false, band: 2, label: "FLEET CAP", concurrent: true },
+          {
+            types: ["mig21", "mig21", "mig29"], tgt: false, band: 1, label: "DECK LAUNCH",
+            concurrent: true, role: "trash", delay: 80
+          },
+          // The last thing the campaign puts in front of the player. Su-57 in
+          // the ace slot is the hardest single opponent in the game: turn 40 -
+          // past the player Raptor's 39 - with ACE_TURN_SCALE 1.2 on top of it,
+          // the longest engage envelope of any fighter, and the best missile in
+          // ENEMY_MISSILE_PROFILES. Its wingman is the one airframe that
+          // out-turns it, so breaking away from the Felon flies the player into
+          // the Berkut. Both are two-missile hulls, which is the concession -
+          // this wave is meant to be hard to hit, not long to grind down.
+          { types: ["su57", "su47"], ace: "vulture", band: 2, label: "FELON" },
+          // The last wave is eight aircraft on the board at once - the two
+          // designated Felon-flight jets plus six trash - which is the
+          // "総力戦" the finale is named for. The trash is what makes eight
+          // survivable: six aircraft flying at 0.75 turn with missiles at half
+          // cadence is pressure, not a second pair of aces.
+          {
+            types: ["mig29", "mig21", "mig21", "mig21"], tgt: false, band: 2, label: "SICKLE",
+            concurrent: true, role: "trash"
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "LAST FLIGHT",
+            concurrent: true, role: "trash", delay: 45
+          }
+        ],
+        parTime: 620,
+        hasOutro: true,
+        map: { x: 0.8, y: 0.34 },
+        briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n指定目標は10。先導機2、IRONBACK、艦隊5隻、そして最後のSu-57編隊だ。\nそれ以外は全て雑魚だ。数は多いが腕は素人——付き合えば時間だけが溶ける。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
+      }].map((mission) => {
       const waves = Object.freeze(mission.sequence.map(normalizeWaveEntry));
       // One frozen path per mission, whether the mission calls it a road
       // (IRON COLUMN) or a rail line (STEEL SNAKE). Every vehicle in the
