@@ -3761,6 +3761,116 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             distance: [1200, 3000]
           }
         }
+      },
+
+      // Night city. A coastal metropolis on one broad flat island - the spec's
+      // own answer to "the city cannot sit on water" - flown at rooftop height
+      // with tracer going up past the towers.
+      //
+      // Every light in this map is a *look*, not a THREE light: the window
+      // grids are unlit MeshBasic textures, the streets are a texture, the
+      // street glow is additive Points. The map runs on the same two
+      // directional lights + hemisphere every other preset has, which is the
+      // contract that keeps 60fps. Added draw calls: 4 (streets, low-rise,
+      // towers, glow).
+      cityLights: {
+        label: "CITY LIGHTS",
+        clearColor: 0x0a1018,
+        // Night sky, but the horizon band (stop 0.5) is dirtied warm: that is
+        // the city's own light bouncing off the haze, and it is what tells the
+        // player there is a town down there before they can see a single window.
+        sky: [[0, "#02060f"], [0.3, "#071120"], [0.46, "#152233"], [0.5, "#3a3320"], [0.56, "#101a28"], [1, "#050a12"]],
+        // Longer than the night base: the city is 2km down-track and has to
+        // read as a glow on the horizon from the spawn, not appear at 800m.
+        fog: { color: 0x121c28, near: 620, far: 3600 },
+        sun: null,
+        moon: {
+          position: [1500, 1050, -2600], color: 0xdfe8f5, radius: 58,
+          glare: [
+            { scale: 700, color: 0xc6d8ff, opacity: 0.3 },
+            { scale: 200, color: 0xffffff, opacity: 0.78 }
+          ]
+        },
+        stars: { count: 380, radius: 3200, size: 2.4, seed: 0x2c17e5, color: 0xdfe9ff, warm: 0xffd7b0 },
+        sunRoad: {
+          color: 0xbfd4ff, opacity: 0.2, width: 400, length: 3000,
+          rotationY: Math.atan2(-1500, 2600), position: [900, 0.4, -1500]
+        },
+        ocean: {
+          base: "#060d14", bright: "120, 150, 190", dark: "2, 5, 9",
+          repeat: 26, roughness: 0.28, metalness: 0.35
+        },
+        // `fill` is the trick that pays for the whole map: an orange key from
+        // BELOW the horizon (negative y) throws warm light up onto the bellies
+        // of everything flying over the district. That is the city lighting the
+        // sortie - with zero extra lights.
+        lights: {
+          hemi: { sky: 0x2a3a52, ground: 0x2a1c0c, intensity: 0.8 },
+          key: { color: 0xbccce8, intensity: 0.45, position: [1500, 1050, -900] },
+          fill: { color: 0xffa64a, intensity: 0.46, position: [-300, -260, 900] }
+        },
+        // The ring is pushed out to 4300m+ so no peak can ever land on the city
+        // island: the plateau's displaced skirt reaches 1789m and the nearest
+        // peak clears it by 867m. Verified against createWorld's own RNG draw
+        // order before the numbers were written here.
+        mountains: {
+          count: 3, radius: [200, 320], height: [110, 180], distance: [4300, 4900],
+          snowyAbove: 999, snowLine: 0.7, roughness: 0.94,
+          palette: { low: 0x141a22, mid: 0x1a212b, rock: 0x222a35, peak: 0x2a323e, snow: 0x3a4048 },
+          corridor: null,
+          // The city island. Flat-topped and very wide - the same plateau
+          // device the night base uses, scaled up to take a district. The
+          // measured flat top is 840m in its narrowest direction, which is what
+          // caps `city.radius` below.
+          plateau: { radius: [1300, 1300], height: [40, 40], topRadius: 0.95, at: [0, -2000], snowyAbove: 9999 }
+        },
+        islands: { count: 4, stone: 0x151b22, green: 0x121a16 },
+        clouds: {
+          scale: 0.9, hero: false, color: 0x24303f, opacity: 0.42,
+          cirrusColor: 0x2a3646, cirrusOpacity: 0.18
+        },
+        decor: {
+          seed: 0x5c1a07,
+          // Fences the whole city island: no scenery island, rock or distant
+          // light cluster may land on the district or hide an AA battery.
+          keepClear: [{ x: 0, z: -2000, r: 1900 }],
+          shore: { sand: 0x2e3a4e, shallow: 0x1c2740, opacity: 0.26, width: 1.18 },
+          trees: null,
+          extraIslands: {
+            count: 7, radius: [130, 280], height: [30, 80], distance: [2400, 3300]
+          },
+          // Suburbs across the water. Same device as the night base, kept well
+          // outside the island so the two never read as one place.
+          cityLights: {
+            clusters: 4, perCluster: 22, spread: 240, color: 0xffcf8a,
+            cold: 0x9fc4ff, size: 5.5, minDistance: 2600, maxDistance: 3300
+          },
+          rocks: { count: 12, color: 0x0e141d, scale: [6, 18] },
+          extraClouds: {
+            towers: 2, towerSize: [70, 110], towerBase: 700,
+            stratus: 6, stratusSize: [200, 340], stratusBase: 1500,
+            distance: [1600, 3200]
+          }
+        },
+        // ---- The district itself (only this preset has it) ----------------
+        // The city's centre is the plateau's `at` above - one source of truth,
+        // measured back out of the built geometry. radius must stay under the
+        // plateau's narrowest flat-top radius (840m) or blocks on the far side
+        // hang off the edge, and roadPitch has to divide radius exactly, which
+        // is what keeps the street texture's tiling aligned with the block grid.
+        city: {
+          radius: 800, roadPitch: 200, roadWidth: 34,
+          seed: 0x71c17a,
+          // Downtown towers vs. the low-rise that fills the rest. The tallest
+          // `colliders` towers are the only ones that are solid (§6-4): the
+          // low city is flown through, the skyline is not.
+          towerHeight: [95, 205], lowHeight: [22, 72], colliders: 24,
+          glowPoints: 130,
+          // Open plazas the block generator skips. m-city parks its AA
+          // batteries on exactly these spots, so a gun can never be spawned
+          // inside a tower.
+          plazas: [[0, -2000], [-520, -2360], [470, -2300], [-430, -1620], [520, -1660], [0, -2620]]
+        }
       }
     });
 
@@ -13855,6 +13965,11 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         vertexColors: true, roughness: mountainConfig.roughness, metalness: 0
       }));
       const mountains = [];
+      // Filled in when the preset has a plateau: the exact world height of its
+      // flat top and how far that top reaches in its narrowest direction. The
+      // city build needs both, and neither can be derived from the config - the
+      // angular displacement is drawn from the RNG inside the geometry builder.
+      let plateauTop = null;
       const mountainTotal = corridorSlots.length + mountainConfig.count + (mountainConfig.plateau ? 1 : 0);
       for (let i = 0; i < mountainTotal; i += 1) {
         const slot = i < corridorSlots.length ? corridorSlots[i] : null;
@@ -13863,11 +13978,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         const radius = shape.radius[0] + rng() * (shape.radius[1] - shape.radius[0]);
         const height = shape.height[0] + rng() * (shape.height[1] - shape.height[0]);
         const snowy = height > shape.snowyAbove;
-        const mountain = new THREE.Mesh(keepGeometry(buildMountainGeometry(rng, snowy, {
+        const relief = keepGeometry(buildMountainGeometry(rng, snowy, {
           palette: mountainConfig.palette,
           snowLine: mountainConfig.snowLine,
           topRadius: plateau ? plateau.topRadius : 0.08
-        })), mountainMaterial);
+        }));
+        const mountain = new THREE.Mesh(relief, mountainMaterial);
         const depth = radius * (0.75 + rng() * 0.35);
         mountain.scale.set(radius, height, depth);
         mountain.rotation.y = rng() * Math.PI * 2;
@@ -13886,9 +14002,34 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         addRoot(mountain);
         mountains.push({
           x: mountain.position.x, z: mountain.position.z,
-          r: Math.max(radius, depth) * 0.85, h: height * 0.92,
+          r: Math.max(radius, depth) * 0.85,
+          // A peak's collision cap sits just under its summit on purpose. A
+          // plateau's does not: its top is a single flat cap at y = height, and
+          // capping 8% lower is what used to bury every structure placed on it
+          // (surfaceHeightAt clamps to this value).
+          h: plateau ? height : height * 0.92,
           mesh: mountain
         });
+        if (plateau) {
+          // The cap ring is the only set of vertices at y = 1. Its world radius
+          // varies with the angular displacement and the elliptical x/z scale,
+          // so the usable flat top is the MINIMUM over that ring. The cap's
+          // centre vertex sits at x = z = 0 and has to be skipped, or the
+          // "narrowest radius" is always zero.
+          const position = relief.attributes.position;
+          let narrowest = Infinity;
+          for (let v = 0; v < position.count; v += 1) {
+            if (position.getY(v) < 0.999) continue;
+            const lx = position.getX(v);
+            const lz = position.getZ(v);
+            if (Math.hypot(lx, lz) < 0.05) continue;
+            narrowest = Math.min(narrowest, Math.hypot(lx * radius, lz * depth));
+          }
+          plateauTop = {
+            x: mountain.position.x, z: mountain.position.z,
+            y: height, flatRadius: Number.isFinite(narrowest) ? narrowest : 0
+          };
+        }
       }
 
       // Small scenery islands. Four silhouettes instead of one so a look down
@@ -14499,9 +14640,191 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         }
       }
 
+      // ---- CITY LIGHTS district (M9 batch D) ----------------------------
+      // Only the cityLights preset carries `city`. Like the decoration pass
+      // this runs on its own RNG stream and strictly last, so it can never
+      // shift a mountain, island or cloud on any map.
+      //
+      // Four added draw calls and ZERO added lights - the contract every other
+      // preset keeps (§6-0 of the spec). Windows, streets and lamps are all
+      // unlit MeshBasic/Points: at night a window is a constant emitter, so
+      // there is nothing for a light to compute.
+      //   streets   1 x Mesh          canvas road-grid texture on one disc
+      //   low-rise  1 x InstancedMesh ~200 boxes, one window texture
+      //   towers    1 x InstancedMesh ~50 boxes, taller window texture
+      //   lamp glow 1 x Points        additive, small, along the streets
+      const buildings = [];
+      let cityFloor = null;
+      if (preset.city && plateauTop) {
+        const cfg = preset.city;
+        const cityRng = mulberry32(cfg.seed);
+        const cityX = plateauTop.x;
+        const cityZ = plateauTop.z;
+        // Never wider than the measured flat top, or blocks on the narrow side
+        // of the island hang over the slope.
+        const cityRadius = Math.min(cfg.radius, Math.max(0, plateauTop.flatRadius - 40));
+        // The street deck sits a hair above the plateau cap so it cannot
+        // z-fight it. Ground units placed by surfaceHeightAt land on the cap
+        // itself, 0.25m under the asphalt - invisible on a 8m gun.
+        const deck = plateauTop.y + 0.25;
+        const pitch = cfg.roadPitch;
+        const plazas = cfg.plazas || [];
+
+        // Streets: one disc, one texture. The tiling is what makes the grid,
+        // so the texture draws a HALF road along each of its four edges -
+        // neighbouring tiles then join into one full-width road at every block
+        // boundary, whichever way the UVs happen to be flipped.
+        const streetTexture = keepTexture(makeCityStreetTexture(cityRng, cfg.roadWidth / pitch));
+        streetTexture.wrapS = THREE.RepeatWrapping;
+        streetTexture.wrapT = THREE.RepeatWrapping;
+        streetTexture.repeat.set((cityRadius * 2) / pitch, (cityRadius * 2) / pitch);
+        const streetGeometry = keepGeometry(new THREE.CircleGeometry(cityRadius, 64));
+        streetGeometry.rotateX(-Math.PI / 2);
+        const streets = new THREE.Mesh(streetGeometry, keepMaterial(new THREE.MeshBasicMaterial({
+          map: streetTexture
+        })));
+        streets.position.set(cityX, deck, cityZ);
+        addRoot(streets);
+
+        // Block layout. Roads run on x = centre + n*pitch and z = centre +
+        // n*pitch (that is where the texture's tile seams land), so a block's
+        // centre is half a pitch off the grid and each block is subdivided
+        // into a 3x3 of lots.
+        const lots = { low: [], tower: [] };
+        const usable = pitch * 0.5 - cfg.roadWidth * 0.5 - 6;
+        const cells = Math.ceil(cityRadius / pitch);
+        for (let gx = -cells; gx < cells; gx += 1) {
+          for (let gz = -cells; gz < cells; gz += 1) {
+            const blockX = cityX + (gx + 0.5) * pitch;
+            const blockZ = cityZ + (gz + 0.5) * pitch;
+            // The whole block has to be inside the disc, corners included.
+            if (Math.hypot(blockX - cityX, blockZ - cityZ) > cityRadius - pitch * 0.55) continue;
+            for (let lx = 0; lx < 3; lx += 1) {
+              for (let lz = 0; lz < 3; lz += 1) {
+                // Vacant lots: car parks and yards. Without them the district
+                // reads as a solid extruded checkerboard.
+                if (cityRng() < 0.1) continue;
+                const lotX = blockX + (lx - 1) * usable * 0.66;
+                const lotZ = blockZ + (lz - 1) * usable * 0.66;
+                let inPlaza = false;
+                for (const plaza of plazas) {
+                  if (Math.hypot(lotX - plaza[0], lotZ - plaza[1]) < 70) { inPlaza = true; break; }
+                }
+                if (inPlaza) continue;
+                const jitterX = lotX + (cityRng() - 0.5) * 8;
+                const jitterZ = lotZ + (cityRng() - 0.5) * 8;
+                const fromCentre = Math.hypot(jitterX - cityX, jitterZ - cityZ);
+                // 1 downtown, 0 at the waterfront. Towers cluster on it, and
+                // the tallest of them are drawn from the top of the range.
+                const core = THREE.MathUtils.clamp(1 - fromCentre / cityRadius, 0, 1);
+                const towerChance = core > 0.4 ? (core - 0.4) / 0.6 * 0.55 : 0;
+                const isTower = cityRng() < towerChance;
+                const height = isTower
+                  ? cfg.towerHeight[0] + cityRng() * (cfg.towerHeight[1] - cfg.towerHeight[0]) * (0.45 + core * 0.55)
+                  : cfg.lowHeight[0] + cityRng() * (cfg.lowHeight[1] - cfg.lowHeight[0]);
+                const width = (isTower ? 26 : 20) + cityRng() * (isTower ? 16 : 22);
+                const depthSize = width * (0.72 + cityRng() * 0.5);
+                (isTower ? lots.tower : lots.low).push({
+                  x: jitterX, z: jitterZ, w: width, d: depthSize, h: height,
+                  spin: (cityRng() - 0.5) * 0.16
+                });
+              }
+            }
+          }
+        }
+
+        // One box for every building on the map. Its top and bottom faces are
+        // parked on the texture's unlit podium band, so a roof seen from above
+        // is dark concrete instead of a stretched window grid - which matters,
+        // because looking down at roofs is most of what this map is.
+        const boxGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+        const boxUv = boxGeometry.attributes.uv;
+        for (let v = 8; v < 16; v += 1) boxUv.setXY(v, 0.5, 0.03);
+        boxUv.needsUpdate = true;
+
+        const buildClass = (list, cols, rows, wall) => {
+          if (list.length === 0) return;
+          const texture = keepTexture(makeCityWindowTexture(cityRng, cols, rows, wall));
+          const mesh = new THREE.InstancedMesh(
+            boxGeometry,
+            keepMaterial(new THREE.MeshBasicMaterial({ map: texture })),
+            list.length
+          );
+          const matrix = new THREE.Matrix4();
+          const spin = new THREE.Quaternion();
+          const at = new THREE.Vector3();
+          const size = new THREE.Vector3();
+          for (let i = 0; i < list.length; i += 1) {
+            const lot = list[i];
+            spin.setFromAxisAngle(WORLD_UP, lot.spin);
+            at.set(lot.x, deck + lot.h * 0.5, lot.z);
+            size.set(lot.w, lot.h, lot.d);
+            mesh.setMatrixAt(i, matrix.compose(at, spin, size));
+          }
+          mesh.instanceMatrix.needsUpdate = true;
+          addRoot(mesh);
+        };
+        buildClass(lots.low, 5, 9, "#0d131b");
+        buildClass(lots.tower, 7, 26, "#0b1017");
+
+        // Solid skyline. Putting a collider on all ~260 buildings would cost a
+        // per-frame loop the size of the district for no gain: the low city is
+        // meant to be flown through, and it is the towers that make a low pass
+        // feel dangerous. Tallest first (§6-4).
+        const tallest = [...lots.tower].sort((a, b) => b.h - a.h);
+        for (const lot of tallest.slice(0, cfg.colliders)) {
+          buildings.push({ x: lot.x, z: lot.z, r: Math.max(lot.w, lot.d) * 0.58, h: deck + lot.h });
+        }
+        let skyline = 0;
+        for (const lot of lots.tower) skyline = Math.max(skyline, deck + lot.h);
+        for (const lot of lots.low) skyline = Math.max(skyline, deck + lot.h);
+        // The AI cannot see buildings - they are not terrain - so one disc over
+        // the whole district acts as its floor and keeps every aircraft above
+        // the rooftops (§6-4). Ground units are unaffected: they never consult
+        // terrainFloorAt.
+        cityFloor = { x: cityX, z: cityZ, r: cityRadius + 140, h: skyline + 15 };
+
+        // Street haze: small additive points strung along the roads. Deliberately
+        // tiny and few - 90-130 overlapping sprites is the one thing on this map
+        // that could actually cost fill rate.
+        const lampCount = cfg.glowPoints;
+        const lampPositions = new Float32Array(lampCount * 3);
+        const lampColors = new Float32Array(lampCount * 3);
+        const lampTint = new THREE.Color();
+        let lamps = 0;
+        for (let i = 0; i < lampCount; i += 1) {
+          const alongZ = cityRng() > 0.5;
+          const line = (Math.floor(cityRng() * (cells * 2 + 1)) - cells) * pitch;
+          const run = (cityRng() - 0.5) * 2 * cityRadius;
+          const lx = cityX + (alongZ ? line : run);
+          const lz = cityZ + (alongZ ? run : line);
+          if (Math.hypot(lx - cityX, lz - cityZ) > cityRadius - 30) continue;
+          lampPositions[lamps * 3] = lx;
+          lampPositions[lamps * 3 + 1] = deck + 7;
+          lampPositions[lamps * 3 + 2] = lz;
+          lampTint.setHex(cityRng() > 0.82 ? 0xa8d0ff : 0xffc879);
+          const shade = 0.5 + cityRng() * 0.5;
+          lampColors[lamps * 3] = lampTint.r * shade;
+          lampColors[lamps * 3 + 1] = lampTint.g * shade;
+          lampColors[lamps * 3 + 2] = lampTint.b * shade;
+          lamps += 1;
+        }
+        if (lamps > 0) {
+          const lampGeometry = keepGeometry(new THREE.BufferGeometry());
+          lampGeometry.setAttribute("position", new THREE.BufferAttribute(lampPositions.subarray(0, lamps * 3), 3));
+          lampGeometry.setAttribute("color", new THREE.BufferAttribute(lampColors.subarray(0, lamps * 3), 3));
+          const lampField = new THREE.Points(lampGeometry, keepMaterial(new THREE.PointsMaterial({
+            size: 4.5, sizeAttenuation: false, vertexColors: true,
+            transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending,
+            depthWrite: false
+          })));
+          addRoot(lampField);
+        }
+      }
+
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, cloudVolumes, mountains,
-        ocean, oceanTileSize, sunRoad,
+        ocean, oceanTileSize, sunRoad, buildings, cityFloor,
         roots, geometries, materials, textures
       };
     }
