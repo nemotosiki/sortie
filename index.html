@@ -149,6 +149,36 @@
 
     #tgtRemainRow.cleared .hudVal { color: #78ff9d; }
 
+    /* What the sortie is defending, on the sorties that defend something.
+       Blue, the friendly colour used by the radar blips and the HUD diamonds,
+       so the row reads as "ours" at a glance and is never confused with the
+       red TGT counter directly above it. Hidden outright on every other
+       mission - an escort readout on a mission with nothing to escort is
+       noise. Turns red once the guarded force is one loss from gone. */
+    #guardRow.hidden { display: none; }
+
+    .hudBox.guardBox {
+      border-color: rgba(120, 190, 255, 0.85);
+      color: #78beff;
+    }
+
+    #guardRow .hudVal { color: #78beff; }
+
+    #guardRow.critical .hudBox.guardBox {
+      border-color: rgba(255, 89, 104, 0.9);
+      color: #ff5968;
+    }
+
+    #guardRow.critical .hudVal {
+      color: #ff5968;
+      animation: guardPulse 0.9s ease-in-out infinite;
+    }
+
+    @keyframes guardPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+
     #flightData {
       left: max(24px, 20vw);
       top: 50%;
@@ -2052,6 +2082,7 @@
       <div class="hudRow"><span class="hudBox">HI</span><strong class="hudVal" id="highscore">0</strong></div>
       <div class="hudRow"><span class="hudBox">KILLS</span><strong class="hudVal" id="kills">0</strong></div>
       <div class="hudRow" id="tgtRemainRow"><span class="hudBox tgtBox">TGT</span><strong class="hudVal" id="tgtRemain">0</strong></div>
+      <div class="hudRow hidden" id="guardRow"><span class="hudBox guardBox" id="guardLabel">ESCORT</span><strong class="hudVal" id="guardVal">0/0</strong></div>
     </section>
 
     <section id="statusPanel" class="panel">
@@ -3711,6 +3742,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // SKILL_TIERS key, independent of the role. Omitted = whatever the
         // role defaults to.
         skill: SKILL_TIERS[entry.skill] ? entry.skill : null,
+        // What this wave is actually flying at. Omitted (the default, and the
+        // only value every mission before the guard sorties uses) means the
+        // player: the enemy has exactly one thing it wants, which is why a
+        // friendly could be invulnerable by construction for ten missions.
+        //
+        // "air" sends the wave after the escorted aircraft, "ship" after the
+        // guarded hull. A hunting flight ignores the player entirely while it
+        // still has a charge to kill - it is intercepted, not engaged - and
+        // falls back to normal player pursuit the moment there is nothing left
+        // of the thing it came for. Nothing else in the AI changes, so a
+        // mission that names no hunt is bit-for-bit the mission it was.
+        hunt: entry.hunt === "air" || entry.hunt === "ship" ? entry.hunt : null,
         radio: entry.radio ? Object.freeze(entry.radio.map(Object.freeze)) : null
       });
     }
@@ -5319,6 +5362,39 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         life: 7.0,
         launchDot: 0.55
       })
+    });
+
+    // The anti-ship round, and the one missile in the game that is never
+    // pointed at an aircraft. Carried by whatever airframe a mission sends
+    // after a guarded hull (`hunt: "ship"`), which is why it is a profile of
+    // its own rather than a table entry: the Bear has no air-to-air missile at
+    // all and the Frogfoot's is a short-legged dogfight round, yet both fly
+    // the same anti-shipping sortie in HOME PLATE and both have to be able to
+    // hurt the carrier.
+    //
+    // Read as the opposite of an AAM in every number: launched from far out
+    // (1800 m, further than an Aegis can shoot back), slow, and barely able to
+    // turn - a cruise missile flies at a ship, it does not chase one. That is
+    // what makes it defeatable by killing the LAUNCHER rather than the round:
+    // 16 s between shots per attacker is the window the player is being given.
+    // 520 damage against the carrier's 4200 is eight hits to sink her.
+    const ANTI_SHIP_MISSILE_PROFILE = Object.freeze({
+      cooldownMin: 16.0,
+      cooldownSpread: 6.0,
+      range: 1800,
+      minRange: 320,
+      speed: 200,
+      maxSpeed: 290,
+      // 34 deg/s is still the laziest seeker in the game by a wide margin (the
+      // dogfight rounds run 44-78) but it is enough to hold a line onto a
+      // target that is not trying to escape. Measured at 20 the round could
+      // not correct its own launch attitude before it ran out of altitude and
+      // went into the sea short of the ship - a missile that cannot hit an
+      // anchored carrier is not a threat, it is scenery.
+      turnRate: THREE.MathUtils.degToRad(34),
+      damage: 520,
+      life: 14,
+      launchDot: 0.55
     });
 
     // Wave 3 surface combatants. Ships have no player analogue, so unlike the
@@ -7846,6 +7922,207 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ]
       },
       {
+        key: "m-escort",
+        world: "archipelagoDay",
+        title: "LIFELINE",
+        jp: "友軍輸送機3機が島嶼線を横断する。敵迎撃機はそれを狙ってくる。輸送隊を守り抜け。",
+        // Campaign 13, and the first sortie in the game where the enemy is not
+        // flying at the player. Story bible: "1機を失うが残りは守り切る" - so
+        // the mission has to be able to end BOTH ways, and the rules say so
+        // rather than the briefing:
+        //   * losing one transport is a score penalty and an S-rank forfeit
+        //   * losing all three is MISSION FAILED
+        // That is the whole design. A player who flies it perfectly and a
+        // player who saves two both finish the sortie, and the difference is
+        // in the debrief instead of in a restart.
+        //
+        // The transports are `vulnerable` friendlies (FRIENDLY_DEPLOYMENTS) on
+        // a 17.7 km crossing at 92 m/s - about 3 minutes of airspace to cover,
+        // which is the mission's real clock. Nothing about ACCOMPLISHED reads
+        // them: the sortie is still won by killing the six designated
+        // interceptors, exactly like every other mission, so the wave machine
+        // and `enemies.some(alive)` are untouched.
+        //
+        // 6 TGT against 11 non-TGT is 1:1.83, the default shape from
+        // spec_wave_variety §4. The split is what makes the mission a
+        // DECISION: only the six designated aircraft fly at the transports,
+        // and the eleven that do not are trying to keep the player away from
+        // them. Chasing the screen is how the convoy dies.
+        sequence: [
+          // Wave 1. Fulcrums, and the aircraft that teaches the mechanic:
+          // they ignore the player outright and run at the transports, so the
+          // first thing the player sees is a fighter turning its back on them.
+          {
+            types: ["mig29", "mig29"], band: 1, idBase: 0, label: "INTERCEPTOR",
+            hunt: "air",
+            radio: [
+              { speaker: "command", text: "SKYEYEより——敵迎撃機、輸送隊へ直行中。こちらには目もくれん。落とせ、HAMMER 1。", id: "escort-hunter-1" }
+            ]
+          },
+          // The screen. Trash-role Fishbeds whose only job is to be between
+          // the player and the interceptors.
+          {
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 1, label: "SCREEN",
+            concurrent: true, role: "trash", idBase: 10,
+            radio: [
+              { speaker: "wingman", text: "護衛が3機、こっちに来るぞ！ 足止め役だ——付き合うな、迎撃機を追え！", id: "escort-screen-1" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "SCREEN",
+            concurrent: true, role: "trash", delay: 45, idBase: 13
+          },
+          // Wave 2. Floggers, on the transports the moment they are on the
+          // board - and the wave the player usually meets while the screen
+          // from wave 1 is still alive behind them.
+          {
+            types: ["mig23", "mig23"], band: 2, idBase: 2, label: "INTERCEPTOR",
+            hunt: "air",
+            radio: [
+              { speaker: "command", text: "第2波、MiG-23が2機。同じだ——輸送隊しか見ていない。", id: "escort-hunter-2" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "SCREEN",
+            concurrent: true, role: "trash", idBase: 15
+          },
+          // The one non-TGT pair with teeth: Fulcrums rather than Fishbeds,
+          // arriving while the player is working wave 2. Still trash-role, so
+          // they are ignorable - but ignoring them costs paint.
+          {
+            types: ["mig29", "mig29"], tgt: false, band: 1, label: "SCREEN",
+            concurrent: true, role: "trash", delay: 35, idBase: 17,
+            radio: [
+              { speaker: "wingman", text: "増援だ、今度はMiG-29！ 数で足止めしてくる気だぞ——輸送隊から離れるな！", id: "escort-screen-2" }
+            ]
+          },
+          // Wave 3. Flanker-Ds, the heaviest hulls in the sortie, and the last
+          // thing between the convoy and the far side of the archipelago.
+          {
+            types: ["su33", "su33"], band: 1, idBase: 4, label: "INTERCEPTOR",
+            hunt: "air",
+            radio: [
+              { speaker: "command", text: "最終波、Su-33が2機。輸送隊はもう少しで空域を抜ける——あと少し保たせろ！", id: "escort-hunter-3" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "SCREEN",
+            concurrent: true, role: "trash", idBase: 19
+          }
+        ],
+        // Six hulls at two missiles each, flown while never straying far from
+        // three aircraft that are crossing the map at 92 m/s. Above m02's 250
+        // because the player cannot simply take the fight wherever they like,
+        // and below m-city's 390 because there is no third stream to catch.
+        parTime: 320,
+        hasOutro: false,
+        map: { x: 0.66, y: 0.20 },
+        // Laid over the crossing, m01 style: the convoy starts at z +1900 and
+        // leaves the area at z -15800, so an origin-centred arena would call
+        // the player out of bounds while they were still doing their job.
+        // Centred midway down the corridor and sized so the spawn, the whole
+        // run and the exit all sit inside the 90% warning ring.
+        battleCenter: { x: 0, z: -6800 },
+        battleRadius: 11200,
+        briefing: "包囲された島嶼守備隊へ、医薬品と弾薬を積んだ輸送機が3機向かう。コールサインLIFELINE。\n奴らは丸腰だ。護衛は君しかいない。\n指定目標は輸送隊を狙う迎撃機6機——MiG-29が2、MiG-23が2、Su-33が2。\n残り11機は君を輸送隊から引き離すための護衛だ。落とす義務は無い。\n1機失っても作戦は続く。だが3機とも墜とされたら、そこで終わりだ。\n迎撃機は君を見ていない。追え。撃たれる前に落とせ。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより。LIFELINE 3機、空域に進入。君の任務は輸送隊の護衛だ——1機も落とさせるな。", id: "escort-brief" },
+          { speaker: "wingman", text: "輸送機は逃げも撃ちもできん。俺たちがいなけりゃ、ただの的だ。……行くぞ、HAMMER 1。", id: "escort-brief-wing" }
+        ]
+      },
+      {
+        key: "m-carrier",
+        world: "sunsetOcean",
+        title: "HOME PLATE",
+        jp: "母艦CV-71 INDEPENDENCEが対艦攻撃を受ける。攻撃機の波状攻撃から母艦を守り切れ。",
+        // Campaign 16, and the mirror of m03: that sortie was the player
+        // sinking a task force, this one is the enemy trying to sink theirs.
+        // The carrier the player has launched from since FLEET DESTRUCTION
+        // stops being scenery here - it has hull integrity, it takes anti-ship
+        // missiles, and if it goes down the sortie is over.
+        //
+        // What makes it a defence rather than a dogfight: the six designated
+        // aircraft are the strike package, they fly at the SHIP and not at the
+        // player, and their round is ANTI_SHIP_MISSILE_PROFILE - launched from
+        // 1800 m, one every ~16 s per attacker, 520 damage against a 4200 HP
+        // hull. Eight hits sink her. The arithmetic is the mission: the player
+        // has to break up launches, not win a merge.
+        //
+        // Frogfoots and Bears rather than fighters, because a strike package
+        // has to LOOK slow and heavy from the cockpit - and because both are
+        // three-missile hulls, so each attacker is a real commitment while
+        // eleven escorts are trying to keep the player off them. 6:11 is
+        // 1:1.83, the default shape.
+        sequence: [
+          // First run-in. Two Frogfoots, already tracking the ship.
+          {
+            types: ["su25", "su25"], band: 1, idBase: 0, label: "STRIKE",
+            hunt: "ship",
+            radio: [
+              { speaker: "command", text: "SKYEYEより全機——対艦攻撃編隊を探知。目標はINDEPENDENCEだ。母艦を守れ！", id: "carrier-strike-1" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash", idBase: 10,
+            radio: [
+              { speaker: "wingman", text: "護衛が張り付いてる！ 相手をしてる暇は無いぞ——攻撃機だ、攻撃機を止めろ！", id: "carrier-escort-1" }
+            ]
+          },
+          {
+            types: ["mig29", "mig29"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash", delay: 40, idBase: 12
+          },
+          // Second run-in: the heavies. A Bear carries the longest-ranged
+          // thing on the board and does not manoeuvre at all - it just keeps
+          // flying at the ship until it is dead.
+          {
+            types: ["tu95", "tu95"], band: 2, idBase: 2, label: "STRIKE",
+            hunt: "ship",
+            radio: [
+              { speaker: "command", text: "第2波、Tu-95が2機——対艦ミサイル母機だ。射点に入られる前に落とせ！", id: "carrier-strike-2" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21", "su33"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash", idBase: 14
+          },
+          {
+            types: ["mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash", delay: 35, idBase: 17
+          },
+          // Last run-in, with the only element in the sortie flown at the full
+          // airframe: a Su-35 pair at `line`. They are not the objective and
+          // never will be - but they are the reason the last two Frogfoots are
+          // hard to reach, and answering them costs hull.
+          {
+            types: ["su25", "su25"], band: 1, idBase: 4, label: "STRIKE",
+            hunt: "ship",
+            radio: [
+              { speaker: "command", text: "最終波だ。攻撃機2、上位掩護にSu-35が2——INDEPENDENCEはもう限界を越えている！", id: "carrier-strike-3" }
+            ]
+          },
+          {
+            types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
+            concurrent: true, role: "line", idBase: 19,
+            radio: [
+              { speaker: "wingman", text: "上からSu-35！ こいつらは本気だ——だが母艦が先だ、攻撃機を優先しろ！", id: "carrier-topcover" }
+            ]
+          }
+        ],
+        // Six 294 HP hulls at three missiles each - the same hull count as
+        // m-city but every one of them armoured - flown while never letting
+        // the fight drift far from a ship that cannot move out of the way.
+        parTime: 340,
+        hasOutro: false,
+        map: { x: 0.86, y: 0.66 },
+        briefing: "母艦CV-71 INDEPENDENCE——君がこの戦争で何度も帰ってきた甲板だ。今日はそこが狙われる。\n敵の対艦攻撃編隊が3波で来る。Su-25が4、Tu-95が2の計6機が指定目標だ。\n奴らは君を見ていない。母艦しか見ていない。1800mから対艦ミサイルを撃ってくる。\n護衛は11機。落とす義務は無いが、張り付かれれば攻撃機に手が届かなくなる。\n被弾は減点で済む。だが沈められたら——帰る場所が無くなる。\n発射母機を落とせ。飛んでくるミサイルを追うな、撃つ前の機体を落とせ。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより。低空に対艦編隊——目標はHOME PLATE、我々の母艦だ。全機、直ちに迎撃せよ。", id: "carrier-brief" },
+          { speaker: "wingman", text: "あの甲板が無くなったら、俺たちは海に降りるしかない。……絶対に沈めさせるな。", id: "carrier-brief-wing" }
+        ]
+      },
+      {
         key: "m-city",
         world: "nightCity",
         title: "CITY LIGHTS",
@@ -8261,6 +8538,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Set for the duration of one spawnMissionWave call and read by the four
     // spawners it fans out to. Ground units set their own flag per unit.
     let spawningTgt = true;
+    // Same relay, for the wave's `hunt` field: null on every wave that is
+    // flying at the player, which is every wave outside the two guard sorties.
+    let spawningHunt = null;
     let lastMissionRank = null;
     // Declared here rather than beside the menu functions: the boot sequence
     // builds both menus, and a `let` further down the module body is still in
@@ -8312,7 +8592,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function computeMissionRank() {
       const par = MISSIONS[currentMissionIndex].parTime;
       const damageRatio = damageTaken / PLAYER_MAX_HEALTH;
-      if (missionElapsed <= par && damageRatio <= 0.25) return "S";
+      // A guard sortie flown perfectly except for the thing it was guarding is
+      // not a perfect sortie. Losing a transport costs the S outright - which
+      // is what makes "1機の損失は減点で済む" a real cost rather than a line
+      // in the briefing - and the carrier does the same once a quarter of the
+      // hull is gone.
+      const guardPerfect = !guardState.active
+        || (guardState.lost === 0 && guardIntegrity() > 0.75);
+      if (missionElapsed <= par && damageRatio <= 0.25 && guardPerfect) return "S";
       if (missionElapsed <= par * 1.35 && damageRatio <= 0.65) return "A";
       if (missionElapsed <= par * 1.8) return "B";
       return "C";
@@ -8534,6 +8821,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       kills: document.getElementById("kills"),
       tgtRemain: document.getElementById("tgtRemain"),
       tgtRemainRow: document.getElementById("tgtRemainRow"),
+      guardRow: document.getElementById("guardRow"),
+      guardLabel: document.getElementById("guardLabel"),
+      guardVal: document.getElementById("guardVal"),
       statusPanel: document.getElementById("statusPanel"),
       missilePips: document.getElementById("missilePips"),
       flarePips: document.getElementById("flarePips"),
@@ -8664,6 +8954,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // behaviour correct everywhere by omission: the ~12 places that walk
     // enemies[] simply never see a friendly.
     const friendlies = [];
+
+    // ---- The guard objective -------------------------------------------
+    //
+    // Set up from the mission's own deployment entry when the sortie starts
+    // (armGuardObjective), and dormant (`active: false`) on every mission that
+    // guards nothing - which is all of them except the two. One rule decides
+    // the sortie:
+    //
+    //     the mission is lost when nothing guarded is left alive
+    //
+    // and both guard missions are that rule with different arithmetic. A
+    // three-ship convoy can lose two and keep flying; a carrier is one hull,
+    // so its first loss is also its last. Neither is special-cased.
+    //
+    // Nothing here gates ACCOMPLISHED. Winning is still "kill every designated
+    // target", exactly as it is everywhere else, so `enemies.some(alive)` and
+    // the wave machine never learn that any of this exists.
+    //
+    // Declared beside friendlies[] rather than beside the friendly code it
+    // belongs to: updateHud() reads it, and the HUD is drawn once during boot,
+    // which is well before a `const` further down the module body would have
+    // been initialised.
+    const guardState = {
+      active: false,
+      readout: "count",
+      label: "ESCORT",
+      total: 0,
+      lost: 0,
+      saved: 0,
+      hits: 0,
+      integrity: 1,
+      lossPenalty: 0,
+      hitPenalty: 0,
+      penalty: 0,
+      failed: false,
+      safeAnnounced: false,
+      config: null
+    };
+
     const missilesInFlight = [];
     const enemyMissiles = [];
     const effects = [];
@@ -9132,6 +9461,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ace: wave.ace,
           role: wave.role || (wave.ace ? "ace" : "line"),
           skill: wave.skill,
+          hunt: wave.hunt || null,
           label: wave.label
         }))
       })),
@@ -9221,6 +9551,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0, mode: "hidden" }
       },
       friendlies: [],
+      // Dormant until a guard sortie arms it. Present from boot so a probe can
+      // read the same shape on every mission.
+      guard: { active: false },
       debug: {
         destroyedEnemies: 0,
         activeParticles: 0,
@@ -9245,6 +9578,73 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Proof by construction that a friendly can never be shot or locked:
         // it is not in the array every weapon and the lock read from. A probe
         // asserts this is 0 rather than trying to shoot the wingman.
+        // The guard objective, for the probe that has to prove BOTH endings
+        // exist: a sortie that loses one transport and keeps flying, and a
+        // sortie that loses all of them and is over.
+        guardProbe: () => ({
+          active: guardState.active,
+          readout: guardState.readout,
+          label: guardState.label,
+          total: guardState.total,
+          lost: guardState.lost,
+          saved: guardState.saved,
+          hits: guardState.hits,
+          penalty: guardState.penalty,
+          failed: guardState.failed,
+          integrity: Number(guardIntegrity().toFixed(4)),
+          units: guardedFriendlies().map((friendly) => ({
+            label: friendly.label,
+            kind: friendly.kind,
+            alive: friendly.alive,
+            retired: Boolean(friendly.retired),
+            hp: Math.max(0, Math.round(friendly.hp)),
+            maxHp: friendly.maxHp
+          })),
+          // Who is actually flying at a friendly right now, and what they are
+          // flying at. An empty list on a guard mission with live TGT means
+          // the hunt AI is not running.
+          hunters: enemies
+            .filter((enemy) => enemy.alive && enemy.hunt)
+            .map((enemy) => ({
+              id: enemy.id,
+              type: enemy.type,
+              tgt: enemy.tgt,
+              hunt: enemy.hunt,
+              charge: enemy.huntRef ? enemy.huntRef.label : null,
+              distanceToCharge: enemy.huntRef
+                ? Number(enemy.group.position.distanceTo(enemy.huntRef.group.position).toFixed(1))
+                : null
+            })),
+          // Rounds in the air that are chasing a friendly rather than the
+          // player. These must never trip the player's missile warning.
+          guardedMissiles: enemyMissiles.filter((missile) => missile.targetFriendly).length
+        }),
+        // Force a guarded friendly to take damage, so the loss and the fail
+        // paths can both be reached in a probe without waiting on the AI's
+        // dice. Returns what is left, or null if there is nothing to hit.
+        forceDamageGuarded: (amount, index = 0) => {
+          const guarded = guardedFriendlies().filter((f) => f.alive && !f.retired);
+          const target = guarded[index];
+          if (!target) return null;
+          damageFriendly(target, amount);
+          return {
+            label: target.label,
+            hp: Math.max(0, Math.round(target.hp)),
+            alive: target.alive,
+            lost: guardState.lost,
+            failed: guardState.failed
+          };
+        },
+        // Put the convoy on its exit point, i.e. fast-forward the crossing, so
+        // the "escort succeeded" path is reachable inside a probe's patience.
+        forceRetireGuarded: () => {
+          const flying = guardedFriendlies().filter((f) => f.alive && !f.retired);
+          for (const friendly of flying) {
+            if (friendly.kind !== "transport") continue;
+            friendly.group.position.copy(friendly.exit);
+          }
+          return { retiring: flying.length, saved: guardState.saved };
+        },
         friendlyLeakProbe: () => ({
           friendlies: friendlies.length,
           // Anything here would be a friendly that had somehow reached the
@@ -11382,6 +11782,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveIdCursor = 0;
       waveTargetsSpawned = 0;
       spawningTgt = true;
+      spawningHunt = null;
+      // Cleared before spawnMissionGround re-arms it, so a sortie flown after
+      // a guard mission starts with no objective rather than the last one's.
+      resetGuardState();
       pendingWaves.length = 0;
       bomberFirstKillFired = false;
       playerSpeed = CRUISE_SPEED;
@@ -12484,13 +12888,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.ccipLabel.textContent = `CCIP · ${Math.round(ccip.distance)}M`;
     }
 
-    function attemptEnemyMissile(enemy) {
+    // Which round this aircraft is carrying for this shot. An anti-shipping
+    // sortie is the one case where the airframe does not decide: a Bear has no
+    // air-to-air entry at all and a Frogfoot's is a short dogfight round, yet
+    // both are flying with a cruise missile under the wing in HOME PLATE.
+    function enemyMissileProfileFor(enemy, charge) {
+      if (charge && charge.kind === "carrier") return ANTI_SHIP_MISSILE_PROFILE;
+      return ENEMY_MISSILE_PROFILES[enemy.type] || null;
+    }
+
+    function attemptEnemyMissile(enemy, charge = null) {
       if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
-      const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+      const profile = enemyMissileProfileFor(enemy, charge);
       if (!profile) return false;
       // Cells shot off means no SAM at all - not a slower one. Checked before
       // anything is built so a silenced ship costs nothing per attempt.
       if (shipVlsSilenced(enemy)) return false;
+
+      // What the round is aimed at. Everything below is written against this
+      // point rather than against the player, which is the whole of what makes
+      // an enemy missile able to be launched at a friendly.
+      const aimAt = charge ? charge.group.position : player.position;
 
       // Skill decides which shots are worth taking. A veteran or an ace will
       // not launch at the ragged edge of the seeker's range or off a bad
@@ -12499,7 +12917,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // exactly the profile's.
       const envelope = enemy.spec.missileEnvelope || 1;
       const launchDot = profile.launchDot * (enemy.spec.missileLaunchDotScale || 1);
-      tmpV1.copy(player.position).sub(enemy.group.position);
+      tmpV1.copy(aimAt).sub(enemy.group.position);
       const distance = tmpV1.length();
       if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range * envelope) return false;
       tmpV1.multiplyScalar(1 / distance);
@@ -12558,12 +12976,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           .addScaledVector(tmpV4, -0.7);
         root.quaternion.copy(enemy.group.quaternion);
       }
+      // A round fired at a friendly leaves the rail already ON the bearing
+      // instead of on the launch aircraft's attitude. Inheriting the attitude
+      // is right for a dogfight round - the shot comes off the nose of a jet
+      // that is pointing at its target anyway, and its 44-78 deg/s seeker
+      // eats the rest - but the geodesic that rotateTowards() flies spends
+      // part of its budget unrolling the launcher's bank, and a slow
+      // anti-ship round measurably could not afford that: it flew its
+      // launcher's dive angle into the water short of the ship. Aiming it at
+      // launch removes the roll from the problem entirely.
+      if (charge) root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
       scene.add(root);
 
       enemyMissileSerial += 1;
       enemyMissilesLaunched += 1;
       if (enemy.surface && !enemy.ground) shipSamLaunched += 1;
-      if (enemy.ground) {
+      if (charge) {
+        // The launch call the guard missions live on. The player cannot see a
+        // missile leave a wing three kilometres away, so the radio is the cue
+        // that the thing they are protecting is under fire right now.
+        triggerRadioLine(
+          "command",
+          charge.kind === "carrier"
+            ? "対艦ミサイル発射を探知！ INDEPENDENCEに向かっている——発射母機を落とせ！"
+            : "敵機がLIFELINEにミサイルを撃った！ 輸送機は回避できない、母機を止めろ！",
+          RADIO_PRIORITY.URGENT,
+          charge.kind === "carrier" ? "guard-asm-launch" : "guard-aam-launch"
+        );
+      } else if (enemy.ground) {
         triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
       } else if (enemy.surface) {
         triggerRadioLine("wingman", "敵艦からミサイル発射！ 垂直発射だ——見えたらブレイクしろ！", RADIO_PRIORITY.NORMAL, "ship-sam");
@@ -12583,7 +13023,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: profile.damage,
         lifeLimit: profile.life,
         life: 0,
-        trailTimer: 0
+        trailTimer: 0,
+        // The friendly this round is chasing, or null for every round in the
+        // game that is chasing the player. Read by updateEnemyMissiles for
+        // guidance and impact, by the flare path (a player's flare cannot
+        // decoy a missile that was never coming for them) and by the missile
+        // warning (the player is not the one being shot at).
+        targetFriendly: charge || null
       });
       createMuzzleFlash(root.position, enemy.spec.tracerColor);
       return true;
@@ -12620,7 +13066,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       sprite.scale.setScalar(9);
       scene.add(sprite);
       activeFlares.push(flare);
-      for (const missile of enemyMissiles) missile.decoy = flare;
+      // A flare decoys the rounds that are chasing the player. It does nothing
+      // for the convoy or the carrier - those rounds were never looking at the
+      // player, so there is nothing to pull off.
+      for (const missile of enemyMissiles) {
+        if (!missile.targetFriendly) missile.decoy = flare;
+      }
       if (!playSfx("missile", 0.34, 1.65)) playTone(1350, 0.12, 0.1, "square");
       playTone(320, 0.3, 0.12, "sawtooth", 0.02);
       showBanner("FLARE · FLARE · FLARE", 0.9, "success");
@@ -12673,6 +13124,59 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const missile = enemyMissiles[i];
         missile.life += dt;
         missile.trailTimer -= dt;
+
+        // A round launched at a friendly flies its own guidance: no decoy (the
+        // flare was never in front of it), a bigger proximity radius for a
+        // ship than for an aircraft, and damageFriendly() on impact.
+        const guarded = missile.targetFriendly;
+        if (guarded) {
+          // The charge is gone - shot down, or across the line and out of the
+          // area. The round has nothing to home on, and it must NOT fall back
+          // to the player: it was never a threat to them and turning it into
+          // one would punish the player for saving the thing it was chasing.
+          if (!guarded.alive || guarded.retired) {
+            createImpactBurst(missile.mesh.position, 0xff684e, 0.48);
+            removeEnemyMissile(i);
+            continue;
+          } else {
+            tmpV1.copy(guarded.group.position).sub(missile.mesh.position);
+            const guardedDistance = tmpV1.length();
+            const hitRadius = guarded.kind === "carrier" ? 60 : 22;
+            if (guardedDistance < hitRadius) {
+              createExplosion(
+                missile.mesh.position,
+                0xff4d45,
+                guarded.kind === "carrier" ? 1.9 : 1.0
+              );
+              damageFriendly(guarded, missile.damage);
+              removeEnemyMissile(i);
+              if (gameState !== STATE_PLAYING) return;
+              continue;
+            }
+            if (guardedDistance > 0.001) {
+              tmpV1.multiplyScalar(1 / guardedDistance);
+              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+              missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+              missile.mesh.quaternion.normalize();
+            }
+            missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed, damping(0.022, dt));
+            forwardOf(missile.mesh, tmpV2);
+            missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
+            if (missile.trailTimer <= 0) {
+              tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.1);
+              createMissileTrailPuff(tmpV3);
+              missile.trailTimer += 0.045;
+            }
+            // Culled against its own target rather than against the player,
+            // who may be nowhere near this engagement.
+            if (missile.life > missile.lifeLimit || missile.mesh.position.y < 0 ||
+                guardedDistance > 3200 || gameState !== STATE_PLAYING) {
+              createImpactBurst(missile.mesh.position, 0xff684e, 0.48);
+              removeEnemyMissile(i);
+            }
+            continue;
+          }
+        }
 
         // A decoyed missile chases its flare and never re-acquires the player;
         // once the flare burns out it just flies straight until timeout.
@@ -12748,6 +13252,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       let bestDistance = Infinity;
       for (const missile of enemyMissiles) {
         if (missile.decoy) continue;
+        // Not the player's problem: an anti-ship round crossing the nose must
+        // not set off MISSILE ALERT and the threat tone.
+        if (missile.targetFriendly) continue;
         tmpV10.copy(missile.mesh.position).sub(player.position);
         const distance = tmpV10.length();
         if (distance < bestDistance) {
@@ -13189,6 +13696,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: spec.behavior,
         tgt: spawningTgt,
+        // "air" / "ship" / null. A hunting aircraft flies at the friendly it
+        // came for and shoots at it instead of at the player - see
+        // huntTargetFor() and the hunt branch in updateEnemies. null is every
+        // aircraft in the campaign outside the two guard sorties, and null
+        // means the AI it always had.
+        hunt: spawningHunt,
+        huntRef: null,
         isAce,
         // The profile itself, so the engage and death calls speak in this
         // pilot's voice rather than a hard-coded one.
@@ -13970,6 +14484,75 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wingman: true,
         carrier: Object.freeze({ x: -2400, z: 1600, heading: Math.PI * 0.8, label: "CV-71 INDEPENDENCE" }),
         airbase: Object.freeze({ x: 120, z: -19800, heading: 0.12, label: "BASE ALPHA", failRadius: 400 })
+      }),
+
+      // ---- Guard sorties ------------------------------------------------
+      // The two deployments whose friendlies CAN be killed. Everything above
+      // this line is invulnerable by omission - `vulnerable` is opt-in per
+      // unit, so the wingman and the four carriers that were scenery before
+      // this existed are still scenery, byte for byte.
+      //
+      // `guard` is what turns a vulnerable friendly into an objective: how
+      // the HUD reads it, what a loss costs, and what the radio says when the
+      // last one is gone. The rule itself is one line and shared by both
+      // missions - the sortie is lost when nothing guarded is left alive -
+      // so "3 transports, lose all 3" and "1 carrier, lose it" are the same
+      // code path with different arithmetic.
+      "m-escort": Object.freeze({
+        wingman: true,
+        // LIFELINE: three unarmed airlifters crossing the archipelago from
+        // z +1900 to z -15800 at 92 m/s, i.e. a little over three minutes of
+        // exposure. `exit` is not a finish line the mission waits on - the
+        // sortie is still won by killing the interceptors - it is where a
+        // transport stops being killable, which is what lets the player
+        // actually SUCCEED at the escort before the shooting is over.
+        transports: Object.freeze({
+          callsign: "LIFELINE",
+          count: 3,
+          vulnerable: true,
+          hp: 340,
+          start: Object.freeze({ x: -150, z: 1900 }),
+          exit: Object.freeze({ x: -150, z: -15800 }),
+          altitude: 820
+        }),
+        guard: Object.freeze({
+          readout: "count",
+          label: "ESCORT",
+          // A transport is worth more than the interceptor that killed it.
+          // Losing one has to be felt in the debrief, because the mission
+          // deliberately refuses to end over it.
+          lossPenalty: 1500,
+          hitPenalty: 0,
+          lossBanner: "TRANSPORT DOWN",
+          failBanner: "CONVOY DESTROYED",
+          lossRadio: "LIFELINE被撃墜！ ……くそ、間に合わなかった。残りを守れ、HAMMER 1！",
+          failRadio: "LIFELINE全機喪失。……輸送隊は全滅だ。作戦失敗——帰投せよ。",
+          safeRadio: "LIFELINE、空域を離脱。守り切ったぞ、HAMMER 1。あとは残敵を片付けるだけだ。"
+        })
+      }),
+      "m-carrier": Object.freeze({
+        wingman: true,
+        // The same hull m03 launches from, in the same spot relative to the
+        // player - the geometry is proven to put the ship in frame on the
+        // first frame - but with hull integrity this time.
+        carrier: Object.freeze({
+          x: -620, z: 900, heading: Math.PI, label: "CV-71 INDEPENDENCE",
+          vulnerable: true, hp: 4200
+        }),
+        playerStart: Object.freeze({ x: 0, y: 200, z: 1500 }),
+        guard: Object.freeze({
+          readout: "integrity",
+          label: "HULL",
+          lossPenalty: 0,
+          // Charged per anti-ship hit. Eight hits is the hull, so a sortie
+          // flown badly enough to nearly lose the ship also loses the rank.
+          hitPenalty: 400,
+          lossBanner: "CARRIER LOST",
+          failBanner: "CARRIER LOST",
+          lossRadio: "",
+          failRadio: "INDEPENDENCE被弾多数——傾いています。総員退艦。……作戦失敗だ、HAMMER 1。",
+          safeRadio: ""
+        })
       })
     });
 
@@ -13994,6 +14577,59 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       sternOffset: 162,
       bowOffset: 168
     });
+
+    // The escorted airlifter. The C-17 hull the enemy transport already uses,
+    // repainted allied for the same reason the carrier is: one silhouette, two
+    // liveries, and the colour is whose it is.
+    //
+    // It flies a straight line and nothing else - no evasion, no reaction to
+    // being shot at. That is deliberate and it is the mission: the transport
+    // cannot save itself, so every bit of the outcome belongs to the player.
+    const FRIENDLY_TRANSPORT_SPEC = Object.freeze({
+      speed: 92,
+      // Line abreast with the wingmen stepped back, so three of them read as a
+      // formation from any angle instead of as one aircraft with copies.
+      spacing: 320,
+      trail: 190,
+      turnK: 0.05,
+      // How close to the exit point counts as out of the area. Generous: the
+      // player should see the convoy leave, not watch it converge on a pixel.
+      arriveRadius: 700,
+      // Livery. The enemy airlifter's grey lifted toward the allied blue-white
+      // the wingman and the friendly carrier already use.
+      theme: Object.freeze({
+        primary: 0xc6d6e4, secondary: 0x5f7690, accent: 0x2b3a4c,
+        canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
+      })
+    });
+
+    // How long a killed friendly stays on screen going down. Long enough to
+    // read as an aircraft falling rather than a marker being deleted.
+    const FRIENDLY_WRECK_TIME = 5.5;
+
+    function resetGuardState() {
+      guardState.active = false;
+      guardState.readout = "count";
+      guardState.label = "ESCORT";
+      guardState.total = 0;
+      guardState.lost = 0;
+      guardState.saved = 0;
+      guardState.hits = 0;
+      guardState.integrity = 1;
+      guardState.lossPenalty = 0;
+      guardState.hitPenalty = 0;
+      guardState.penalty = 0;
+      guardState.failed = false;
+      guardState.safeAnnounced = false;
+      guardState.config = null;
+    }
+
+    // Every friendly the sortie is being scored on. Small enough to walk on
+    // demand (three aircraft at most), so there is no second array to keep in
+    // step with friendlies[].
+    function guardedFriendlies() {
+      return friendlies.filter((friendly) => friendly.vulnerable);
+    }
 
     function spawnFriendlyWingman() {
       // Fixed F-16, per spec: the wingman is set dressing and a radio voice,
@@ -14043,6 +14679,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       group.add(model.group);
       scene.add(group);
 
+      const hp = config.hp || 4200;
       const friendly = {
         kind: "carrier",
         type: "carrier",
@@ -14054,10 +14691,71 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         speed: FRIENDLY_CARRIER_SPEC.cruiseSpeed,
         seed: Math.random() * Math.PI * 2,
         wakeTimer: 0,
-        radarSymbol: "ship"
+        radarSymbol: "ship",
+        // Opt-in, and off unless the deployment asks for it. Four missions
+        // field this hull as scenery and keep doing so.
+        vulnerable: Boolean(config.vulnerable),
+        maxHp: hp,
+        hp,
+        damageSmokeTimer: 0
       };
       friendlies.push(friendly);
       return friendly;
+    }
+
+    // The escorted convoy. One call spawns the whole flight, because the
+    // formation - line abreast, wingmen stepped back - is a property of the
+    // convoy and not of any one aircraft in it.
+    function spawnFriendlyTransports(config) {
+      const count = Math.max(1, config.count || 3);
+      const altitude = config.altitude || 820;
+      const spacing = config.spacing || FRIENDLY_TRANSPORT_SPEC.spacing;
+      const spawned = [];
+      for (let i = 0; i < count; i += 1) {
+        const lateral = (i - (count - 1) / 2) * spacing;
+        // Leader ahead, wingmen stepped back by how far off the centre line
+        // they sit - a shallow vee rather than a rank.
+        const trail = Math.abs(i - (count - 1) / 2) * FRIENDLY_TRANSPORT_SPEC.trail;
+        const group = new THREE.Group();
+        const model = createAircraftModel(FRIENDLY_TRANSPORT_SPEC.theme);
+        group.add(model.group);
+        // No hitbox, exactly like the wingman: nothing the PLAYER shoots can
+        // ever find a friendly. Being killable by the enemy is a property of
+        // the AI's own aim, not of a collider the player's gun could hit.
+        scene.add(group);
+
+        group.position.set(config.start.x + lateral, altitude, config.start.z + trail);
+        const exit = new THREE.Vector3(config.exit.x + lateral, altitude, config.exit.z + trail);
+        tmpV1.copy(exit).sub(group.position).normalize();
+        group.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+
+        const hp = config.hp || 340;
+        const friendly = {
+          kind: "transport",
+          type: "transport",
+          label: `${config.callsign || "LIFELINE"} ${i + 1}`,
+          alive: true,
+          group,
+          model,
+          radarSymbol: "air",
+          vulnerable: config.vulnerable !== false,
+          maxHp: hp,
+          hp,
+          altitude,
+          exit,
+          speed: config.speed || FRIENDLY_TRANSPORT_SPEC.speed,
+          seed: Math.random() * Math.PI * 2,
+          hitFlash: 0,
+          damageSmokeTimer: 0,
+          // Set when it reaches the far side: still alive, no longer a target,
+          // no longer drawn. A saved transport, in one flag.
+          retired: false,
+          wreckTimer: 0
+        };
+        friendlies.push(friendly);
+        spawned.push(friendly);
+      }
+      return spawned;
     }
 
     // Called from spawnMissionGround, i.e. before the first wave, so the m03
@@ -14070,7 +14768,165 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // one up itself.
       if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
+      if (deployment.transports) spawnFriendlyTransports(deployment.transports);
       if (deployment.wingman) spawnFriendlyWingman();
+      // After the spawns, so the objective is counted off what is actually on
+      // the board rather than off what the table asked for.
+      if (deployment.guard) armGuardObjective(deployment.guard);
+    }
+
+    // Turns whatever vulnerable friendlies the deployment put up into the
+    // sortie's guard objective. A deployment with a `guard` block but no
+    // vulnerable unit arms nothing, which is the safe direction to fail in:
+    // the mission simply plays as an ordinary sortie.
+    function armGuardObjective(config) {
+      const guarded = guardedFriendlies();
+      if (guarded.length === 0) return;
+      guardState.active = true;
+      guardState.config = config;
+      guardState.readout = config.readout === "integrity" ? "integrity" : "count";
+      guardState.label = config.label || "ESCORT";
+      guardState.total = guarded.length;
+      guardState.lost = 0;
+      guardState.saved = 0;
+      guardState.hits = 0;
+      guardState.integrity = 1;
+      guardState.lossPenalty = config.lossPenalty || 0;
+      guardState.hitPenalty = config.hitPenalty || 0;
+      guardState.penalty = 0;
+      guardState.failed = false;
+      guardState.safeAnnounced = false;
+    }
+
+    // Total hull left across everything being guarded, 0..1. Reads as "how
+    // much of the convoy is still flying" for a count objective and as "how
+    // much of the ship is left" for the carrier, which is why one number can
+    // drive both readouts.
+    function guardIntegrity() {
+      let hp = 0;
+      let maxHp = 0;
+      for (const friendly of guardedFriendlies()) {
+        maxHp += friendly.maxHp || 0;
+        if (friendly.alive) hp += Math.max(0, friendly.hp || 0);
+      }
+      return maxHp > 0 ? THREE.MathUtils.clamp(hp / maxHp, 0, 1) : 1;
+    }
+
+    // The only way anything in the game hurts a friendly. Called from the two
+    // AI weapon paths and from nowhere else, so a friendly still cannot be
+    // touched by the player's gun, missiles, bombs or collateral.
+    function damageFriendly(friendly, amount) {
+      if (!friendly || !friendly.alive || !friendly.vulnerable || friendly.retired) return;
+      if (gameState !== STATE_PLAYING) return;
+      friendly.hp -= amount;
+      friendly.hitFlash = 0.12;
+      guardState.hits += 1;
+      guardState.integrity = guardIntegrity();
+      // The carrier charges per hit: the sortie is scored on how much of the
+      // ship is left, so every round that gets through has to cost something
+      // even though the hull survives it.
+      if (guardState.active && guardState.hitPenalty > 0) {
+        guardState.penalty += guardState.hitPenalty;
+        score = Math.max(0, score - guardState.hitPenalty);
+        showBanner(`${guardState.label} HIT · -${guardState.hitPenalty} PTS`, 1.7, "danger");
+        cameraShake = Math.min(1.6, cameraShake + 0.3);
+        radioSay(
+          "command",
+          "INDEPENDENCE被弾！ 艦は保っている——だが次は無いぞ、発射母機を止めろ！",
+          RADIO_PRIORITY.URGENT,
+          `guard-hit-${guardState.hits}`
+        );
+      }
+      if (friendly.hp <= 0) destroyFriendly(friendly);
+    }
+
+    function destroyFriendly(friendly) {
+      if (!friendly.alive) return;
+      friendly.alive = false;
+      friendly.hp = 0;
+      friendly.wreckTimer = friendly.kind === "transport" ? FRIENDLY_WRECK_TIME : 0;
+      const scale = friendly.kind === "carrier" ? 4.2 : 2.4;
+      createExplosion(friendly.group.position, 0xffb648, scale);
+      for (let i = 0; i < 4; i += 1) {
+        tmpV9.copy(friendly.group.position);
+        tmpV9.x += (Math.random() - 0.5) * (friendly.kind === "carrier" ? 220 : 40);
+        tmpV9.z += (Math.random() - 0.5) * (friendly.kind === "carrier" ? 220 : 40);
+        tmpV9.y += (Math.random() - 0.5) * 20;
+        createExplosion(tmpV9, 0xff8a3d, scale * 0.6);
+      }
+      playSfx("explosion", 1.0, 0.62);
+      cameraShake = Math.min(1.9, cameraShake + 0.8);
+      // A wreck is not drawn: the hull is hidden immediately for a ship (the
+      // sortie ends on the same frame) and flown down as a burning airframe
+      // for a transport, which updateFriendlyWreck does.
+      if (friendly.kind !== "transport") friendly.group.visible = false;
+
+      if (!guardState.active) return;
+      guardState.lost += 1;
+      guardState.integrity = guardIntegrity();
+      const config = guardState.config || {};
+      const remaining = guardState.total - guardState.lost;
+      if (remaining > 0) {
+        if (config.lossPenalty) {
+          guardState.penalty += config.lossPenalty;
+          score = Math.max(0, score - config.lossPenalty);
+        }
+        showBanner(
+          config.lossPenalty
+            ? `${config.lossBanner || "FRIENDLY LOST"} · -${config.lossPenalty} PTS`
+            : (config.lossBanner || "FRIENDLY LOST"),
+          2.0,
+          "danger"
+        );
+        if (config.lossRadio) {
+          radioSay("wingman", config.lossRadio, RADIO_PRIORITY.URGENT, `guard-loss-${guardState.lost}`);
+        }
+        return;
+      }
+      failGuardObjective();
+    }
+
+    // The one rule: nothing guarded is left, so the sortie is over. Reached
+    // from the last loss and from nowhere else.
+    function failGuardObjective() {
+      if (guardState.failed) return;
+      guardState.failed = true;
+      const config = guardState.config || {};
+      showBanner(config.failBanner || "OBJECTIVE LOST", 2.4, "danger");
+      resetRadio();
+      if (config.failRadio) {
+        radioSay("command", config.failRadio, RADIO_PRIORITY.CRITICAL, "guard-failed");
+      }
+      completeMission(false);
+    }
+
+    // A transport that made it. Still alive - that is the whole point of the
+    // flag - but out of the area, so nothing can shoot at it and nothing draws
+    // it any more.
+    function retireFriendly(friendly) {
+      if (friendly.retired) return;
+      friendly.retired = true;
+      friendly.group.visible = false;
+      guardState.saved += 1;
+      const config = guardState.config || {};
+      const outstanding = guardedFriendlies().some(
+        (other) => other.alive && !other.retired
+      );
+      if (!outstanding && !guardState.safeAnnounced) {
+        guardState.safeAnnounced = true;
+        if (guardState.saved > 0) {
+          showBanner(
+            guardState.lost > 0
+              ? `CONVOY CLEAR · ${guardState.saved}/${guardState.total} SAVED`
+              : "CONVOY CLEAR · ALL SAFE",
+            2.4,
+            "success"
+          );
+          if (config.safeRadio) {
+            radioSay("wingman", config.safeRadio, RADIO_PRIORITY.NORMAL, "guard-safe");
+          }
+        }
+      }
     }
 
     // The one thing the friendly table is allowed to move outside its own
@@ -14091,10 +14947,100 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (friendlies.length === 0) return;
       const time = performance.now() * 0.001;
       for (const friendly of friendlies) {
-        if (!friendly.alive) continue;
+        // A killed transport still has a few seconds of falling to do; every
+        // other dead or retired friendly is simply gone.
+        if (!friendly.alive) {
+          if (friendly.wreckTimer > 0) updateFriendlyWreck(friendly, dt);
+          continue;
+        }
+        if (friendly.retired) continue;
+        if (friendly.hitFlash > 0) {
+          friendly.hitFlash = Math.max(0, friendly.hitFlash - dt);
+          if (friendly.model && friendly.model.standardMaterials) {
+            updateAircraftFlash(friendly.model, friendly.hitFlash);
+          }
+        }
         if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
+        else if (friendly.kind === "transport") updateFriendlyTransport(friendly, dt, time);
+        if (friendly.vulnerable) updateFriendlyDamageState(friendly, dt);
       }
+    }
+
+    // The same read the enemy aircraft get: grey smoke past half hull, black
+    // smoke and flame under a quarter. It is the only warning the player has
+    // that a transport is nearly gone, since a friendly has no health bar.
+    function updateFriendlyDamageState(friendly, dt) {
+      const ratio = friendly.maxHp > 0 ? friendly.hp / friendly.maxHp : 1;
+      if (ratio >= 0.5) return;
+      friendly.damageSmokeTimer -= dt;
+      if (friendly.damageSmokeTimer > 0) return;
+      const burning = ratio < 0.25;
+      const ship = friendly.kind === "carrier";
+      forwardOf(friendly.group, tmpV8);
+      tmpV8.multiplyScalar(ship ? -40 : -14).add(friendly.group.position);
+      if (ship) tmpV8.y += 26;
+      tmpV2.set((Math.random() - 0.5) * 6, 3 + Math.random() * 5, (Math.random() - 0.5) * 6);
+      smokeParticlePool.spawn(
+        tmpV8, tmpV2,
+        ship ? 3.4 : 1.9,
+        burning ? 0x17181c : 0x3a3f45,
+        -0.6,
+        ship ? 1.5 : 0.6
+      );
+      if (burning) {
+        tmpV2.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
+        sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.2, 0xffab4a, 2, 0.35);
+      }
+      friendly.damageSmokeTimer += burning ? 0.06 : 0.11;
+    }
+
+    // A shot-down transport goes in nose first, burning, and is removed when
+    // it reaches the water. It is not a target any more - nothing reads a dead
+    // friendly - so this is presentation and only presentation.
+    function updateFriendlyWreck(friendly, dt) {
+      friendly.wreckTimer -= dt;
+      friendly.wreckPitch = (friendly.wreckPitch || 0) + dt * 0.55;
+      friendly.wreckRoll = (friendly.wreckRoll || 0) + dt * 0.9;
+      forwardOf(friendly.group, tmpV4);
+      friendly.group.position.addScaledVector(tmpV4, 62 * dt);
+      friendly.group.position.y -= (28 + friendly.wreckPitch * 26) * dt;
+      friendly.group.rotateX(dt * 0.5);
+      friendly.group.rotateZ(dt * 0.8);
+      tmpV8.copy(friendly.group.position);
+      tmpV2.set((Math.random() - 0.5) * 8, 4 + Math.random() * 6, (Math.random() - 0.5) * 8);
+      smokeParticlePool.spawn(tmpV8, tmpV2, 2.4, 0x17181c, -0.5, 1.2);
+      const floor = surfaceHeightAt(friendly.group.position.x, friendly.group.position.z);
+      if (friendly.wreckTimer <= 0 || friendly.group.position.y <= floor + 6) {
+        friendly.wreckTimer = 0;
+        createExplosion(friendly.group.position, 0xffb648, 2.0);
+        friendly.group.visible = false;
+      }
+    }
+
+    // Straight line, fixed altitude, no reaction to anything. The transport
+    // holds its heading into the exit point and terrain is the only thing that
+    // moves it, which is what makes it a thing that must be protected rather
+    // than a thing that protects itself.
+    function updateFriendlyTransport(friendly, dt, time) {
+      tmpV4.copy(friendly.exit).sub(friendly.group.position);
+      tmpV4.y = 0;
+      const remaining = tmpV4.length();
+      if (remaining < FRIENDLY_TRANSPORT_SPEC.arriveRadius) {
+        retireFriendly(friendly);
+        return;
+      }
+      tmpV4.multiplyScalar(1 / remaining);
+      tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
+      friendly.group.quaternion.slerp(tmpQ1, damping(FRIENDLY_TRANSPORT_SPEC.turnK, dt));
+      friendly.group.position.addScaledVector(tmpV4, friendly.speed * dt);
+      // Cruise altitude with a slow breath on it, floored over terrain so the
+      // corridor can cross an island without the convoy flying into it.
+      const floor = surfaceHeightAt(friendly.group.position.x, friendly.group.position.z) + 300;
+      const wanted = Math.max(friendly.altitude + Math.sin(time * 0.21 + friendly.seed) * 12, floor);
+      friendly.group.position.y = THREE.MathUtils.lerp(
+        friendly.group.position.y, wanted, damping(0.05, dt)
+      );
     }
 
     function updateFriendlyWingman(friendly, dt) {
@@ -14481,6 +15427,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A module-level relay rather than another parameter on four spawn
       // functions, and it is consumed synchronously inside this call.
       spawningTgt = isTgtEntry(wave);
+      // What this wave came for. Read by spawnEnemy the same way spawningTgt
+      // is, and cleared with it at the bottom of this call.
+      spawningHunt = wave.hunt || null;
       // Presets keep their historic id block; an inline wave takes the next
       // free one. Either way the cursor ends past this wave, so a mission that
       // mixes the two can never hand out the same target number twice.
@@ -14574,6 +15523,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
       spawningTgt = true;
+      spawningHunt = null;
     }
 
     // Reinforcements on a clock. Ticked only while the sortie is actually being
@@ -14627,6 +15577,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const spinner of spinners) {
         spinner.rotation.z += rate * dt * (spinner.userData.spinDir || 1);
       }
+    }
+
+    // Which friendly a hunting aircraft is flying at this frame, or null if
+    // there is nothing of its kind left to kill - in which case it reverts to
+    // the ordinary player-pursuit AI on the same frame, with no state to
+    // unwind. Nearest-first: an attacker re-targets if its charge is saved or
+    // shot down out from under it, which is what keeps a wave from milling
+    // about after the thing it came for is gone.
+    //
+    // Walked per hunting aircraft per frame. friendlies[] is at most five
+    // entries and only the guard sorties field a hunting aircraft at all, so
+    // this is a handful of distance checks on two missions and nothing
+    // whatsoever on the other thirteen.
+    function huntTargetFor(enemy) {
+      if (!enemy.hunt) return null;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const friendly of friendlies) {
+        if (!friendly.alive || !friendly.vulnerable || friendly.retired) continue;
+        const isShip = friendly.kind === "carrier";
+        if (enemy.hunt === "ship" ? !isShip : isShip) continue;
+        const distance = enemy.group.position.distanceToSquared(friendly.group.position);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = friendly;
+        }
+      }
+      return best;
     }
 
     function updateEnemies(dt) {
@@ -14710,6 +15688,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         tmpV1.copy(player.position).sub(enemy.group.position);
         const distanceToPlayer = tmpV1.length();
+
+        // Resolved once per frame and read by both the aim point below and the
+        // weapon paths in updateEnemyOrdnance, so an attacker cannot be flying
+        // at the convoy while shooting at the player.
+        enemy.huntRef = enemy.hunt ? huntTargetFor(enemy) : null;
 
         if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
           enemy.mode = "pursuit";
@@ -14797,6 +15780,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // measured worse, not better: the extra speed turns the break into an
           // extension, which buys the round a long straight tail chase to settle
           // its aim on. The break is a turn, and only a turn.
+        } else if (enemy.huntRef) {
+          // The hunt run. Above pursuit in this chain on purpose: an aircraft
+          // that came for the convoy does not care where the player is, and
+          // that is the whole readable difference between a TGT in these two
+          // missions and every other fighter in the campaign. It still BREAKS
+          // (the branch above wins), so shooting at one still spoils its aim -
+          // it just goes back to the convoy afterwards.
+          const chargePosition = enemy.huntRef.group.position;
+          targetPoint = enemy.targetPoint.copy(chargePosition);
+          if (enemy.huntRef.kind === "carrier") {
+            // A ship is a point on the sea. Run in at it from launch altitude
+            // rather than diving at the deck, so the attacker is where its own
+            // missile wants to be released from and stays visible against the
+            // sky instead of merging with the hull.
+            targetPoint.y = Math.max(chargePosition.y + 420, 300);
+          } else {
+            // Aircraft: settle in behind the charge, the same offset a fighter
+            // holds on the player, so the attack reads as a gun and missile
+            // pass rather than a ram.
+            forwardOf(enemy.huntRef.group, tmpV3);
+            targetPoint.addScaledVector(tmpV3, -(spec.pursuitBack || 60));
+            targetPoint.y += 16;
+          }
+          enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
           targetPoint = enemy.targetPoint.copy(player.position)
             .addScaledVector(tmpV5, -spec.pursuitBack)
@@ -14900,16 +15907,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
       for (const flame of enemy.model.flames) flame.scale.z = flamePulse;
 
+      // An aircraft shoots at exactly one thing: whatever it is flying at. A
+      // hunter therefore never fires on the player while it still has a charge
+      // to kill, and every non-hunting aircraft in the game takes the same two
+      // calls it always did.
+      const charge = enemy.huntRef || null;
+
       enemy.fireCooldown -= dt;
       if (enemy.fireCooldown <= 0) {
-        attemptEnemyAttack(enemy);
+        if (charge) attemptEnemyGunOnFriendly(enemy, charge);
+        else attemptEnemyAttack(enemy);
         enemy.fireCooldown = spec.fireMin + Math.random() * spec.fireSpread;
       }
 
       enemy.missileCooldown -= dt;
       if (enemy.missileCooldown <= 0) {
-        const profile = ENEMY_MISSILE_PROFILES[enemy.type];
-        const launched = attemptEnemyMissile(enemy);
+        const profile = enemyMissileProfileFor(enemy, charge);
+        const launched = attemptEnemyMissile(enemy, charge);
         // Role x skill decides how often this aircraft is even ALLOWED to think
         // about a launch. Trash sits at ~2x the airframe's own cadence, which
         // is what "滅多に撃たない" is: the same missile, half as often. The
@@ -15762,6 +16776,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (hit) {
         const damage = spec.damageMin + Math.floor(Math.random() * (spec.damageMax - spec.damageMin + 1));
         applyPlayerDamage(damage);
+      }
+    }
+
+    // The gun pass against an escorted aircraft. Deliberately NOT a copy of
+    // attemptEnemyAttack: that function is written around the player - the
+    // "behind the player" gate, the player's cooldown, the miss scatter around
+    // the canopy - and none of it means anything against a transport that
+    // cannot manoeuvre. This is the simpler thing it actually is: nose on,
+    // inside range, roll the same accuracy numbers the airframe already has.
+    //
+    // Gun damage is left at the airframe's own value, unscaled. A Fishbed
+    // hitting for 6 against a 340 HP transport is chip damage on purpose - the
+    // convoy is killed by MISSILES, and the gun is what makes an attacker that
+    // has already emptied its rails still worth chasing off.
+    function attemptEnemyGunOnFriendly(enemy, friendly) {
+      if (missionElapsed < MISSION_GRACE_TIME) return;
+      if (!friendly || !friendly.alive || friendly.retired) return;
+      const spec = enemy.spec;
+      if (!spec.attackRange || spec.maxHitChance <= 0) return;
+
+      tmpV9.copy(friendly.group.position).sub(enemy.group.position);
+      const distance = tmpV9.length();
+      if (!Number.isFinite(distance) || distance > spec.attackRange || distance < 25) return;
+      tmpV9.multiplyScalar(1 / distance);
+      forwardOf(enemy.group, tmpV8);
+      const aimAlignment = tmpV8.dot(tmpV9);
+      if (aimAlignment < spec.aimThreshold) return;
+
+      const hitChance = THREE.MathUtils.clamp(
+        (1 - distance / (spec.attackRange + 120)) * spec.hitChanceScale * aimAlignment,
+        0.025,
+        spec.maxHitChance
+      );
+      const hit = Math.random() < hitChance;
+      const start = enemy.group.position.clone().addScaledVector(tmpV8, 7);
+      const end = friendly.group.position.clone();
+      if (!hit) {
+        const scatter = spec.aimScatter || 1;
+        end.x += (Math.random() - 0.5) * 34 * scatter;
+        end.y += (Math.random() - 0.5) * 24 * scatter;
+        end.z += (Math.random() - 0.5) * 34 * scatter;
+      }
+      createTracer(start, end, spec.tracerColor, 0.18, 0.72);
+      createMuzzleFlash(start, spec.tracerColor);
+      if (hit) {
+        damageFriendly(
+          friendly,
+          spec.damageMin + Math.floor(Math.random() * (spec.damageMax - spec.damageMin + 1))
+        );
       }
     }
 
@@ -17131,7 +18194,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const liveKeys = new Set();
       for (let i = 0; i < friendlies.length; i += 1) {
         const friendly = friendlies[i];
-        if (!friendly.alive) continue;
+        // `retired` is a transport that crossed the far edge: alive, saved,
+        // and no longer in the area, so it stops being drawn.
+        if (!friendly.alive || friendly.retired) continue;
         liveKeys.add(i);
         let marker = friendlyMarkerElements.get(i);
         if (!marker) {
@@ -17350,6 +18415,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
+    // The guard row. Hidden outright on the thirteen missions that guard
+    // nothing, so the HUD the campaign has always had is the HUD it still has.
+    //
+    // Two readouts off one state: a convoy counts survivors ("2/3"), a hull
+    // reads integrity ("64%"). Both go red at the point where one more hit
+    // ends the sortie, which for the convoy is its last aircraft and for the
+    // carrier is a quarter of the ship.
+    function updateGuardReadout() {
+      if (!guardState.active) {
+        ui.guardRow.classList.add("hidden");
+        return;
+      }
+      ui.guardRow.classList.remove("hidden");
+      ui.guardLabel.textContent = guardState.label;
+      let critical;
+      if (guardState.readout === "integrity") {
+        const percent = Math.max(0, Math.round(guardIntegrity() * 100));
+        ui.guardVal.textContent = `${percent}%`;
+        critical = percent <= 25;
+      } else {
+        const left = Math.max(0, guardState.total - guardState.lost);
+        ui.guardVal.textContent = `${left}/${guardState.total}`;
+        critical = left <= 1 && guardState.lost > 0;
+      }
+      ui.guardRow.classList.toggle("critical", critical);
+    }
+
     function formatMissionTime(seconds) {
       const total = Math.max(0, seconds);
       const m = Math.floor(total / 60);
@@ -17375,6 +18467,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const remaining = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
       ui.tgtRemain.textContent = String(remaining);
       ui.tgtRemainRow.classList.toggle("cleared", remaining === 0);
+      updateGuardReadout();
       const speedKph = Math.round(playerSpeed * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
@@ -17607,11 +18700,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         type: friendly.type,
         label: friendly.label,
         alive: friendly.alive,
+        // Off on every friendly the campaign had before the guard sorties, so
+        // "the wingman is still invulnerable" is readable rather than argued.
+        vulnerable: Boolean(friendly.vulnerable),
+        retired: Boolean(friendly.retired),
+        hp: friendly.vulnerable ? Math.max(0, Math.round(friendly.hp)) : null,
+        maxHp: friendly.vulnerable ? friendly.maxHp : null,
         x: Number(friendly.group.position.x.toFixed(2)),
         y: Number(friendly.group.position.y.toFixed(2)),
         z: Number(friendly.group.position.z.toFixed(2)),
         distance: Number(player.position.distanceTo(friendly.group.position).toFixed(1))
       }));
+      hook.guard = guardState.active
+        ? {
+            active: true,
+            readout: guardState.readout,
+            label: guardState.label,
+            total: guardState.total,
+            lost: guardState.lost,
+            saved: guardState.saved,
+            hits: guardState.hits,
+            penalty: guardState.penalty,
+            failed: guardState.failed,
+            integrity: Number(guardIntegrity().toFixed(4))
+          }
+        : { active: false };
       hook.friendlyBase = friendlyBase
         ? {
             x: friendlyBase.x,
@@ -17811,7 +18924,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         postStallCooldown: Math.max(0, enemy.postStallCooldown ?? 0),
         formationLeaderId: enemy.formationLeaderId,
         formationActive: enemy.formationActive,
-        missileReadyIn: Math.max(0, enemy.missileCooldown)
+        missileReadyIn: Math.max(0, enemy.missileCooldown),
+        // Designated-target flag and, on the guard sorties, what this aircraft
+        // is flying at instead of the player.
+        tgt: isTgtEntry(enemy),
+        hunt: enemy.hunt || null
       }));
       hook.threats.incomingMissiles = enemyMissiles.map((missile) => ({
         id: missile.id,
@@ -17822,7 +18939,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           y: missile.mesh.position.y,
           z: missile.mesh.position.z
         },
-        distance: missile.mesh.position.distanceTo(player.position)
+        distance: missile.mesh.position.distanceTo(player.position),
+        // Null for every round in the campaign outside the guard sorties. A
+        // round with a name here is not chasing the player and is excluded
+        // from the missile warning by getNearestEnemyMissileThreat().
+        targetFriendly: missile.targetFriendly ? missile.targetFriendly.label : null
       }));
       hook.threats.nearest = nearestMissileThreat ? { ...nearestMissileThreat } : null;
       hook.lock.targetId = lock.targetId;
@@ -17974,7 +19095,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // against the contacts' white and the designated targets' red, and no
       // ring or blink, because a friendly is never selected or locked.
       for (const friendly of friendlies) {
-        if (!friendly.alive) continue;
+        if (!friendly.alive || friendly.retired) continue;
         tmpV3.copy(friendly.group.position).sub(player.position);
         const rightDistance = tmpV3.dot(tmpV2);
         const forwardDistance = tmpV3.dot(lastRadarForward);
