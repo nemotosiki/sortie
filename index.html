@@ -2206,30 +2206,124 @@
       cockpit: Object.freeze({ back: -4.8, height: 1.9, look: 96, lookHeight: 0.9, rollFollow: 0.9 })
     });
 
-    const ACE_CALLSIGN = "IRONBACK";
     const ACE_TURN_SCALE = 1.2;
-    // The ace flies wave 2 slot 0, which is an F-22 — it keeps that airframe's HP,
-    // speed and turn rate untouched so it is exactly as strong as a player F-22.
-    // Only its identity, markings and evasion style are overridden.
-    const ACE_SPEC_OVERRIDES = Object.freeze({
-      label: ACE_CALLSIGN,
-      role: "Squadron Leader",
-      behavior: "evasive",
-      evadeLateral: 58,
-      evadeVertical: 24,
-      evadeFrequency: 1.6,
-      radarColor: "#ffe066",
-      tracerColor: 0xffd35f,
-      theme: Object.freeze({
-        primary: 0x23262e,
-        secondary: 0x101218,
-        accent: 0xffd35f,
-        canopy: 0xffe9a8,
-        exhaust: 0xffd35f,
-        scale: 0.88,
-        variant: "raptor"
+
+    // ---- Named pilots ---------------------------------------------------------
+    // An ace is an identity bolted onto an airframe, never a different physics
+    // table: whatever it flies keeps that aircraft's HP, speed and turn rate, and
+    // ACE_TURN_SCALE is the only stat bonus in the whole system. What a profile
+    // owns is the callsign, the paint, the evasion style and the radio.
+    //
+    // `theme` is a PARTIAL, merged over the airframe's own enemy theme, so
+    // `variant` (the model) and every geometry constant still come from the
+    // aircraft - which is what lets the same profile mechanic name a Raptor, a
+    // Terminator or a Foxhound without the model ever going wrong. `scale` is
+    // the one geometry field a profile may pin, because a flight leader's jet
+    // reading fractionally larger than its wingmen is a deliberate tell.
+    //
+    // `label` is deliberately NOT overridden: the HUD wants "F-22 IRONBACK" -
+    // airframe designation from the aircraft table, callsign from here - so a
+    // profile that clobbered `label` would print the callsign twice.
+    //
+    // IRONBACK is the only profile any mission currently flies. VULTURE and
+    // LONGBOW are staged, not orphaned: the enemy roster is being moved to
+    // Soviet/Russian airframes in a separate batch, and both are written
+    // against aircraft that survive that change (Su-37, MiG-31). Placing them
+    // in a wave is a one-line `ace: "vulture"` on that wave when it lands.
+    const ACE_PROFILES = Object.freeze({
+      // The campaign's recurring antagonist, and the only ace with a scripted
+      // post-stall (see ACE_POSTSTALL_*). Flies the Raptor: black airframe,
+      // gold trim.
+      ironback: Object.freeze({
+        callsign: "IRONBACK",
+        role: "Squadron Leader",
+        behavior: "evasive",
+        evadeLateral: 58,
+        evadeVertical: 24,
+        evadeFrequency: 1.6,
+        radarColor: "#ffe066",
+        tracerColor: 0xffd35f,
+        theme: Object.freeze({
+          primary: 0x23262e,
+          secondary: 0x101218,
+          accent: 0xffd35f,
+          canopy: 0xffe9a8,
+          exhaust: 0xffd35f,
+          scale: 0.88
+        }),
+        radio: Object.freeze({
+          inbound: "エース指定機がいる——コールサイン『IRONBACK』。警戒を怠るな。",
+          wingman: "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
+          engage: "こちらアイアンバック。全機下がれ——奴は私がやる。",
+          down: "こちらアイアンバック…被弾した…墜ちる…"
+        })
+      }),
+      // The knife-fighter. Rides the Su-37, so the airframe already out-turns
+      // everything the player can bring except a Raptor - and then takes the
+      // ace's 1.2x on top. Evades harder than IRONBACK because the aircraft
+      // under it can afford to: bone-white with a blood-red spine.
+      vulture: Object.freeze({
+        callsign: "VULTURE",
+        role: "Flight Leader",
+        behavior: "evasive",
+        evadeLateral: 96,
+        evadeVertical: 40,
+        evadeFrequency: 2.5,
+        radarColor: "#ff5a4d",
+        tracerColor: 0xff6a4a,
+        theme: Object.freeze({
+          primary: 0xd8d2c4,
+          secondary: 0x8a8375,
+          accent: 0xb3271f,
+          canopy: 0xffc9a8,
+          exhaust: 0xff9a5a,
+          scale: 1.18
+        }),
+        radio: Object.freeze({
+          inbound: "エース指定機だ——コールサイン『VULTURE』。格闘戦に付き合うな、旋回で勝てる相手じゃない。",
+          wingman: "ヴァルチャーか。あの機体は低速でも機首が向く——追い回されたら終わりだぞ！",
+          engage: "こちらヴァルチャー。旋回で勝てると思うな——落ちてくるのはお前だ。",
+          down: "こちらヴァルチャー…機首が…上がらない…！"
+        })
+      }),
+      // The sniper. Flies the Foxhound: never turns, never merges, and shoots
+      // from outside where a dogfight happens. The evasion numbers are near
+      // zero on purpose - this profile does not add manoeuvre, it adds reach.
+      longbow: Object.freeze({
+        callsign: "LONGBOW",
+        role: "Interceptor Lead",
+        behavior: "armored",
+        evadeLateral: 14,
+        evadeVertical: 8,
+        evadeFrequency: 0.9,
+        radarColor: "#9ad4ff",
+        tracerColor: 0x8fc6ff,
+        theme: Object.freeze({
+          primary: 0x2b3646,
+          secondary: 0x18202c,
+          accent: 0x7fb8ff,
+          canopy: 0xbfe4ff,
+          exhaust: 0xbfd4ff,
+          scale: 1.24
+        }),
+        radio: Object.freeze({
+          inbound: "編隊にエース指定機——コールサイン『LONGBOW』。長射程だ、遠距離から狙ってくるぞ。",
+          wingman: "ロングボウ！？ あいつは格闘に付き合わない——先に距離を潰さないと一方的に撃たれるぞ！",
+          engage: "こちらロングボウ。射程はこちらが上だ。近づく前に終わる。",
+          down: "こちらロングボウ…直撃…回避が…間に合わ——"
+        })
       })
     });
+
+    const DEFAULT_ACE_ID = "ironback";
+
+    // `ace: true` on a wave means "the campaign's ace", i.e. IRONBACK; `ace:
+    // "vulture"` names one. Anything unrecognised falls back rather than
+    // spawning a nameless pilot with no radio.
+    function aceProfileOf(aceId) {
+      if (!aceId) return null;
+      return ACE_PROFILES[aceId] || ACE_PROFILES[DEFAULT_ACE_ID];
+    }
     // ---- Variable-geometry wing (F-14D only) --------------------------------
     // Sweep is presentation, not physics: nothing in the flight model reads it.
     // The wing sits fully forward at or below cruise, fully aft at boost speed,
@@ -2847,19 +2941,19 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     const WAVE_PRESETS = Object.freeze({
       air1: Object.freeze({
         kind: "air", types: ENEMY_TYPE_ORDER[0], fleet: null,
-        band: 1, ace: false, idBase: 0, radio: null
+        band: 1, ace: null, aceSlot: 0, idBase: 0, radio: null
       }),
       air2: Object.freeze({
         kind: "air", types: ENEMY_TYPE_ORDER[1], fleet: null,
-        band: 2, ace: true, idBase: 3, radio: null
+        band: 2, ace: DEFAULT_ACE_ID, aceSlot: 0, idBase: 3, radio: null
       }),
       air2plain: Object.freeze({
         kind: "air", types: ENEMY_TYPE_ORDER[1], fleet: null,
-        band: 2, ace: false, idBase: 3, radio: null
+        band: 2, ace: null, aceSlot: 0, idBase: 3, radio: null
       }),
       naval: Object.freeze({
         kind: "naval", types: null, fleet: Object.freeze(["carrier", "aegis", "aegis", "frigate", "frigate"]),
-        band: 3, ace: false, idBase: 6, radio: null
+        band: 3, ace: null, aceSlot: 0, idBase: 6, radio: null
       })
     });
 
@@ -2874,7 +2968,15 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         fleet: kind === "naval" ? Object.freeze([...(entry.fleet || WAVE_PRESETS.naval.fleet)]) : null,
         // null = "take the next free id block", filled in at spawn time.
         band: entry.band || null,
-        ace: Boolean(entry.ace),
+        // `ace: true` is the campaign ace, kept for the presets and for every
+        // mission written before there was more than one; a string names a
+        // profile in ACE_PROFILES. Either way this ends up as an id, so the
+        // spawner and the radio both read one field.
+        ace: entry.ace === true ? DEFAULT_ACE_ID : (entry.ace || null),
+        // Which slot of the wave the named pilot flies. Slot 0 unless the
+        // mission puts the ace behind something it is escorting - a bomber
+        // stream's fighter is the last slot, not the leader.
+        aceSlot: entry.aceSlot || 0,
         // null = "take the next free id block". An entry may pin its own block
         // instead, which is how a rewritten mission keeps the HUD target
         // numbers its players already know.
@@ -2893,6 +2995,18 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
     function waveSizeOf(wave) {
       return wave.kind === "naval" ? wave.fleet.length : wave.types.length;
+    }
+
+    // The named pilot a sortie is built around - the first one in wave order.
+    // A mission may field more than one (m05 flies IRONBACK in its second wave
+    // and a second ace over the fleet); the briefing and the debrief are about
+    // the one the player is actually sent to kill, which is the earlier wave.
+    function missionAcePilot(mission) {
+      for (const wave of mission.waves) {
+        const pilot = aceProfileOf(wave.ace);
+        if (pilot) return pilot;
+      }
+      return null;
     }
 
     // Anything without an explicit `tgt: false` is a designated target. One
@@ -3076,6 +3190,381 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           exhaust: 0x8cecff,
           scale: 0.82,
           variant: "raptor"
+        })
+      }),
+      // ---- The rest of the hangar, on the enemy side --------------------------
+      // Everything below flies an airframe the player can also fly, and takes
+      // its HP / speed / turn rate from AIRCRAFT_TYPES exactly as the four above
+      // do. Nothing here is a stat cheat: an enemy Su-37 is a player Su-37.
+      //
+      // What each entry chooses is how the AI USES that airframe, and the three
+      // fields that carry it are `behavior`, the engage envelope and the evade
+      // triple:
+      //   evasive   - jinks continuously in pursuit. For jets that can afford
+      //               to bleed energy: Gripen, Rafale, Su-37.
+      //   formation - flies off a leader and shoots from a steady platform.
+      //               Needs `formationWeight` (undefined would NaN the lerp).
+      //   armored   - never jinks. The Foxhound uses it not because it is tough
+      //               but because it cannot turn, which is the same thing here.
+      // `pursuitBack` is where it wants to sit relative to the player: 74 is a
+      // gunfighter on your six, 260 is a sniper that never closes.
+      //
+      // `hitboxScale` is not free-chosen. The four originals sit on a straight
+      // line through span x model scale - (5.26, 0.90) for the F-16 and
+      // (8.01, 1.12) for the F-4, i.e. +0.08 per metre of span - and every
+      // entry below is that line evaluated at its own size. A big aircraft is
+      // an easier target because it is big, never because its tier says so.
+      gripen: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.86,
+        patrolSpeedScale: 1.1,
+        patrolPathScale: 1.22,
+        engageRange: 1000,
+        disengageRange: 1600,
+        pursuitBack: 90,
+        verticalBias: 18,
+        verticalAmplitude: 34,
+        verticalFrequency: 1.5,
+        evadeLateral: 86,
+        evadeVertical: 30,
+        evadeFrequency: 2.45,
+        speedResponse: 0.016,
+        fireMin: 1.8,
+        fireSpread: 1.4,
+        attackRange: 500,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.44,
+        maxHitChance: 0.32,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ff6b9d",
+        tracerColor: 0xff6b9d,
+        explosionColor: 0xff7fae,
+        theme: Object.freeze({
+          primary: 0x59636d,
+          secondary: 0x343c44,
+          accent: 0xc2436e,
+          canopy: 0x9fe6ff,
+          exhaust: 0xff9ec2,
+          scale: 0.72,
+          variant: "gripen"
+        })
+      }),
+      // Strike jet: it does not want a dogfight, it wants a firing pass. Low
+      // evasion and a wide gun envelope off a steady wing, flying formation.
+      f2a: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 1.0,
+        patrolSpeedScale: 0.98,
+        patrolPathScale: 0.95,
+        engageRange: 910,
+        disengageRange: 1470,
+        pursuitBack: 78,
+        verticalBias: 14,
+        verticalAmplitude: 20,
+        verticalFrequency: 0.95,
+        evadeLateral: 22,
+        evadeVertical: 12,
+        evadeFrequency: 1.3,
+        speedResponse: 0.03,
+        fireMin: 1.75,
+        fireSpread: 1.45,
+        attackRange: 545,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.5,
+        maxHitChance: 0.36,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.6,
+        radarColor: "#ff7a5c",
+        tracerColor: 0xff7a5c,
+        explosionColor: 0xff8f6e,
+        theme: Object.freeze({
+          primary: 0x2e4358,
+          secondary: 0x1c2c3c,
+          accent: 0xc25a3c,
+          canopy: 0x69dfff,
+          exhaust: 0xffa07a,
+          scale: 0.8,
+          variant: "viperzero"
+        })
+      }),
+      // Carrier multirole, and the CAP the fleet missions field: middle of the
+      // road on every axis, which is what makes it the honest step up from the
+      // F-16 without being an Eagle.
+      fa18: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.98,
+        patrolSpeedScale: 1.02,
+        patrolPathScale: 1.05,
+        engageRange: 960,
+        disengageRange: 1540,
+        pursuitBack: 84,
+        verticalBias: 16,
+        verticalAmplitude: 26,
+        verticalFrequency: 1.15,
+        evadeLateral: 46,
+        evadeVertical: 20,
+        evadeFrequency: 1.75,
+        speedResponse: 0.024,
+        fireMin: 1.7,
+        fireSpread: 1.4,
+        attackRange: 520,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.48,
+        maxHitChance: 0.35,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.54,
+        radarColor: "#ffc14d",
+        tracerColor: 0xffc14d,
+        explosionColor: 0xffd06a,
+        theme: Object.freeze({
+          primary: 0x4b535c,
+          secondary: 0x2c333b,
+          accent: 0xb8862c,
+          canopy: 0x8fe0ff,
+          exhaust: 0xffd08a,
+          scale: 0.8,
+          variant: "hornet"
+        })
+      }),
+      // Fleet defence: reaches out further than anything else with wings
+      // (engage 1140) and then refuses the merge - 120 of standoff is a Tomcat
+      // running an intercept, not a Tomcat knife-fighting.
+      f14: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 1.12,
+        patrolSpeedScale: 1.05,
+        patrolPathScale: 1.1,
+        engageRange: 1140,
+        disengageRange: 1780,
+        pursuitBack: 120,
+        verticalBias: 20,
+        verticalAmplitude: 24,
+        verticalFrequency: 0.9,
+        evadeLateral: 24,
+        evadeVertical: 12,
+        evadeFrequency: 1.2,
+        speedResponse: 0.026,
+        fireMin: 1.8,
+        fireSpread: 1.5,
+        attackRange: 560,
+        aimThreshold: 0.91,
+        hitChanceScale: 0.47,
+        maxHitChance: 0.34,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.5,
+        radarColor: "#9d7bff",
+        tracerColor: 0x9d7bff,
+        explosionColor: 0xb08cff,
+        theme: Object.freeze({
+          primary: 0x525c66,
+          secondary: 0x30383f,
+          accent: 0x6a4fc2,
+          canopy: 0x8fe0ff,
+          exhaust: 0xc0a8ff,
+          scale: 0.83,
+          variant: "tomcat"
+        })
+      }),
+      // Omnirole, flown as a fighter: evasive like the Gripen but with the
+      // armour and the reach to stay in the fight it starts.
+      rafale: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.95,
+        patrolSpeedScale: 1.04,
+        patrolPathScale: 1.14,
+        engageRange: 990,
+        disengageRange: 1590,
+        pursuitBack: 88,
+        verticalBias: 18,
+        verticalAmplitude: 32,
+        verticalFrequency: 1.5,
+        evadeLateral: 78,
+        evadeVertical: 30,
+        evadeFrequency: 2.3,
+        speedResponse: 0.017,
+        fireMin: 1.7,
+        fireSpread: 1.35,
+        attackRange: 515,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.49,
+        maxHitChance: 0.36,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#4d9dff",
+        tracerColor: 0x4d9dff,
+        explosionColor: 0x6fb2ff,
+        theme: Object.freeze({
+          primary: 0x475560,
+          secondary: 0x28323b,
+          accent: 0x2f6fc8,
+          canopy: 0x8fe0ff,
+          exhaust: 0x9fd8ff,
+          scale: 0.78,
+          variant: "rafale"
+        })
+      }),
+      // Air superiority means shooting first: the shortest gun clock of any
+      // fighter here (1.5) behind the longest gun envelope (580), on a platform
+      // steady enough to use both.
+      typhoon: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.98,
+        patrolSpeedScale: 1.06,
+        patrolPathScale: 1.05,
+        engageRange: 1090,
+        disengageRange: 1720,
+        pursuitBack: 92,
+        verticalBias: 18,
+        verticalAmplitude: 26,
+        verticalFrequency: 1.1,
+        evadeLateral: 38,
+        evadeVertical: 18,
+        evadeFrequency: 1.6,
+        speedResponse: 0.02,
+        fireMin: 1.5,
+        fireSpread: 1.25,
+        attackRange: 580,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.52,
+        maxHitChance: 0.38,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.52,
+        radarColor: "#ff4dd2",
+        tracerColor: 0xff4dd2,
+        explosionColor: 0xff6fdd,
+        theme: Object.freeze({
+          primary: 0x4e535c,
+          secondary: 0x2c3038,
+          accent: 0xb52f95,
+          canopy: 0x8fe0ff,
+          exhaust: 0xffa8ea,
+          scale: 0.81,
+          variant: "typhoon"
+        })
+      }),
+      // The flat one, deliberately: nothing about this profile is a weakness to
+      // find, which is the same thing its player-side entry says with numbers.
+      f35c: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.95,
+        patrolSpeedScale: 1.02,
+        patrolPathScale: 1.08,
+        engageRange: 1050,
+        disengageRange: 1660,
+        pursuitBack: 88,
+        verticalBias: 18,
+        verticalAmplitude: 28,
+        verticalFrequency: 1.25,
+        evadeLateral: 52,
+        evadeVertical: 22,
+        evadeFrequency: 1.9,
+        speedResponse: 0.021,
+        fireMin: 1.6,
+        fireSpread: 1.3,
+        attackRange: 535,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.5,
+        maxHitChance: 0.36,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.5,
+        radarColor: "#6ff0c8",
+        tracerColor: 0x6ff0c8,
+        explosionColor: 0x8bf7d8,
+        theme: Object.freeze({
+          primary: 0x434a52,
+          secondary: 0x262b31,
+          accent: 0x2aa88a,
+          canopy: 0xc8b47a,
+          exhaust: 0xa8ffe0,
+          scale: 0.78,
+          variant: "lightning"
+        })
+      }),
+      // The turn fighter, and the closest any AI sits to the player: 74 of
+      // standoff against the F-16's 92. Jinks harder than the Raptor because
+      // the airframe under it recovers from it - that is the whole aircraft.
+      su37: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 1.09,
+        patrolSpeedScale: 1.05,
+        patrolPathScale: 1.15,
+        engageRange: 1030,
+        disengageRange: 1650,
+        pursuitBack: 74,
+        verticalBias: 20,
+        verticalAmplitude: 38,
+        verticalFrequency: 1.7,
+        evadeLateral: 92,
+        evadeVertical: 38,
+        evadeFrequency: 2.55,
+        speedResponse: 0.015,
+        fireMin: 1.55,
+        fireSpread: 1.3,
+        attackRange: 510,
+        aimThreshold: 0.94,
+        hitChanceScale: 0.53,
+        maxHitChance: 0.38,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ff3b30",
+        tracerColor: 0xff3b30,
+        explosionColor: 0xff6a4a,
+        theme: Object.freeze({
+          primary: 0x555f68,
+          secondary: 0x2f373e,
+          accent: 0xc4341f,
+          canopy: 0x9fe6ff,
+          exhaust: 0xffb07a,
+          scale: 0.86,
+          variant: "terminator"
+        })
+      }),
+      // The one fighter that never dogfights, stated the same way the bomber
+      // states "never pursues": with numbers, not a new branch. It engages from
+      // 1520 m, sits 260 m off the player's tail and has the worst gun of any
+      // fighter (0.20 ceiling against 0.31-0.38) - because the gun is not the
+      // threat. Its missile is, and ENEMY_MISSILE_PROFILES.mig31 is where that
+      // lives: the longest reach and the shortest reload in the air.
+      mig31: Object.freeze({
+        behavior: "armored",
+        hitboxScale: 1.16,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 1.6,
+        engageRange: 1520,
+        disengageRange: 2300,
+        pursuitBack: 260,
+        verticalBias: 34,
+        verticalAmplitude: 12,
+        verticalFrequency: 0.5,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.05,
+        fireMin: 2.6,
+        fireSpread: 1.8,
+        attackRange: 480,
+        aimThreshold: 0.96,
+        hitChanceScale: 0.3,
+        maxHitChance: 0.2,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#b8c6ff",
+        tracerColor: 0xb8c6ff,
+        explosionColor: 0xd0dbff,
+        theme: Object.freeze({
+          primary: 0x4a5460,
+          secondary: 0x2a323c,
+          accent: 0x7a2f2f,
+          canopy: 0x8fe0ff,
+          exhaust: 0xbfd4ff,
+          scale: 0.9,
+          variant: "foxhound"
         })
       }),
       // The bomber needs no new behaviour string: "armored" is the default
@@ -3375,6 +3864,134 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         damage: 98,
         life: 7.6,
         launchDot: 0.24
+      }),
+      // The rest of the hangar. Every round below is the same 98 damage as the
+      // four above - an enemy missile is an enemy missile - so what separates
+      // them is reach, reload and seeker rate, and each one is read off what
+      // that airframe carries on the player's side. The XLAA carriers (F-14,
+      // Typhoon, MiG-31) get range and lose turn rate; the dogfighters (Su-37,
+      // F-35C) get turn rate and lose range.
+      gripen: Object.freeze({
+        cooldownMin: 9.2,
+        cooldownSpread: 4.7,
+        range: 1310,
+        minRange: 195,
+        speed: 372,
+        maxSpeed: 452,
+        turnRate: THREE.MathUtils.degToRad(66),
+        damage: 98,
+        life: 7.8,
+        launchDot: 0.21
+      }),
+      // Strike jet: its magazine is aimed at hulls, so the air-to-air round is
+      // the laziest of the multiroles.
+      f2a: Object.freeze({
+        cooldownMin: 10.0,
+        cooldownSpread: 4.9,
+        range: 1300,
+        minRange: 200,
+        speed: 366,
+        maxSpeed: 446,
+        turnRate: THREE.MathUtils.degToRad(60),
+        damage: 98,
+        life: 7.9,
+        launchDot: 0.18
+      }),
+      fa18: Object.freeze({
+        cooldownMin: 9.0,
+        cooldownSpread: 4.6,
+        range: 1320,
+        minRange: 198,
+        speed: 376,
+        maxSpeed: 456,
+        turnRate: THREE.MathUtils.degToRad(68),
+        damage: 98,
+        life: 7.9,
+        launchDot: 0.21
+      }),
+      // Fleet defence, so the round is the mission: 1600 m of reach - 260 past
+      // an Eagle's - bought with a 58 deg/s seeker that a break turn can beat.
+      f14: Object.freeze({
+        cooldownMin: 8.6,
+        cooldownSpread: 4.4,
+        range: 1600,
+        minRange: 230,
+        speed: 400,
+        maxSpeed: 490,
+        turnRate: THREE.MathUtils.degToRad(58),
+        damage: 98,
+        life: 9.0,
+        launchDot: 0.26
+      }),
+      rafale: Object.freeze({
+        cooldownMin: 8.8,
+        cooldownSpread: 4.5,
+        range: 1330,
+        minRange: 195,
+        speed: 384,
+        maxSpeed: 464,
+        turnRate: THREE.MathUtils.degToRad(72),
+        damage: 98,
+        life: 7.9,
+        launchDot: 0.22
+      }),
+      // Shoots first, in the launcher as well as the gun: the shortest reload
+      // of any fighter but the Foxhound, on the second-longest reach.
+      typhoon: Object.freeze({
+        cooldownMin: 7.8,
+        cooldownSpread: 4.2,
+        range: 1480,
+        minRange: 205,
+        speed: 400,
+        maxSpeed: 480,
+        turnRate: THREE.MathUtils.degToRad(72),
+        damage: 98,
+        life: 8.4,
+        launchDot: 0.24
+      }),
+      f35c: Object.freeze({
+        cooldownMin: 8.4,
+        cooldownSpread: 4.4,
+        range: 1380,
+        minRange: 190,
+        speed: 388,
+        maxSpeed: 468,
+        turnRate: THREE.MathUtils.degToRad(74),
+        damage: 98,
+        life: 8.0,
+        launchDot: 0.23
+      }),
+      // The dogfight round, matching the QAAM the player's Su-37 carries: the
+      // hardest-turning seeker in the air at 88 deg/s, and the shortest legs of
+      // any fighter's - it is fired from behind you, not at you from a mile out.
+      su37: Object.freeze({
+        cooldownMin: 8.4,
+        cooldownSpread: 4.3,
+        range: 1280,
+        minRange: 175,
+        speed: 380,
+        maxSpeed: 470,
+        turnRate: THREE.MathUtils.degToRad(88),
+        damage: 98,
+        life: 8.2,
+        launchDot: 0.2
+      }),
+      // The whole point of putting a Foxhound on the board. 2100 m of reach is
+      // further than the player's own XLAA (2000) and 1.6x an Eagle's, on a
+      // 6.6 s reload - so it is shooting while the player is still closing. The
+      // bill is a 46 deg/s seeker, under even the Phantom's: one break turn
+      // beats one round, and the threat is that there is always another.
+      mig31: Object.freeze({
+        cooldownMin: 6.6,
+        cooldownSpread: 3.4,
+        range: 2100,
+        minRange: 300,
+        speed: 430,
+        maxSpeed: 540,
+        turnRate: THREE.MathUtils.degToRad(46),
+        damage: 98,
+        life: 10.5,
+        launchDot: 0.3
       }),
       // Aegis SM-2: cold-launched straight up off the deck, slow off the rail,
       // then the seeker tips it over - long reach and it keeps its energy.
@@ -5298,6 +5915,35 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           spawnMissionWave(WAVE_PRESETS.naval);
           return true;
         },
+        // Puts an arbitrary air wave on the board. The enemy roster is thirteen
+        // airframes across nine missions, so without this the only way to see
+        // one fly is to reach the sortie that fields it; with it, the smoke
+        // gate walks ENEMY_TYPES. It takes the same descriptor a mission
+        // authors and goes through normalizeWaveEntry and spawnMissionWave, so
+        // what it exercises is the real spawn path - ace profiles, themes and
+        // all - and never a test-only one.
+        forceSpawnAirWave: (types, options = {}) => {
+          if (gameState !== STATE_PLAYING) return false;
+          if (!Array.isArray(types) || types.length === 0 || types.length > 6) return false;
+          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          // Board cleared the same way forceNavalWave does it, but WITHOUT its
+          // `kills = waveTargetsSpawned` line. That hook fires once; this one
+          // is called in a loop, and since ACCOMPLISHED is `kills >=
+          // totalTargets` (nothing else), crediting spawns would end the sortie
+          // partway through a roster walk. Retiring aircraft this way credits
+          // nothing, which is what a spawn hook should do anyway.
+          for (const enemy of enemies) {
+            if (!enemy.alive) continue;
+            enemy.alive = false;
+            enemy.deadTimer = 0.2;
+            enemy.hitbox.visible = false;
+            enemy.model.group.visible = false;
+          }
+          resetLock();
+          preferredTargetId = null;
+          spawnMissionWave(normalizeWaveEntry({ ...options, kind: "air", types }));
+          return enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
+        },
         forceSpawnGroundBase: () => {
           if (gameState !== STATE_PLAYING) return false;
           const preset = WORLD_PRESETS[world.preset];
@@ -6803,9 +7449,16 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     function buildDebriefIntelLines(success) {
       const nickname = getPlayerNickname();
       const lines = [];
-      const missionHadAce = MISSIONS[currentMissionIndex].sequence.includes("air2");
+      // Read off the resolved waves, not the authored sequence: a mission may
+      // name its ace inline (`ace: "vulture"`) instead of flying the "air2"
+      // preset, and the debrief has to speak the callsign that was actually up
+      // there. m05 fields two - the sortie is named after the one the player is
+      // made to kill, which is the first in wave order.
+      const acePilot = missionAcePilot(MISSIONS[currentMissionIndex]);
+      const missionHadAce = Boolean(acePilot);
+      const aceName = acePilot ? acePilot.callsign : "";
       if (success) {
-        if (missionHadAce) lines.push("IRONBACK撃墜を確認。繰り返す——IRONBACK、墜ちた。");
+        if (missionHadAce) lines.push(`${aceName}撃墜を確認。繰り返す——${aceName}、墜ちた。`);
         else lines.push("派遣した部隊は全滅。何が起きたのか、まだ報告が上がってこない。");
         lines.push(`たった1機に${kills}機やられた。奴らは奴を『${nickname}』と呼んでいる。`);
         lines.push(gunKills >= missileKills
@@ -6814,9 +7467,9 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       } else {
         lines.push("撃墜1。敵機は墜ちた。空はまた我々のものだ。");
         lines.push(aceDestroyed
-          ? "IRONBACKも還らなかったがな。割に合わん取引だ。"
+          ? `${aceName}も還らなかったがな。割に合わん取引だ。`
           : missionHadAce
-            ? "IRONBACKはもう「次は誰だ」と聞いている。"
+            ? `${aceName}はもう「次は誰だ」と聞いている。`
             : "敵は君の機体を覚えたそうだ。次は的にされる前に墜とせ。");
         if (kills > 0) lines.push(`落とされるまでに${kills}機持っていかれた。`);
       }
@@ -8149,20 +8802,35 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           .addScaledVector(spawnRight, lateral)
           .addScaledVector(spawnUp, altitude);
         position.y = Math.max(110, position.y);
-        spawnEnemy(position, band, i, waveTypes[i], wave.ace && i === 0, idBase);
+        spawnEnemy(position, band, i, waveTypes[i], i === wave.aceSlot ? wave.ace : null, idBase);
       }
     }
 
-    function spawnEnemy(position, wave, slot, typeKey, isAce = false, idBase = 0) {
+    function spawnEnemy(position, wave, slot, typeKey, aceId = null, idBase = 0) {
       enemySerial += 1;
       const id = idBase + slot + 1;
-      const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.lancer;
+      const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.f16;
+      const acePilot = aceProfileOf(aceId);
+      const isAce = Boolean(acePilot);
       // The ace flies the same airframe, just sharper - never a different
-      // physics table. ACE_TURN_SCALE is the only stat bonus it gets.
+      // physics table. ACE_TURN_SCALE is the only stat bonus it gets, and the
+      // fields listed here are the only ones a callsign owns.
+      //
+      // `label` is deliberately absent: it stays the airframe designation so
+      // the HUD reads "Su-37 VULTURE". The theme is a merge, not a replace, so
+      // `variant` and every other model constant still come from the aircraft
+      // and a profile can be flown by anything in the hangar.
       const spec = isAce
         ? Object.freeze({
             ...baseSpec,
-            ...ACE_SPEC_OVERRIDES,
+            role: acePilot.role,
+            behavior: acePilot.behavior,
+            evadeLateral: acePilot.evadeLateral,
+            evadeVertical: acePilot.evadeVertical,
+            evadeFrequency: acePilot.evadeFrequency,
+            radarColor: acePilot.radarColor,
+            tracerColor: acePilot.tracerColor,
+            theme: Object.freeze({ ...baseSpec.theme, ...acePilot.theme }),
             patrolTurn: baseSpec.patrolTurn * ACE_TURN_SCALE,
             pursuitTurn: baseSpec.pursuitTurn * ACE_TURN_SCALE
           })
@@ -8209,11 +8877,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         // Airframe designation for the HUD name tag, plus the individual
         // callsign a named pilot flies under. Only the ace has one.
         shortName: spec.label,
-        name: isAce ? ACE_CALLSIGN : null,
+        name: acePilot ? acePilot.callsign : null,
         role: spec.role,
         behavior: spec.behavior,
         tgt: spawningTgt,
         isAce,
+        // The profile itself, so the engage and death calls speak in this
+        // pilot's voice rather than a hard-coded one.
+        acePilot,
         aceEngageLineFired: false,
         aceHalfLineFired: false,
         spec,
@@ -8699,7 +9370,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           "wave-naval-brief"
         );
       } else {
-        const withAce = wave.ace;
+        const acePilot = aceProfileOf(wave.ace);
         spawnWave(wave, band, idBase);
         // A concurrent escort rides in on the wave it protects, so it announces
         // itself as a contact - not as a new wave the player has to clear.
@@ -8708,20 +9379,21 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
         if (wave.radio) {
           for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
-        } else if (withAce) {
+        } else if (acePilot) {
+          // The profile owns the body of the call; the wave owns whether it is
+          // the opening contact or a reinforcement. Ids are per callsign so a
+          // sortie that fields two aces announces both.
           triggerRadioLine(
             "command",
-            first
-              ? "敵編隊を確認。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。"
-              : "第2波、接近中。先頭の機体はエース指定——コールサイン『IRONBACK』。警戒を怠るな。",
+            `${first ? "敵編隊を確認。" : "増援を確認。"}${acePilot.radio.inbound}`,
             RADIO_PRIORITY.NORMAL,
-            "wave-ace-inbound"
+            `wave-ace-inbound-${acePilot.callsign}`
           );
           triggerRadioLine(
             "wingman",
-            "アイアンバックだって！？ 噂は聞いてる。絶対に後ろを取られるなよ。",
+            acePilot.radio.wingman,
             RADIO_PRIORITY.NORMAL,
-            "ace-foreshadow-wingman"
+            `ace-foreshadow-${acePilot.callsign}`
           );
         } else if (wave.concurrent) {
           // Authored per wave via `radio` when a mission wants something
@@ -8807,13 +9479,15 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
         if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
           enemy.mode = "pursuit";
-          if (enemy.isAce && !enemy.aceEngageLineFired) {
+          if (enemy.acePilot && !enemy.aceEngageLineFired) {
             enemy.aceEngageLineFired = true;
+            // Keyed by callsign: RADIO_LINE_COOLDOWN is per id, and a sortie
+            // with two named pilots must let both of them speak.
             triggerRadioLine(
               "enemy",
-              "こちらアイアンバック。全機下がれ——奴は私がやる。",
+              enemy.acePilot.radio.engage,
               RADIO_PRIORITY.NORMAL,
-              "ace-engage"
+              `ace-engage-${enemy.acePilot.callsign}`
             );
           }
         }
@@ -9593,13 +10267,15 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         highscore = score;
         saveHighscore();
       }
-      createDestroyedPopup(enemy.group.position, enemy.label, killScore);
+      // Display name, not the raw airframe label: a named pilot's kill is
+      // worth reading as "Su-37 VULTURE", which is what the HUD tag says too.
+      createDestroyedPopup(enemy.group.position, enemyDisplayName(enemy), killScore);
       playSfx("explosion", 0.75, 0.9 + Math.random() * 0.2);
       playTone(150, 0.18, 0.1, "sawtooth");
       playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
-      showBanner(`TARGET ${enemy.id} · ${enemy.label} DESTROYED`, 1.1, "success");
+      showBanner(`TARGET ${enemy.id} · ${enemyDisplayName(enemy)} DESTROYED`, 1.1, "success");
       if (enemy.type === "carrier") startAceKillCam(enemy);
       if (enemy.type === "bomber" && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
@@ -9613,12 +10289,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       if (enemy.isAce) {
         aceDestroyed = true;
         startAceKillCam(enemy);
-        triggerRadioLine(
-          "enemy",
-          "こちらアイアンバック…被弾した…墜ちる…",
-          RADIO_PRIORITY.URGENT,
-          "ace-down"
-        );
+        if (enemy.acePilot) {
+          triggerRadioLine(
+            "enemy",
+            enemy.acePilot.radio.down,
+            RADIO_PRIORITY.URGENT,
+            `ace-down-${enemy.acePilot.callsign}`
+          );
+        }
       }
       onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
@@ -11243,6 +11921,10 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         isAce: Boolean(enemy.isAce),
         type: enemy.type,
         label: enemy.label,
+        // Individual callsign, and the HUD tag built from both - "Su-37
+        // VULTURE" - so a probe can assert the name without rebuilding it.
+        name: enemy.name || null,
+        displayName: enemyDisplayName(enemy),
         role: enemy.role,
         behavior: enemy.behavior,
         surface: Boolean(enemy.surface),
