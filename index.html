@@ -894,6 +894,39 @@
       letter-spacing: 0.08em;
     }
 
+    /* Friendly contacts. The same blue as the airbase diamond and never the
+       enemy's white/red box: colour alone has to answer "can I shoot this?"
+       at a glance, so no friendly marker borrows any part of the TGT look. */
+    .friendlyMarker {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 16px;
+      height: 16px;
+      margin: -8px 0 0 -8px;
+      border: 1px solid rgba(104, 190, 255, 0.9);
+      transform: rotate(45deg);
+      display: none;
+      pointer-events: none;
+    }
+
+    .friendlyMarker.active { display: block; }
+
+    .friendlyMarkerLabel {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 5px);
+      transform: translate(-50%, 0) rotate(-45deg);
+      transform-origin: center top;
+      white-space: nowrap;
+      color: #68beff;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-size: 8.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      opacity: 0.9;
+    }
+
     /* 8AAM multi-lock: every round in the salvo lights its own box, so the
        player can count the shots before pulling the trigger. */
     .enemyMarker.multiLocked {
@@ -2329,6 +2362,9 @@
     const BATTLE_FAIL_TIME = 10;
     // Selected-contact blink on the radar scope, in milliseconds per cycle.
     const RADAR_BLINK_PERIOD_MS = 430;
+    // Friendly blips and markers. The same blue the airbase diamond uses, so
+    // every instrument agrees: blue is what you are flying with.
+    const FRIENDLY_RADAR_COLOR = "#68beff";
     // Fraction of cruise a loaded bomber flies its run at. Sets the length of
     // the intercept window, so it is the difficulty dial for a strike mission.
     const STRIKE_RUN_SPEED_SCALE = 0.7;
@@ -7083,6 +7119,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     const keys = new Set();
     const enemies = [];
+    // Friendly units live in their own array, deliberately NOT in enemies[].
+    // enemies[] is the mission's kill list: updateMission() ends a wave when
+    // every entry in it is dead, damageEnemy() scores every death in it, and
+    // updateLock()/fireGun()/updateMissiles() offer everything in it as a
+    // target. A friendly satisfies none of those contracts - it must survive,
+    // it must never be scored, and it must never be locked or shot - so
+    // sharing the array would mean guarding a dozen call sites against a flag,
+    // and one missed guard is a bug. A separate array makes the default
+    // behaviour correct everywhere by omission: the ~12 places that walk
+    // enemies[] simply never see a friendly.
+    const friendlies = [];
     const missilesInFlight = [];
     const enemyMissiles = [];
     const effects = [];
@@ -7104,6 +7151,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const combatPopups = [];
     const enemyMarkerElements = new Map();
     const enemyMarkerScreenState = [];
+    // Friendly markers keep their own map, keyed by array index. They share no
+    // id space with the enemy markers because they share no id space at all -
+    // a friendly has no enemy id, by design.
+    const friendlyMarkerElements = new Map();
+    const friendlyMarkerScreenState = [];
     const targetArrowState = {
       active: false,
       targetId: null,
@@ -7631,8 +7683,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       hud: {
         visibleEnemyMarkers: [],
+        visibleFriendlyMarkers: [],
         targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0, mode: "hidden" }
       },
+      friendlies: [],
       debug: {
         destroyedEnemies: 0,
         activeParticles: 0,
@@ -7651,6 +7705,57 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damageTaken: 0,
         aceDestroyed: false,
         activeContrailParticles: () => contrailParticlePool.activeCount,
+        // The authored friendly roster, mission by mission. Static, so a probe
+        // can read the whole table without flying anything.
+        friendlyDeployments: () => JSON.parse(JSON.stringify(FRIENDLY_DEPLOYMENTS)),
+        // Proof by construction that a friendly can never be shot or locked:
+        // it is not in the array every weapon and the lock read from. A probe
+        // asserts this is 0 rather than trying to shoot the wingman.
+        friendlyLeakProbe: () => ({
+          friendlies: friendlies.length,
+          // Anything here would be a friendly that had somehow reached the
+          // kill list. It is structurally impossible - nothing pushes to both
+          // arrays - and this is what makes that checkable rather than argued.
+          leaked: enemies.filter((enemy) => friendlies.some((f) => f.group === enemy.group)).length,
+          lockCandidates: enemies.filter((enemy) => enemy.alive).length,
+          lockTargetId: lock.targetId
+        }),
+        // Radar scope pixels at a friendly's blip, so the "blue on the scope"
+        // gate is read off the canvas rather than off the source.
+        radarPixelAt: (px, py) => {
+          const ctx = ui.radar.getContext("2d");
+          if (!ctx) return null;
+          const data = ctx.getImageData(
+            Math.round(px * radarDpr),
+            Math.round(py * radarDpr),
+            1,
+            1
+          ).data;
+          return { r: data[0], g: data[1], b: data[2], a: data[3] };
+        },
+        // Where each friendly sits on the scope, in radar CSS pixels, using
+        // exactly the projection drawRadar() uses.
+        friendlyRadarPoints: () => {
+          const size = radarCssSize;
+          const center = size / 2;
+          const radius = size * 0.42;
+          tmpV2.set(-lastRadarForward.z, 0, lastRadarForward.x).normalize();
+          return friendlies.filter((f) => f.alive).map((friendly) => {
+            tmpV3.copy(friendly.group.position).sub(player.position);
+            const rightDistance = tmpV3.dot(tmpV2);
+            const forwardDistance = tmpV3.dot(lastRadarForward);
+            const planarDistance = Math.hypot(rightDistance, forwardDistance);
+            const scale = Math.min(1, planarDistance / RADAR_RANGE);
+            const angle = Math.atan2(rightDistance, forwardDistance);
+            return {
+              kind: friendly.kind,
+              label: friendly.label,
+              onScope: planarDistance < RADAR_RANGE,
+              x: center + Math.sin(angle) * radius * scale,
+              y: center - Math.cos(angle) * radius * scale
+            };
+          });
+        },
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceDeployFlare: () => deployFlare(),
         forceSelectAircraft: (id) => selectAircraft(id),
@@ -8545,6 +8650,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (!outcomePending.active) missionElapsed += dt;
         playerHitCooldown = Math.max(0, playerHitCooldown - dt);
         updatePlayer(dt);
+        // After updatePlayer so the wingman is chasing this frame's station
+        // rather than last frame's, and before everything else because the
+        // friendlies feed no mechanic - they are never read by the lock, the
+        // weapons, the wave logic or the enemy AI, so nothing downstream
+        // depends on when in the frame they moved.
+        updateFriendlies(dt);
         if (gameState === STATE_PLAYING) updateEnemies(dt);
         if (gameState === STATE_PLAYING) {
           updateLock(dt);
@@ -9619,6 +9730,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       applyWorldPreset(worldOverride || MISSIONS[currentMissionIndex].world);
       resetRadio();
       resetPlayerTransform();
+      // Must come before spawnMissionWave below: spawnNavalWave() lays the
+      // enemy task force out relative to wherever the player is standing, so
+      // moving the player afterwards would put the fleet somewhere else than
+      // the friendly placement was chosen against.
+      applyFriendlyPlayerStart(MISSIONS[currentMissionIndex]);
       playerModel.group.visible = cameraMode !== "cockpit";
       timeScale = 1;
       killCam.active = false;
@@ -11861,6 +11977,261 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
+    // ---- Friendly units --------------------------------------------------
+    //
+    // Which friendlies each sortie fields, keyed by mission key. This is a
+    // table OF ITS OWN rather than fields on MISSIONS[]: the mission list is
+    // edited constantly (waves, briefings, story text), and hanging the
+    // friendly roster off a separate lookup means neither side of that work
+    // has to touch the other's lines. A mission absent from the table simply
+    // fields no friendlies, which is why every value here is additive.
+    //
+    // `wingman: true` is on every entry - HAMMER 2 flies every sortie in the
+    // campaign. `carrier` and `airbase` carry the placement the mission wants.
+    const FRIENDLY_DEPLOYMENTS = Object.freeze({
+      // Airfield missions. m01 already spawns BASE ALPHA itself through
+      // mission.friendlyBase, so the table only asks for the wingman there -
+      // asking twice would stand two airfields on the same island.
+      m01: Object.freeze({ wingman: true }),
+      m02: Object.freeze({
+        wingman: true,
+        airbase: Object.freeze({ x: 120, z: -19800, heading: 0.12, label: "BASE ALPHA", failRadius: 400 })
+      }),
+      "m-swarm": Object.freeze({
+        wingman: true,
+        airbase: Object.freeze({ x: 900, z: -1500, heading: 0.3, label: "BASE ALPHA", failRadius: 400 })
+      }),
+      "m-intercept": Object.freeze({
+        wingman: true,
+        airbase: Object.freeze({ x: 120, z: -19800, heading: 0.12, label: "BASE ALPHA", failRadius: 400 })
+      }),
+      // Naval missions. The carrier's spot is chosen to sit clear of where
+      // spawnNavalWave() drops the enemy task force (player position + 2400m
+      // along the nose, clamped into a 1500m disc about the origin) - a
+      // friendly hull inside the enemy formation would read as a target the
+      // player cannot shoot, which is worse than no carrier at all.
+      m03: Object.freeze({
+        wingman: true,
+        // Ahead and to the left of the m03 start, close enough to fill the
+        // frame on the first frame, off the nose axis the enemy fleet spawns
+        // down. `playerStart` moves the player out to meet it - the launch
+        // read the spec asks for, without a catapult sequence.
+        carrier: Object.freeze({ x: -620, z: 900, heading: Math.PI, label: "CV-71 INDEPENDENCE" }),
+        playerStart: Object.freeze({ x: 0, y: 200, z: 1500 })
+      }),
+      "m-convoy": Object.freeze({
+        wingman: true,
+        carrier: Object.freeze({ x: -2100, z: 1750, heading: Math.PI * 0.75, label: "CV-71 INDEPENDENCE" })
+      }),
+      m04: Object.freeze({ wingman: true }),
+      "m-glacier": Object.freeze({ wingman: true }),
+      "m-night": Object.freeze({ wingman: true }),
+      m05: Object.freeze({
+        wingman: true,
+        carrier: Object.freeze({ x: -2400, z: 1600, heading: Math.PI * 0.8, label: "CV-71 INDEPENDENCE" }),
+        airbase: Object.freeze({ x: 120, z: -19800, heading: 0.12, label: "BASE ALPHA", failRadius: 400 })
+      })
+    });
+
+    const WINGMAN_CALLSIGN = "HAMMER 2";
+    // Behind the player's right shoulder, the standard wing position: far
+    // enough back that it never fills the chase camera, far enough out that
+    // it is not hidden behind the player's own tail.
+    const WINGMAN_OFFSET = Object.freeze({ back: 60, side: 40, up: -6 });
+    // A soft follow, not a rigid weld. The wingman lags the player through
+    // hard manoeuvres and catches up on the straights, which is what makes it
+    // read as a second aircraft being flown rather than a mesh parented to
+    // the camera rig.
+    const WINGMAN_FOLLOW_K = 0.06;
+    const WINGMAN_TURN_K = 0.09;
+
+    // The friendly carrier is the enemy hull repainted, not a second model:
+    // one silhouette, two liveries, so the player reads "that is a carrier"
+    // instantly and reads the colour for whose it is.
+    const FRIENDLY_CARRIER_SPEC = Object.freeze({
+      cruiseSpeed: 9,
+      turnRate: THREE.MathUtils.degToRad(1.2),
+      sternOffset: 162,
+      bowOffset: 168
+    });
+
+    function spawnFriendlyWingman() {
+      // Fixed F-16, per spec: the wingman is set dressing and a radio voice,
+      // and pinning the airframe keeps it recognisable no matter what the
+      // player chose in the hangar.
+      const spec = AIRCRAFT_TYPES.f16;
+      const group = new THREE.Group();
+      const model = createAircraftModel(spec.theme);
+      group.add(model.group);
+      // Deliberately no hitbox mesh. Nothing raycasts against friendlies -
+      // fireGun() and the missile/bomb paths all build their target list from
+      // enemies[] - and adding one would only invite a future call site to
+      // find it.
+      scene.add(group);
+
+      forwardOf(player, tmpV1);
+      rightOf(player, tmpV3);
+      group.position.copy(player.position)
+        .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
+        .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
+      group.position.y += WINGMAN_OFFSET.up;
+      group.quaternion.copy(player.quaternion);
+
+      const friendly = {
+        kind: "wingman",
+        type: "f16",
+        label: WINGMAN_CALLSIGN,
+        // Invulnerable by construction: nothing damages a friendly, because
+        // no weapon path can see this array. `alive` exists so the radar and
+        // marker loops read the same way they do for enemies.
+        alive: true,
+        group,
+        model,
+        radarSymbol: "air"
+      };
+      friendlies.push(friendly);
+      return friendly;
+    }
+
+    function spawnFriendlyCarrier(config) {
+      const group = new THREE.Group();
+      group.position.set(config.x, 0, config.z);
+      group.rotation.y = config.heading || 0;
+      // `friendly` livery: the same hull geometry in blue-grey with a lighter
+      // deck and brighter deck lines. See createShipModel().
+      const model = createShipModel("carrier", true);
+      group.add(model.group);
+      scene.add(group);
+
+      const friendly = {
+        kind: "carrier",
+        type: "carrier",
+        label: config.label || "CV-71 INDEPENDENCE",
+        alive: true,
+        group,
+        model,
+        heading: config.heading || 0,
+        speed: FRIENDLY_CARRIER_SPEC.cruiseSpeed,
+        seed: Math.random() * Math.PI * 2,
+        wakeTimer: 0,
+        radarSymbol: "ship"
+      };
+      friendlies.push(friendly);
+      return friendly;
+    }
+
+    // Called from spawnMissionGround, i.e. before the first wave, so the m03
+    // player start is already moved by the time spawnNavalWave() reads the
+    // player's position to lay the enemy fleet out.
+    function spawnMissionFriendlies(mission) {
+      const deployment = FRIENDLY_DEPLOYMENTS[mission.key];
+      if (!deployment) return;
+      // Only ever a second airfield when the mission does not already stand
+      // one up itself.
+      if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
+      if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
+      if (deployment.wingman) spawnFriendlyWingman();
+    }
+
+    // The one thing the friendly table is allowed to move outside its own
+    // array: where the sortie begins. m03 uses it to put the player off the
+    // INDEPENDENCE's bow so the first frame of the mission is the carrier.
+    function applyFriendlyPlayerStart(mission) {
+      const deployment = FRIENDLY_DEPLOYMENTS[mission.key];
+      if (!deployment || !deployment.playerStart) return;
+      player.position.set(
+        deployment.playerStart.x,
+        deployment.playerStart.y,
+        deployment.playerStart.z
+      );
+      syncPlayerOrientation();
+    }
+
+    function updateFriendlies(dt) {
+      if (friendlies.length === 0) return;
+      const time = performance.now() * 0.001;
+      for (const friendly of friendlies) {
+        if (!friendly.alive) continue;
+        if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
+        else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
+      }
+    }
+
+    function updateFriendlyWingman(friendly, dt) {
+      forwardOf(player, tmpV1);
+      rightOf(player, tmpV3);
+      // Station: back along the player's nose, out along the player's beam.
+      // Taken from the player's own axes rather than from world space so the
+      // slot rolls with the flight, which is what a wingman actually holds.
+      tmpV4.copy(player.position)
+        .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
+        .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
+      tmpV4.y += WINGMAN_OFFSET.up;
+      // Exponential approach, frame-rate independent through damping().
+      friendly.group.position.lerp(tmpV4, damping(WINGMAN_FOLLOW_K, dt));
+      friendly.group.quaternion.slerp(player.quaternion, damping(WINGMAN_TURN_K, dt));
+      // Never let the wingman fly through the sea floor, whatever the player
+      // does. It is scenery, and scenery embedded in terrain reads as a bug.
+      const floor = surfaceHeightAt(friendly.group.position.x, friendly.group.position.z) + 25;
+      if (friendly.group.position.y < floor) friendly.group.position.y = floor;
+    }
+
+    function updateFriendlyCarrier(friendly, dt, time) {
+      // Straight-line steaming with the same gentle bob the enemy hulls have,
+      // turned back toward the middle of the sea if it ever wanders out. No
+      // AA, no missiles, no damage state: this hull exists to be seen.
+      const distance = Math.hypot(friendly.group.position.x, friendly.group.position.z);
+      let desiredHeading = friendly.heading;
+      if (distance > 3200) {
+        desiredHeading = Math.atan2(-friendly.group.position.x, friendly.group.position.z);
+      }
+      let headingDelta = desiredHeading - friendly.heading;
+      while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
+      while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
+      friendly.heading += THREE.MathUtils.clamp(
+        headingDelta,
+        -FRIENDLY_CARRIER_SPEC.turnRate * dt,
+        FRIENDLY_CARRIER_SPEC.turnRate * dt
+      );
+      friendly.group.rotation.set(
+        Math.sin(time * 0.41 + friendly.seed) * 0.006,
+        friendly.heading + Math.sin(time * 0.23 + friendly.seed) * 0.015,
+        Math.sin(time * 0.57 + friendly.seed) * 0.01
+      );
+      forwardOf(friendly.group, tmpV4);
+      friendly.group.position.x += tmpV4.x * friendly.speed * dt;
+      friendly.group.position.z += tmpV4.z * friendly.speed * dt;
+      friendly.group.position.y = Math.sin(time * 0.5 + friendly.seed) * 0.35;
+
+      // Wake: stern foam plus a little bow spray, the same read the enemy
+      // hulls give, so a moving ship never looks becalmed.
+      friendly.wakeTimer -= dt;
+      if (friendly.wakeTimer <= 0) {
+        tmpV6.copy(friendly.group.position).addScaledVector(tmpV4, -FRIENDLY_CARRIER_SPEC.sternOffset);
+        tmpV6.y = 0.7;
+        tmpV6.x += (Math.random() - 0.5) * 7;
+        tmpV6.z += (Math.random() - 0.5) * 7;
+        tmpV5.copy(tmpV4).multiplyScalar(-4).setY(0.4);
+        smokeParticlePool.spawn(tmpV6, tmpV5, 2.1 + Math.random() * 0.8, 0xe4edf1, -0.03, 1.05);
+        tmpV6.copy(friendly.group.position).addScaledVector(tmpV4, FRIENDLY_CARRIER_SPEC.bowOffset);
+        tmpV6.y = 0.7;
+        tmpV5.set((Math.random() - 0.5) * 5, 1.4, (Math.random() - 0.5) * 5);
+        smokeParticlePool.spawn(tmpV6, tmpV5, 0.75, 0xeef5f8, 0.15, 0.55);
+        friendly.wakeTimer += 0.1;
+      }
+    }
+
+    function clearFriendlies() {
+      for (const friendly of friendlies) {
+        scene.remove(friendly.group);
+        if (friendly.model) disposeAircraftMaterials(friendly.model);
+      }
+      friendlies.length = 0;
+      for (const marker of friendlyMarkerElements.values()) marker.remove();
+      friendlyMarkerElements.clear();
+      friendlyMarkerScreenState.length = 0;
+    }
+
     // Ground installations belong to the mission rather than to a wave: they
     // are already standing when the player arrives and count toward the same
     // target total, so the sortie only ends once the base is flat too.
@@ -11886,6 +12257,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Must precede the first wave: the bombers read friendlyBase to lay in
       // their run, and a bomber with no field to hit would just fly a patrol.
       if (mission.friendlyBase) spawnFriendlyBase(mission.friendlyBase);
+      // After the mission's own airfield, so a mission that stands one up
+      // itself keeps it and the deployment table only ever adds.
+      spawnMissionFriendlies(mission);
       if (mission.introRadio) {
         for (const line of mission.introRadio) radioSay(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
       }
@@ -14438,8 +14812,64 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (ui.baseMarkerLabel.textContent !== text) ui.baseMarkerLabel.textContent = text;
     }
 
+    // Blue diamonds over the friendlies, with the callsign and range. Same
+    // shape and colour as the airbase marker deliberately: everything blue on
+    // this HUD is something the player is flying WITH, and nothing blue is
+    // ever shootable.
+    function updateFriendlyHudMarkers() {
+      friendlyMarkerScreenState.length = 0;
+      if (gameState !== STATE_PLAYING || friendlies.length === 0) {
+        for (const marker of friendlyMarkerElements.values()) marker.remove();
+        friendlyMarkerElements.clear();
+        return;
+      }
+
+      const liveKeys = new Set();
+      for (let i = 0; i < friendlies.length; i += 1) {
+        const friendly = friendlies[i];
+        if (!friendly.alive) continue;
+        liveKeys.add(i);
+        let marker = friendlyMarkerElements.get(i);
+        if (!marker) {
+          marker = document.createElement("div");
+          marker.className = "friendlyMarker";
+          const label = document.createElement("span");
+          label.className = "friendlyMarkerLabel";
+          marker.appendChild(label);
+          ui.enemyMarkers.appendChild(marker);
+          friendlyMarkerElements.set(i, marker);
+        }
+        // Aim the marker at the hull's midpoint rather than its origin: a
+        // 330m carrier anchored at the waterline would hang its diamond in
+        // the sea alongside the deck.
+        tmpV8.copy(friendly.group.position);
+        if (friendly.kind === "carrier") tmpV8.y += 40;
+        tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+        tmpV7.copy(tmpV8).project(camera);
+        const onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.0);
+        marker.classList.toggle("active", onScreen);
+        if (!onScreen) continue;
+        const distance = Math.round(player.position.distanceTo(friendly.group.position));
+        const text = `${friendly.label} ${distance}`;
+        const labelNode = marker.firstElementChild;
+        if (labelNode.textContent !== text) labelNode.textContent = text;
+        const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
+        marker.style.left = `${x}px`;
+        marker.style.top = `${y}px`;
+        friendlyMarkerScreenState.push({ kind: friendly.kind, label: friendly.label, x, y, distance });
+      }
+
+      for (const [key, marker] of friendlyMarkerElements) {
+        if (liveKeys.has(key)) continue;
+        marker.remove();
+        friendlyMarkerElements.delete(key);
+      }
+    }
+
     function updateEnemyHudMarkers() {
       updateBaseMarker();
+      updateFriendlyHudMarkers();
       enemyMarkerScreenState.length = 0;
 
       if (gameState !== STATE_PLAYING) {
@@ -14863,7 +15293,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.cameraFocus.targetId = cameraFocusTargetId;
       hook.cameraFocus.source = cameraFocusSource;
       hook.hud.visibleEnemyMarkers = enemyMarkerScreenState.map((marker) => ({ ...marker }));
+      hook.hud.visibleFriendlyMarkers = friendlyMarkerScreenState.map((marker) => ({ ...marker }));
       hook.hud.radarBlinkOn = radarBlinkOn;
+      // The friendly roster, for the probe that proves a friendly is never a
+      // contact: whatever is in here must never appear in enemies[], never be
+      // lockable and never be scored.
+      hook.friendlies = friendlies.map((friendly) => ({
+        kind: friendly.kind,
+        type: friendly.type,
+        label: friendly.label,
+        alive: friendly.alive,
+        x: Number(friendly.group.position.x.toFixed(2)),
+        y: Number(friendly.group.position.y.toFixed(2)),
+        z: Number(friendly.group.position.z.toFixed(2)),
+        distance: Number(player.position.distanceTo(friendly.group.position).toFixed(1))
+      }));
       hook.friendlyBase = friendlyBase
         ? {
             x: friendlyBase.x,
@@ -15220,6 +15664,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
 
+      // Friendlies, drawn after the contacts so an overlap resolves in favour
+      // of the blue symbol - the one reading the player must not misread. Blue
+      // against the contacts' white and the designated targets' red, and no
+      // ring or blink, because a friendly is never selected or locked.
+      for (const friendly of friendlies) {
+        if (!friendly.alive) continue;
+        tmpV3.copy(friendly.group.position).sub(player.position);
+        const rightDistance = tmpV3.dot(tmpV2);
+        const forwardDistance = tmpV3.dot(lastRadarForward);
+        const planarDistance = Math.hypot(rightDistance, forwardDistance);
+        const scale = Math.min(1, planarDistance / RADAR_RANGE);
+        const angle = Math.atan2(rightDistance, forwardDistance);
+        const px = center + Math.sin(angle) * radius * scale;
+        const py = center - Math.cos(angle) * radius * scale;
+
+        forwardOf(friendly.group, tmpV4);
+        const headingAngle = Math.atan2(tmpV4.dot(tmpV2), tmpV4.dot(lastRadarForward));
+
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(headingAngle);
+        ctx.fillStyle = FRIENDLY_RADAR_COLOR;
+        ctx.shadowColor = FRIENDLY_RADAR_COLOR;
+        ctx.shadowBlur = 6;
+        if (friendly.kind === "carrier") {
+          // Same hull bar the enemy carrier gets, so the two read as the same
+          // class of thing at the same size - only the colour differs.
+          ctx.fillRect(-2.1 * 1.35, -4.6 * 1.35, 4.2 * 1.35, 9.2 * 1.35);
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(0, -4.5);
+          ctx.lineTo(-3, 3);
+          ctx.lineTo(0, 1);
+          ctx.lineTo(3, 3);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.shadowBlur = 0;
+      }
+
       for (const missile of enemyMissiles) {
         tmpV3.copy(missile.mesh.position).sub(player.position);
         const rightDistance = tmpV3.dot(tmpV2);
@@ -15318,6 +15803,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function clearMissionObjects() {
       clearMissionProps();
+      clearFriendlies();
       for (const enemy of enemies) {
         scene.remove(enemy.group);
         // Mounts share their ship's materials - there is nothing of their own
@@ -17492,14 +17978,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       };
     }
 
-    function makeCarrierDeckTexture() {
+    function makeCarrierDeckTexture(friendly = false) {
       const canvas = document.createElement("canvas");
       canvas.width = 128;
       canvas.height = 512;
       const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#3d434b";
+      ctx.fillStyle = friendly ? "#39485c" : "#3d434b";
       ctx.fillRect(0, 0, 128, 512);
-      ctx.strokeStyle = "rgba(240, 245, 248, 0.85)";
+      // The allied deck's lines are painted brighter and wider than the
+      // enemy's, so the friendly hull still reads as friendly from directly
+      // overhead, where the blue-grey paint on the sides is not in frame.
+      ctx.strokeStyle = friendly ? "rgba(214, 234, 255, 0.98)" : "rgba(240, 245, 248, 0.85)";
       ctx.lineWidth = 3;
       ctx.strokeRect(5, 4, 118, 504);
       // Axial runway centreline (canvas top = bow), then the angled recovery
@@ -17523,20 +18012,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.lineTo(14, 502);
       ctx.stroke();
       // Elevators: two lighter pads on the starboard edge.
-      ctx.fillStyle = "#4a515a";
+      ctx.fillStyle = friendly ? "#465872" : "#4a515a";
       ctx.fillRect(96, 120, 26, 52);
       ctx.fillRect(96, 250, 26, 52);
       return new THREE.CanvasTexture(canvas);
     }
 
-    function createShipModel(kind) {
+    // `friendly` repaints the same hull rather than building a second one: the
+    // silhouette is what tells the player "carrier", and the colour is what
+    // tells them whose. Allied blue-grey against the enemy's neutral grey,
+    // which is the same read the blue HUD marker and the blue radar blip give
+    // from the other two instruments.
+    function createShipModel(kind, friendly = false) {
       const root = new THREE.Group();
-      const hull = makeAircraftMaterial(0x6f7780, 0.28, 0.6);
-      const deck = makeAircraftMaterial(kind === "carrier" ? 0x3d434b : 0x59616a, 0.22, 0.72);
-      const house = makeAircraftMaterial(0x8a929c, 0.24, 0.58);
-      const dark = makeAircraftMaterial(0x272b31, 0.3, 0.6);
-      const light = makeAircraftMaterial(0xd6dde2, 0.3, 0.45);
-      const markings = new THREE.MeshBasicMaterial({ color: 0xf0f5f8 });
+      const hull = makeAircraftMaterial(friendly ? 0x4c5f78 : 0x6f7780, 0.28, 0.6);
+      const deck = makeAircraftMaterial(
+        friendly ? 0x39485c : (kind === "carrier" ? 0x3d434b : 0x59616a),
+        0.22,
+        0.72
+      );
+      const house = makeAircraftMaterial(friendly ? 0x6b7f9b : 0x8a929c, 0.24, 0.58);
+      const dark = makeAircraftMaterial(friendly ? 0x1e2733 : 0x272b31, 0.3, 0.6);
+      const light = makeAircraftMaterial(friendly ? 0xcbd8e6 : 0xd6dde2, 0.3, 0.45);
+      const markings = new THREE.MeshBasicMaterial({ color: friendly ? 0xdcecff : 0xf0f5f8 });
       const extraMaterials = [];
 
       const parts = [];
@@ -17627,7 +18125,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         add(geometry.shipBow, hull, 0, 8, -160, 19, 30, 10, -Math.PI / 2);
         add(geometry.panel, dark, 0, 1, 5, 40.6, 2, 301);
         add(geometry.panel, deck, 0, 20.6, 0, 76, 3.2, 332);
-        const deckSkin = new THREE.MeshBasicMaterial({ map: makeCarrierDeckTexture() });
+        const deckSkin = new THREE.MeshBasicMaterial({ map: makeCarrierDeckTexture(friendly) });
         extraMaterials.push(deckSkin);
         add(geometry.shipDeck, deckSkin, 0, 22.35, 0, 76, 332, 1, -Math.PI / 2);
         add(geometry.panel, house, 32, 28.5, 38, 10, 13, 32);
