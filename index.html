@@ -3692,6 +3692,68 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         radarColor: "#ffc47a",
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
+      }),
+
+      // ---- Vehicles (M9) -------------------------------------------------
+      // The first ground units that are not bolted down. `mobile` is the whole
+      // flag: it tells spawnGroundUnit to bake a route when the mission hands
+      // the unit a `path`, tells it to stand the unit on the terrain mesh
+      // rather than on the capped sampler (see surfaceTopAt), and tells
+      // updateGroundUnit to drive. A vehicle with no path is a picket and
+      // behaves exactly like every installation above it.
+      tank: Object.freeze({
+        key: "tank",
+        surface: true,
+        ground: true,
+        label: "TANK",
+        role: "Main Battle Tank",
+        // Two missiles (the 99-196 band), which is what a tank takes in AC7.
+        hp: 110,
+        hitRadius: 18,
+        crash: Object.freeze({ halfLen: 6, halfBeam: 3.4, top: 3.2 }),
+        hitBox: Object.freeze({ x: 8, y: 6, z: 13 }),
+        smokeHeight: 3,
+        // The main gun is not modelled as an anti-air weapon. Every SEAD
+        // breakdown of the series lists AA Gun / SAM / CIWS / AD Tank as the
+        // units that shoot at aircraft; MBTs and APCs are deliberately not in
+        // that list, and a tank that could swat a fighter with its main gun
+        // would make the AD TANK below pointless.
+        aa: null,
+        mobile: Object.freeze({ speed: 15, turnRate: THREE.MathUtils.degToRad(28) }),
+        radarColor: "#ffc47a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      adTank: Object.freeze({
+        key: "adTank",
+        surface: true,
+        ground: true,
+        label: "AD TANK",
+        role: "Air Defence Tank",
+        // One missile. AC7 gives the AD Tank a tank's two, but Sortie's own
+        // samSite is 90 - the existing rule here is "air-defence units are the
+        // dangerous, fragile thing you clear first", and consistency inside
+        // this game beats consistency with the source.
+        hp: 90,
+        hitRadius: 20,
+        crash: Object.freeze({ halfLen: 6, halfBeam: 3.6, top: 4 }),
+        hitBox: Object.freeze({ x: 9, y: 7, z: 13 }),
+        smokeHeight: 4,
+        // Mounts are measured along the hull axis, the same convention the
+        // ships and the AA gun use, so both barrels sit on the turret front.
+        aaMounts: Object.freeze([2.8, 3.6]),
+        aaHeight: 4.6,
+        // Strictly better than the emplaced aaGun (560 / 0.7 / 0.14): it is a
+        // self-propelled gun system on a tank chassis, and it is the reason to
+        // stay high over the column.
+        aa: Object.freeze({ range: 600, cooldownMin: 0.65, cooldownSpread: 0.5, damage: 7, maxHitChance: 0.15, tracers: 2 }),
+        // Faster than the search radar's 0.6: this one is tracking, not
+        // searching, and the spin is the tell that the vehicle is still live.
+        dishSpin: 1.4,
+        mobile: Object.freeze({ speed: 13, turnRate: THREE.MathUtils.degToRad(26) }),
+        radarColor: "#ff9a5a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
       })
     });
 
@@ -4015,6 +4077,87 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
             distance: [1200, 3000]
           }
         }
+      },
+
+      // Ground-attack map for the armoured convoy (M9). The other four maps
+      // were measured before this was written and none of them can carry a
+      // road: the glacier corridor floor is open water with drift ice, the
+      // night plateau's flat top is only ~570m across, and the day map's own
+      // plateau is the m01 airfield island 19.8km down-range. So this map
+      // exists for one reason - a piece of land wide enough and flat enough
+      // for a column of vehicles to drive across in front of the player.
+      //
+      // The land is one very wide, very low plateau: 3km across at the
+      // waterline, 34m tall, flat on top out to 0.90 of its radius. That last
+      // number is what makes it drivable - the 10% rim climbs 34m over ~150m
+      // of ground (13 degrees), so the convoy can come up off the beach onto
+      // the plain instead of teleporting onto a mesa.
+      coastalPlain: {
+        label: "COASTAL PLAIN",
+        clearColor: 0x8fa9b0,
+        sky: [[0, "#0b1c30"], [0.3, "#255a7d"], [0.6, "#93bfd0"], [0.74, "#e4ddc6"], [1, "#4d707b"]],
+        fog: { color: 0xa0bcc3, near: 1200, far: 5400 },
+        sun: {
+          position: [1500, 820, -3100], color: 0xffeec4, radius: 88,
+          glare: [
+            { scale: 1600, color: 0xffeccb, opacity: 0.5 },
+            { scale: 440, color: 0xfffbe8, opacity: 0.92 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        sunRoad: {
+          color: 0xffd98a, opacity: 0.26, width: 600, length: 3400,
+          rotationY: Math.atan2(-1500, 3100), position: [900, 0.4, -1860]
+        },
+        ocean: {
+          base: "#1b5468", bright: "160, 218, 226", dark: "12, 44, 58",
+          repeat: 26, roughness: 0.4, metalness: 0.22
+        },
+        lights: {
+          hemi: { sky: 0xd6f0ff, ground: 0x27311e, intensity: 2.1 },
+          key: { color: 0xfff0d2, intensity: 3, position: [900, 1150, -700] },
+          fill: { color: 0x86c8ff, intensity: 0.8, position: [-600, 260, 900] }
+        },
+        mountains: {
+          // Pushed well past the plateau's own footprint (r ~1400 around
+          // (0,-2600)) so the background ring can never be drawn inside the
+          // ground the convoy drives on.
+          count: 5, radius: [180, 320], height: [120, 260], distance: [4700, 5600],
+          snowyAbove: 9999, snowLine: 0.62, roughness: 0.94,
+          // The plateau's top surface is the `peak` band (its cap vertices sit
+          // at height fraction 1.0), so `peak` is the colour of the plain the
+          // convoy drives on - dry grass, not bare rock.
+          palette: { low: 0x53663f, mid: 0x6d7a4c, rock: 0x818656, peak: 0x8d9263, snow: 0xe9eff2 },
+          corridor: null,
+          plateau: {
+            radius: [1500, 1500], height: [34, 34], topRadius: 0.9,
+            at: [0, -2600], snowyAbove: 9999
+          }
+        },
+        islands: { count: 5, stone: 0x5a6a4a, green: 0x54703f },
+        clouds: {
+          scale: 1, hero: true, color: 0xf1f6f7, opacity: 0.68,
+          cirrusColor: 0xe9f2f5, cirrusOpacity: 0.28
+        },
+        decor: {
+          seed: 0x6d2f07,
+          // Fences the whole landmass: a scenery island dropped on the plain
+          // would sit across the road, and nothing in the decoration pass
+          // knows the convoy's route.
+          keepClear: [{ x: 0, z: -2600, r: 2300 }],
+          extraIslands: {
+            count: 12, radius: [130, 320], height: [30, 90], distance: [3200, 4400]
+          },
+          shore: { sand: 0xd8cda4, shallow: 0x5fb0c2, opacity: 0.85, width: 1.3 },
+          trees: { perIsland: 18, color: 0x2f5a35, trunk: 0x4a3a28, height: [12, 26] },
+          rocks: { count: 22, color: 0x4a5a52, scale: [8, 24] },
+          extraClouds: {
+            towers: 4, towerSize: [70, 120], towerBase: 640,
+            stratus: 8, stratusSize: [190, 320], stratusBase: 1450,
+            distance: [1400, 3600]
+          }
+        }
       }
     });
 
@@ -4271,9 +4414,95 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           { speaker: "command", text: "小型高機動の反応が多数。無人機だ——数で来るぞ、1機ずつ丁寧に処理しろ。", id: "swarm-brief" },
           { speaker: "wingman", text: "旋回でこいつらに勝てる機体は無い。追いかけっこはするな、正面から撃て！", id: "swarm-brief-wing" }
         ]
+      },
+      {
+        key: "m-convoy",
+        world: "coastalPlain",
+        title: "IRON COLUMN",
+        jp: "敵機甲部隊が海岸平野を縦断中。対空戦車を伴う車列を、南岸へ抜けられる前に殲滅せよ。",
+        // The first mission whose targets move on the ground. Everything the
+        // player has learned about ground attack still applies - these are the
+        // same lock-on, the same gun, the same missile quantum - but the aim
+        // point leads now, and the column shoots back from two of its seven
+        // vehicles.
+        //
+        // The CAP is deliberately NOT a designated target. The column is the
+        // objective; the fighters are a decision, exactly as in m03.
+        sequence: [
+          {
+            types: ["f16", "f15"], tgt: false, band: 2, label: "CAP",
+            radio: [
+              { speaker: "wingman", text: "上空にCAP！ 付き合う必要はない——狙いは車列だ！", id: "convoy-cap-inbound" }
+            ]
+          }
+        ],
+        // Nothing here runs away, so the pressure is scoring pressure. Par
+        // covers the ~25s ingress plus eight ground kills at ground-attack
+        // pace, which is the shape AC7's own convoy mission uses (a score
+        // attack, not a countdown).
+        parTime: 275,
+        hasOutro: false,
+        map: { x: 0.14, y: 0.44 },
+        // The road, authored once and shared by every vehicle in the column:
+        // 2.7km diagonally across the plain, from the northern shelf down to
+        // the southern one. Waypoint spacing is loose on purpose - spawn time
+        // cuts every leg into 12m steps and samples the terrain at each one,
+        // so these eleven points only have to describe the road's shape.
+        //
+        // Both ends stop short of the water on purpose. This island's edge is
+        // not a beach, it is an ~18m step where the terrain mesh ends, and a
+        // road taken over it would leave vehicles hanging in the air between
+        // two samples. The route was measured before it was written: on this
+        // line the baked road matches the mesh to 0.000m at every sample AND
+        // at every midpoint between samples.
+        convoyRoad: [
+          [10, -1420], [-40, -1560], [-110, -1760], [-200, -2000],
+          [-280, -2350], [-290, -2700], [-190, -3000], [-20, -3260],
+          [200, -3480], [330, -3700], [370, -3880]
+        ],
+        // One speed for the whole column, because a march moves at the pace of
+        // its slowest vehicle - the AD TANK's 13. Per-type `mobile.speed` is
+        // what a vehicle does on its own; a convoy that used it would tear
+        // itself apart within a minute, with the tanks' 15 pulling away from
+        // their own air cover.
+        convoySpeed: 13,
+        // `pathOffset` is how far along that road each vehicle starts, which
+        // is also what holds the column's 170m interval: they share the road
+        // and differ only by distance, so nothing can concertina. Air-defence
+        // vehicles ride third and sixth, the way a real march spreads its
+        // cover rather than bunching it at one end.
+        groundUnits: [
+          { id: 21, type: "tank", pathOffset: 1060 },
+          { id: 22, type: "tank", pathOffset: 890 },
+          { id: 23, type: "adTank", pathOffset: 720 },
+          { id: 24, type: "tank", pathOffset: 550 },
+          { id: 25, type: "tank", pathOffset: 380 },
+          { id: 26, type: "adTank", pathOffset: 210 },
+          { id: 27, type: "tank", pathOffset: 40 },
+          // The battery covering the beachhead. It sits on the western rim,
+          // ON THE SLOPE rather than on the flat top: the slope is the one
+          // place the capped sampler and the mesh agree exactly, so the
+          // installation stands on the ground with no allowance made for it.
+          { id: 28, type: "samSite", x: -1080, z: -2600, heading: 1.35 }
+        ],
+        // Centred on the middle of the road rather than on the mean of the
+        // spawn points, which would drift north with the column's tail.
+        battleCenter: { x: -100, z: -2650 },
+        battleRadius: 9000,
+        briefing: "敵機甲部隊が海岸平野に上陸、北端から南岸へ縦断中。\n車列は戦車5、対空戦車2の計7両。速度は遅いが、止まらない。\n対空戦車は撃ってくる——射程600、低空で正面から入れば削られる。\n戦車の主砲は君を狙わない。怖いのは対空戦車と、西の稜線のSAMサイトだ。\n指定目標は車列7両とSAMサイトの計8。上空のCAPは無視して構わない。",
+        introRadio: [
+          { speaker: "command", text: "海岸平野に敵機甲部隊。南岸に抜けられたら前線が崩れる——車列を潰せ。", id: "convoy-brief" },
+          { speaker: "wingman", text: "対空戦車が混ざってる！ 先に潰さないと低空に入れないぞ！", id: "convoy-brief-wing" }
+        ]
       }
     ].map((mission) => {
       const waves = Object.freeze(mission.sequence.map(normalizeWaveEntry));
+      // One frozen road per mission. Every vehicle in the column is handed
+      // this exact array, which is also what lets groundRoute() bake the
+      // terrain heights once and hand the same polyline to all of them.
+      const road = mission.convoyRoad
+        ? Object.freeze(mission.convoyRoad.map(Object.freeze))
+        : null;
       return Object.freeze({
         ...mission,
         // Resolved once, here. `sequence` stays exactly as authored so the
@@ -4291,7 +4520,26 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         // Waves the player is actually made to clear - the WAVE n / N readout's
         // denominator. Concurrent entries ride in on one of these.
         waveCount: waves.filter((wave) => !wave.concurrent).length,
-        groundUnits: mission.groundUnits ? Object.freeze(mission.groundUnits.map(Object.freeze)) : null,
+        convoyRoad: road,
+        // A unit that names a place on the convoy road (`pathOffset`) is given
+        // the road itself plus the x/z that place works out to. Everything
+        // downstream - the briefing map, the battle-area centre, the target
+        // count - then reads one shape of ground unit whether it drives or
+        // not, and the authored table never repeats a coordinate.
+        groundUnits: mission.groundUnits
+          ? Object.freeze(mission.groundUnits.map((unit) => {
+              if (unit.pathOffset === undefined || !road) return Object.freeze(unit);
+              const at = pathPointAt(road, unit.pathOffset);
+              return Object.freeze({
+                ...unit,
+                path: road,
+                speed: unit.speed || mission.convoySpeed || 0,
+                x: at.x,
+                z: at.z,
+                heading: at.heading
+              });
+            }))
+          : null,
         battleCenter: mission.battleCenter ? Object.freeze(mission.battleCenter) : null,
         floodlights: mission.floodlights ? Object.freeze(mission.floodlights.map(Object.freeze)) : null,
         introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
@@ -4651,6 +4899,11 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     const surfaceRay = new THREE.Raycaster();
     const surfaceRayOrigin = new THREE.Vector3();
     const SURFACE_RAY_DOWN = new THREE.Vector3(0, -1, 0);
+    // Every terrain ray the sortie casts, from either sampler. Convoy routes
+    // are baked at spawn precisely so this stops climbing once the mission is
+    // running, and debug.surfaceSamples() is how that is proved rather than
+    // asserted.
+    let surfaceSamples = 0;
     let floodlightTexture = null;
     // The airfield a strike mission is defending, when the mission has one.
     // Null on every other sortie, and every reader checks for that.
@@ -5333,6 +5586,78 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           x: mountain.x, z: mountain.z, r: mountain.r, h: mountain.h
         })),
         surfaceHeightAt: (x, z) => surfaceHeightAt(x, z),
+        surfaceTopAt: (x, z) => surfaceTopAt(x, z),
+        // Running total of terrain rays cast. A convoy bakes its road at spawn
+        // and casts nothing afterwards, so this number must stop moving once
+        // the sortie is under way - that is the gate, and it cannot be faked
+        // by a probe because the probe's own calls are counted too.
+        surfaceSamples: () => surfaceSamples,
+        // Every driving vehicle, with the height it is actually sitting at
+        // measured against a fresh raycast of the ground underneath it. `sink`
+        // positive means buried. `gap` is the distance along the road to the
+        // vehicle in front, which is the column-interval gate.
+        convoyProbe: () => {
+          const driving = enemies
+            .filter((enemy) => enemy.route)
+            .sort((a, b) => b.routeDistance - a.routeDistance);
+          return driving.map((enemy, index) => {
+            const position = enemy.group.position;
+            const ground = surfaceTopAt(position.x, position.z);
+            return {
+              id: enemy.id,
+              type: enemy.type,
+              alive: enemy.alive,
+              x: Number(position.x.toFixed(3)),
+              y: Number(position.y.toFixed(3)),
+              z: Number(position.z.toFixed(3)),
+              ground: Number(ground.toFixed(3)),
+              sink: Number((ground - position.y).toFixed(4)),
+              capped: Number(surfaceHeightAt(position.x, position.z).toFixed(3)),
+              headingDeg: Number((enemy.group.rotation.y * 180 / Math.PI).toFixed(2)),
+              pitchDeg: Number((enemy.group.rotation.x * 180 / Math.PI).toFixed(2)),
+              distance: Number(enemy.routeDistance.toFixed(3)),
+              routeEnd: Number(enemy.route[enemy.route.length - 1].d.toFixed(2)),
+              routePoints: enemy.route.length,
+              speed: enemy.speed,
+              gap: index === 0 ? null : Number((driving[index - 1].routeDistance - enemy.routeDistance).toFixed(3))
+            };
+          });
+        },
+        // Walks a live vehicle's whole baked road and re-measures the ground
+        // under every sample plus the midpoint between samples. The midpoints
+        // are the part that matters: they are where linear interpolation could
+        // cut a corner through a hill the bake never sampled.
+        convoyRouteAudit: (id) => {
+          const enemy = enemies.find((candidate) => candidate.route && (id === undefined || candidate.id === id));
+          if (!enemy) return null;
+          const route = enemy.route;
+          let worstSample = 0;
+          let worstMid = 0;
+          let worstAt = null;
+          for (let i = 0; i < route.length; i += 1) {
+            const error = surfaceTopAt(route[i].x, route[i].z) - route[i].y;
+            if (Math.abs(error) > Math.abs(worstSample)) worstSample = error;
+            if (i === route.length - 1) continue;
+            const mx = (route[i].x + route[i + 1].x) / 2;
+            const mz = (route[i].z + route[i + 1].z) / 2;
+            const my = (route[i].y + route[i + 1].y) / 2;
+            const midError = surfaceTopAt(mx, mz) - my;
+            if (Math.abs(midError) > Math.abs(worstMid)) {
+              worstMid = midError;
+              worstAt = { x: Number(mx.toFixed(1)), z: Number(mz.toFixed(1)) };
+            }
+          }
+          return {
+            id: enemy.id,
+            points: route.length,
+            length: Number(route[route.length - 1].d.toFixed(2)),
+            minY: Number(Math.min(...route.map((p) => p.y)).toFixed(3)),
+            maxY: Number(Math.max(...route.map((p) => p.y)).toFixed(3)),
+            worstSampleError: Number(worstSample.toFixed(4)),
+            worstMidpointError: Number(worstMid.toFixed(4)),
+            worstMidpointAt: worstAt
+          };
+        },
         gpuMemory: () => ({
           geometries: renderer.info.memory.geometries,
           textures: renderer.info.memory.textures,
@@ -8444,6 +8769,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     // cylinder already treats as solid: on the night map's flat plateau that
     // cap is the surface, and every structure sits exactly on it.
     function surfaceHeightAt(x, z) {
+      surfaceSamples += 1;
       let height = 0;
       for (const mountain of world.mountains) {
         const dx = x - mountain.x;
@@ -8458,6 +8784,102 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         if (hit) height = Math.max(height, Math.min(mountain.h, hit.point.y));
       }
       return height;
+    }
+
+    // The same ray, without the summit clamp. That clamp is right for the
+    // collision contract it was written for, but it costs 8% of a mountain's
+    // height wherever the mesh is FLAT on top: a plateau's cap sits at the full
+    // `height` while `mountain.h` is 0.92 of it. That is 2.7m on the coastal
+    // plain and 7.4m on the night base - an installation 6m tall absorbs it,
+    // a 3m vehicle is buried by it. So vehicles ride this sampler and nothing
+    // already on the board changes.
+    function surfaceTopAt(x, z) {
+      surfaceSamples += 1;
+      let height = 0;
+      for (const mountain of world.mountains) {
+        const dx = x - mountain.x;
+        const dz = z - mountain.z;
+        if (dx * dx + dz * dz > mountain.r * mountain.r * 3.24) continue;
+        mountain.mesh.updateMatrixWorld();
+        surfaceRayOrigin.set(x, mountain.h * 1.2 + 20, z);
+        surfaceRay.set(surfaceRayOrigin, SURFACE_RAY_DOWN);
+        const hit = surfaceRay.intersectObject(mountain.mesh, false)[0];
+        if (hit) height = Math.max(height, hit.point.y);
+      }
+      return height;
+    }
+
+    // ---- Vehicle routes -------------------------------------------------
+    // A mission hands a vehicle a list of [x, z] waypoints. Those are turned
+    // into a polyline ONCE, at spawn: every leg is cut into steps no longer
+    // than CONVOY_BAKE_STEP and each step's ground height is sampled off the
+    // terrain mesh right there. Driving is then a walk along that polyline -
+    // a compare and a lerp - so no ray is ever cast while the sortie runs.
+    // That is not an optimisation, it is the reason this is affordable at all:
+    // surfaceHeightAt raycasts every mountain in range and calls
+    // updateMatrixWorld doing it, and a convoy would pay that per vehicle per
+    // frame. `debug.surfaceSamples()` is the gate on it.
+    //
+    // 12m rather than a coarser step because the terrain meshes are displaced
+    // cones with five height bands, and the crease between two bands is a
+    // genuine step in the surface - no sampling rate interpolates across one
+    // of those, which is why a road is authored to stay off them (see the
+    // convoy road in the mission table) and sampled finely enough that a
+    // gentle slope is followed exactly.
+    const CONVOY_BAKE_STEP = 12;
+    // Keyed on the frozen `path` array a mission authored, so a convoy that
+    // shares one road bakes it once instead of once per vehicle. Dropped with
+    // the rest of the sortie in clearMissionObjects - the heights belong to
+    // the terrain of one map.
+    const groundRouteCache = new Map();
+
+    function groundRoute(path) {
+      const cached = groundRouteCache.get(path);
+      if (cached) return cached;
+      const points = [];
+      const push = (x, z) => {
+        const previous = points[points.length - 1];
+        points.push({
+          x,
+          y: surfaceTopAt(x, z),
+          z,
+          d: previous ? previous.d + Math.hypot(x - previous.x, z - previous.z) : 0
+        });
+      };
+      push(path[0][0], path[0][1]);
+      for (let i = 1; i < path.length; i += 1) {
+        const [x0, z0] = path[i - 1];
+        const [x1, z1] = path[i];
+        const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / CONVOY_BAKE_STEP));
+        for (let s = 1; s <= steps; s += 1) {
+          push(x0 + (x1 - x0) * (s / steps), z0 + (z1 - z0) * (s / steps));
+        }
+      }
+      groundRouteCache.set(path, points);
+      return points;
+    }
+
+    // Arc-length walk over the AUTHORED waypoints, with no terrain in it. The
+    // mission table uses this at freeze time to turn a vehicle's place in the
+    // column into the x/z the briefing map, the battle-area centre and the
+    // target list all read, so those keep working on a unit that moves.
+    function pathPointAt(path, distance) {
+      let travelled = 0;
+      for (let i = 1; i < path.length; i += 1) {
+        const [x0, z0] = path[i - 1];
+        const [x1, z1] = path[i];
+        const leg = Math.hypot(x1 - x0, z1 - z0);
+        if (travelled + leg >= distance || i === path.length - 1) {
+          const t = leg > 1e-6 ? THREE.MathUtils.clamp((distance - travelled) / leg, 0, 1) : 0;
+          return {
+            x: x0 + (x1 - x0) * t,
+            z: z0 + (z1 - z0) * t,
+            heading: Math.atan2(x1 - x0, -(z1 - z0))
+          };
+        }
+        travelled += leg;
+      }
+      return { x: path[0][0], z: path[0][1], heading: 0 };
     }
 
     // Warm floodlights for the night base: sprites only, they light nothing.
@@ -8602,7 +9024,17 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     function spawnMissionGround(mission) {
       if (mission.groundUnits) {
         for (const unit of mission.groundUnits) {
-          spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id, isTgtEntry(unit));
+          const spec = GROUND_TYPES[unit.type];
+          // A vehicle with a road gets its route baked here; a vehicle without
+          // one, and every installation, spawns exactly the way it always did.
+          const drive = unit.path && spec && spec.mobile
+            ? {
+                route: groundRoute(unit.path),
+                distance: unit.pathOffset || 0,
+                speed: unit.speed || spec.mobile.speed
+              }
+            : null;
+          spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id, isTgtEntry(unit), drive);
         }
       }
       if (mission.floodlights) {
@@ -8618,12 +9050,16 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
     // Ids are chosen by the caller (mission definitions own the numbering), so
     // a base always reads the same way in the HUD from one sortie to the next.
-    function spawnGroundUnit(typeKey, x, z, headingRad, id, tgt = true) {
+    function spawnGroundUnit(typeKey, x, z, headingRad, id, tgt = true, drive = null) {
       const spec = GROUND_TYPES[typeKey];
       if (!spec) return null;
       enemySerial += 1;
       const root = new THREE.Group();
-      root.position.set(x, surfaceHeightAt(x, z), z);
+      // Yaw before pitch, so a vehicle nosing up a slope tilts about its own
+      // beam instead of about the world's X axis. Installations never pitch,
+      // so their order is left alone.
+      if (spec.mobile) root.rotation.order = "YXZ";
+      root.position.set(x, spec.mobile ? surfaceTopAt(x, z) : surfaceHeightAt(x, z), z);
       root.rotation.y = headingRad;
       root.userData.enemyType = typeKey;
 
@@ -8661,13 +9097,19 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         alive: true,
         maxHp: spec.hp,
         hp: spec.hp,
-        speed: 0,
+        speed: drive ? drive.speed : 0,
         targetSpeed: 0,
-        mode: "static",
+        mode: drive ? "convoy" : "static",
         baseHeading: headingRad,
         vlsSide: 1,
         waypoints: [],
         waypointIndex: 0,
+        // Baked ground polyline, how far along it this vehicle is, and a
+        // cursor into it that only ever walks forward. Null on everything
+        // that does not drive, which is every unit that existed before M9.
+        route: drive ? drive.route : null,
+        routeDistance: drive ? drive.distance : 0,
+        routeIndex: 0,
         fireCooldown: 999,
         missileCooldown: 3 + Math.random() * 3,
         aaCooldown: 1 + Math.random(),
@@ -8686,7 +9128,53 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+      // A vehicle's authored x/z is only the mission table's summary of where
+      // it starts; the route is the truth, so put it there and point it down
+      // the road before the first frame is drawn.
+      if (drive) placeOnRoute(enemies[enemies.length - 1], true);
       return id;
+    }
+
+    // Position, heading and pitch from the baked route. `snap` turns the hull
+    // instantly (spawn); otherwise the yaw is rate-limited by the chassis and
+    // the pitch is eased, so a waypoint corner is driven round rather than
+    // stepped through. Called every frame for every moving vehicle, and casts
+    // nothing - the y it reads was measured at bake time.
+    function placeOnRoute(enemy, snap = false, dt = 0) {
+      const route = enemy.route;
+      // The cursor never rewinds, so over a whole sortie this is one step per
+      // 25m of road rather than a search per frame.
+      while (enemy.routeIndex < route.length - 2 && route[enemy.routeIndex + 1].d <= enemy.routeDistance) {
+        enemy.routeIndex += 1;
+      }
+      const from = route[enemy.routeIndex];
+      const to = route[enemy.routeIndex + 1];
+      const span = to.d - from.d;
+      const t = span > 1e-6 ? THREE.MathUtils.clamp((enemy.routeDistance - from.d) / span, 0, 1) : 0;
+      enemy.group.position.set(
+        from.x + (to.x - from.x) * t,
+        from.y + (to.y - from.y) * t,
+        from.z + (to.z - from.z) * t
+      );
+
+      const dx = to.x - from.x;
+      const dz = to.z - from.z;
+      const run = Math.hypot(dx, dz);
+      if (run < 1e-6) return;
+      const heading = Math.atan2(dx, -dz);
+      const pitch = -Math.atan2(to.y - from.y, run);
+      if (snap) {
+        enemy.group.rotation.y = heading;
+        enemy.group.rotation.x = pitch;
+        return;
+      }
+      let delta = heading - enemy.group.rotation.y;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      const step = (enemy.spec.mobile ? enemy.spec.mobile.turnRate : Math.PI) * dt;
+      enemy.group.rotation.y += THREE.MathUtils.clamp(delta, -step, step);
+      // Eased rather than snapped: the bake step is 25m, so a hull that
+      // matched every sample exactly would twitch on the rim.
+      enemy.group.rotation.x = THREE.MathUtils.lerp(enemy.group.rotation.x, pitch, damping(0.12, dt));
     }
 
     function spawnNavalWave(wave = WAVE_PRESETS.naval, idBase = 6) {
@@ -9467,6 +9955,24 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
     function updateGroundUnit(enemy, dt, time) {
       const spec = enemy.spec;
+
+      // Vehicles drive first, so everything below - the smoke plume, the AA
+      // burst's muzzle position, the missile launch point - is computed from
+      // where the hull is this frame rather than where it was last frame.
+      if (enemy.route) {
+        const end = enemy.route[enemy.route.length - 1].d;
+        if (enemy.routeDistance < end) {
+          // A column shares one road and each vehicle owns its own distance
+          // along it, so the interval between them is exact by construction.
+          // No follow-the-leader controller means nothing to concertina.
+          enemy.routeDistance = Math.min(end, enemy.routeDistance + enemy.speed * dt);
+          placeOnRoute(enemy, false, dt);
+        } else if (enemy.speed !== 0) {
+          // End of the road: v1 parks the vehicle there rather than letting it
+          // leave the map, so nothing can escape the sortie unpunished.
+          enemy.speed = 0;
+        }
+      }
 
       // Same damage thresholds as the ships: grey smoke under half HP, black
       // smoke and embers under a quarter.
@@ -11612,6 +12118,10 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         disposeAircraftMaterials(enemy.model);
       }
       enemies.length = 0;
+      // Baked ground heights belong to the terrain of one map, and the next
+      // sortie rebuilds the world. Keeping them would drive the next convoy
+      // along the last mission's hills.
+      groundRouteCache.clear();
 
       for (const missile of missilesInFlight) scene.remove(missile.mesh);
       missilesInFlight.length = 0;
@@ -13515,6 +14025,57 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         pivot.add(arm);
         root.add(pivot);
         dish = pivot;
+      } else if (kind === "tank" || kind === "adTank") {
+        // Both vehicles share a chassis - two track runs, a sloped glacis and
+        // a low hull - so the silhouette reads as "the same army's tank" at
+        // range and the turret is what tells them apart. The model is built
+        // nose-along -Z, which is the forward the route heading drives.
+        const air = kind === "adTank";
+        add(geometry.panel, dark, -3.4, 1, 0, 1.7, 2, 12.4);
+        add(geometry.panel, dark, 3.4, 1, 0, 1.7, 2, 12.4);
+        // Road wheels: a plain band under each track run reads as running gear
+        // once the vehicle is moving and costs two boxes.
+        add(geometry.panel, steel, -3.4, 0.55, 0, 1.9, 0.7, 11);
+        add(geometry.panel, steel, 3.4, 0.55, 0, 1.9, 0.7, 11);
+        add(geometry.panel, olive, 0, 1.9, 0, 7.2, 1.9, 12);
+        // Sloped glacis plate over the nose.
+        add(geometry.panel, olive, 0, 2.3, -5.4, 7, 2.4, 3.4, -0.62);
+        // Stowage bin on the rear deck - the detail that keeps the hull from
+        // reading as an untextured box from directly above.
+        add(geometry.panel, dark, 0, 3.1, 4.7, 5.4, 0.9, 2.2);
+
+        if (air) {
+          // AD TANK: a wide flat turret carrying twin autocannon and its own
+          // tracking radar. The radar is the identifier - it is the thing that
+          // says "this one shoots back" from a kilometre out.
+          add(geometry.panel, steel, 0, 3.9, 0.4, 6.4, 2.1, 6.2);
+          for (const side of [-1, 1]) {
+            // Barrels at the aaMounts' own height, already at elevation, so
+            // the tracer that leaves shipAaBurst starts where the gun is.
+            add(geometry.panel, dark, side * 1.9, 4.9, -3.4, 0.42, 0.42, 7.6, -0.5);
+            add(geometry.panel, steel, side * 1.9, 4.6, 0.6, 0.9, 0.9, 2.6);
+          }
+          const dishPivot = new THREE.Group();
+          dishPivot.position.set(0, 5.2, 2.6);
+          const plate = new THREE.Mesh(geometry.shipOctPlate, light);
+          plate.scale.set(2.6, 0.35, 2.6);
+          plate.rotation.x = -0.75;
+          dishPivot.add(plate);
+          root.add(dishPivot);
+          // Reuses the search radar's spin hook, so the dish sweeps for as
+          // long as the vehicle is alive and stops dead when it is not.
+          dish = dishPivot;
+        } else {
+          // MBT: rounded-off turret and a long main gun with a bore evacuator.
+          // No AA fit anywhere on it, which is the point of the type.
+          add(geometry.panel, olive, 0, 3.9, 0.3, 5.2, 1.9, 6);
+          add(geometry.panel, olive, 0, 4.6, 0.6, 3.6, 0.9, 4.4);
+          add(geometry.shipCylinder, steel, 0, 4.1, -6.2, 0.34, 5.6, 0.34, Math.PI / 2);
+          add(geometry.shipCylinder, dark, 0, 4.1, -5.2, 0.52, 1.4, 0.52, Math.PI / 2);
+          // Commander's cupola and its machine gun.
+          add(geometry.shipCylinder, steel, 1.2, 5.2, 1.4, 0.8, 0.7, 0.8);
+          add(geometry.panel, dark, 1.2, 5.6, 0.2, 0.24, 0.24, 2.4);
+        }
       } else if (kind === "fuelTank") {
         // Two horizontal tanks side by side on a bund, joined by pipework.
         add(geometry.panel, olive, 0, 0.4, 0, 22, 0.8, 14);
