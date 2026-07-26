@@ -14373,6 +14373,123 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       return texture;
     }
 
+    function makeSkyTexture(stops, atmosphere = {}) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 512;
+      const ctx = canvas.getContext("2d");
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      for (const [offset, color] of stops) gradient.addColorStop(offset, color);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const seed = atmosphere.seed ?? 0x5a17;
+      const phase = ((seed >>> 0) % 65521) / 65521 * Math.PI * 2;
+      const noiseAmount = atmosphere.noise ?? 0.018;
+      const hazeAmount = atmosphere.haze ?? 0.08;
+      const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let y = 0; y < canvas.height; y += 1) {
+        const fy = y / (canvas.height - 1);
+        const horizon = Math.exp(-Math.pow((fy - 0.5) / 0.11, 2));
+        for (let x = 0; x < canvas.width; x += 1) {
+          const fx = x / canvas.width * Math.PI * 2;
+          const grain = Math.sin(fx * 31 + Math.sin(fy * 67 + phase) * 2.4) * 0.55 +
+            Math.sin(fx * 13 - fy * 91 + phase * 1.4) * 0.3 +
+            Math.sin(fx * 57 + fy * 43) * 0.15;
+          const lift = grain * noiseAmount * 255 + horizon * hazeAmount * 18;
+          const offset = (y * canvas.width + x) * 4;
+          image.data[offset] = Math.max(0, Math.min(255, image.data[offset] + lift));
+          image.data[offset + 1] = Math.max(0, Math.min(255, image.data[offset + 1] + lift));
+          image.data[offset + 2] = Math.max(0, Math.min(255, image.data[offset + 2] + lift));
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+
+      const rng = mulberry32(seed ^ 0x72a9);
+      const cloudCount = atmosphere.thinClouds ?? 12;
+      const cloudOpacity = atmosphere.cloudOpacity ?? 0.055;
+      const band = atmosphere.cloudBand || [0.43, 0.7];
+      const tint = new THREE.Color(atmosphere.cloudTint ?? 0xffffff);
+      const tr = Math.round(tint.r * 255);
+      const tg = Math.round(tint.g * 255);
+      const tb = Math.round(tint.b * 255);
+      const drawWrappedVeil = (x, y, width, height, alpha) => {
+        for (const wrap of [-canvas.width, 0, canvas.width]) {
+          ctx.save();
+          ctx.translate(x + wrap, y);
+          ctx.scale(width, height);
+          const veil = ctx.createRadialGradient(0, 0, 0.04, 0, 0, 1);
+          veil.addColorStop(0, `rgba(${tr},${tg},${tb},${alpha})`);
+          veil.addColorStop(0.55, `rgba(${tr},${tg},${tb},${alpha * 0.46})`);
+          veil.addColorStop(1, `rgba(${tr},${tg},${tb},0)`);
+          ctx.fillStyle = veil;
+          ctx.beginPath();
+          ctx.arc(0, 0, 1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      };
+      ctx.globalCompositeOperation = "screen";
+      for (let i = 0; i < cloudCount; i += 1) {
+        const y = (band[0] + rng() * (band[1] - band[0])) * canvas.height;
+        const x = rng() * canvas.width;
+        const width = 22 + rng() * 70;
+        const height = 2.5 + rng() * 10;
+        drawWrappedVeil(x, y, width, height, cloudOpacity * (0.55 + rng() * 0.7));
+      }
+      ctx.globalCompositeOperation = "source-over";
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      return texture;
+    }
+
+    function makeCloudTexture(cloudConfig = {}) {
+      const textureConfig = cloudConfig.texture || {};
+      const size = 128;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const rng = mulberry32((textureConfig.seed ?? 0xc10d) ^ 0x4f31);
+      const contrast = textureConfig.contrast ?? 1;
+      const underside = textureConfig.underside ?? 0.4;
+      const softness = textureConfig.softness ?? 1;
+      ctx.clearRect(0, 0, size, size);
+
+      for (let i = 0; i < 14; i += 1) {
+        const x = 24 + rng() * 80;
+        const y = 25 + rng() * 64;
+        const radius = (16 + rng() * 26) * softness;
+        const topBias = 1 - y / size;
+        const shade = Math.round(185 + topBias * 58 - underside * 34 + rng() * 10);
+        const alpha = Math.min(0.96, (0.18 + rng() * 0.34) * contrast);
+        const puff = ctx.createRadialGradient(x, y, radius * 0.08, x, y, radius);
+        puff.addColorStop(0, `rgba(${Math.min(255, shade + 26)},${Math.min(255, shade + 28)},${Math.min(255, shade + 30)},${alpha})`);
+        puff.addColorStop(0.52, `rgba(${shade},${shade + 3},${shade + 7},${alpha * 0.72})`);
+        puff.addColorStop(1, `rgba(${shade - 18},${shade - 14},${shade - 8},0)`);
+        ctx.fillStyle = puff;
+        ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+      }
+
+      const base = ctx.createLinearGradient(0, 45, 0, 112);
+      base.addColorStop(0, "rgba(255,255,255,0)");
+      base.addColorStop(0.58, `rgba(176,184,194,${0.2 + underside * 0.22})`);
+      base.addColorStop(1, "rgba(128,138,151,0)");
+      ctx.fillStyle = base;
+      ctx.fillRect(10, 35, 108, 82);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      return texture;
+    }
+
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
     // returned record so disposeWorld() can hand it all back when a mission
     // switches maps - otherwise each swap would leak a whole world.
@@ -14393,16 +14510,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       scene.fog.far = preset.fog.far;
       renderer.setClearColor(preset.clearColor, 1);
 
-      const skyCanvas = document.createElement("canvas");
-      skyCanvas.width = 32;
-      skyCanvas.height = 512;
-      const skyCtx = skyCanvas.getContext("2d");
-      const skyGradient = skyCtx.createLinearGradient(0, 0, 0, skyCanvas.height);
-      for (const [offset, color] of preset.sky) skyGradient.addColorStop(offset, color);
-      skyCtx.fillStyle = skyGradient;
-      skyCtx.fillRect(0, 0, skyCanvas.width, skyCanvas.height);
-      const skyTexture = keepTexture(new THREE.CanvasTexture(skyCanvas));
-      skyTexture.colorSpace = THREE.SRGBColorSpace;
+      const skyTexture = keepTexture(makeSkyTexture(preset.sky, preset.atmosphere || {}));
 
       const skyGroup = new THREE.Group();
       const skySphere = new THREE.Mesh(
@@ -14772,11 +14880,15 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // stretched cirrus far above. Volumes feed the fly-through white-out.
       const cloudConfig = preset.clouds;
       const cloudVolumes = [];
+      const cloudTexture = keepTexture(makeCloudTexture(cloudConfig));
+      cloudTexture.anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy());
       const cloudMaterial = keepMaterial(new THREE.MeshLambertMaterial({
-        color: cloudConfig.color, transparent: true, opacity: cloudConfig.opacity, depthWrite: false
+        color: cloudConfig.color, map: cloudTexture, transparent: true,
+        opacity: cloudConfig.opacity, alphaTest: 0.015, depthWrite: false
       }));
       const cirrusMaterial = keepMaterial(new THREE.MeshLambertMaterial({
-        color: cloudConfig.cirrusColor, transparent: true, opacity: cloudConfig.cirrusOpacity, depthWrite: false
+        color: cloudConfig.cirrusColor, map: cloudTexture, transparent: true,
+        opacity: cloudConfig.cirrusOpacity, alphaTest: 0.01, depthWrite: false
       }));
       const cloudGeometry = keepGeometry(new THREE.SphereGeometry(1, 9, 7));
       const buildCluster = (y, size, pieces, squash, at) => {
