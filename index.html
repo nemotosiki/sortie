@@ -2208,9 +2208,15 @@
 
     const ACE_CALLSIGN = "IRONBACK";
     const ACE_TURN_SCALE = 1.2;
-    // The ace flies wave 2 slot 0, which is an F-22 — it keeps that airframe's HP,
-    // speed and turn rate untouched so it is exactly as strong as a player F-22.
-    // Only its identity, markings and evasion style are overridden.
+    // The ace flies wave slot 0 of whatever airframe that wave names - an F-22
+    // in the original campaign, an Su-35S now that the enemy side is Russian. It
+    // keeps that airframe's HP, speed and turn rate untouched, so it is exactly
+    // as strong as anyone else flying the same jet. Only its identity, markings
+    // and evasion style are overridden.
+    //
+    // The theme below is PAINT ONLY: no `variant` and no `scale`, because those
+    // two describe the airframe rather than the pilot, and spawnEnemy takes them
+    // from the aircraft the wave actually asked for.
     const ACE_SPEC_OVERRIDES = Object.freeze({
       label: ACE_CALLSIGN,
       role: "Squadron Leader",
@@ -2225,9 +2231,7 @@
         secondary: 0x101218,
         accent: 0xffd35f,
         canopy: 0xffe9a8,
-        exhaust: 0xffd35f,
-        scale: 0.88,
-        variant: "raptor"
+        exhaust: 0xffd35f
       })
     });
     // ---- Variable-geometry wing (F-14D only) --------------------------------
@@ -2819,6 +2823,111 @@ canopy: 0x9dff4d, exhaust: 0xb6ff6a, scale: 0.45, variant: "uav"
 primary: 0x8d99a3, secondary: 0x5f6a74, accent: 0x333b42,
 canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         })
+      }),
+      // ---- Enemy-only Russian airframes ------------------------------------
+      // The roster is split by faction: the player flies Western jets, the
+      // enemy flies Russian ones. All four are enemy-only by the same contract
+      // the bomber established - present in this table, absent from
+      // AIRCRAFT_ORDER - so the hangar, the spec bars and selectAircraft()
+      // never see them. No `spw`: a special weapon is a player affordance.
+      //
+      // The cheapest and most legible faction cue is the exhaust colour. Every
+      // Western airframe here burns blue-white (0x8cec.. / 0x9fd8.. family);
+      // these four burn warm (0xffb9.. through 0xffd9..), so a contact is
+      // identified as hostile from directly astern before its planform reads.
+      //
+      // HP stays on the 98 quantum: 98 is one missile, 196 is two exactly.
+      mig21: Object.freeze({
+        id: "mig21",
+        label: "MiG-21bis FISHBED",
+        role: "Legacy Light Fighter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の旧世代軽戦闘機。小柄で軽快だが火力も装甲も乏しく、数を頼みに向かってくる。",
+        cruiseSpeed: 170, boostSpeed: 330, brakeSpeed: 146,
+        pitchRateDeg: 34, rollRateDeg: 128, yawRateDeg: 9, maxBankAngleDeg: 46,
+        normalRollSpring: 32, rollRateLimitDeg: 122, turnRateDeg: 26,
+        rollDamping: 8.4, stallWarnSpeed: 98, stallEntrySpeed: 86, stallAuthorityLoss: 0.78, structuralG: 2.8,
+        gunDamage: 13, missileDamage: 98,
+        boostResponse: 0.62, brakeResponse: 0.58, cruiseResponse: 0.66,
+        // 98 = one missile, the only crewed airframe in the set at that mark
+        // (the UAV is the other). This is what "weak early enemy" means here,
+        // and it is a full step below the F-4's 125.
+        missileCapacity: 6, maxHealth: 98,
+        tipSpan: 6.2, tipZ: 2.6,
+        theme: Object.freeze({
+primary: 0x9fa8a2, secondary: 0x69726c, accent: 0xb5423c,
+canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
+        })
+      }),
+      mig29: Object.freeze({
+        id: "mig29",
+        label: "MiG-29A FULCRUM",
+        role: "Frontline Fighter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の主力戦闘機。癖のない中堅機で、編隊を組んで正面から向かってくる。",
+        cruiseSpeed: 198, boostSpeed: 392, brakeSpeed: 130,
+        pitchRateDeg: 43, rollRateDeg: 152, yawRateDeg: 12, maxBankAngleDeg: 55,
+        normalRollSpring: 40, rollRateLimitDeg: 146, turnRateDeg: 32,
+        rollDamping: 10.6, stallWarnSpeed: 88, stallEntrySpeed: 76, stallAuthorityLoss: 0.58, structuralG: 3.05,
+        gunDamage: 19, missileDamage: 98,
+        boostResponse: 0.53, brakeResponse: 0.52, cruiseResponse: 0.60,
+        // Every number sits between the F-16 and the F/A-18F: the enemy's
+        // ordinary jet, with no weakness worth exploiting and no edge either.
+        missileCapacity: 10, maxHealth: 135,
+        tipSpan: 7.7, tipZ: 2.8,
+        theme: Object.freeze({
+primary: 0x8e97a0, secondary: 0x555f68, accent: 0xb5423c,
+canopy: 0x8fe0ff, exhaust: 0xffc79a, scale: 0.95, variant: "fulcrum"
+        })
+      }),
+      su33: Object.freeze({
+        id: "su33",
+        label: "Su-33 FLANKER-D",
+        role: "Carrier Air Defense",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵艦隊の防空を担う大型艦載機。カナードと広い主翼で低中速域でも粘り強く、艦隊上空に居座り続ける。",
+        cruiseSpeed: 214, boostSpeed: 418, brakeSpeed: 124,
+        pitchRateDeg: 48, rollRateDeg: 162, yawRateDeg: 13, maxBankAngleDeg: 59,
+        normalRollSpring: 43, rollRateLimitDeg: 155, turnRateDeg: 34,
+        // rollDamping 11.9 and a stall entry of 70 are the carrier aircraft's
+        // canard and wing area written as numbers: it stays controllable down
+        // where an interceptor has already departed, which is exactly what
+        // lets it loiter over a fleet instead of running intercepts.
+        rollDamping: 11.9, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.50, structuralG: 3.15,
+        gunDamage: 21, missileDamage: 98,
+        boostResponse: 0.49, brakeResponse: 0.49, cruiseResponse: 0.56,
+        missileCapacity: 12, maxHealth: 165,
+        tipSpan: 9.2, tipZ: 2.9,
+        theme: Object.freeze({
+primary: 0x7d8894, secondary: 0x49535d, accent: 0x2f6fa8,
+canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
+        })
+      }),
+      su35: Object.freeze({
+        id: "su35",
+        label: "Su-35S FLANKER-E",
+        role: "Superiority Fighter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の最新鋭制空機。推力偏向による高機動と厚い装甲を併せ持つ、エースが駆る難敵。",
+        cruiseSpeed: 228, boostSpeed: 440, brakeSpeed: 118,
+        pitchRateDeg: 52, rollRateDeg: 180, yawRateDeg: 15, maxBankAngleDeg: 64,
+        normalRollSpring: 48, rollRateLimitDeg: 172, turnRateDeg: 37,
+        rollDamping: 12.5, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.44, structuralG: 3.35,
+        gunDamage: 24, missileDamage: 98,
+        boostResponse: 0.45, brakeResponse: 0.46, cruiseResponse: 0.54,
+        // 196 = 98 x 2 exactly: two missiles kill it and one never can. The
+        // hardest enemy airframe short of the F-22's 200, which is what an
+        // ace is supposed to feel like.
+        missileCapacity: 14, maxHealth: 196,
+        tipSpan: 9.0, tipZ: 2.7,
+        theme: Object.freeze({
+primary: 0x5c666f, secondary: 0x333b42, accent: 0xd8b23a,
+canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
+        })
       })
     });
 
@@ -3233,6 +3342,177 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           scale: 2.6,
           variant: "transport"
         })
+      }),
+      // ---- Russian airframes -----------------------------------------------
+      // No `label` overrides: ENEMY_TYPES takes the first word of the airframe
+      // name, which already yields the designation the HUD wants
+      // ("MiG-21bis", "MiG-29A", "Su-33", "Su-35S") - unlike the bomber and the
+      // transport, whose first word is a model number nobody reads as a class.
+      //
+      // The `theme` here is the one that ships: ENEMY_TYPES spreads the AI
+      // profile over the airframe entry, so an enemy is drawn from THIS table's
+      // theme, not AIRCRAFT_TYPES'. They are kept identical on purpose.
+      //
+      // MiG-21bis: the weakest thing with a pilot in it. Evasive like the
+      // F-16, but every accuracy number is below it - 0.24 against 0.31 - and
+      // it hits for 6 rather than 7. It has NO ENEMY_MISSILE_PROFILES entry,
+      // which is what makes it a gun-only opponent: attemptEnemyMissile gates
+      // on that table, so the omission is the whole design and not an oversight.
+      mig21: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.82,
+        patrolSpeedScale: 1.05,
+        patrolPathScale: 1.1,
+        engageRange: 900,
+        disengageRange: 1450,
+        pursuitBack: 84,
+        verticalBias: 14,
+        verticalAmplitude: 30,
+        verticalFrequency: 1.35,
+        evadeLateral: 62,
+        evadeVertical: 24,
+        evadeFrequency: 2.0,
+        speedResponse: 0.022,
+        fireMin: 2.05,
+        fireSpread: 1.5,
+        attackRange: 470,
+        aimThreshold: 0.93,
+        hitChanceScale: 0.36,
+        maxHitChance: 0.24,
+        damageMin: 6,
+        damageMax: 6,
+        radarColor: "#ff7a5c",
+        tracerColor: 0xff8a5a,
+        explosionColor: 0xffa860,
+        theme: Object.freeze({
+          primary: 0x9fa8a2,
+          secondary: 0x69726c,
+          accent: 0xb5423c,
+          canopy: 0x8fe0ff,
+          exhaust: 0xffb98a,
+          scale: 0.74,
+          variant: "fishbed"
+        })
+      }),
+      // MiG-29A: the enemy's ordinary fighter. "formation" like the F-15, and
+      // sits between the F-16 and F-15 on every accuracy number, so a wave of
+      // them is a fair fight rather than a puzzle.
+      mig29: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.95,
+        patrolSpeedScale: 1.02,
+        patrolPathScale: 1.0,
+        engageRange: 950,
+        disengageRange: 1520,
+        pursuitBack: 84,
+        verticalBias: 16,
+        verticalAmplitude: 24,
+        verticalFrequency: 1.1,
+        evadeLateral: 26,
+        evadeVertical: 12,
+        evadeFrequency: 1.4,
+        speedResponse: 0.024,
+        fireMin: 1.7,
+        fireSpread: 1.42,
+        attackRange: 525,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.46,
+        maxHitChance: 0.34,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.56,
+        radarColor: "#ff4f42",
+        tracerColor: 0xff5f4a,
+        explosionColor: 0xff8452,
+        theme: Object.freeze({
+          primary: 0x8e97a0,
+          secondary: 0x555f68,
+          accent: 0xb5423c,
+          canopy: 0x8fe0ff,
+          exhaust: 0xffc79a,
+          scale: 0.95,
+          variant: "fulcrum"
+        })
+      }),
+      // Su-33: fleet CAP, and the patrol numbers are what make it that. A
+      // patrolPathScale of 0.72 keeps its circuit tight - it orbits the ships
+      // instead of roaming - and the engage/disengage band is narrow (1080 to
+      // 1540 against the F-22's 1060 to 1680), so it breaks off a chase sooner
+      // and comes home. The player's problem is that it will not leave.
+      su33: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 1.05,
+        patrolSpeedScale: 0.95,
+        patrolPathScale: 0.72,
+        engageRange: 1080,
+        disengageRange: 1540,
+        pursuitBack: 76,
+        verticalBias: 18,
+        verticalAmplitude: 20,
+        verticalFrequency: 0.95,
+        evadeLateral: 30,
+        evadeVertical: 14,
+        evadeFrequency: 1.45,
+        speedResponse: 0.026,
+        fireMin: 1.6,
+        fireSpread: 1.4,
+        attackRange: 545,
+        aimThreshold: 0.92,
+        hitChanceScale: 0.48,
+        maxHitChance: 0.36,
+        damageMin: 7,
+        damageMax: 7,
+        formationWeight: 0.6,
+        radarColor: "#4f9be0",
+        tracerColor: 0xff9a5a,
+        explosionColor: 0xffb06a,
+        theme: Object.freeze({
+          primary: 0x7d8894,
+          secondary: 0x49535d,
+          accent: 0x2f6fa8,
+          canopy: 0x9fe6ff,
+          exhaust: 0xffc79a,
+          scale: 1.08,
+          variant: "flankerd"
+        })
+      }),
+      // Su-35S: the F-22's opposite number, and the airframe an ace belongs in.
+      // Evasion just under the Raptor's, accuracy just over it.
+      su35: Object.freeze({
+        behavior: "evasive",
+        hitboxScale: 0.96,
+        patrolSpeedScale: 1.06,
+        patrolPathScale: 1.14,
+        engageRange: 1080,
+        disengageRange: 1700,
+        pursuitBack: 98,
+        verticalBias: 20,
+        verticalAmplitude: 38,
+        verticalFrequency: 1.65,
+        evadeLateral: 88,
+        evadeVertical: 34,
+        evadeFrequency: 2.45,
+        speedResponse: 0.013,
+        fireMin: 1.5,
+        fireSpread: 1.28,
+        attackRange: 545,
+        aimThreshold: 0.94,
+        hitChanceScale: 0.52,
+        maxHitChance: 0.4,
+        damageMin: 7,
+        damageMax: 7,
+        radarColor: "#ffd24a",
+        tracerColor: 0xffc04a,
+        explosionColor: 0xffd07a,
+        theme: Object.freeze({
+          primary: 0x5c666f,
+          secondary: 0x333b42,
+          accent: 0xd8b23a,
+          canopy: 0x9fe6ff,
+          exhaust: 0xffd9a0,
+          scale: 1.09,
+          variant: "flankere"
+        })
       })
     });
 
@@ -3374,6 +3654,47 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         turnRate: THREE.MathUtils.degToRad(78),
         damage: 98,
         life: 7.6,
+        launchDot: 0.24
+      }),
+      // Russian airframes. Three of the four are here; MiG-21bis is deliberately
+      // absent, which is how attemptEnemyMissile is told it carries nothing but
+      // the gun. Their rounds slot into the same ranking as everything else:
+      // the Fulcrum's between the Viper's and the Eagle's, the Flanker-D's a
+      // shade above that, and the Flanker-E's just under the Raptor's.
+      mig29: Object.freeze({
+        cooldownMin: 9.0,
+        cooldownSpread: 4.7,
+        range: 1320,
+        minRange: 198,
+        speed: 375,
+        maxSpeed: 455,
+        turnRate: THREE.MathUtils.degToRad(67),
+        damage: 98,
+        life: 7.9,
+        launchDot: 0.21
+      }),
+      su33: Object.freeze({
+        cooldownMin: 8.6,
+        cooldownSpread: 4.5,
+        range: 1360,
+        minRange: 205,
+        speed: 390,
+        maxSpeed: 470,
+        turnRate: THREE.MathUtils.degToRad(71),
+        damage: 98,
+        life: 8.1,
+        launchDot: 0.22
+      }),
+      su35: Object.freeze({
+        cooldownMin: 8.1,
+        cooldownSpread: 4.4,
+        range: 1410,
+        minRange: 188,
+        speed: 400,
+        maxSpeed: 490,
+        turnRate: THREE.MathUtils.degToRad(76),
+        damage: 98,
+        life: 7.7,
         launchDot: 0.24
       }),
       // Aegis SM-2: cold-launched straight up off the deck, slow off the rail,
@@ -4011,7 +4332,11 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         sequence: [
           "naval",
           {
-            types: ["f16", "f16"], tgt: false, band: 1, label: "CAP", concurrent: true,
+            // Su-33: the airframe exists for this wave. Carrier air defence
+            // with a patrol circuit tight enough that it orbits the ships
+            // instead of roaming, so the pressure while the player works the
+            // hulls comes from something that will not be drawn away.
+            types: ["su33", "su33"], tgt: false, band: 1, label: "CAP", concurrent: true,
             radio: [
               { speaker: "wingman", text: "艦隊上空にCAPだ！ 相手をしなくてもいい——狙いは艦隊だぞ！", id: "m03-cap-inbound" }
             ]
@@ -4092,7 +4417,15 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         world: "archipelagoDay",
         title: "IRONBACK",
         jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
-        sequence: ["air2"],
+        // Was the "air2" preset (F-22 / F-4 / F-16). Written inline now so the
+        // ace flies an Su-35S: an enemy squadron leader in a Russian jet is the
+        // faction split at its most visible, and IRONBACK's 196 HP against the
+        // Raptor's 200 keeps it in the same two-missile band it always was.
+        // `band` and `idBase` reproduce air2's, so the HUD target numbers and
+        // the wave's spawn geometry are unchanged.
+        sequence: [
+          { types: ["su35", "mig29", "mig29"], ace: true, band: 2, idBase: 3 }
+        ],
         parTime: 135,
         hasOutro: false,
         map: { x: 0.42, y: 0.65 },
@@ -4110,7 +4443,10 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           "air1",
           "air2",
           "naval",
-          { types: ["f22", "f15"], ace: true, tgt: false, band: 2, label: "FLEET CAP", concurrent: true }
+          // The fleet's own CAP, led by a second ace. Su-35S over Su-33 is the
+          // enemy's best pair and lands within 3% of the F-22/F-15 it replaces
+          // (361 HP against 350), so the last leg is as hard as it was.
+          { types: ["su35", "su33"], ace: true, tgt: false, band: 2, label: "FLEET CAP", concurrent: true }
         ],
         parTime: 430,
         hasOutro: true,
@@ -4124,9 +4460,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         jp: "敵の重爆撃編隊が本土へ向かっている。護衛を排除し、爆撃機を全機撃墜せよ。",
         // First mission with mixed waves: two bombers and one escort fighter per
         // wave, written as inline type lists rather than a preset.
+        // The escorts are Russian now: a Fulcrum on the first wave and a
+        // Fishbed on the second. The MiG-21 is the softer of the two on
+        // purpose - it is gun-armed only - so the second wave's difficulty
+        // stays where it was even though the player meets it later and lower
+        // on ammunition. Net change across both waves is -25 HP out of 1015.
         sequence: [
-          { types: ["bomber", "bomber", "f15"] },
-          { types: ["bomber", "bomber", "f16"] }
+          { types: ["bomber", "bomber", "mig29"] },
+          { types: ["bomber", "bomber", "mig21"] }
         ],
         // No time limit - the bombers do not run. Par carries the pressure, the
         // way AC7's own bomber-stream scoring missions do.
@@ -8163,6 +8504,21 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         ? Object.freeze({
             ...baseSpec,
             ...ACE_SPEC_OVERRIDES,
+            // The override is the ace's MARKINGS, not its airframe. Its theme
+            // carries a `variant` (which model to build) and a `scale`, and
+            // taking those wholesale would put the ace in an F-22 whatever
+            // airframe the wave actually asked for - so IRONBACK on an Su-35S
+            // would come out shaped like a Raptor, 7% smaller than the
+            // wingmen flying the same jet. Shape and size come from the
+            // airframe; the black-and-gold paint comes from the override.
+            //
+            // This is a no-op for the F-22 ace the campaign already had: its
+            // base variant is "raptor" either way.
+            theme: Object.freeze({
+              ...ACE_SPEC_OVERRIDES.theme,
+              variant: baseSpec.theme.variant,
+              scale: baseSpec.theme.scale
+            }),
             patrolTurn: baseSpec.patrolTurn * ACE_TURN_SCALE,
             pursuitTurn: baseSpec.pursuitTurn * ACE_TURN_SCALE
           })
@@ -12256,6 +12612,24 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         [0, 0.35], [1.1, -0.1], [4.3, 1.05], [4.3, 1.85], [1.1, 1.75],
         [0, 1.95], [-1.1, 1.75], [-4.3, 1.85], [-4.3, 1.05], [-1.1, -0.1]
       ], 0.22);
+      // MiG-21bis: a small pure delta, half-span 6.2 - the smallest wing in the
+      // game bar the UAV's. It shares the delta idea with the three eurocanards
+      // and is told apart from them by what sits around it, not by planform:
+      // this is the only delta here with a conventional TAILPLANE behind it
+      // rather than canards in front, which is the classic second-generation
+      // arrangement the real aircraft is famous for.
+      const wingFishbed = extrudedSurface([
+        [0, -4.4], [6.2, 2.4], [6.2, 3.0], [1.8, 3.2],
+        [0, 3.2], [-1.8, 3.2], [-6.2, 3.0], [-6.2, 2.4]
+      ], 0.24);
+      // MiG-29A: a moderately swept trapezoid, half-span 7.7 - between the
+      // Hornet's 7.9 and the Viper's 7.2. The Fulcrum's identification is not
+      // in the planform but in the LERX ahead of it, which are drawn as
+      // separate strakes in the variant.
+      const wingFulcrum = extrudedSurface([
+        [0, -3.8], [1.7, -3.0], [7.7, 1.6], [7.7, 3.2], [2.8, 3.9],
+        [0, 3.9], [-2.8, 3.9], [-7.7, 3.2], [-7.7, 1.6], [-1.7, -3.0]
+      ], 0.28);
       const wingRaptor = extrudedSurface([
         [0, -4.4], [6.9, 2.4], [6.9, 3.0], [2.4, 4.6],
         [0, 4.6], [-2.4, 4.6], [-6.9, 3.0], [-6.9, 2.4]
@@ -12317,6 +12691,13 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
       const canopy = new THREE.SphereGeometry(1, 16, 10);
       const intake = new THREE.BoxGeometry(1.1, 0.72, 3.2);
+      // Open-ended tube for the MiG-21's nose intake barrel: the ONE feature no
+      // other airframe in the game has anywhere on it. Every other jet here
+      // breathes through a chin scoop or a pair of side/cheek boxes, so a round
+      // hole in the tip of the nose - with the shock cone standing in the middle
+      // of it - is unmistakable from the front and from any forward quarter.
+      const intakeRing = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true);
+      intakeRing.rotateX(Math.PI / 2);
       const nozzle = new THREE.CylinderGeometry(0.48, 0.62, 1.4, 12, 1, false);
       nozzle.rotateX(Math.PI / 2);
       const flame = new THREE.ConeGeometry(0.5, 2.6, 10, 1, false);
@@ -12343,7 +12724,8 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       missileGlow.rotateX(Math.PI / 2);
 
       return {
-        fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
+        fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, intakeRing, nozzle, flame,
+        wingFishbed, wingFulcrum,
         wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor,
         wingLightning, stabLightning, panel,
         wingRafale, wingTyphoon, wingGripen, canard,
@@ -13085,6 +13467,169 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         add(geometry.missileNose, dark, 6.6, -0.22, 1.3, 0.66, 0.66, 0.66);
         add(geometry.canopy, navL, -6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
         add(geometry.canopy, navR, 6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
+      } else if (theme.variant === "fishbed") {
+        // MiG-21bis: the smallest crewed airframe here (theme scale 0.74) and
+        // the only one with a NOSE INTAKE. Every other jet in the game wears a
+        // solid pointed radome; this one wears an open barrel with a shock cone
+        // standing inside it, which is the single feature that identifies it
+        // from the front, and there is nothing else like it to confuse it with.
+        //
+        // Behind that it is a tailed delta - delta wing AND a conventional
+        // tailplane - which is what separates it from the three eurocanards,
+        // who put their extra surface in front of the wing instead of behind.
+        add(geometry.fuselage, primary, 0, 0, -0.6, 0.66, 0.66, 0.92);
+        // The nose, in two pieces. The barrel is open at both ends (intakeRing
+        // has no caps), so the cone really is seen through the lip rather than
+        // sitting on a closed face.
+        add(geometry.intakeRing, secondary, 0, 0, -7.5, 0.98, 0.98, 3.6);
+        add(geometry.intakeRing, dark, 0, 0, -7.5, 0.82, 0.82, 3.5);
+        add(geometry.nose, accent, 0, 0, -7.7, 0.4, 0.4, 0.8);
+        add(geometry.canopy, canopy, 0, 0.7, -3.1, 0.56, 0.5, 1.25);
+        add(geometry.wingFishbed, secondary, 0, -0.12, 1.0);
+        // Tailplane: the half of "tailed delta" that the eurocanards do not
+        // have. Deliberately small and set well aft of the wing so the gap
+        // between the two surfaces reads at a glance.
+        add(geometry.tailWing, primary, 0, -0.06, 5.6, 0.62, 1, 0.68);
+        add(geometry.fin, secondary, 0, 0.5, 4.1, 0.72, 0.98, 0.78);
+        // One engine, in line with the intake duct that runs the whole length
+        // of the aircraft - a 1950s layout, and it shows.
+        add(geometry.rearBody, secondary, 0, 0, 5.4, 0.72, 0.72, 1.0);
+        add(geometry.nozzle, accent, 0, 0, 7.3, 0.95, 0.95, 1.0);
+        addFlame(0, 0, 8.5, 0.9, 0.9);
+        // Big ventral fin under the tail: a Fishbed silhouette from the side is
+        // as much this fin as it is the wing.
+        add(geometry.panel, dark, 0, -0.95, 5.4, 0.12, 0.9, 2.2);
+        // Details: the pitot boom above the intake lip (the real aircraft's
+        // most photographed detail), a short dorsal spine, wingtip rails and
+        // nav lights at the geometric tips.
+        add(geometry.panel, dark, 0, 0.72, -10.0, 0.06, 0.06, 2.0);
+        add(geometry.panel, secondary, 0, 0.52, 1.6, 0.24, 0.18, 4.2);
+        add(geometry.panel, dark, -5.4, -0.08, 2.6, 0.16, 0.14, 1.8);
+        add(geometry.panel, dark, 5.4, -0.08, 2.6, 0.16, 0.14, 1.8);
+        add(geometry.missileBody, light, -5.4, -0.26, 2.3, 0.62, 0.62, 0.6);
+        add(geometry.missileBody, light, 5.4, -0.26, 2.3, 0.62, 0.62, 0.6);
+        add(geometry.missileNose, dark, -5.4, -0.26, 0.9, 0.6, 0.6, 0.6);
+        add(geometry.missileNose, dark, 5.4, -0.26, 0.9, 0.6, 0.6, 0.6);
+        add(geometry.canopy, navL, -6.3, 0.04, 2.9, 0.1, 0.1, 0.1);
+        add(geometry.canopy, navR, 6.3, 0.04, 2.9, 0.1, 0.1, 0.1);
+      } else if (theme.variant === "fulcrum") {
+        // MiG-29A: twin engines, but the nacelles sit at +/-1.5 - closer than
+        // the Flankers' +/-1.95 and with the body filled in between them, so
+        // there is no open tunnel. That spacing is the read: a Fulcrum next to
+        // a Flanker is the same idea built smaller and tighter (theme scale
+        // 0.95 against 1.08), and the two are told apart from above by whether
+        // daylight shows between the engines.
+        //
+        // The other half of the identification is the LERX - huge curved root
+        // extensions running from the cockpit into the wing - drawn here as
+        // long shallow strakes, wider and further forward than the Viper's.
+        add(geometry.fuselage, primary, 0, 0.04, -0.9, 0.86, 0.66, 0.95);
+        add(geometry.nose, primary, 0, -0.02, -8.1, 0.72, 0.58, 1.05);
+        add(geometry.canopy, canopy, 0, 0.82, -3.8, 0.66, 0.54, 1.7);
+        add(geometry.wingFulcrum, secondary, 0, 0.06, 1.2);
+        // LERX: wide, shallow and carried well forward onto the cockpit sides.
+        add(geometry.panel, secondary, -1.28, 0.06, -4.2, 1.05, 0.12, 4.0);
+        add(geometry.panel, secondary, 1.28, 0.06, -4.2, 1.05, 0.12, 4.0);
+        // Nacelles and their intakes, close-coupled with the body between them.
+        add(geometry.rearBody, secondary, -1.5, -0.14, 5.0, 0.82, 0.82, 1.5);
+        add(geometry.rearBody, secondary, 1.5, -0.14, 5.0, 0.82, 0.82, 1.5);
+        add(geometry.intake, accent, -1.5, -0.44, -2.0, 0.85, 1.05, 1.4);
+        add(geometry.intake, accent, 1.5, -0.44, -2.0, 0.85, 1.05, 1.4);
+        add(geometry.nozzle, accent, -1.5, -0.14, 7.9, 1.02, 1.02, 1.05);
+        add(geometry.nozzle, accent, 1.5, -0.14, 7.9, 1.02, 1.02, 1.05);
+        addFlame(-1.5, -0.14, 9.2, 1.0, 1.0);
+        addFlame(1.5, -0.14, 9.2, 1.0, 1.0);
+        // Twin fins, canted outward and mounted on the nacelles.
+        add(geometry.fin, secondary, -1.95, 0.5, 4.6, 0.74, 1.05, 0.85, 0.18);
+        add(geometry.fin, secondary, 1.95, 0.5, 4.6, 0.74, 1.05, 0.85, -0.18);
+        add(geometry.tailWing, primary, 0, -0.16, 6.7, 0.94, 1, 0.88);
+        // Ventral fins under each nacelle.
+        add(geometry.panel, dark, -1.5, -0.88, 6.4, 0.14, 0.72, 1.8, 0.26);
+        add(geometry.panel, dark, 1.5, -0.88, 6.4, 0.14, 0.72, 1.8, -0.26);
+        // Details: radome, anti-glare strip, dorsal spine, wingtip rails, navs.
+        add(geometry.nose, dark, 0, -0.04, -9.6, 0.3, 0.26, 0.32);
+        add(geometry.panel, dark, 0, 0.56, -5.8, 0.62, 0.08, 1.9);
+        add(geometry.panel, secondary, 0, 0.46, 2.2, 0.28, 0.18, 4.2);
+        add(geometry.panel, dark, -7.7, -0.02, 3.6, 0.2, 0.15, 2.1);
+        add(geometry.panel, dark, 7.7, -0.02, 3.6, 0.2, 0.15, 2.1);
+        add(geometry.missileBody, light, -7.7, -0.22, 3.3, 0.74, 0.74, 0.7);
+        add(geometry.missileBody, light, 7.7, -0.22, 3.3, 0.74, 0.74, 0.7);
+        add(geometry.missileNose, dark, -7.7, -0.22, 1.6, 0.7, 0.7, 0.7);
+        add(geometry.missileNose, dark, 7.7, -0.22, 1.6, 0.7, 0.7, 0.7);
+        add(geometry.canopy, navL, -7.82, 0.08, 3.2, 0.11, 0.11, 0.11);
+        add(geometry.canopy, navR, 7.82, 0.08, 3.2, 0.11, 0.11, 0.11);
+      } else if (theme.variant === "flankerd" || theme.variant === "flankere") {
+        // Su-33 and Su-35S share one block because the real aircraft share one
+        // airframe: same Flanker planform (wingTerminator, as the Su-37 uses),
+        // same widely-spaced nacelles with the open tunnel between them, same
+        // twin canted fins. Duplicating forty lines to change two features
+        // would only invite the two to drift apart.
+        //
+        // ★ The difference IS the canard. The Su-33 has one; the Su-35S does
+        // not - that is the actual distinction between the two real aircraft,
+        // so it is the right one to model. The Su-35S gets thrust-vectoring
+        // nozzles in exchange, and the Su-33 gets the carrier fittings.
+        const carrier = theme.variant === "flankerd";
+        add(geometry.fuselage, primary, 0, 0.02, -1.2, 0.94, 0.7, 0.95);
+        add(geometry.nose, primary, 0, -0.04, -8.5, 0.8, 0.62, 1.1);
+        add(geometry.canopy, canopy, 0, 0.88, -4.0, 0.72, 0.58, 1.85);
+        // Blended centre section ahead of the tunnel.
+        add(geometry.panel, primary, 0, -0.16, 0.6, 3.5, 0.5, 7.2);
+        add(geometry.wingTerminator, secondary, 0, -0.05, 1.4);
+        add(geometry.panel, secondary, -1.5, 0.06, -4.4, 0.95, 0.12, 4.2);
+        add(geometry.panel, secondary, 1.5, 0.06, -4.4, 0.95, 0.12, 4.2);
+        if (carrier) {
+          // Su-33 only. Same full-span foreplane the Su-37 carries, added once
+          // on the centreline - adding it per side would draw two overlapping
+          // surfaces across the forebody.
+          add(geometry.canardTerminator, primary, 0, 0.34, -4.2);
+        }
+        // Widely spaced nacelles with the tunnel open between them.
+        add(geometry.rearBody, secondary, -1.95, -0.1, 5.2, 0.9, 0.9, 1.6);
+        add(geometry.rearBody, secondary, 1.95, -0.1, 5.2, 0.9, 0.9, 1.6);
+        add(geometry.intake, accent, -1.95, -0.38, -2.2, 0.9, 1.15, 1.5);
+        add(geometry.intake, accent, 1.95, -0.38, -2.2, 0.9, 1.15, 1.5);
+        if (carrier) {
+          // Straight nozzles: the Su-33 has no vectoring.
+          add(geometry.nozzle, accent, -1.95, -0.1, 8.6, 1.15, 1.15, 1.15);
+          add(geometry.nozzle, accent, 1.95, -0.1, 8.6, 1.15, 1.15, 1.15);
+          addFlame(-1.95, -0.1, 10.0, 1.1, 1.1);
+          addFlame(1.95, -0.1, 10.0, 1.1, 1.1);
+        } else {
+          // Su-35S: nozzles canted 10 deg nose-down so they read as deflected,
+          // the same static treatment the Su-37 gets. Nothing animates them.
+          add(geometry.nozzle, accent, -1.95, -0.16, 8.6, 1.15, 1.15, 1.15).rotation.x = 0.175;
+          add(geometry.nozzle, accent, 1.95, -0.16, 8.6, 1.15, 1.15, 1.15).rotation.x = 0.175;
+          addFlame(-1.95, -0.34, 10.0, 1.1, 1.1).rotation.x = 0.175;
+          addFlame(1.95, -0.34, 10.0, 1.1, 1.1).rotation.x = 0.175;
+        }
+        add(geometry.fin, secondary, -2.3, 0.55, 5.1, 0.8, 1.15, 0.9, 0.2);
+        add(geometry.fin, secondary, 2.3, 0.55, 5.1, 0.8, 1.15, 0.9, -0.2);
+        add(geometry.panel, dark, -1.95, -0.9, 6.8, 0.16, 0.8, 2.0, 0.28);
+        add(geometry.panel, dark, 1.95, -0.9, 6.8, 0.16, 0.8, 2.0, -0.28);
+        add(geometry.tailWing, primary, 0, -0.14, 7.2, 1.12, 1, 0.95);
+        if (carrier) {
+          // Carrier fittings, and the reason this one is a Flanker-D: the
+          // folding-wing hinge line across each panel, and an arresting hook
+          // slung under the tail between the nacelles.
+          add(geometry.panel, dark, -4.5, 0.06, 2.4, 0.1, 0.2, 3.2);
+          add(geometry.panel, dark, 4.5, 0.06, 2.4, 0.1, 0.2, 3.2);
+          add(geometry.panel, dark, 0, -0.75, 7.4, 0.18, 0.5, 2.6, 0);
+          add(geometry.panel, dark, 0, -1.15, 8.7, 0.5, 0.22, 0.5);
+        }
+        // Details: radome, anti-glare strip, dorsal spine, wingtip rails with
+        // rounds, nav lights at the geometric tips.
+        add(geometry.nose, dark, 0, -0.06, -10.0, 0.3, 0.26, 0.34);
+        add(geometry.panel, dark, 0, 0.62, -6.0, 0.7, 0.08, 2.0);
+        add(geometry.panel, secondary, 0, 0.5, 2.6, 0.32, 0.2, 4.4);
+        add(geometry.panel, dark, -8.9, 0.0, 4.2, 0.22, 0.16, 2.3);
+        add(geometry.panel, dark, 8.9, 0.0, 4.2, 0.22, 0.16, 2.3);
+        add(geometry.missileBody, light, -8.9, -0.24, 3.9, 0.8, 0.8, 0.75);
+        add(geometry.missileBody, light, 8.9, -0.24, 3.9, 0.8, 0.8, 0.75);
+        add(geometry.missileNose, dark, -8.9, -0.24, 2.1, 0.75, 0.75, 0.75);
+        add(geometry.missileNose, dark, 8.9, -0.24, 2.1, 0.75, 0.75, 0.75);
+        add(geometry.canopy, navL, -9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
