@@ -406,6 +406,32 @@
       text-align: center;
     }
 
+    /* AC7's weapon block: unboxed names in one column, counts right-aligned in
+       the next, and nothing else. The earlier version drew each label in a
+       bordered chip and hung reload pips off it; the reference has neither, and
+       the dots in the AC5-era HUD are a fixed separator rather than a readout
+       of anything. Tube counts still govern how many rounds leave the rail -
+       that lives in the firing path - they are simply not drawn here. */
+    #statusPanel .hudName {
+      width: 62px;
+      text-align: left;
+      color: #78ff9d;
+      letter-spacing: 0.08em;
+    }
+
+    #statusPanel .hudVal {
+      min-width: 52px;
+      text-align: right;
+    }
+
+    /* The selected weapon, marked the way the reference marks it: the caret and
+       the row it points at both go amber, and nothing moves. */
+    #statusPanel .hudRow.wpnActive .hudName,
+    #statusPanel .hudRow.wpnActive .hudVal {
+      color: #ffe66f;
+      text-shadow: 0 0 7px rgba(255, 226, 111, 0.5);
+    }
+
     .hudPlain {
       display: inline-block;
       padding: 2px 8px 3px;
@@ -465,25 +491,6 @@
       box-shadow: 0 0 10px rgba(94, 230, 255, 0.9);
     }
 
-    #wpnPips {
-      display: flex;
-      gap: 3px;
-      margin: 0;
-      font-family: "Courier New", "Lucida Console", monospace;
-      font-size: 14px;
-      line-height: 1;
-      color: var(--hud);
-    }
-
-    .missilePip {
-      width: auto;
-      height: auto;
-      border: 0;
-      background: none;
-      transform: none;
-      box-shadow: none;
-    }
-
     .rackMissile path {
       fill: rgba(83, 255, 92, 0.16);
       stroke: var(--hud-line);
@@ -497,12 +504,6 @@
 
     .rackMissile.empty {
       opacity: 0.14;
-    }
-
-    .missilePip.empty {
-      background: transparent;
-      opacity: 0.3;
-      box-shadow: none;
     }
 
     #radarWrap {
@@ -1518,6 +1519,22 @@
     .menuList li .listRank { margin-left: 8px; font-size: 11px; color: #7fb8dd; }
     .menuList li.cleared .listRank { color: #ffd27a; }
 
+    /* Aircraft rows carry a trailing price/OWNED badge; the label is the one
+       part that varies wildly in length ("F-16" vs "F/A-18F SUPER HORNET"), so
+       it is the one that gives way - ellipsis rather than pushing the badge
+       out past the panel edge like the mission list's shorter titles never
+       needed to worry about. */
+    #aircraftList li {
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+    }
+    #aircraftList li > .listIcon { flex: none; }
+    /* Label is wrapped in its own span at build time (see buildHangarUI) so it
+       can be the one flex item that shrinks and ellipsizes. */
+    #aircraftList li .aircraftLabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #aircraftList li .listRank { flex: none; margin-left: 10px; }
+
     #missionMapWrap { position: relative; min-width: 0; border: 1px solid rgba(110, 190, 255, 0.2); background: rgba(4, 14, 27, 0.5); }
     #missionMap { position: absolute; inset: 0; width: 100%; height: 100%; }
 
@@ -1637,6 +1654,16 @@
       letter-spacing: 0.05em;
       color: #d7ecfb;
     }
+
+    .hangarPurchaseLine {
+      margin: 0 0 4px;
+      min-height: 0;
+      font-size: 11.5px;
+      letter-spacing: 0.08em;
+      color: #ffd27a;
+    }
+    .hangarPurchaseLine.warn { color: #ff9a3c; }
+    .hangarPurchaseLine.hidden { display: none; }
 
     .menuLegend {
       display: flex;
@@ -1908,6 +1935,41 @@
     #breakdownBaseRow span { color: #ff6b6b; }
     #breakdownBaseRow span:first-child { color: rgba(255, 107, 107, 0.7); }
 
+    /* The four lines the rank is actually computed from, set apart from the
+       flight stats above them so the debrief reads as "how you flew" then
+       "what that scored". */
+    .resultBreakdown .scoreRow { color: rgba(143, 239, 255, 0.92); }
+    .resultBreakdown .scoreRow:first-of-type { border-top: 1px solid rgba(143, 239, 255, 0.3); }
+
+    .resultBreakdown .scoreTotalRow {
+      color: #8feffF;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+    }
+
+    .resultBreakdown .scoreTotalRow span:first-child { color: rgba(143, 239, 255, 0.75); }
+    #breakdownNextRankRow span:last-child { color: rgba(255, 218, 126, 0.85); }
+
+    /* Damage is no longer a rank axis, so a spotless sortie gets a stamp of its
+       own rather than a silent extra percent. */
+    .noDamageEmblem {
+      max-width: 540px;
+      margin: -10px auto 24px;
+      padding: 6px 0;
+      border: 1px solid rgba(255, 215, 106, 0.55);
+      color: #ffd76a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: clamp(11px, 1.2vw, 14px);
+      font-weight: 800;
+      letter-spacing: 0.36em;
+      text-align: center;
+      text-indent: 0.36em;
+      text-shadow: 0 0 18px rgba(255, 195, 70, 0.5);
+      animation: rankStamp 300ms cubic-bezier(0.2, 0.85, 0.25, 1) 420ms both;
+    }
+
+    .noDamageEmblem.hidden { display: none; }
+
     .debriefIntel {
       max-width: 680px;
       margin: 24px auto 28px;
@@ -2155,10 +2217,11 @@
     </section>
 
     <section id="statusPanel" class="panel">
-      <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
-      <div class="hudRow wpnActive" id="wpnRow"><span class="wpnSel">▶</span><span class="hudBox" id="wpnLabel">MSSL</span><span id="wpnPips"></span><strong class="hudVal" id="wpnCount">10</strong></div>
-      <div class="hudRow"><span class="wpnSel"></span><span class="hudPlain">FLR</span><strong class="hudVal" id="flares">2</strong></div>
-      <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudName">GUN</span><strong class="hudVal">---</strong></div>
+      <div class="hudRow wpnActive" id="mslRow"><span class="wpnSel">&gt;</span><span class="hudName">MSL</span><strong class="hudVal" id="missiles">10</strong></div>
+      <div class="hudRow" id="spwRow"><span class="wpnSel">&gt;</span><span class="hudName" id="spwLabel">SP.W</span><strong class="hudVal" id="spwCount">0</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudName">FLR</span><strong class="hudVal" id="flares">2</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudName">DMG</span><strong class="hudVal" id="health">0%</strong></div>
     </section>
 
     <section id="radarWrap" class="panel">
@@ -2307,7 +2370,7 @@
 
   <section id="startScreen" class="screen menuScreen hangarScreen">
     <div class="menuFrame">
-      <header class="menuHeader"><h1 class="menuTitle">SELECT AIRCRAFT</h1><span class="menuHeaderRule"></span><span class="menuMissionTag" id="hangarMissionTag">01 FIRST CONTACT</span></header>
+      <header class="menuHeader"><h1 class="menuTitle">SELECT AIRCRAFT</h1><span class="menuHeaderRule"></span><span class="menuMissionTag" id="hangarWallet">000,000 CR</span><span class="menuMissionTag" id="hangarMissionTag">01 FIRST CONTACT</span></header>
       <div class="menuLayout">
         <ul id="aircraftList" class="menuList" role="radiogroup" aria-label="Select Aircraft"></ul>
         <div class="hangarCenter"></div>
@@ -2315,6 +2378,7 @@
           <span class="menuPanelKicker" id="specRole">MULTIROLE FIGHTER</span>
           <h2 class="menuPanelTitle" id="specName">F-16 FIGHTING FALCON</h2>
           <div class="menuRecordHeader">[ AIRCRAFT SPECIFICATIONS ]</div>
+          <p class="menuBlurb hangarPurchaseLine hidden" id="hangarPurchaseLine">—</p>
           <div id="specBars"></div>
           <div class="menuRecordHeader">[ WEAPONS AMMO ]</div>
           <dl class="ammoGrid" id="ammoGrid"></dl>
@@ -2348,7 +2412,12 @@
         <div><span>KILLS</span><span id="breakdownKills">0/0</span></div>
         <div id="breakdownBonusRow"><span>BONUS KILLS</span><span id="breakdownBonusKills">0</span></div>
         <div id="breakdownBaseRow"><span>BASE DAMAGED</span><span id="breakdownBaseDamage">0</span></div>
+        <div class="scoreRow"><span>KILL SCORE</span><span id="breakdownKillScore">0</span></div>
+        <div class="scoreRow"><span>TIME BONUS</span><span id="breakdownTimeBonus">0</span></div>
+        <div class="scoreRow scoreTotalRow"><span>TOTAL</span><span id="breakdownTotal">0</span></div>
+        <div class="scoreRow" id="breakdownNextRankRow"><span>NEXT RANK</span><span id="breakdownNextRank">—</span></div>
       </div>
+      <div class="noDamageEmblem hidden" id="noDamageEmblem">NO DAMAGE</div>
       <div class="debriefIntel" id="debriefIntel">
         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
         <ul id="debriefIntelLines"></ul>
@@ -2450,6 +2519,69 @@
     // Non-designated contacts pay half. Enough that clearing the sky is worth
     // doing, not enough that farming escorts beats flying the mission fast.
     const BONUS_KILL_SCORE_FACTOR = 0.5;
+    // Rank thresholds, Ace Combat style: what ranks a sortie is the score the
+    // player actually took off the field plus a time bonus, measured against
+    // the score that was on the field to begin with. Damage taken is NOT an
+    // axis - flying hurt is the player's problem, not the debrief's - so a
+    // clean sortie is honoured with an emblem instead (see NO DAMAGE below).
+    //
+    //   TIME_BONUS_WEIGHT  the time bonus at par, as a fraction of everything
+    //                      spawned. 0.3 makes a fast clear worth about a third
+    //                      again of the field, so it can carry a sortie that
+    //                      left some bonus contacts alive.
+    //   TIME_ZERO_MULT     the time bonus reaches zero at this multiple of par
+    //                      (1.8x), which is exactly where the old B line sat.
+    //   S / A / B          fraction of the maximum attainable total.
+    // S is 0.88 rather than 0.90 because of where the arithmetic lands: at par
+    // the time bonus is worth 0.3/1.3 of the maximum, so a sortie flown inside
+    // par ranks at (killFraction + 0.3) / 1.3. An S line of 0.90 would demand
+    // 87% of the field destroyed, which only just reaches into the intended
+    // "clear par having killed 85-90%" band; 0.88 needs 84.4% and covers it.
+    const RANK_TUNING = Object.freeze({
+      TIME_BONUS_WEIGHT: 0.3,
+      S: 0.88,
+      A: 0.70,
+      B: 0.45,
+      TIME_ZERO_MULT: 1.8
+    });
+
+    // ---- Hangar economy ------------------------------------------------------
+    // AC7 spends mission reward points on an aircraft tree; AC5 gates the next
+    // airframe behind accumulated kill points. This is the same idea with no new
+    // counter to keep: the wallet is DERIVED from the records the player already
+    // owns - the sum of every mission's best score for that campaign, minus what
+    // they have bought. Only the purchase list is persisted, so a player who has
+    // been flying since before this existed walks into a hangar already funded by
+    // their own history, and grinding a mission they have already aced pays
+    // nothing because only a NEW best raises the total.
+    //
+    // The two caps below are the ONLY hand-written numbers in the economy. Every
+    // price is derived from the spec bars the hangar already draws, so an
+    // airframe whose stats are retuned re-prices itself and a new one arrives
+    // priced without anyone editing a table.
+    //
+    // Calibrated against measured campaign income (every mission flown at S with
+    // full time bonus): USA 205,020 / RUS 214,240. A cap is roughly the price of
+    // that side's best airframe, chosen so the whole hangar costs about 1/1.2 of
+    // a full S-rank sweep - the last jet lands right at the end of the campaign,
+    // and a player eight missions in at A rank can afford the middle of the list.
+    const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000 });
+    // Weights over the six spec bars, then a convex curve: 1.6 makes the top of
+    // the hangar cost several times the bottom rather than the 1.4x the raw bar
+    // spread would give, which is what makes buying up the list feel like
+    // progress. The 0.10 floor keeps a weak airframe from costing nothing.
+    const PRICE_WEIGHTS = Object.freeze({
+      speed: 0.20, mobility: 0.25, firepower: 0.25, defense: 0.15, stability: 0.15, ground: 0.10
+    });
+    const PRICE_CURVE = 1.6;
+    const PRICE_FLOOR_FRACTION = 0.10;
+    // Free on day one, one per side: the campaign has to start somewhere, and a
+    // player with no record at all must still be able to fly.
+    // Written out rather than referencing DEFAULT_AIRCRAFT_ID, which is declared
+    // further down with the hangar order and would still be in its temporal dead
+    // zone here. Held to that value by a boot-time assertion beside the order.
+    const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21" });
+    const PURCHASES_STORAGE_KEY = "sortieHangarPurchases";
     const RADAR_RANGE = 1400;
     // The ocean is a finite plane that rides with the camera, so this only has
     // to out-reach the fog (far 2600-3350 by preset) with margin for the
@@ -3836,6 +3968,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     };
 
+    // ---- Hangar economy (purchase record) -------------------------------
+    // Persisted state is ONE array of aircraft ids. Everything else - what a jet
+    // costs, what the player can spend, whether they own it - is derived, so
+    // there is no second counter that can drift out of step with the records.
+    // Placed immediately after AIRCRAFT_TYPES (its only dependency here) and
+    // well before boot's buildHangarUI() call, which needs aircraftPurchases
+    // to read ownership for the hangar list badges.
+    function readAircraftPurchases() {
+      try {
+        const raw = JSON.parse(window.localStorage.getItem(PURCHASES_STORAGE_KEY) || "[]");
+        // Filtered against the hangar order, not just checked for being an
+        // array: a stale id from an older build would otherwise sit in the
+        // wallet's outgoings forever, charging the player for a jet that no
+        // longer exists.
+        return Array.isArray(raw) ? raw.filter((id) => AIRCRAFT_TYPES[id]) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    const aircraftPurchases = new Set(readAircraftPurchases());
+
+    function saveAircraftPurchases() {
+      try {
+        window.localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify([...aircraftPurchases]));
+      } catch {
+        // Storage can be unavailable; the hangar simply doesn't persist.
+      }
+    }
+
     // The two stock fighter waves. NO MISSION FLIES THESE ANY MORE - every
     // sortie in the campaign now authors its own composition inline, because
     // the whole point of the rework was that "every wave is these same three
@@ -4000,6 +4162,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return !entry || entry.tgt !== false;
     }
 
+    // What destroying this contact is worth. The rank compares what the player
+    // killed against what was spawned, so the two sides MUST be counted by the
+    // same formula - a mount worth 150 on the way out and 1000 on the way in
+    // would put the ratio somewhere the thresholds mean nothing. Read once at
+    // spawn and once at death, never re-derived.
+    function contactScoreValue(enemy) {
+      if (enemy.subsystem) return SUBSYSTEM_SCORE;
+      return isTgtEntry(enemy) ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR);
+    }
+
+    // Denominator and numerator of the rank. Reset per sortie alongside score.
+    const rankStats = { spawnedValue: 0, playerKillValue: 0 };
+
+    // Called from every enemies.push site. Anything that reaches enemies[] is
+    // shootable and therefore worth points, so counting here rather than in the
+    // five spawners keeps a new contact type from silently missing the tally.
+    function registerSpawnedValue(enemy) {
+      if (!enemy) return;
+      rankStats.spawnedValue += contactScoreValue(enemy);
+    }
+
     // What the HUD writes beside the target box. `label` is already the short
     // form for every table (ENEMY_TYPES takes the first word of the airframe
     // name, ships and installations are authored short), and a named pilot
@@ -4032,6 +4215,86 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         altitude: Object.freeze([90, 20, -55])
       })
     });
+
+    // ---- Wave spawn geography ----------------------------------------------
+    // Where a wave APPEARS, as opposed to how it is shaped once it is there
+    // (WAVE_LAYOUTS above, untouched).
+    //
+    // Every wave used to be laid out off the player's nose: position + forward
+    // * distance. That put wave 2 in front of the player's canopy no matter
+    // where the player had flown or how fast they had cleared wave 1, which is
+    // the same as saying clearing wave 1 quickly bought nothing. It also meant
+    // a bomber flight materialised abeam of whatever it was supposed to be
+    // attacking, and the escort sorties spawned their interceptors wherever
+    // the player happened to be rather than on a run at the convoy.
+    //
+    // Instead a wave is placed on a RING in WORLD SPACE about an anchor, on a
+    // bearing derived from the mission key and the wave index. Nothing about
+    // that depends on the player, so a wave cleared early leaves the next one
+    // exactly where it always was - further away, and with more time in hand.
+    //
+    // The radii are sized against RADAR_RANGE (1400), NOT against battleRadius:
+    // the arena is 6.5-13.5km across on the missions that set one, and a wave
+    // spawned at 85% of that would be four to eight times outside detection
+    // range - undiscoverable rather than distant.
+    // Both sit under WAVE_SPAWN_MAX_RANGE (1260) on purpose: a player standing
+    // exactly on the anchor is the closest the ring can ever be to a full
+    // ring's radius, so a radius above the ceiling would put every wave of that
+    // band permanently out of the window no matter how it was slid around.
+    const WAVE_RING_RADIUS = Object.freeze({ 1: 1150, 2: 1250 });
+    // Discoverability window: how far from the player a wave may be allowed to
+    // land. Below the floor it is on top of them before they can react.
+    //
+    // The ceiling is set by the WORST VISIBILITY in the campaign rather than by
+    // radar range. m-night's fog is opaque at 2150m and every other map at
+    // 4600m, so 2100 is the furthest a wave can arrive and still be something
+    // on the screen on every map. Radar (1400m) is one of three ways a wave is
+    // found, not the only one: the bearing call names its bearing and range the
+    // moment it arrives, it is visible far past the scope on every daylight
+    // map, and it is flying at the player regardless.
+    //
+    // Sizing this to radar was tried and measured. At a 1260m ceiling most of a
+    // 1150m ring falls outside the window as soon as the player leaves the
+    // anchor, so the slide below has to drag the wave round onto the player's
+    // side of it: 68% of sampled positions moved, by an average of 727m and a
+    // worst case of 1796m. That is the "it spawns in front of me" complaint
+    // coming back in through the clamp. At 2100 the same sweep moves 30% of
+    // positions by an average of 250m.
+    const WAVE_SPAWN_MIN_RANGE = 600;
+    const WAVE_SPAWN_MAX_RANGE = 2100;
+    // How far the anchor may sit from the player when a wave is placed. Beyond
+    // this the ring cannot reach the window at all - the furthest a band-1 ring
+    // reaches is its own radius plus the ceiling, 1150 + 2100 = 3250 - so an
+    // anchor further out is held at this range along the line to it, keeping
+    // its DIRECTION and giving up only the distance. Four missions rely on it
+    // (m01's battleCenter is 9900m out, m-escort and r13 6800m, m-city 4200m):
+    // those are the middle of a long chase arena, not where the fighting is.
+    // Kept below 3250 so the guarantee has margin rather than sitting on the
+    // boundary.
+    const WAVE_ANCHOR_MAX_RANGE = 3000;
+    // Floor for the band a wave is placed in, before the layout's own
+    // per-slot altitude offsets (which reach -55) and the hard 110m clamp on
+    // the finished position. 260 is the player's own start altitude, so a wave
+    // spawned while the player is on the deck still arrives at a height it can
+    // manoeuvre from rather than in the weeds.
+    const WAVE_SPAWN_MIN_ALTITUDE = 260;
+    // Golden angle. Successive waves of one sortie come in on bearings 137.5
+    // degrees apart, which never repeats and never clusters.
+    const WAVE_BEARING_STEP = 137.5 * Math.PI / 180;
+
+    // Deterministic per mission: the same sortie flown twice puts its waves on
+    // the same bearings, so the geography is something the player can learn and
+    // rank comparisons stay fair. No randomness anywhere in this path.
+    function waveBearing(missionKey, waveIndex) {
+      let hash = 2166136261;
+      const key = String(missionKey || "");
+      for (let i = 0; i < key.length; i += 1) {
+        hash ^= key.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      const base = ((hash >>> 0) / 4294967296) * Math.PI * 2;
+      return base + waveIndex * WAVE_BEARING_STEP;
+    }
 
     // Enemies fly the same four airframes as the player and inherit their
     // performance from AIRCRAFT_TYPES: HP, cruise/boost speed and turn rate all
@@ -10870,8 +11133,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             scale: 0.88
           },
           radio: {
-            inbound: "エース指定機——西側が『NIMROD』と呼ばせている機体だ。奴だ。",
-            wingman: "ハングマン……絞首人か。こっちが付けた名前だぞ、あれ。……来た。",
+            inbound: "エース指定機——我々が『NIMROD』と呼んでいる機体だ。奴だ。",
+            wingman: "ニムロド……狩人か。こっちが付けた名前だぞ、あれ。……来た。",
             engage: "",
             down: "……墜ちない。あれは墜ちない。"
           }
@@ -11258,7 +11521,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.42, y: 0.65 },
           battleCenter: { x: 0, z: -1000 },
           battleRadius: 9000,
-          briefing: "西側同盟軍のエース。我々の側では『NIMROD』——絞首人と呼ばれている機体だ。\n名を付けたのはこちらだ。向こうは自分がそう呼ばれていることを知らないだろう。\n奴は今まで我が方の12機を墜としている。次を君にするな。\n指定目標はNIMROD機の僚機2機だ。本人ではない。\n本人は落とせない——落とせるだけの弾も、燃料も、今日の我々には無い。\n僚機を剥がして、こちらの損害を止める。それが今日の勝ちだ。撃てる時は撃て。だが深追いはするな。",
+          briefing: "西側同盟軍のエース。我々の側では『NIMROD』——狩人と呼ばれている機体だ。\n名を付けたのはこちらだ。向こうは自分がそう呼ばれていることを知らないだろう。\n奴は今まで我が方の12機を墜としている。次を君にするな。\n指定目標はNIMROD機の僚機2機だ。本人ではない。\n本人は落とせない——落とせるだけの弾も、燃料も、今日の我々には無い。\n僚機を剥がして、こちらの損害を止める。それが今日の勝ちだ。撃てる時は撃て。だが深追いはするな。",
           introRadio: [
             { speaker: "command", text: "NORTHSTARより全機。……来たわ。NIMROD、同じ空域、同じ時刻。あなたが一度も届かなかった機影よ。", id: "r19-brief" },
             { speaker: "wingman", text: "とうとうですね。……IRONBACK、聞こえてます？ 生きて帰ってください。それだけです。", id: "r19-brief-wing" }
@@ -11438,7 +11701,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Same relay, for the wave's `hunt` field: null on every wave that is
     // flying at the player, which is every wave outside the two guard sorties.
     let spawningHunt = null;
-    let lastMissionRank = null;
+    // Where this sortie began, and the point its waves are laid out around.
+    // Both are snapshotted ONCE per mission - after the player has been placed
+    // and before the first wave spawns - and never move again. That is the
+    // whole point: a fixed anchor is what makes an early kill worth something,
+    // because the next wave is where it always was rather than in front of
+    // whatever the player is pointing at now. Null outside a sortie.
+    const missionStartPos = new THREE.Vector3();
+    const missionWaveAnchor = new THREE.Vector3();
+    let missionAnchorReady = false;
+    // The direction the wave currently being spawned is flying, read by
+    // spawnEnemy for the initial attitude. Same relay pattern as spawningTgt /
+    // spawningHunt: set for the duration of one spawnWave call and nulled at
+    // the end of it, so a spawn from anywhere else falls back to the old
+    // nose-on-to-player behaviour.
+    let spawningForward = null;
+    // The whole result computeMissionRank returns - { rank, kill, timeBonus,
+    // total, nextRankDelta } - not just the letter, because the debrief shows
+    // the breakdown that produced it and the record stores the total.
+    let lastMissionResult = null;
     // Declared here rather than beside the menu functions: the boot sequence
     // builds both menus, and a `let` further down the module body is still in
     // its temporal dead zone at that point.
@@ -11486,20 +11767,67 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     const RANK_ORDER = { S: 4, A: 3, B: 2, C: 1 };
 
+    // Time bonus, in the same points the kills are counted in. Full value up to
+    // par, then straight down to zero at TIME_ZERO_MULT x par - the multiple
+    // the old B line sat at, so a sortie that used to scrape B still lands
+    // around there once the bonus is gone.
+    function missionTimeBonus(elapsed, par, spawnedValue) {
+      const max = RANK_TUNING.TIME_BONUS_WEIGHT * spawnedValue;
+      if (!(par > 0) || max <= 0) return 0;
+      if (elapsed <= par) return max;
+      const fade = par * (RANK_TUNING.TIME_ZERO_MULT - 1);
+      if (fade <= 0) return 0;
+      // Clamped at zero: overrunning par is worth no bonus, never a penalty
+      // that eats into the kills the player earned.
+      return Math.max(0, max * (1 - (elapsed - par) / fade));
+    }
+
+    // Ace Combat scores a sortie, it does not audit it: what ranks the mission
+    // is the value the player destroyed plus a time bonus, over the value that
+    // was on the field. Damage taken is deliberately absent - a player who
+    // finishes the job while shot to pieces still flew the mission - and the
+    // clean sortie is honoured with the NO DAMAGE emblem instead.
     function computeMissionRank() {
       const par = MISSIONS[currentMissionIndex].parTime;
-      const damageRatio = damageTaken / PLAYER_MAX_HEALTH;
+      const spawned = rankStats.spawnedValue;
+      const kill = rankStats.playerKillValue;
+      const timeBonus = Math.round(missionTimeBonus(missionElapsed, par, spawned));
+      const total = kill + timeBonus;
+      const max = (1 + RANK_TUNING.TIME_BONUS_WEIGHT) * spawned;
+      // A mission that spawned nothing measurable cannot be scored, so it reads
+      // as a full clear rather than dividing by zero and stamping a C on a
+      // sortie that had nothing to shoot.
+      const ratio = max > 0 ? total / max : 1;
+      let rank = "C";
+      if (ratio >= RANK_TUNING.S) rank = "S";
+      else if (ratio >= RANK_TUNING.A) rank = "A";
+      else if (ratio >= RANK_TUNING.B) rank = "B";
+
       // A guard sortie flown perfectly except for the thing it was guarding is
       // not a perfect sortie. Losing a transport costs the S outright - which
       // is what makes "1機の損失は減点で済む" a real cost rather than a line
       // in the briefing - and the carrier does the same once a quarter of the
-      // hull is gone.
+      // hull is gone. The gate only caps, it never promotes: a slow sortie that
+      // earned a B keeps its B however well the convoy did.
       const guardPerfect = !guardState.active
         || (guardState.lost === 0 && guardIntegrity() > 0.75);
-      if (missionElapsed <= par && damageRatio <= 0.25 && guardPerfect) return "S";
-      if (missionElapsed <= par * 1.35 && damageRatio <= 0.65) return "A";
-      if (missionElapsed <= par * 1.8) return "B";
-      return "C";
+      if (!guardPerfect && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
+      const guardWiped = guardState.active && guardState.total > 0
+        && guardState.lost >= guardState.total;
+      if (guardWiped && RANK_ORDER[rank] > RANK_ORDER.B) rank = "B";
+
+      // Points still needed for the next rank up, so the debrief can say what
+      // the sortie fell short of. Null at S, and null when a guard cap is what
+      // holds the rank down - "+N points" would be a lie when no number of
+      // points can lift it.
+      const nextThreshold = rank === "C" ? RANK_TUNING.B
+        : (rank === "B" ? RANK_TUNING.A : (rank === "A" ? RANK_TUNING.S : null));
+      const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B");
+      const nextRankDelta = nextThreshold === null || capped || max <= 0
+        ? null
+        : Math.max(1, Math.ceil(nextThreshold * max - total));
+
+      return { rank, kill, timeBonus, total, nextRankDelta };
     }
 
     function readMissionRecords() {
@@ -11520,13 +11848,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    function recordMissionResult(rank) {
+    // `result` is the object computeMissionRank returns. The leaderboard keeps
+    // the ranking total (kills + time bonus), not the raw running score, so the
+    // number beside a record is the one that produced the rank next to it.
+    function recordMissionResult(result) {
+      const rank = result.rank;
       const key = MISSIONS[currentMissionIndex].key;
       const entry = missionRecords[key] || { rank: null, scores: [], times: [], cleared: false };
       entry.cleared = true;
       if (!entry.rank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[entry.rank] || 0)) entry.rank = rank;
-      entry.scores = [...entry.scores, score].sort((a, b) => b - a).slice(0, 3);
-      entry.times = [...entry.times, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
+      // Sticky, like the rank: one clean sortie earns the emblem for the record
+      // and a later scrappy one does not take it away. Absent on records
+      // written by older builds, which read as "never flown clean".
+      if (damageTaken === 0) entry.noDamage = true;
+      // localStorage is whatever an older build - or a hand-seeded test profile -
+      // last wrote there, so the arrays cannot be assumed present. Spreading a
+      // missing one throws on the completion path, which loses the sortie the
+      // player just flew.
+      const priorScores = Array.isArray(entry.scores) ? entry.scores : [];
+      const priorTimes = Array.isArray(entry.times) ? entry.times : [];
+      entry.scores = [...priorScores, result.total].sort((a, b) => b - a).slice(0, 3);
+      entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -11724,15 +12066,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       specRole: document.getElementById("specRole"),
       specName: document.getElementById("specName"),
       specBars: document.getElementById("specBars"),
-      wpnRow: document.getElementById("wpnRow"),
-      wpnLabel: document.getElementById("wpnLabel"),
-      wpnPips: document.getElementById("wpnPips"),
-      wpnCount: document.getElementById("wpnCount"),
+      mslRow: document.getElementById("mslRow"),
+      missiles: document.getElementById("missiles"),
+      spwRow: document.getElementById("spwRow"),
+      spwLabel: document.getElementById("spwLabel"),
+      spwCount: document.getElementById("spwCount"),
       ccipMarker: document.getElementById("ccipMarker"),
       ccipLabel: document.getElementById("ccipLabel"),
       ammoGrid: document.getElementById("ammoGrid"),
       aircraftBlurbLine: document.getElementById("aircraftBlurbLine"),
       hangarMissionTag: document.getElementById("hangarMissionTag"),
+      hangarWallet: document.getElementById("hangarWallet"),
+      hangarPurchaseLine: document.getElementById("hangarPurchaseLine"),
       state: document.getElementById("state"),
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
@@ -11798,6 +12143,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       breakdownBonusRow: document.getElementById("breakdownBonusRow"),
       breakdownBaseDamage: document.getElementById("breakdownBaseDamage"),
       breakdownBaseRow: document.getElementById("breakdownBaseRow"),
+      breakdownKillScore: document.getElementById("breakdownKillScore"),
+      breakdownTimeBonus: document.getElementById("breakdownTimeBonus"),
+      breakdownTotal: document.getElementById("breakdownTotal"),
+      breakdownNextRank: document.getElementById("breakdownNextRank"),
+      breakdownNextRankRow: document.getElementById("breakdownNextRankRow"),
+      noDamageEmblem: document.getElementById("noDamageEmblem"),
       bigBanner: document.getElementById("bigBanner"),
       bigBannerText: document.getElementById("bigBannerText"),
       bigBannerSub: document.getElementById("bigBannerSub")
@@ -11954,6 +12305,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let aircraftSpecBarCache = null;
+    // Aircraft id awaiting a second confirm before purchaseAircraft() spends
+    // real credits. Cleared on every selection change so switching jets always
+    // resets the confirm rather than letting a stale "PURCHASE?" carry over
+    // onto a different airframe.
+    let pendingPurchaseId = null;
     let hangarOrbitAngle = 0.7;
     // Live sweep of the player's wing in aerodynamic degrees, for the HUD-less
     // observer: the test hook reads it and non-swing airframes leave it at the
@@ -13360,7 +13716,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     ui.startBtn.addEventListener("click", () => {
       ensureAudio();
-      startMission();
+      requestLaunch();
     });
     ui.retryBtn.addEventListener("click", () => {
       ensureAudio();
@@ -13493,7 +13849,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           finishEpilogue();
           return;
         }
-        if (gameState === STATE_READY || gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
+        if (gameState === STATE_READY) {
+          requestLaunch();
+          return;
+        }
+        if (gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
           startMission();
           return;
         }
@@ -13794,6 +14154,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (gameState === STATE_CAMPAIGN_SELECT) confirmCampaignSelection();
         else if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
         else if (gameState === STATE_BRIEFING) advanceBriefing();
+        else if (gameState === STATE_READY) requestLaunch();
         else startMission();
       }
       if (cameraPressed && !gamepadInput.previousCamera) {
@@ -14670,6 +15031,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function startMission() {
+      // Preview is open to any roster jet (see selectAircraft), but launching
+      // one the player hasn't bought yet would let a look become a free
+      // sortie. This is the one gate that turns "selected" into "flown".
+      if (!ownsAircraft(selectedAircraftId)) {
+        notifyHangarLocked(selectedAircraftId);
+        return;
+      }
       applyAircraftLoadout(selectedAircraftId);
       keys.clear();
       clearMissionObjects();
@@ -14720,6 +15088,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gunKills = 0;
       missileKills = 0;
       damageTaken = 0;
+      // Zeroed before any spawner runs, so the field this sortie is ranked
+      // against is this sortie's field and not the previous one's.
+      rankStats.spawnedValue = 0;
+      rankStats.playerKillValue = 0;
       playerNickname = null;
       waveNumber = 0;
       missionWaveIndex = 0;
@@ -14727,6 +15099,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveTargetsSpawned = 0;
       spawningTgt = true;
       spawningHunt = null;
+      // Invalidated here and re-taken by captureMissionAnchor at the bottom of
+      // this function, so a wave can never be laid out around the LAST
+      // sortie's anchor.
+      missionAnchorReady = false;
       // Cleared before spawnMissionGround re-arms it, so a sortie flown after
       // a guard mission starts with no objective rather than the last one's.
       resetGuardState();
@@ -14797,6 +15173,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Scenery and installations first: a strike wave lays its run in against
       // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
+      // After spawnMissionGround, because a hunting wave is anchored on the
+      // friendly it hunts and those are placed by the ground pass; after
+      // applyFriendlyPlayerStart above, because the anchor is measured from
+      // where the player actually starts. Before the first wave, because every
+      // wave reads it.
+      captureMissionAnchor(MISSIONS[currentMissionIndex]);
       spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
       snapCamera();
       clock.getDelta();
@@ -14970,7 +15352,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ui.finalScore.textContent = String(score);
         ui.finalKills.textContent = String(kills);
         ui.finalHighscore.textContent = String(highscore);
-        const rank = success && lastMissionRank ? lastMissionRank : null;
+        const result = success && lastMissionResult ? lastMissionResult : null;
+        const rank = result ? result.rank : null;
         ui.finalRank.textContent = rank || "—";
         // className first, then a forced reflow: the stamp is a CSS animation,
         // and without the reflow a repeat of the same rank would not replay it.
@@ -14993,6 +15376,35 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // player actually let a load through.
         ui.breakdownBaseDamage.textContent = `-${baseDamagePenalty}`;
         ui.breakdownBaseRow.style.display = baseDamagePenalty > 0 ? "" : "none";
+        // What the rank was actually computed from. A failed sortie was never
+        // ranked, so the four lines are hidden rather than shown as zeroes.
+        const scoreRows = [
+          ui.breakdownKillScore.parentElement,
+          ui.breakdownTimeBonus.parentElement,
+          ui.breakdownTotal.parentElement
+        ];
+        for (const row of scoreRows) row.style.display = result ? "" : "none";
+        if (result) {
+          ui.breakdownKillScore.textContent = String(result.kill);
+          ui.breakdownTimeBonus.textContent = `+${result.timeBonus}`;
+          ui.breakdownTotal.textContent = String(result.total);
+          // Omitted at S, and omitted when a guard cap - not points - is what
+          // is holding the rank down.
+          ui.breakdownNextRank.textContent = result.nextRankDelta === null
+            ? "—"
+            : `+${result.nextRankDelta}`;
+        }
+        ui.breakdownNextRankRow.style.display =
+          result && result.nextRankDelta !== null ? "" : "none";
+        // Damage is off the rank axis, so a spotless sortie is honoured here.
+        // Only ever on a mission that was actually completed.
+        const noDamage = success && damageTaken === 0;
+        ui.noDamageEmblem.classList.add("hidden");
+        // Forced reflow between the two toggles, for the same reason the rank
+        // stamp needs one: back-to-back clean sorties would otherwise show the
+        // emblem without ever replaying its stamp.
+        void ui.noDamageEmblem.offsetWidth;
+        ui.noDamageEmblem.classList.toggle("hidden", !noDamage);
         ui.resultMissionTag.textContent =
           `${missionNumberLabel(currentMissionIndex)} ${MISSIONS[currentMissionIndex].title} · DEBRIEF`;
         const debriefLines = buildDebriefIntelLines(success);
@@ -16493,15 +16905,198 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return true;
     }
 
+    // Snapshotted once per sortie by startMission, after the player has been
+    // placed and before any wave spawns. Everything downstream reads these two
+    // vectors and never writes them, which is what makes the wave geography
+    // fixed for the whole mission.
+    function captureMissionAnchor(mission) {
+      missionStartPos.copy(player.position);
+      const center = mission && mission.battleCenter;
+      // No battleCenter: the sortie is fought where it starts, so that is the
+      // anchor. Twelve missions are in this case.
+      if (!center) {
+        missionWaveAnchor.copy(missionStartPos);
+        missionWaveAnchor.y = 0;
+        missionAnchorReady = true;
+        return;
+      }
+      missionWaveAnchor.set(center.x, 0, center.z);
+      // A battleCenter is an ARENA centre, not a spawn point, and on the four
+      // long-range sorties it sits kilometres down-range of where the fighting
+      // actually opens (m01's is 9.9km out, midway to the airfield the bombers
+      // are running at). Anchoring a 1.15km ring there would put every wave
+      // permanently off the radar. So the anchor is pulled back along the line
+      // towards the start point until the ring can reach the player again -
+      // which keeps the BEARING the mission implies (the enemy still comes
+      // from the direction of the objective) while making the wave findable.
+      tmpV1.set(missionWaveAnchor.x - missionStartPos.x, 0, missionWaveAnchor.z - missionStartPos.z);
+      const range = tmpV1.length();
+      if (range > WAVE_ANCHOR_MAX_RANGE) {
+        tmpV1.multiplyScalar(WAVE_ANCHOR_MAX_RANGE / range);
+        missionWaveAnchor.set(missionStartPos.x + tmpV1.x, 0, missionStartPos.z + tmpV1.z);
+      }
+      missionAnchorReady = true;
+    }
+
+    // What this wave is laid out around. A hunting wave is placed around the
+    // thing it hunts, because a flight sent to kill the convoy that appears
+    // anywhere else is not on an intercept - it is loitering. Everything else
+    // uses the sortie's fixed anchor.
+    //
+    // Whichever it is, the result is then held within WAVE_ANCHOR_MAX_RANGE of
+    // the player. That last step is what makes the geometry total rather than
+    // best-effort, and it is worth being precise about why it does not undo the
+    // fix:
+    //
+    //   - The DIRECTION is entirely the anchor's. A wave still comes from the
+    //     side of the map its objective is on, and the bearing is still the
+    //     deterministic one derived from the mission key. Nothing here reads
+    //     the player's heading, which is what "in front of the canopy" was.
+    //   - The clamp only engages beyond 2400m. Inside that - which is every
+    //     ordinary sortie and every ordinary moment of the four long ones - the
+    //     anchor is exactly the fixed point and an early kill pays exactly what
+    //     it is supposed to pay.
+    //   - Beyond it, the alternative is not "a purer fix", it is a wave 8-11km
+    //     behind the player that never enters the 1400m radar at all. m01 is a
+    //     19.8km tail chase inside a 13.5km arena; the player is SUPPOSED to be
+    //     kilometres from where they started.
+    //
+    // 3000 closes the window arithmetically: with the anchor held at most that
+    // far away, the nearest point of the ring is at most 3000 - 1150 = 1850
+    // (band 1) or 3000 - 1250 = 1750 (band 2), both inside the 2100m ceiling,
+    // and the furthest the ring can be with the player standing on the anchor
+    // is the radius itself, which is inside it too. So [600, 2100] is
+    // satisfiable from anywhere and the slide below never has to give up.
+    function waveAnchorFor(wave, out) {
+      let resolved = false;
+      if (wave && wave.hunt) {
+        // Same filter huntTargetFor() applies at runtime, so the wave is
+        // placed around exactly the friendly its aircraft will fly at.
+        for (const friendly of friendlies) {
+          if (!friendly.alive || !friendly.vulnerable || friendly.retired) continue;
+          const isShip = friendly.kind === "carrier";
+          if (wave.hunt === "ship" ? !isShip : isShip) continue;
+          out.copy(friendly.group.position).setY(0);
+          resolved = true;
+          break;
+        }
+        // A hunt wave whose charge is already gone falls through to the fixed
+        // anchor rather than spawning at the origin.
+      }
+      if (!resolved) {
+        if (missionAnchorReady) out.copy(missionWaveAnchor);
+        else out.copy(player.position).setY(0);
+      }
+      const dx = out.x - player.position.x;
+      const dz = out.z - player.position.z;
+      const range = Math.hypot(dx, dz);
+      // Strictly greater, so the zero-length case never reaches the division.
+      if (range > WAVE_ANCHOR_MAX_RANGE) {
+        const scale = WAVE_ANCHOR_MAX_RANGE / range;
+        out.set(player.position.x + dx * scale, 0, player.position.z + dz * scale);
+      }
+      return out;
+    }
+
+    // The wave's spawn point: a bearing on a ring about the anchor, then slid
+    // ALONG THAT RING until it is somewhere the player can find it.
+    //
+    // The slide never leaves the ring. Pulling the point straight at the player
+    // would be the old player-relative placement wearing a hat - the wave would
+    // once again turn up wherever the player is - so an unreachable window is
+    // resolved by taking the closest the ring gets rather than by stepping off
+    // it.
+    // `anchor` is resolved by the caller and passed in rather than looked up
+    // here, so the point and the formation heading downstream are guaranteed to
+    // be measured against the same anchor even though it is a live value.
+    function resolveWaveSpawnPoint(anchor, waveIndex, radius, out) {
+      const bearing = waveBearing(MISSIONS[currentMissionIndex].key, waveIndex);
+      // Planar offset from the anchor to the player, which is what the slide is
+      // measured against. Both the anchor and the ring live at y = 0; height
+      // comes from the formation layout further down.
+      const toPlayerX = player.position.x - anchor.x;
+      const toPlayerZ = player.position.z - anchor.z;
+      const playerRange = Math.hypot(toPlayerX, toPlayerZ);
+      // Where on the ring the player is, so "towards" and "away" are angles
+      // rather than directions. Degenerate only if the player is exactly on the
+      // anchor, in which case every bearing is equally far and the authored one
+      // stands.
+      const playerAngle = playerRange > 0.001 ? Math.atan2(toPlayerX, toPlayerZ) : bearing;
+      let angle = bearing;
+      if (playerRange > 0.001) {
+        // Law of cosines: the separation between a ring point and the player
+        // depends only on the angle between them, and it is monotonic in that
+        // angle. So the window [min, max] maps to a band of angular offsets,
+        // and satisfying it is a matter of clamping how far around the ring the
+        // spawn sits from the player's bearing.
+        const cosFor = (target) =>
+          (radius * radius + playerRange * playerRange - target * target) / (2 * radius * playerRange);
+        // Closest approach is offset 0 (nearest point of the ring), furthest is
+        // offset PI. If the whole ring is inside the floor or outside the
+        // ceiling the clamp below collapses to that end of the range, which is
+        // the best the ring can do - and is why this is written as a clamp
+        // rather than as a search that can fail.
+        const nearLimit = Math.acos(THREE.MathUtils.clamp(cosFor(WAVE_SPAWN_MIN_RANGE), -1, 1));
+        const farLimit = Math.acos(THREE.MathUtils.clamp(cosFor(WAVE_SPAWN_MAX_RANGE), -1, 1));
+        // cos is decreasing, so the FAR target yields the SMALLER cosine and
+        // therefore the LARGER angle: nearLimit is the lower bound of the
+        // allowed offset band and farLimit the upper.
+        const lo = Math.min(nearLimit, farLimit);
+        const hi = Math.max(nearLimit, farLimit);
+        // Signed offset of the authored bearing from the player's bearing,
+        // wrapped to (-PI, PI] so the wave slides the short way round.
+        let offset = angle - playerAngle;
+        offset = Math.atan2(Math.sin(offset), Math.cos(offset));
+        const side = offset < 0 ? -1 : 1;
+        const clamped = THREE.MathUtils.clamp(Math.abs(offset), lo, hi);
+        angle = playerAngle + side * clamped;
+      }
+      // Height is the one thing that stays player-relative, and deliberately.
+      // The ring fixes WHERE ON THE MAP a wave is, which is the whole
+      // complaint; putting it at a fixed altitude as well would just mean
+      // every wave spawns at the same height regardless of whether the player
+      // is on the deck or at 4000m, i.e. half of them unreachable. Matching the
+      // player's band is what the old placement did and it was never the
+      // problem. The floor keeps a wave off the terrain when the player is
+      // hugging it.
+      const height = Math.max(WAVE_SPAWN_MIN_ALTITUDE, player.position.y);
+      return out.set(
+        anchor.x + Math.sin(angle) * radius,
+        height,
+        anchor.z + Math.cos(angle) * radius
+      );
+    }
+
     // An air wave is a list of airframe keys, not a count. The three-ship
     // formation the campaign was built around is still spelled out slot by slot
     // in WAVE_LAYOUTS so those missions spawn on exactly the coordinates they
     // always have; any other size falls back to an even spread about the
-    // player's nose, using the same spacing.
-    function spawnWave(wave, band, idBase) {
-      const spawnForward = forwardOf(player, new THREE.Vector3());
-      const spawnRight = rightOf(player, new THREE.Vector3());
-      const spawnUp = upOf(player, new THREE.Vector3());
+    // spawn point's own heading, using the same spacing.
+    function spawnWave(wave, band, idBase, waveIndex = missionWaveIndex) {
+      const ringBand = Math.min(band, 2) === 2 ? 2 : 1;
+      const radius = WAVE_RING_RADIUS[ringBand];
+      const anchor = waveAnchorFor(wave, new THREE.Vector3());
+      const origin = resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
+      // The formation faces its anchor, so a strike flight is already pointed
+      // at what it came to bomb the instant it exists and a fighter wave is
+      // already turned into the fight. This replaces forwardOf(player), which
+      // is what used to make every wave appear nose-on to the canopy no matter
+      // what it was actually there to do. AI behaviour past this frame is
+      // untouched - only the initial attitude and the axes the formation is
+      // spread along come from here.
+      const spawnForward = new THREE.Vector3(anchor.x - origin.x, 0, anchor.z - origin.z);
+      if (spawnForward.lengthSq() < 0.001) spawnForward.set(0, 0, -1);
+      spawnForward.normalize();
+      const spawnRight = new THREE.Vector3().crossVectors(spawnForward, LOCAL_UP).normalize();
+      if (spawnRight.lengthSq() < 0.5) spawnRight.set(1, 0, 0);
+      const spawnUp = new THREE.Vector3().crossVectors(spawnRight, spawnForward).normalize();
+      spawningForward = spawnForward;
+      // Formation depth used to be measured from the player, so the layout's
+      // `distance` was the whole standoff. The ring now owns the standoff, and
+      // depth is only the spacing BETWEEN aircraft - so the leader sits on the
+      // ring and the rest trail it, rather than the whole flight being pushed
+      // another kilometre down-range of where it was placed.
+      const spawnOrigin = origin;
       const waveTypes = wave.types;
       const count = waveTypes.length;
       const layout = WAVE_LAYOUTS[Math.min(band, 2)] || WAVE_LAYOUTS[1];
@@ -16509,7 +17104,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (let i = 0; i < count; i += 1) {
         let lateral;
         let altitude;
-        let depth = layout.distance + i * layout.distanceStep;
+        // Trail only - see spawnOrigin above. `layout.distance` is the standoff
+        // the ring now provides, so it is deliberately not added here; the
+        // per-aircraft step, the element trail and the whole lateral/altitude
+        // spread are the layout's, unchanged.
+        let depth = i * layout.distanceStep;
         if (count === 3) {
           // The historic three-ship, spelled out slot by slot. Untouched so
           // every wave the campaign shipped with spawns where it always did.
@@ -16530,8 +17129,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           altitude = layout.altitude[slot % layout.altitude.length] + element * WAVE_ELEMENT_STACK;
           depth += element * WAVE_ELEMENT_TRAIL;
         }
-        const position = new THREE.Vector3().copy(player.position)
-          .addScaledVector(spawnForward, depth)
+        // Negative depth: the flight trails BEHIND its leader along its own
+        // line of advance. Positive would push each successive aircraft closer
+        // to the thing the wave is flying at, which is backwards for a
+        // formation and used to be hidden by the fact that "forward" meant
+        // "away from the player".
+        const position = new THREE.Vector3().copy(spawnOrigin)
+          .addScaledVector(spawnForward, -depth)
           .addScaledVector(spawnRight, lateral)
           .addScaledVector(spawnUp, altitude);
         // A helicopter is placed by the same formation geometry and then put
@@ -16550,6 +17154,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           wave.role, wave.skill
         );
       }
+      spawningForward = null;
+      // Where the wave was put, for the bearing call in deployWave. Returned
+      // rather than announced here so the caller keeps sole ownership of what
+      // a wave says when it arrives.
+      return spawnOrigin;
+    }
+
+    // "方位270、2000" - the bearing from the player to a contact in compass
+    // degrees, and its slant range rounded to the nearest 100m. Purely a
+    // readout: the numbers describe the spawn the geometry above already chose.
+    function waveBearingCall(point) {
+      const dx = point.x - player.position.x;
+      const dz = point.z - player.position.z;
+      // -Z is north in this world, matching the radar and the battle-area rim
+      // marker, so a contact dead ahead of a north-facing player reads 000.
+      let deg = Math.atan2(dx, -dz) * 180 / Math.PI;
+      deg = (deg + 360) % 360;
+      return {
+        bearing: String(Math.round(deg) % 360).padStart(3, "0"),
+        range: Math.round(Math.hypot(dx, dz) / 100) * 100
+      };
     }
 
     // Rotary wing. Deliberately NOT built on spawnEnemy: that function's whole
@@ -16652,6 +17277,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+      registerSpawnedValue(enemies[enemies.length - 1]);
       return id;
     }
 
@@ -16733,11 +17359,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       root.position.copy(position);
       root.userData.enemyType = spec.key;
 
-      // Fighters spawn nose-on to the player. A bomber already on a strike run
-      // does not: it is pointed at the field it is attacking, which is what
-      // puts the player behind it looking at its tail.
+      // What the aircraft is looking at the instant it exists, in priority
+      // order.
+      //
+      // A bomber on a strike run is pointed at the field it is attacking, which
+      // is what puts the player behind it looking at its tail. That case is
+      // unchanged and still wins.
+      //
+      // Otherwise the aircraft is pointed the way its WAVE is going - at the
+      // anchor the wave was laid out around, i.e. into the fight or at the
+      // convoy it was sent to intercept. This used to be "at the player", which
+      // only looked right because the wave was spawned off the player's nose in
+      // the first place; with a wave now placed on the map rather than in front
+      // of the canopy, nose-on-to-player would mean a flight that materialises
+      // already turned towards someone who may be nowhere near its business.
+      // The fallback remains the player, for any spawn with no wave heading of
+      // its own (the debug hooks).
       const strikeSpawn = STRIKE_AIR_TYPES.has(spec.key) && friendlyBase;
       if (strikeSpawn) tmpV1.set(friendlyBase.x, position.y, friendlyBase.z).sub(position).normalize();
+      else if (spawningForward) tmpV1.copy(spawningForward);
       else tmpV1.copy(player.position).sub(position).normalize();
       root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
 
@@ -16834,6 +17474,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+      registerSpawnedValue(enemies[enemies.length - 1]);
 
       // A bomber flown against a mission that is defending an airfield is on a
       // strike run: it aims at the field and holds that line until it is shot
@@ -16919,6 +17560,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         safeTarget: new THREE.Vector3()
       });
       const ship = enemies[enemies.length - 1];
+      registerSpawnedValue(ship);
       if (spec.subsystems) spawnShipSubsystems(ship);
     }
 
@@ -17001,6 +17643,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         };
         parent.subsystems.push(sub);
         enemies.push(sub);
+        registerSpawnedValue(sub);
         positionSubsystem(sub);
       }
     }
@@ -18330,6 +18973,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
+      registerSpawnedValue(enemies[enemies.length - 1]);
       // A vehicle's authored x/z is only the mission table's summary of where
       // it starts; the route is the truth, so put it there and point it down
       // the road before the first frame is drawn.
@@ -18568,7 +19212,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       } else {
         const acePilot = aceProfileOf(wave.ace);
-        spawnWave(wave, band, idBase);
+        const spawnPoint = spawnWave(wave, band, idBase);
+        // A wave no longer arrives off the player's nose, so where it IS has
+        // become information - which is what a bearing call is for. Authored
+        // `radio` wins outright: forty missions' worth of written lines are not
+        // going to be talked over by a generated one.
+        if (spawnPoint && !wave.radio) {
+          const call = waveBearingCall(spawnPoint);
+          triggerRadioLine(
+            "command",
+            `${wave.concurrent ? "追加の反応" : "新たな反応"}——方位${call.bearing}、${call.range}。`,
+            RADIO_PRIORITY.NORMAL,
+            `wave-bearing-${missionWaveIndex}`
+          );
+        }
         // A concurrent escort rides in on the wave it protects, so it announces
         // itself as a contact - not as a new wave the player has to clear.
         if (wave.concurrent) showBanner(`${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
@@ -20017,14 +20674,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A mount is worth a flat 150: enough to be worth the round, far too
       // little to rank a sortie on, so stripping a fleet cannot buy an S.
       const isTgtKill = isTgtEntry(enemy);
-      const killScore = enemy.subsystem
-        ? SUBSYSTEM_SCORE
-        : (isTgtKill ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR));
+      const killScore = contactScoreValue(enemy);
       if (isTgtKill) kills += 1;
       else bonusKills += 1;
       if (missileHit) missileKills += 1;
       else gunKills += 1;
       score += killScore;
+      // The rank's numerator. Separate from `score`, which also carries the
+      // guard penalties - a transport lost must not quietly shrink the field
+      // the player is being measured against.
+      rankStats.playerKillValue += killScore;
       if (score > highscore) {
         highscore = score;
         saveHighscore();
@@ -20399,7 +21058,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
-      lastMissionRank = null;
+      lastMissionResult = null;
       if (score > highscore) {
         highscore = score;
         saveHighscore();
@@ -20427,10 +21086,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         highscore = score;
         saveHighscore();
       }
-      lastMissionRank = computeMissionRank();
-      recordMissionResult(lastMissionRank);
+      lastMissionResult = computeMissionRank();
+      recordMissionResult(lastMissionResult);
       setState(STATE_COMPLETE);
-      if (lastMissionRank === "S") {
+      if (lastMissionResult.rank === "S") {
         radioSay(
           "command",
           "完璧な仕事だ。司令部が君の名を覚えたぞ。",
@@ -21569,31 +22228,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return `${Math.floor(total / 60)}'${String(Math.floor(total % 60)).padStart(2, "0")}"`;
     }
 
-    // Tube diamonds, AC style: one frame per tube, lit = loaded, brightening =
-    // reloading, near-invisible = the tube has nothing coming. One function for
-    // both launchers, so a diamond means the same thing whichever weapon the
-    // trigger is on: one diamond, one round ready to leave the rail.
-    function renderLoadedPips(container, loaded, tubes, timers, reloadSpan) {
-      const total = Math.max(0, tubes);
-      if (container.childElementCount !== total) {
-        container.replaceChildren(...Array.from({ length: total }, () => {
-          const pip = document.createElement("span");
-          pip.className = "missilePip";
-          pip.textContent = "◆";
-          return pip;
-        }));
-      }
-      Array.from(container.children).forEach((pip, index) => {
-        if (index < loaded) {
-          pip.style.opacity = "1";
-          return;
-        }
-        const timer = timers ? timers[index - loaded] : undefined;
-        pip.style.opacity = timer === undefined || !(reloadSpan > 0)
-          ? "0.12"
-          : String((0.15 + 0.55 * (1 - timer / reloadSpan)).toFixed(2));
-      });
-    }
 
     function updateHud() {
       ui.state.textContent = gameState;
@@ -21656,21 +22290,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? `MISSILE ALERT · ${threat.direction} · ${Math.round(threat.distance)}M`
         : "MISSILE ALERT";
 
-      // ONE weapon row, AC style: the HUD shows the launcher the trigger is
-      // actually on, and nothing else. Two permanently visible pip rows - one
-      // for MSSL, one for SP.W - meant the player read a loaded diamond next to
-      // a weapon that was not selected. The row's label, pip column and count
-      // are all swapped together.
+      // Both weapon rows stay up, as they do in AC7: MSL and the special weapon
+      // each keep their own name and count, and the caret says which one the
+      // trigger is on. Collapsing them into a single swapping row hid whichever
+      // launcher was not selected, so the player could not see what the other
+      // one had left without cycling to it.
       const spwSelected = selectedWeapon === "spw";
-      ui.wpnLabel.textContent = spwSelected && PLAYER_SPW ? PLAYER_SPW.label : "MSSL";
-      ui.wpnCount.textContent = String(spwSelected ? spwAmmo : Math.round(missileCount));
-      if (spwSelected) {
-        renderLoadedPips(ui.wpnPips, spwLoaded, spwTubeCount(), spwReloadTimers, spwReloadTime());
-      } else {
-        renderLoadedPips(
-          ui.wpnPips, loadedMissiles, MISSILE_TUBE_COUNT, missileReloadTimers, MISSILE_RELOAD_TIME
-        );
-      }
+      ui.spwLabel.textContent = PLAYER_SPW ? PLAYER_SPW.label : "---";
+      ui.missiles.textContent = String(Math.round(missileCount));
+      ui.spwCount.textContent = String(spwAmmo);
+      ui.mslRow.classList.toggle("wpnActive", !spwSelected);
+      ui.spwRow.classList.toggle("wpnActive", spwSelected);
       ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
       ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
 
@@ -21876,7 +22506,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         waves: MISSIONS[currentMissionIndex].waveCount,
         // Reinforcements authored with a `delay` that have not come due yet.
         pendingWaves: pendingWaves.length,
-        rank: lastMissionRank,
+        // Still the bare letter, which is what every existing probe reads.
+        // The numbers behind it hang off `rankResult` beside it.
+        rank: lastMissionResult ? lastMissionResult.rank : null,
+        rankResult: lastMissionResult,
+        rankSpawnedValue: rankStats.spawnedValue,
+        rankKillValue: rankStats.playerKillValue,
         cursor: missionCursor,
         elapsed: missionElapsed,
         parTime: MISSIONS[currentMissionIndex].parTime,
@@ -25182,6 +25817,106 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return list.length > 0 ? list : [...AIRCRAFT_ORDER];
     }
 
+    // ---- Hangar economy ------------------------------------------------------
+    // readAircraftPurchases/aircraftPurchases/saveAircraftPurchases moved up to
+    // right after AIRCRAFT_TYPES (their only real dependency): buildHangarUI()
+    // runs during boot, long before this point in the module, and it now reads
+    // ownsAircraft()/aircraftPrice() for the hangar badges - both need the Set
+    // to already exist. Leaving the const this far down left it in the
+    // temporal dead zone at boot (ReferenceError), which the badges exposed.
+    //
+    // Price from the same six bars the panel draws, so what the player is
+    // reading IS what they are paying for. `power` is a weighted average of
+    // values that all sit in 0.20-1.00, so it lands in that band too; the curve
+    // then stretches the top of the hangar away from the bottom.
+    function aircraftPower(id) {
+      const bars = (aircraftSpecBarCache || {})[id];
+      if (!bars) return 0;
+      let sum = 0;
+      for (const [key, weight] of Object.entries(PRICE_WEIGHTS)) sum += (bars[key] || 0) * weight;
+      const totalWeight = Object.values(PRICE_WEIGHTS).reduce((a, b) => a + b, 0);
+      return totalWeight > 0 ? sum / totalWeight : 0;
+    }
+
+    // Which side's wallet an airframe is bought from. An aircraft belongs to
+    // exactly one campaign roster (the two lists are disjoint), so this is a
+    // lookup rather than a choice; the active campaign is only the fallback for
+    // something not on either list.
+    function aircraftCampaignId(id) {
+      const owner = CAMPAIGNS.find((campaign) => (campaign.aircraft || []).includes(id));
+      return owner ? owner.id : selectedCampaignId;
+    }
+
+    function isStarterAircraft(id, campaignId = aircraftCampaignId(id)) {
+      return STARTER_AIRCRAFT[campaignId] === id;
+    }
+
+    function aircraftPrice(id) {
+      const campaignId = aircraftCampaignId(id);
+      // The jet the campaign hands you. Free, and priced at zero rather than
+      // merely pre-owned, so a wiped purchase list can never leave a player
+      // grounded with an empty wallet.
+      if (isStarterAircraft(id, campaignId)) return 0;
+      const cap = PRICE_CAP[campaignId] || PRICE_CAP[DEFAULT_CAMPAIGN_ID];
+      const raw = cap * (PRICE_FLOOR_FRACTION + (1 - PRICE_FLOOR_FRACTION) * Math.pow(aircraftPower(id), PRICE_CURVE));
+      return Math.round(raw / 1000) * 1000;
+    }
+
+    function ownsAircraft(id) {
+      return isStarterAircraft(id) || aircraftPurchases.has(id);
+    }
+
+    // Everything this campaign has ever paid out, less everything it has bought.
+    // scores[0] is the mission's best total (the array is sorted descending and
+    // capped at three), so income only moves when the player beats their own
+    // record - repeating a mission they have already aced earns nothing, which
+    // is what keeps this from becoming a grind.
+    function campaignEarnings(campaignId) {
+      let sum = 0;
+      for (const mission of MISSIONS) {
+        if (missionCampaignId(mission) !== campaignId) continue;
+        const best = missionRecords[mission.key]?.scores?.[0];
+        if (typeof best === "number" && Number.isFinite(best)) sum += Math.max(0, best);
+      }
+      return Math.round(sum);
+    }
+
+    function campaignSpending(campaignId) {
+      let sum = 0;
+      for (const id of aircraftPurchases) {
+        if (aircraftCampaignId(id) !== campaignId) continue;
+        sum += aircraftPrice(id);
+      }
+      return sum;
+    }
+
+    // Per campaign on purpose. The two hangars are disjoint, so one shared purse
+    // would mean the American campaign's twenty sorties bankroll the Russian
+    // one's best airframe on its first mission - the second playthrough would
+    // open with nothing left to earn.
+    function walletFor(campaignId = selectedCampaignId) {
+      return campaignEarnings(campaignId) - campaignSpending(campaignId);
+    }
+
+    function formatCredits(value) {
+      return `${Math.round(value).toLocaleString("en-US")} CR`;
+    }
+
+    // Returns why it failed rather than a bare false: the hangar prints the
+    // shortfall, and "you need 4,000 more" is a goal where "cannot afford" is
+    // just a wall.
+    function purchaseAircraft(id) {
+      if (ownsAircraft(id)) return { ok: false, reason: "owned" };
+      if (!campaignAircraft().includes(id)) return { ok: false, reason: "roster" };
+      const campaignId = aircraftCampaignId(id);
+      const price = aircraftPrice(id);
+      const wallet = walletFor(campaignId);
+      if (wallet < price) return { ok: false, reason: "funds", short: price - wallet, price, wallet };
+      aircraftPurchases.add(id);
+      saveAircraftPurchases();
+      return { ok: true, price, wallet: walletFor(campaignId) };
+    }
+
     function selectAircraft(id) {
       if (gameState === STATE_PLAYING) return false;
       // campaignAircraft(), not AIRCRAFT_TYPES: the table also holds enemy-only
@@ -25190,6 +25925,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // a bomber; checking the unfiltered order would let it fly the other
       // side's jets.
       if (!campaignAircraft().includes(id)) return false;
+      // Ownership is deliberately not checked here: the hangar lets the player
+      // preview (3D model + spec bars) any jet on the roster so they can weigh
+      // it up before buying. startMission() is the actual gate that keeps an
+      // unowned airframe from being flown.
+      pendingPurchaseId = null;
       selectedAircraftId = id;
       rebuildPlayerModel(id);
       updateHangarScreen();
@@ -25307,7 +26047,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const item = document.createElement("li");
         item.dataset.aircraft = id;
         item.setAttribute("role", "radio");
-        item.innerHTML = `<span class="listIcon">✈</span>${spec.label}`;
+        // Badge text itself is filled in by updateHangarScreen() (a purchase
+        // only changes what's owned, never the roster), so this only needs to
+        // plant the span it will write into.
+        item.innerHTML = `<span class="listIcon">✈</span><span class="aircraftLabel">${spec.label}</span><span class="listRank" data-role="priceBadge"></span>`;
         item.addEventListener("click", () => {
           ensureAudio();
           selectAircraft(id);
@@ -25317,6 +26060,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateHangarScreen();
     }
 
+    // Called on every selection change AND right after a purchase, so a badge
+    // flipping to OWNED and a jet becoming flyable are the same update.
     function updateHangarScreen() {
       const spec = AIRCRAFT_TYPES[selectedAircraftId];
       if (!spec) return;
@@ -25324,7 +26069,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const active = item.dataset.aircraft === selectedAircraftId;
         item.classList.toggle("selected", active);
         item.setAttribute("aria-checked", String(active));
+        const id = item.dataset.aircraft;
+        const badge = item.querySelector('[data-role="priceBadge"]');
+        if (badge) {
+          badge.textContent = ownsAircraft(id) ? "OWNED" : formatCredits(aircraftPrice(id));
+        }
       }
+      ui.hangarWallet.textContent = formatCredits(walletFor());
+      renderHangarPurchaseLine();
       ui.specRole.textContent = spec.role.toUpperCase();
       ui.specName.textContent = spec.label;
       const bars = (aircraftSpecBarCache || {})[spec.id] || {};
@@ -25347,6 +26099,66 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.aircraftBlurbLine.textContent = spec.blurb;
       ui.hangarMissionTag.textContent =
         `${missionNumberLabel(currentMissionIndex)} ${MISSIONS[currentMissionIndex].title}`;
+    }
+
+    // The one line that carries the purchase conversation: empty and hidden
+    // once ownership is settled one way or the other, "PURCHASE (price)?" while
+    // armed and waiting for the second press, "NEED (short) MORE" after a
+    // declined purchase. Driven entirely by pendingPurchaseId + the wallet, so
+    // it never goes stale relative to what the player is looking at.
+    function renderHangarPurchaseLine(message = null, warn = false) {
+      const line = ui.hangarPurchaseLine;
+      if (!line) return;
+      if (message) {
+        line.textContent = message;
+        line.classList.toggle("warn", warn);
+        line.classList.remove("hidden");
+        return;
+      }
+      if (pendingPurchaseId === selectedAircraftId && !ownsAircraft(selectedAircraftId)) {
+        line.textContent = `PURCHASE (${formatCredits(aircraftPrice(selectedAircraftId))})?`;
+        line.classList.remove("warn", "hidden");
+        return;
+      }
+      line.textContent = "";
+      line.classList.add("hidden");
+      line.classList.remove("warn");
+    }
+
+    // Enter/LAUNCH funnel for the hangar. An owned jet (starter or bought)
+    // flies immediately - the confirm step only exists for the one case where
+    // pressing launch would otherwise spend credits by accident.
+    function requestLaunch() {
+      if (gameState !== STATE_READY || ownsAircraft(selectedAircraftId)) {
+        startMission();
+        return;
+      }
+      if (pendingPurchaseId !== selectedAircraftId) {
+        pendingPurchaseId = selectedAircraftId;
+        renderHangarPurchaseLine();
+        return;
+      }
+      const result = purchaseAircraft(selectedAircraftId);
+      pendingPurchaseId = null;
+      if (result.ok) {
+        updateHangarScreen();
+        startMission();
+        return;
+      }
+      if (result.reason === "funds") {
+        if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
+        renderHangarPurchaseLine(`NEED ${formatCredits(result.short)} MORE`, true);
+      } else {
+        renderHangarPurchaseLine();
+      }
+    }
+
+    // Enter on STATE_READY reaching an unowned jet before it can be flown.
+    // Same message as the confirm-armed line so the player sees one consistent
+    // vocabulary for "you don't have this yet" everywhere it can come up.
+    function notifyHangarLocked(id) {
+      if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
+      renderHangarPurchaseLine(`PURCHASE (${formatCredits(aircraftPrice(id))})?`, true);
     }
 
     // Backing store is in CSS pixels, so everything below draws in CSS space and
