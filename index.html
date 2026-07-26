@@ -2762,6 +2762,40 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 primary: 0x4c5550, secondary: 0x333b38, accent: 0x20262a,
 canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         })
+      }),
+      // The first ROTORCRAFT in the game, and the reason the `hover` category
+      // exists. Everything in this table is a fixed-wing number, and a
+      // helicopter is not a slow aeroplane - so rather than pretend, the AI
+      // routes hover types past the fixed-wing model entirely (updateHoverEnemy)
+      // and reads only four values from here: maxHealth, cruiseSpeed and
+      // boostSpeed (which become its hover and dash speeds) and turnRateDeg
+      // (which becomes how fast it can slew its nose).
+      //
+      // The stall block is therefore dead weight for this airframe, but it is
+      // still filled in to satisfy the table-wide invariant
+      // `brakeSpeed - 52 >= stallEntrySpeed`: at 52 and 0 it holds with the
+      // margin the rule asks for, and no code path can ever reach it anyway.
+      gunship: Object.freeze({
+        id: "gunship",
+        label: "AH-99 GUNSHIP",
+        role: "Attack Helicopter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の攻撃ヘリ。速度は無いが完全に静止でき、地形に貼り付いて機銃とロケット弾を撃ち込んでくる。",
+        // 0 is a legal speed for this machine. `cruiseSpeed` is the station-
+        // keeping pace and `boostSpeed` the dash ceiling the spec caps at 72.
+        cruiseSpeed: 46, boostSpeed: 72, brakeSpeed: 52,
+        pitchRateDeg: 40, rollRateDeg: 60, yawRateDeg: 45, maxBankAngleDeg: 25,
+        normalRollSpring: 20, rollRateLimitDeg: 55, turnRateDeg: 48,
+        rollDamping: 8.0, stallWarnSpeed: 0, stallEntrySpeed: 0, stallAuthorityLoss: 0, structuralG: 2.0,
+        gunDamage: 6, missileDamage: 40,
+        boostResponse: 0.6, brakeResponse: 0.6, cruiseResponse: 0.6,
+        missileCapacity: 0, maxHealth: 98,
+        tipSpan: 3.4, tipZ: 0.4,
+        theme: Object.freeze({
+primary: 0x555a4c, secondary: 0x33372e, accent: 0x22261f,
+canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 1.15, variant: "gunship"
+        })
       })
     });
 
@@ -3073,6 +3107,76 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           exhaust: 0x9fb0b8,
           scale: 2.2,
           variant: "bomber"
+        })
+      }),
+      // ---- Hover category ---------------------------------------------------
+      // `hover: true` is a hard fork in updateEnemies, not a behaviour tweak. A
+      // hover machine never touches the fixed-wing model: no stall floor, no
+      // missile break turn, no post-stall script, and not the fixed-wing terrain
+      // pull-up either (it holds an altitude BAND off the local ground instead -
+      // see HOVER_ALT_MIN/MAX). What it keeps is everything that was never about
+      // being an aeroplane: the patrol/pursuit mode machine, the damage smoke,
+      // targeting, radar and the HUD.
+      //
+      // Its role on the board is to pull the player DOWN. It sits at 30-150m and
+      // will not come up, so trading with it means flying with the ground close -
+      // which is where the SAM sites and the AA guns already are.
+      gunship: Object.freeze({
+        behavior: "hover",
+        hover: true,
+        label: "GUNSHIP",
+        hitboxScale: 1.15,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 0.55,
+        // Long engage range, short standoff. It cannot chase, so it has to
+        // notice early and it has to be reluctant to let go.
+        engageRange: 1500,
+        disengageRange: 2200,
+        pursuitBack: 0,
+        // Where it tries to sit relative to the player: a ring at two thirds of
+        // gun range, and below - a helicopter that climbs to meet a jet dies.
+        hoverStandoff: 430,
+        hoverDropBelow: 90,
+        verticalBias: 0,
+        verticalAmplitude: 0,
+        verticalFrequency: 0,
+        // The horizontal version of evadeLateral: it steps off the gun line
+        // sideways without turning, which is the manoeuvre a fixed wing cannot
+        // copy and the whole reason this category is interesting.
+        evadeLateral: 150,
+        evadeVertical: 0,
+        evadeFrequency: 0.55,
+        // Deliberately laggy: the lag IS the machine's mass. It cannot snap
+        // between headings the way its turn rate alone would suggest.
+        speedResponse: 0.09,
+        fireMin: 1.1,
+        fireSpread: 0.9,
+        attackRange: 700,
+        aimThreshold: 0.9,
+        hitChanceScale: 0.34,
+        maxHitChance: 0.15,
+        damageMin: 6,
+        damageMax: 6,
+        // Unguided rockets. Straight-line, slow, and aimed at where the player
+        // WILL be - so the counter is to change what that answer is, not to pop
+        // a flare. See attemptGunshipRocket.
+        rocket: Object.freeze({
+          cooldown: 4.0, speed: 190, damage: 40,
+          range: 1200, minRange: 160, launchDot: 0.965, life: 7.5
+        }),
+        // Amber like the installations it defends - but this contact moves,
+        // which is the whole tell.
+        radarColor: "#ffb347",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348,
+        theme: Object.freeze({
+          primary: 0x555a4c,
+          secondary: 0x33372e,
+          accent: 0x22261f,
+          canopy: 0x8fe0ff,
+          exhaust: 0x9fb0b8,
+          scale: 1.15,
+          variant: "gunship"
         })
       })
     });
@@ -3761,6 +3865,110 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             distance: [1200, 3000]
           }
         }
+      },
+
+      // Ground-attack map: no sea at all. The first four presets are all built
+      // over water, and every one of them uses the same device - a 12km plane at
+      // y=0 that rides under the camera (see updateWorld) while its texture stays
+      // pinned to the world. That plane IS the terrain here; only its colours
+      // change. Keeping the mechanism instead of deleting it is what makes the
+      // map free: the same one draw call, the same speed cue at low level, and
+      // `world.ocean` stays a live object so no follow or dispose path meets a
+      // shape it has never seen. (Those paths are null-safe regardless - see the
+      // guards in updateWorld/oceanProbe - but nothing here depends on it.)
+      //
+      // Relief comes from the parts that were never water-specific: `mountains`
+      // are the solid rock spires (the only terrain that collides), and the
+      // island builder - run at deliberately flat, wide parameters - draws the
+      // dune field. No heat-haze shader: this map is made of shape and light,
+      // which costs nothing per frame.
+      desertLine: {
+        label: "DESERT LINE",
+        clearColor: 0xd8c8a4,
+        // Bleached sky with a dust band straddling the horizon (stop 0.5): pale
+        // blue only at the zenith, washing out to white-tan, then the suspended
+        // sand itself as a warm orange belt. Below the line it stays sandy, so
+        // there is no colour seam where the ground plane meets the dome.
+        sky: [[0, "#7ba4c8"], [0.28, "#b3c9d4"], [0.42, "#e2dbc6"], [0.49, "#f0d5a6"], [0.53, "#dbb078"], [0.62, "#c39c6f"], [1, "#9c7d59"]],
+        // The haze is the dust, so it is tinted to it and starts early - the far
+        // spires have to fade into the band rather than stand clear of it.
+        fog: { color: 0xd8c39a, near: 1000, far: 4200 },
+        // High and hard: the brightest key in the set, with a wide low-opacity
+        // bloom for the glare that washes a desert sky out.
+        sun: {
+          position: [900, 1450, -2400], color: 0xfff6d8, radius: 92,
+          glare: [
+            { scale: 1900, color: 0xffeec2, opacity: 0.62 },
+            { scale: 520, color: 0xfffdf2, opacity: 1 }
+          ]
+        },
+        moon: null,
+        stars: null,
+        // No glint road: that is a reflection off water, and there is none here.
+        // Leaving it null also exercises the `world.sunRoad` guard in updateWorld
+        // on a shipped map rather than only in theory.
+        sunRoad: null,
+        // The desert floor, not a sea. Fine repeat (34 -> one tile per 353m) so
+        // the streaks in the shared noise canvas read as wind ripple rather than
+        // swell, and fully rough/non-metallic so it never catches a specular
+        // highlight the way every water preset deliberately does.
+        ocean: {
+          base: "#c9ad7c", bright: "232, 214, 176", dark: "150, 120, 82",
+          repeat: 34, roughness: 0.95, metalness: 0
+        },
+        lights: {
+          hemi: { sky: 0xffeecd, ground: 0x6b5334, intensity: 2.5 },
+          key: { color: 0xfff4d2, intensity: 3.6, position: [900, 1400, -900] },
+          fill: { color: 0xd8b98a, intensity: 0.7, position: [-600, 260, 800] }
+        },
+        // Rock spires - mesa colours, never snow. These are the map's only solid
+        // terrain (surfaceHeightAt and terrainFloorAt read `mountains` and
+        // nothing else), so "sparse" is a gameplay statement as much as a visual
+        // one: the low-level lane between them is where the mission is fought.
+        mountains: {
+          count: 11, radius: [110, 260], height: [90, 260], distance: [1500, 3800],
+          snowyAbove: 9999, snowLine: 0.7, roughness: 0.96,
+          palette: { low: 0x7d5f42, mid: 0x926f4c, rock: 0xa8845c, peak: 0xbb9a72, snow: 0xd9c9a8 },
+          corridor: null, plateau: null
+        },
+        // Dunes, drawn by the island builder. `green` is not vegetation on this
+        // map - it is the pale windward crest, so it is a lighter tint of the
+        // same sand rather than a contrasting colour.
+        islands: { count: 14, stone: 0xc2a878, green: 0xd8c396 },
+        clouds: {
+          scale: 0.4, hero: false, color: 0xf2ecdd, opacity: 0.5,
+          cirrusColor: 0xe8dcc4, cirrusOpacity: 0.26
+        },
+        decor: {
+          seed: 0x5d2e05,
+          // Fences the fortified line at z -1550. Same job as the night map's
+          // plateau fence: no dune, boulder or ridge may grow onto a ground
+          // target or hide one from the run-in.
+          keepClear: [{ x: 0, z: -1550, r: 1250 }],
+          // The dune field. Same buildIsland() the water maps use, run flat and
+          // wide - low height against a large radius is what turns a scenery
+          // island into a dune. Decoration only, exactly as everywhere else, so
+          // collision and every spawn contract are untouched.
+          extraIslands: {
+            count: 26, radius: [160, 430], height: [16, 46], distance: [900, 3400]
+          },
+          // Re-used as the sand skirt: a pale windblown apron hugging each dune
+          // and a darker wind-shadow ring outside it. Kept low-contrast, because
+          // on this map both discs sit on sand of nearly the same value - a
+          // strong band would read as a painted ring, not as drifted sand.
+          shore: { sand: 0xe6d5ac, shallow: 0xb08f66, opacity: 0.5, width: 1.3 },
+          trees: null,
+          // Boulder fields. The middle-distance filler that gives a low pass
+          // over open sand something to measure speed against.
+          rocks: { count: 54, color: 0x8a6f4f, scale: [10, 32] },
+          // Barely any cloud, and what there is sits high. A desert sky with a
+          // deck in it stops being a desert sky.
+          extraClouds: {
+            towers: 1, towerSize: [60, 90], towerBase: 900,
+            stratus: 3, stratusSize: [200, 340], stratusBase: 1700,
+            distance: [1600, 3400]
+          }
+        }
       }
     });
 
@@ -3972,6 +4180,59 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         introRadio: [
           { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
           { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
+        ]
+      },
+      {
+        key: "m-desert",
+        world: "desertLine",
+        title: "DESERT LINE",
+        jp: "砂漠の防衛線を制圧する。SAMと対空砲、そして低空に貼り付く敵攻撃ヘリを排除せよ。",
+        // The mission the hover category exists for. Everything on this board
+        // pulls the player DOWN and keeps them there: the objectives are on the
+        // deck, and the gunships will not come up to be fought, so the whole
+        // sortie is flown inside the AA envelope instead of above it. That is
+        // the difference between this and the night raid, where the ground was
+        // a target but the airspace over it was safe.
+        //
+        // The gunships are a single wave, concurrent with nothing: ground units
+        // are all on the board from t=0, so there is no wave to clear before the
+        // helicopters arrive. The player picks the order.
+        sequence: [
+          {
+            types: ["gunship", "gunship", "gunship"], band: 1, idBase: 0, label: "GUNSHIP",
+            radio: [
+              { speaker: "wingman", text: "低空に回転翼機、3！ 攻撃ヘリだ——地面すれすれに張り付いてる、追いかけて突っ込むなよ！", id: "m-desert-gunship" }
+            ]
+          }
+        ],
+        parTime: 300,
+        hasOutro: false,
+        map: { x: 0.80, y: 0.30 },
+        // A defensive LINE, not a base: the units are strung across the player's
+        // run-in rather than packed into one footprint, so a single pass cannot
+        // take the whole thing and the player has to come back through the AA
+        // more than once. The SAM pair sits wide on the flanks where it covers
+        // both ends of the line; the guns are pulled forward where they meet the
+        // run-in first; the soft targets are behind everything.
+        //
+        // All eight sit inside desertLine's `keepClear` fence at (0, -1550, r
+        // 1250), so no dune, boulder or ridge can grow onto a target or hide one.
+        groundUnits: [
+          { id: 21, type: "samSite", x: -640, z: -1480, heading: 0.15 },
+          { id: 22, type: "samSite", x: 660, z: -1430, heading: -0.15 },
+          { id: 23, type: "aaGun", x: -250, z: -1310, heading: 0 },
+          { id: 24, type: "aaGun", x: 270, z: -1290, heading: 0 },
+          { id: 25, type: "radarSite", x: -20, z: -1640, heading: 0.4 },
+          // Inside each other's 90m cook-off radius on purpose - the chain is
+          // the reward for spotting that they are stored together.
+          { id: 26, type: "fuelTank", x: -150, z: -1810, heading: 0 },
+          { id: 27, type: "fuelTank", x: -95, z: -1845, heading: 0.25 },
+          { id: 28, type: "bunker", x: 330, z: -1720, heading: -0.2 }
+        ],
+        briefing: "砂漠を横切る敵の防衛線を制圧する。SAMサイト2、対空砲2、レーダー、燃料集積所、掩体壕——計8。\nさらに低空掃討用の攻撃ヘリが3機、線の上空に貼り付いている。\n奴らは高度150m以上には上がってこない。撃つには君も降りるしかない——つまり対空砲の中だ。\nヘリのロケット弾は無誘導だ。フレアは効かない、横に切って外せ。\n燃料集積所は隣り合っている。片方に火が入れば、もう片方も持っていけるはずだ。",
+        introRadio: [
+          { speaker: "command", text: "砂漠の防衛線だ。SAMと対空砲を潰し、線ごと無力化しろ。", id: "desert-brief" },
+          { speaker: "wingman", text: "低空に張り付かれるぞ。ヘリは上がってこない——降りて撃つしかない、対空砲に気をつけろ！", id: "desert-brief-wing" }
         ]
       }
     ].map((mission) => {
@@ -5054,13 +5315,54 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           camX: camera.position.x,
           camZ: camera.position.z,
           tile: world.oceanTileSize || null,
-          offsetU: world.oceanTexture.offset.x,
-          offsetV: world.oceanTexture.offset.y,
+          offsetU: world.oceanTexture ? world.oceanTexture.offset.x : null,
+          offsetV: world.oceanTexture ? world.oceanTexture.offset.y : null,
           driftU: oceanDriftU,
           driftV: oceanDriftV,
           sunRoadX: world.sunRoad ? world.sunRoad.position.x : null,
           sunRoadZ: world.sunRoad ? world.sunRoad.position.z : null
         }),
+        // Hover-category probe. Reports, per rotorcraft on the board, both
+        // halves of the contract: that it lives inside its altitude band above
+        // whatever is actually underneath it (`altAboveFloor`, against the
+        // HOVER_* constants), and that NONE of the fixed-wing machinery ever
+        // ran on it - break turn, post-stall and the "break" mode are all
+        // unreachable from updateHoverEnemy, and these fields are how that is
+        // asserted from outside rather than assumed.
+        hoverProbe: () => enemies
+          .filter((enemy) => enemy.alive && enemy.spec.hover)
+          .map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            mode: enemy.mode,
+            y: enemy.group.position.y,
+            floor: terrainFloorAt(enemy.group.position),
+            altAboveFloor: enemy.group.position.y - terrainFloorAt(enemy.group.position),
+            speed: enemy.speed,
+            // Fixed-wing state that must never move for a hover machine.
+            breakTimer: enemy.breakTimer,
+            breakCooldown: enemy.breakCooldown,
+            postStallTimer: enemy.postStallTimer,
+            postStallPhase: enemy.postStallPhase,
+            rocketReadyIn: Math.max(0, enemy.rocketCooldown),
+            // Proof the rotor is actually being turned rather than modelled and
+            // forgotten - it is the one animation nothing else drives.
+            rotorAngle: enemy.model.rotors.length > 0 ? enemy.model.rotors[0].node.rotation.y : null
+          })),
+        hoverLimits: () => ({ min: HOVER_ALT_MIN, max: HOVER_ALT_MAX, hardFloor: HOVER_HARD_FLOOR }),
+        // Unguided rounds in flight, so the rocket can be told apart from a
+        // guided missile by something other than watching it.
+        rocketProbe: () => enemyMissiles
+          .filter((missile) => missile.unguided)
+          .map((missile) => ({
+            id: missile.id,
+            ownerId: missile.ownerId,
+            speed: missile.speed,
+            turnRate: missile.turnRate,
+            damage: missile.damage,
+            decoyed: Boolean(missile.decoy),
+            distance: missile.mesh.position.distanceTo(player.position)
+          })),
         // null restores the free-running blink; true/false pin a phase so a
         // screenshot gate can capture both halves of the cycle.
         setRadarBlinkPhase: (phase) => {
@@ -7637,7 +7939,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       sprite.scale.setScalar(9);
       scene.add(sprite);
       activeFlares.push(flare);
-      for (const missile of enemyMissiles) missile.decoy = flare;
+      // Guided rounds only. A flare works by being a better heat source than the
+      // aircraft; an unguided rocket is not looking at anything, so letting one
+      // bite would quietly make flares a counter to a weapon they cannot touch.
+      for (const missile of enemyMissiles) {
+        if (!missile.unguided) missile.decoy = flare;
+      }
       if (!playSfx("missile", 0.34, 1.65)) playTone(1350, 0.12, 0.1, "square");
       playTone(320, 0.3, 0.12, "sawtooth", 0.02);
       showBanner("FLARE · FLARE · FLARE", 0.9, "success");
@@ -7711,7 +8018,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           continue;
         }
 
-        if ((!decoyed || decoyAlive) && distance > 0.001) {
+        // An unguided round skips the seeker outright rather than being handed a
+        // turnRate of 0: it has no aim point to hold, and its launch quaternion
+        // already carries the gunner's entire solution.
+        if (!missile.unguided && (!decoyed || decoyAlive) && distance > 0.001) {
           tmpV1.multiplyScalar(1 / distance);
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
           missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
@@ -8046,7 +8356,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         formationActive: false,
         targetPoint: new THREE.Vector3(),
         formationPoint: new THREE.Vector3(),
-        safeTarget: new THREE.Vector3()
+        safeTarget: new THREE.Vector3(),
+        // Hover-machine state. The velocity vector is the hover model's whole
+        // integrator, so it is allocated only for the category that has one -
+        // a fixed wing carries a null it never reads.
+        hoverVel: spec.hover ? new THREE.Vector3() : null,
+        // Staggered per slot so a flight of three does not volley as one.
+        rocketCooldown: spec.rocket ? 1.6 + slot * 0.7 + Math.random() * 0.8 : 0
       });
 
       // A bomber flown against a mission that is defending an airfield is on a
@@ -8610,6 +8926,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         }
         if (enemy.mode === "pursuit" && distanceToPlayer > spec.disengageRange) enemy.mode = "patrol";
 
+        // Hover machines fork out of the fixed-wing model here, and this is the
+        // ONLY place they are allowed to. Everything above is shared because it
+        // is not about being an aeroplane - damage smoke, range, the
+        // patrol/pursuit mode machine. Everything below is: the post-stall
+        // script, the missile break turn, the bank-to-turn steering, the
+        // look-ahead terrain pull-up and the stall-speed hard floor. A
+        // rotorcraft gets none of it (see updateHoverEnemy).
+        if (spec.hover) {
+          updateHoverEnemy(enemy, dt, time, distanceToPlayer);
+          updateEnemyOrdnance(enemy, dt, time);
+          updateGunshipRocket(enemy, dt);
+          continue;
+        }
+
         // Post-stall owns the frame outright when it is running: `mode` is left
         // exactly as the manoeuvre found it, so the ace music cue keeps reading
         // "engaged" and the normal AI resumes mid-thought when the script ends.
@@ -8756,6 +9086,222 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
 
         updateEnemyOrdnance(enemy, dt, time);
       }
+    }
+
+    // ---- Hover machines -------------------------------------------------------
+    // The rotorcraft integrator. A fixed wing is steered by pointing the nose and
+    // then going wherever the nose points; a helicopter carries a velocity vector
+    // it can aim independently of where it is looking - including at nothing at
+    // all - and that single difference is the whole category. So this does not
+    // reuse the fixed-wing loop with gentler numbers: attitude and translation
+    // are separate here, and neither one is derived from the other.
+    //
+    // What it deliberately does NOT have: a stall speed (0 is a legal cruise), a
+    // break turn (it cannot outrun a missile, and nothing shoots missiles at it
+    // that a 1.6s snap would beat), post-stall (that is an energy trick and this
+    // machine has no energy to trade), and the fixed-wing terrain pull-up. In its
+    // place is an altitude BAND measured off whatever is directly underneath -
+    // which is both the survival rule and the design intent, because a threat
+    // pinned between 30 and 150m is a threat the player has to come down to.
+    const HOVER_ALT_MIN = 30;
+    const HOVER_ALT_MAX = 150;
+    // Absolute stop. Sits below HOVER_ALT_MIN so the band is a target the machine
+    // flies toward rather than a wall it grinds along, but far enough above the
+    // sand that the model's skids never enter it.
+    const HOVER_HARD_FLOOR = 18;
+    // Dedicated scratch. updateEnemies holds the player's own forward/right/up in
+    // tmpV5/6/7 for the whole loop, so a helper called from inside that loop
+    // cannot borrow them - and the aliasing bug if it did would be silent.
+    const hoverAim = new THREE.Vector3();
+    const hoverDemand = new THREE.Vector3();
+    const hoverLook = new THREE.Vector3();
+    const hoverUp = new THREE.Vector3();
+    const hoverRight = new THREE.Vector3();
+    const hoverFlat = new THREE.Vector3();
+
+    function updateHoverEnemy(enemy, dt, time, distanceToPlayer) {
+      const spec = enemy.spec;
+      const pos = enemy.group.position;
+      // Same terrain reader the fixed wings use, so a hover machine over a rock
+      // spire holds its band above the SPIRE, not above the sand beside it.
+      const floor = terrainFloorAt(pos);
+
+      // ---- 1. Where it wants to be -----------------------------------------
+      if (enemy.mode === "pursuit") {
+        // It holds a ring at standoff instead of closing. A helicopter that
+        // flies at a jet is a helicopter the jet flies past at 400 kt with one
+        // gun pass to show for it; sitting off the beam is what makes the
+        // player come back around, which is time spent low.
+        hoverFlat.copy(pos).sub(player.position);
+        hoverFlat.y = 0;
+        const flat = hoverFlat.length();
+        if (flat < 1) hoverFlat.set(1, 0, 0);
+        else hoverFlat.multiplyScalar(1 / flat);
+        hoverAim.copy(player.position).addScaledVector(hoverFlat, spec.hoverStandoff);
+        // Lateral slide - the hover answer to evadeLateral. It steps sideways
+        // off the line the player's guns are on WITHOUT turning, which is the
+        // one manoeuvre nothing else on the board can copy.
+        const slide = Math.sin(time * spec.evadeFrequency + enemy.seed) * spec.evadeLateral;
+        hoverAim.x -= hoverFlat.z * slide;
+        hoverAim.z += hoverFlat.x * slide;
+        // And it stays underneath. Climbing to meet a fighter is how a
+        // helicopter dies, so the aim point is pinned below the player before
+        // the band clamp gets to it.
+        hoverAim.y = player.position.y - spec.hoverDropBelow;
+      } else {
+        hoverAim.copy(enemy.waypoints[enemy.waypointIndex]);
+        // Wider arrival radius than the fixed wings use (85m): this machine
+        // decelerates into its waypoints instead of flying through them, and a
+        // tight radius would leave it hovering on the spot trying to touch one.
+        if (pos.distanceToSquared(hoverAim) < 120 * 120) {
+          enemy.waypointIndex = (enemy.waypointIndex + 1) % enemy.waypoints.length;
+          hoverAim.copy(enemy.waypoints[enemy.waypointIndex]);
+        }
+      }
+
+      // ---- 2. Altitude band -------------------------------------------------
+      // A clamp on the aim point, not an override of it. The fixed-wing model
+      // has to throw the whole aim point away to climb out of trouble because
+      // it can only go where its nose goes; this one just moves the height it
+      // is asking for and keeps manoeuvring horizontally the entire time.
+      hoverAim.y = THREE.MathUtils.clamp(hoverAim.y, floor + HOVER_ALT_MIN, floor + HOVER_ALT_MAX);
+
+      // ---- 3. Translation ---------------------------------------------------
+      // Demand is a free world vector capped at the airframe's dash speed, and
+      // it tapers inside ~1.1s of travel so the machine arrives stopped rather
+      // than overshooting and sawing back. That taper is what produces a true
+      // 0 m/s hover when it is where it wants to be.
+      hoverDemand.copy(hoverAim).sub(pos);
+      const gap = hoverDemand.length();
+      const wantSpeed = Math.min(spec.maxSpeed, gap * 0.9);
+      if (gap > 0.001) hoverDemand.multiplyScalar(wantSpeed / gap);
+      else hoverDemand.set(0, 0, 0);
+      // The lag IS the machine's mass; nothing else models its inertia.
+      enemy.hoverVel.lerp(hoverDemand, damping(spec.speedResponse, dt));
+      pos.addScaledVector(enemy.hoverVel, dt);
+      enemy.speed = enemy.hoverVel.length();
+      enemy.targetSpeed = wantSpeed;
+
+      // Hard floor. Vertical only - a rotorcraft does not need to fly out of
+      // the ground, it just stops going down.
+      const hardFloor = floor + HOVER_HARD_FLOOR;
+      if (pos.y < hardFloor) {
+        pos.y = hardFloor;
+        if (enemy.hoverVel.y < 0) enemy.hoverVel.y = 0;
+      }
+
+      // ---- 4. Attitude ------------------------------------------------------
+      // Independent of travel, which is the point. Engaged, the nose tracks the
+      // player because that is where the chin gun points, no matter which way
+      // the machine is actually sliding.
+      let haveLook = true;
+      if (enemy.mode === "pursuit" && distanceToPlayer > 1) {
+        hoverLook.copy(player.position);
+      } else {
+        hoverFlat.set(enemy.hoverVel.x, 0, enemy.hoverVel.z);
+        if (hoverFlat.lengthSq() < 0.25) haveLook = false;
+        else hoverLook.copy(pos).add(hoverFlat);
+      }
+      if (haveLook) {
+        // Nose-over with ground speed, the way a helicopter accelerates, and
+        // bank into the slide. Both are cosmetic - nothing reads this attitude -
+        // but without them a machine that translates flat and level reads as a
+        // prop being dragged through the air rather than as something flying.
+        const groundSpeed = Math.hypot(enemy.hoverVel.x, enemy.hoverVel.z);
+        hoverLook.y -= groundSpeed * 0.22;
+        rightOf(enemy.group, hoverRight);
+        const lateral = hoverRight.dot(enemy.hoverVel);
+        hoverUp.copy(WORLD_UP).addScaledVector(hoverRight, -lateral * 0.007);
+        if (hoverUp.lengthSq() < 0.0001) hoverUp.copy(WORLD_UP);
+        hoverUp.normalize();
+        // Matrix4.lookAt points -Z at the target, and every model in this game
+        // is built nose-down-(-Z), so this needs no fix-up quaternion.
+        tmpM1.lookAt(pos, hoverLook, hoverUp);
+        tmpQ1.setFromRotationMatrix(tmpM1);
+        enemy.group.quaternion.rotateTowards(
+          tmpQ1,
+          (enemy.mode === "pursuit" ? spec.pursuitTurn : spec.patrolTurn) * dt
+        );
+        enemy.group.quaternion.normalize();
+      }
+
+      // ---- 5. Rotors --------------------------------------------------------
+      for (const rotor of enemy.model.rotors) {
+        rotor.node.rotation[rotor.axis] += rotor.rate * dt;
+      }
+    }
+
+    // Unguided rocket. Straight line, no seeker, no proximity smarts beyond the
+    // shared 13m burst radius - the entire shot is decided at the moment it
+    // leaves the pod, by a lead prediction against the player's CURRENT velocity.
+    // So the counter is not a flare (nothing to decoy) and not speed (it is
+    // aimed ahead of you): it is changing the answer the gunner solved for.
+    function updateGunshipRocket(enemy, dt) {
+      if (!enemy.spec.rocket) return;
+      enemy.rocketCooldown -= dt;
+      if (enemy.rocketCooldown > 0) return;
+      const fired = attemptGunshipRocket(enemy);
+      // A refused shot retries soon; a taken one pays the full interval.
+      enemy.rocketCooldown = fired ? enemy.spec.rocket.cooldown : 0.6;
+    }
+
+    function attemptGunshipRocket(enemy) {
+      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
+      const cfg = enemy.spec.rocket;
+      hoverLook.copy(player.position).sub(enemy.group.position);
+      const distance = hoverLook.length();
+      if (!Number.isFinite(distance) || distance < cfg.minRange || distance > cfg.range) return false;
+
+      // Lead the target by the round's own time of flight. One iteration is
+      // enough at these ranges: the correction to the correction is under a
+      // metre, and a gunner who solved it perfectly would be no fun anyway.
+      forwardOf(player, hoverRight);
+      hoverAim.copy(player.position).addScaledVector(hoverRight, playerSpeed * (distance / cfg.speed));
+      hoverLook.copy(hoverAim).sub(enemy.group.position);
+      const aimDistance = hoverLook.length();
+      if (aimDistance < 0.001) return false;
+      hoverLook.multiplyScalar(1 / aimDistance);
+      // The pods are fixed to the airframe, so the machine has to be pointing
+      // very nearly at the solution before it can take the shot. 0.965 is about
+      // 15 degrees - wide enough that it fires often, tight enough that the
+      // player can see it line up.
+      forwardOf(enemy.group, hoverUp);
+      if (hoverUp.dot(hoverLook) < cfg.launchDot) return false;
+
+      const root = createMissileModel(true);
+      root.position.copy(enemy.group.position).addScaledVector(hoverLook, 4.2);
+      root.quaternion.setFromUnitVectors(LOCAL_FORWARD, hoverLook);
+      scene.add(root);
+
+      enemyMissileSerial += 1;
+      enemyMissilesLaunched += 1;
+      triggerRadioLine(
+        "wingman",
+        "敵ヘリからロケット弾だ！ 誘導は無い——横に切れ！",
+        RADIO_PRIORITY.NORMAL,
+        "gunship-rocket"
+      );
+      enemyMissiles.push({
+        id: enemyMissileSerial,
+        mesh: root,
+        ownerId: enemy.id,
+        ownerType: enemy.type,
+        // Flagged rather than merely given turnRate 0, because two other places
+        // have to know: updateEnemyMissiles skips the whole homing block, and
+        // deployFlare refuses to hand it a decoy. An unguided round cannot be
+        // seduced by a flare, and pretending otherwise would quietly make the
+        // player's flares better than they are.
+        unguided: true,
+        speed: cfg.speed,
+        maxSpeed: cfg.speed,
+        turnRate: 0,
+        damage: cfg.damage,
+        lifeLimit: cfg.life,
+        life: 0,
+        trailTimer: 0
+      });
+      createMuzzleFlash(root.position, enemy.spec.tracerColor);
+      return true;
     }
 
     // Exhaust flicker and the two weapon timers. Shared by normal flight and the
@@ -10002,7 +10548,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const camX = camera.position.x;
       const camZ = camera.position.z;
       const ocean = world.ocean;
-      if (ocean) {
+      // A preset may omit the ground plane entirely, in which case there is no
+      // texture to scroll either - hence both guards, not just the mesh one.
+      if (ocean && world.oceanTexture) {
         ocean.position.x = camX;
         ocean.position.z = camZ;
         // +x moves the mesh east, which slides the texture east with it; adding
@@ -10014,7 +10562,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           oceanDriftU + camX / tile,
           oceanDriftV - camZ / tile
         );
-      } else {
+      } else if (world.oceanTexture) {
         world.oceanTexture.offset.set(oceanDriftU, oceanDriftV);
       }
 
@@ -12218,6 +12766,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // Populated only by the swing-wing variant; empty for every other
       // airframe, which is what keeps the sweep update a no-op for them.
       const wingPivots = [];
+      // Same contract for rotorcraft: only the gunship fills this, and the
+      // spin update walks it, so every fixed wing pays nothing for it.
+      const rotors = [];
+      // Materials that are NOT MeshStandardMaterial and therefore must never
+      // reach updateAircraftFlash (it writes .emissive on everything it walks).
+      // disposeAircraftMaterials already knows to release this list.
+      const extraMaterials = [];
       const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rz = 0) => {
         const m = new THREE.Mesh(geo, material);
         m.position.set(x, y, z);
@@ -12773,6 +13328,102 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.missileNose, dark, 6.6, -0.22, 1.3, 0.66, 0.66, 0.66);
         add(geometry.canopy, navL, -6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
         add(geometry.canopy, navR, 6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
+      } else if (theme.variant === "gunship") {
+        // AH-99: the only rotorcraft in the set, so it is built to be
+        // unmistakable in silhouette from any angle - there is no wing, the
+        // body is narrow and deep instead of flat and wide, and the mass is all
+        // forward of a long bare boom.
+        //
+        // Narrow (x 0.6) and tall (y 0.95): an attack helicopter is a blade
+        // seen head-on, which is exactly the read that makes it hard to hit
+        // from directly ahead and easy from the beam.
+        add(geometry.fuselage, primary, 0, 0, -1.2, 0.6, 0.95, 0.72);
+        add(geometry.nose, primary, 0, -0.12, -6.5, 0.68, 0.7, 0.6);
+        // Chin turret with the gun barrel out front - the tracer origin the
+        // player sees is the nose, and this is what it should look like.
+        add(geometry.canopy, dark, 0, -1.0, -4.9, 0.58, 0.5, 0.72);
+        add(geometry.missileBody, dark, 0, -1.18, -6.1, 0.5, 0.5, 0.55);
+        // Stepped tandem cockpit: gunner low and forward, pilot raised behind.
+        // The step is the classic gunship read.
+        add(geometry.canopy, canopy, 0, 0.7, -3.7, 0.5, 0.42, 1.0);
+        add(geometry.canopy, canopy, 0, 1.02, -1.7, 0.52, 0.46, 1.05);
+        // Engine deck around the mast, with IR-suppressed exhausts canted out.
+        // The flames are small on purpose - this is warm efflux, not afterburner.
+        add(geometry.rearBody, secondary, 0, 1.12, 1.0, 0.95, 0.72, 1.05);
+        add(geometry.nozzle, accent, -0.88, 1.05, 2.35, 0.9, 0.9, 1.0);
+        add(geometry.nozzle, accent, 0.88, 1.05, 2.35, 0.9, 0.9, 1.0);
+        addFlame(-0.88, 1.05, 3.15, 0.42, 0.42);
+        addFlame(0.88, 1.05, 3.15, 0.42, 0.42);
+        // Tail boom: long, thin and bare. Half the airframe's length and none
+        // of its bulk, which is what separates the shape from every jet here.
+        add(geometry.rearBody, secondary, 0, 0.55, 6.7, 0.34, 0.34, 2.6);
+        add(geometry.fin, secondary, 0, 0.7, 9.5, 0.6, 0.85, 0.68);
+        add(geometry.tailWing, primary, 0, 0.78, 9.3, 0.52, 1, 0.5);
+        // Stub wings. Pylons, not lifting surfaces - they exist to carry the
+        // rocket pods, and they are stubby enough that nobody reads them as a
+        // wing.
+        add(geometry.tailWing, secondary, 0, 0.05, 0.2, 0.72, 1, 0.8);
+        for (const side of [-1, 1]) {
+          add(geometry.rearBody, dark, side * 3.0, -0.6, 0.5, 0.52, 0.52, 0.95);
+          add(geometry.missileBody, dark, side * 3.0, -0.6, -1.1, 0.95, 0.95, 0.6);
+        }
+        // Skids. A helicopter parked in the air still has its undercarriage
+        // hanging out, and it is the cheapest possible "this does not fly like
+        // the others" cue.
+        for (const side of [-1, 1]) {
+          add(geometry.panel, dark, side * 1.3, -1.62, -1.2, 0.12, 0.12, 5.4);
+          add(geometry.panel, dark, side * 1.3, -1.1, -2.6, 0.1, 1.1, 0.1);
+          add(geometry.panel, dark, side * 1.3, -1.1, 0.4, 0.1, 1.1, 0.1);
+        }
+        add(geometry.canopy, navL, -3.5, 0.18, 0.7, 0.11, 0.11, 0.11);
+        add(geometry.canopy, navR, 3.5, 0.18, 0.7, 0.11, 0.11, 0.11);
+
+        // ---- Rotors -------------------------------------------------------
+        // Both discs are real spinning geometry on their own pivots, handed
+        // back in `rotors` for the AI to turn (updateHoverEnemy). Every other
+        // airframe returns an empty array, which is what keeps that update a
+        // no-op for them.
+        const rotorDisc = new THREE.MeshBasicMaterial({
+          color: 0x9aa0a4, transparent: true, opacity: 0.13,
+          depthWrite: false, side: THREE.DoubleSide
+        });
+        extraMaterials.push(rotorDisc);
+
+        // Mast, then the four-blade head. Blades are laid out radially: a box
+        // whose long axis is +x rotated by -phi and placed at azimuth phi puts
+        // the span along the radius (Ry(-phi) sends +x to (cos phi, 0, sin phi)).
+        add(geometry.shipCylinder, dark, 0, 1.95, 0.2, 0.28, 0.75, 0.28);
+        const mainRotor = new THREE.Group();
+        mainRotor.position.set(0, 2.42, 0.2);
+        for (let b = 0; b < 4; b += 1) {
+          const phi = (b / 4) * Math.PI * 2;
+          const blade = new THREE.Mesh(geometry.panel, dark);
+          blade.scale.set(9.2, 0.09, 0.62);
+          blade.position.set(Math.cos(phi) * 4.6, 0, Math.sin(phi) * 4.6);
+          blade.rotation.y = -phi;
+          mainRotor.add(blade);
+        }
+        parts.push(mainRotor);
+        rotors.push({ node: mainRotor, axis: "y", rate: 26 });
+        // The blur disc the blades sweep. Flat, unlit and nearly transparent -
+        // it is what makes the rotor read as turning at any frame rate, which
+        // four thin boxes alone cannot do once they alias.
+        add(geometry.shipDeck, rotorDisc, 0, 2.3, 0.2, 19, 19, 1).rotation.x = -Math.PI / 2;
+
+        // Tail rotor: same trick one axis over. Rx(phi) sends +y to
+        // (0, cos phi, sin phi), so the blades lie in the boom's own plane.
+        const tailRotor = new THREE.Group();
+        tailRotor.position.set(0.42, 1.5, 9.9);
+        for (let b = 0; b < 2; b += 1) {
+          const phi = b * Math.PI;
+          const blade = new THREE.Mesh(geometry.panel, dark);
+          blade.scale.set(0.09, 2.7, 0.3);
+          blade.position.set(0, Math.cos(phi) * 1.35, Math.sin(phi) * 1.35);
+          blade.rotation.x = phi;
+          tailRotor.add(blade);
+        }
+        parts.push(tailRotor);
+        rotors.push({ node: tailRotor, axis: "x", rate: 62 });
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
@@ -12804,7 +13455,9 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         group: root,
         flames,
         wingPivots,
+        rotors,
         standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
+        extraMaterials,
         flameMaterial
       };
     }
@@ -13762,47 +14415,60 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       addCelestial(preset.moon);
       addRoot(skyGroup);
 
-      // Ocean with a scrolling wave-noise texture (replaces the dev grid as the
-      // low-altitude speed cue) plus an additive sun-glint road toward the sun.
-      const oceanCanvas = document.createElement("canvas");
-      oceanCanvas.width = 256;
-      oceanCanvas.height = 256;
-      const oceanCtx = oceanCanvas.getContext("2d");
-      const oceanRng = mulberry32(0x0cea11);
-      oceanCtx.fillStyle = preset.ocean.base;
-      oceanCtx.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 900; i += 1) {
-        const bright = oceanRng() > 0.45;
-        oceanCtx.fillStyle = bright
-          ? `rgba(${preset.ocean.bright}, ${0.05 + oceanRng() * 0.1})`
-          : `rgba(${preset.ocean.dark}, ${0.06 + oceanRng() * 0.1})`;
-        const w = 4 + oceanRng() * 22;
-        oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
-      }
-      const oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas));
-      oceanTexture.wrapS = THREE.RepeatWrapping;
-      oceanTexture.wrapT = THREE.RepeatWrapping;
-      oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
-      oceanTexture.colorSpace = THREE.SRGBColorSpace;
-      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
-      oceanGeometry.rotateX(-Math.PI / 2);
-      const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
-        map: oceanTexture,
-        roughness: preset.ocean.roughness,
-        metalness: preset.ocean.metalness
-      }));
-      const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
-      ocean.position.y = 0;
-      // The plane rides with the camera (see updateWorld), so its own extent is
-      // never the horizon - fog far is. Frustum culling has to go: the bounding
-      // sphere is computed from the un-snapped geometry origin.
-      ocean.frustumCulled = false;
-      addRoot(ocean);
+      // The ground plane: water on the sea maps, sand on the desert. One
+      // camera-following plane with a scrolling noise texture (it replaced the
+      // dev grid as the low-altitude speed cue) plus, where the preset asks for
+      // one, an additive glint road toward the sun.
+      //
+      // `preset.ocean` may be omitted outright. Nothing shipped does that today
+      // - the desert supplies a sand-coloured plane rather than deleting it -
+      // but a map with genuinely no ground plane is a reasonable thing to
+      // author, so the build tolerates it and every consumer downstream
+      // (updateWorld's follow, the oceanProbe hook) is guarded to match.
+      let ocean = null;
+      let oceanTexture = null;
+      let oceanTileSize = 1;
+      if (preset.ocean) {
+        const oceanCanvas = document.createElement("canvas");
+        oceanCanvas.width = 256;
+        oceanCanvas.height = 256;
+        const oceanCtx = oceanCanvas.getContext("2d");
+        const oceanRng = mulberry32(0x0cea11);
+        oceanCtx.fillStyle = preset.ocean.base;
+        oceanCtx.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 900; i += 1) {
+          const bright = oceanRng() > 0.45;
+          oceanCtx.fillStyle = bright
+            ? `rgba(${preset.ocean.bright}, ${0.05 + oceanRng() * 0.1})`
+            : `rgba(${preset.ocean.dark}, ${0.06 + oceanRng() * 0.1})`;
+          const w = 4 + oceanRng() * 22;
+          oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
+        }
+        oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas));
+        oceanTexture.wrapS = THREE.RepeatWrapping;
+        oceanTexture.wrapT = THREE.RepeatWrapping;
+        oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
+        oceanTexture.colorSpace = THREE.SRGBColorSpace;
+        const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
+        oceanGeometry.rotateX(-Math.PI / 2);
+        const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+          map: oceanTexture,
+          roughness: preset.ocean.roughness,
+          metalness: preset.ocean.metalness
+        }));
+        ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
+        ocean.position.y = 0;
+        // The plane rides with the camera (see updateWorld), so its own extent is
+        // never the horizon - fog far is. Frustum culling has to go: the bounding
+        // sphere is computed from the un-snapped geometry origin.
+        ocean.frustumCulled = false;
+        addRoot(ocean);
 
-      // World units covered by one texture tile. updateWorld divides the plane's
-      // snap offset by this to cancel the motion in UV space, so the wave
-      // pattern stays pinned to the world instead of sliding with the mesh.
-      const oceanTileSize = OCEAN_PLANE_SIZE / preset.ocean.repeat;
+        // World units covered by one texture tile. updateWorld divides the plane's
+        // snap offset by this to cancel the motion in UV space, so the wave
+        // pattern stays pinned to the world instead of sliding with the mesh.
+        oceanTileSize = OCEAN_PLANE_SIZE / preset.ocean.repeat;
+      }
 
       let sunRoad = null;
       if (preset.sunRoad) {
