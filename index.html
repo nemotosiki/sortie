@@ -5374,6 +5374,17 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           textures: renderer.info.memory.textures,
           programs: renderer.info.programs ? renderer.info.programs.length : -1
         }),
+        worldTextureReport: () => ({
+          preset: world.preset,
+          count: world.textures.length,
+          estimatedBytes: world.textureBytes || 0,
+          estimatedMiB: Number(((world.textureBytes || 0) / (1024 * 1024)).toFixed(3)),
+          entries: (world.textureStats || []).map((entry) => ({
+            label: entry.label,
+            bytes: entry.bytes,
+            mib: Number((entry.bytes / (1024 * 1024)).toFixed(3))
+          }))
+        }),
         worldProbe: () => ({
           cloud: world.cloudVolumes.reduce((a, b) => (b.r > a.r ? b : a)),
           mountain: world.mountains[0],
@@ -5393,6 +5404,11 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           offsetV: world.oceanTexture.offset.y,
           driftU: oceanDriftU,
           driftV: oceanDriftV,
+          normalTile: world.oceanNormalTileSize || null,
+          normalOffsetU: world.oceanNormalTexture ? world.oceanNormalTexture.offset.x : null,
+          normalOffsetV: world.oceanNormalTexture ? world.oceanNormalTexture.offset.y : null,
+          normalDriftU: oceanNormalDriftU,
+          normalDriftV: oceanNormalDriftV,
           sunRoadX: world.sunRoad ? world.sunRoad.position.x : null,
           sunRoadZ: world.sunRoad ? world.sunRoad.position.z : null
         }),
@@ -14526,6 +14542,15 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       return texture;
     }
 
+
+    // Approximate live GPU storage for generated RGBA CanvasTextures. The value
+    // includes a 4/3 mip-chain allowance where Three.js generates mipmaps, but
+    // deliberately excludes driver alignment/compression and non-world textures.
+    function estimateWorldTextureBytes(width, height, mipmaps = true) {
+      const baseLevel = width * height * 4;
+      return Math.round(baseLevel * (mipmaps ? 4 / 3 : 1));
+    }
+
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
     // returned record so disposeWorld() can hand it all back when a mission
     // switches maps - otherwise each swap would leak a whole world.
@@ -14536,9 +14561,14 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       const geometries = [];
       const materials = [];
       const textures = [];
+      const textureStats = [];
       const keepGeometry = (item) => { geometries.push(item); return item; };
       const keepMaterial = (item) => { materials.push(item); return item; };
-      const keepTexture = (item) => { textures.push(item); return item; };
+      const keepTexture = (item, label = "generated", bytes = 0) => {
+        textures.push(item);
+        textureStats.push({ label, bytes });
+        return item;
+      };
       const addRoot = (node) => { scene.add(node); roots.push(node); return node; };
 
       scene.fog.color.setHex(preset.fog.color);
@@ -14546,7 +14576,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       scene.fog.far = preset.fog.far;
       renderer.setClearColor(preset.clearColor, 1);
 
-      const skyTexture = keepTexture(makeSkyTexture(preset.sky, preset.atmosphere || {}));
+      const skyTexture = keepTexture(makeSkyTexture(preset.sky, preset.atmosphere || {}), "sky", estimateWorldTextureBytes(256, 512, false));
 
       const skyGroup = new THREE.Group();
       const skySphere = new THREE.Mesh(
@@ -14593,7 +14623,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // Layered additive glare makes a disc read as a light source instead of
       // a flat ball - the AC games lean hard on this. Same builder for the sun
       // and the moon; a preset supplies one, the other, or neither.
-      const glareTexture = keepTexture(makeGlareTexture());
+      const glareTexture = keepTexture(makeGlareTexture(), "celestialGlare", estimateWorldTextureBytes(128, 128));
       const addCelestial = (body) => {
         if (!body) return;
         const disc = new THREE.Mesh(
@@ -14633,13 +14663,13 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         const w = 4 + oceanRng() * 22;
         oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
       }
-      const oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas));
+      const oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas), "oceanColor", estimateWorldTextureBytes(256, 256));
       oceanTexture.wrapS = THREE.RepeatWrapping;
       oceanTexture.wrapT = THREE.RepeatWrapping;
       oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
       oceanTexture.colorSpace = THREE.SRGBColorSpace;
       const oceanNormalRepeat = preset.ocean.normalRepeat || preset.ocean.repeat * 1.62;
-      const oceanNormalTexture = keepTexture(makeOceanNormalTexture(preset.ocean.normalSeed ?? 0x0cea12));
+      const oceanNormalTexture = keepTexture(makeOceanNormalTexture(preset.ocean.normalSeed ?? 0x0cea12), "oceanNormal", estimateWorldTextureBytes(256, 256));
       oceanNormalTexture.repeat.set(oceanNormalRepeat, oceanNormalRepeat);
       oceanNormalTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       const oceanNormalScale = preset.ocean.normalScale || [0.42, 0.64];
@@ -14722,8 +14752,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         ...(preset.terrain || {})
       };
       const terrainTextures = makeTerrainTextureSet(terrainStyle.seed);
-      const terrainDetailTexture = keepTexture(terrainTextures.detail);
-      const terrainNormalTexture = keepTexture(terrainTextures.normal);
+      const terrainDetailTexture = keepTexture(terrainTextures.detail, "terrainDetail", estimateWorldTextureBytes(256, 256));
+      const terrainNormalTexture = keepTexture(terrainTextures.normal, "terrainNormal", estimateWorldTextureBytes(256, 256));
       const terrainAnisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       terrainDetailTexture.anisotropy = terrainAnisotropy;
       terrainNormalTexture.anisotropy = terrainAnisotropy;
@@ -14916,7 +14946,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // stretched cirrus far above. Volumes feed the fly-through white-out.
       const cloudConfig = preset.clouds;
       const cloudVolumes = [];
-      const cloudTexture = keepTexture(makeCloudTexture(cloudConfig));
+      const cloudTexture = keepTexture(makeCloudTexture(cloudConfig), "cloudVolume", estimateWorldTextureBytes(128, 128));
       cloudTexture.anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy());
       const cloudMaterial = keepMaterial(new THREE.MeshLambertMaterial({
         color: cloudConfig.color, map: cloudTexture, transparent: true,
@@ -15407,6 +15437,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains,
         ocean, oceanTileSize, oceanNormalTileSize, oceanNormalSpeed, sunRoad,
+        textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
       };
     }
