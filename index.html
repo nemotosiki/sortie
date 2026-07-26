@@ -6582,8 +6582,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // coastalPlain puts dry grass in `peak`.
         terrain: {
           seed: 0x3c7a2c, sand: 0x14161f, grass: 0x171a22, rock: 0x1d2029,
-          peak: 0x23242c, snow: 0x3a3d4c, fineRepeat: 21, macroRepeat: 4.4,
-          normalRepeat: 26, normalStrength: 0.42, islandNormalStrength: 0.24,
+          peak: 0x23242c, snow: 0x3a3d4c, textureProfile: "urban",
+          fineRepeat: 30, macroRepeat: 5.2, normalRepeat: 32,
+          normalStrength: 0.28, islandNormalStrength: 0.18, normalFade: [180, 1350],
           rockSlope: [0.2, 0.62], shoreHeight: 0.18, snowSoftness: 0.09
         },
         // Ambient is lifted well above nightBase and tinted warm from below:
@@ -6697,7 +6698,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // the 01-skyline pass at 0.42/0.34 - the towers came out solid
             // brown from above). 0.20 keeps the close-range canyon lit while
             // letting the distant skyline stay dark with light ON it.
-            windows: { warm: 0xffc978, cold: 0x9fd0ff, lit: 0.2, rows: 18, cols: 12, repeat: 8 },
+            windows: { warm: 0xffc978, cold: 0x9fd0ff, lit: 0.18, rows: 18, cols: 12, repeat: 8 },
             // Street lamps and traffic. Laid on the road lattice between the
             // blocks. `perCell` is lamps per street segment, and the count is
             // capped so a big map can never blow the point budget.
@@ -6708,18 +6709,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // street lattice is the thing the player is defending and it has
             // to be legible from the 800m the sortie is flown at.
             grid: {
-              perCell: 4, size: 3.0, warm: 0xffb95e, cold: 0xbfd8ff,
-              coldChance: 0.22, max: 14000
+              perCell: 4, size: 3.4, warm: 0xffb95e, cold: 0xbfd8ff,
+              coldChance: 0.22, max: 14000, softSprite: true
             },
             // A handful of red obstruction beacons on the tallest towers. Pure
             // flavour, but it is the detail that says "these are buildings".
-            beacons: { count: 22, color: 0xff4436, size: 5.5, minHeight: 110 }
+            beacons: { count: 22, color: 0xff4436, size: 5.5, minHeight: 110, softSprite: true }
           },
           // Distant suburb glow OUTSIDE the plateau, so the horizon past the
           // waterfront is not black. Reuses the night map's point cloud.
           cityLights: {
             clusters: 7, perCluster: 30, spread: 260, color: 0xffc078,
-            cold: 0x9fc4ff, size: 5.5, minDistance: 2500, maxDistance: 3900
+            cold: 0x9fc4ff, size: 6.2, minDistance: 2500, maxDistance: 3900,
+            softSprite: true
           },
           extraClouds: {
             towers: 2, towerSize: [70, 110], towerBase: 900,
@@ -6900,9 +6902,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         //   - `bright`/`dark` are two sands rather than a foam-and-depth pair,
         //     so the speckle texture reads as grain instead of chop.
         ocean: {
+          // Still the desert floor, never water: the profile replaces crossing
+          // waves with stationary wind ripples and broad dune-scale variation.
           base: "#cbaf7e", bright: "230, 208, 166", dark: "160, 133, 94",
-          repeat: 26, roughness: 0.98, metalness: 0,
-          normalRepeat: 30, normalScale: [0.06, 0.09], normalSpeed: [0.0006, 0.0002], normalSeed: 0x6e3b72
+          textureProfile: "sand", colorContrast: 0.24, repeat: 18,
+          roughness: 0.98, metalness: 0, colorSpeed: [0, 0],
+          normalRepeat: 12, normalMultipliers: [1, 2.6, 6.2],
+          normalWeights: [0.72, 0.22, 0.06], normalAngles: [0.18, 0.22, 0.12],
+          normalFades: [[520, 2100], [220, 920], [80, 360]],
+          normalScale: [0.15, 0.22], normalSpeed: [0, 0], normalSeed: 0x6e3b72
         },
         // No green anywhere. `peak` is the colour of the pan the base stands on
         // (the plateau cap sits at height fraction 1.0, so `peak` is literally
@@ -7090,8 +7098,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // painted dark.
         ocean: {
           base: "#0d1720", bright: "176, 194, 210", dark: "3, 7, 12",
-          repeat: 26, roughness: 0.72, metalness: 0.12,
-          normalRepeat: 30, normalScale: [0.86, 1.15], normalSpeed: [0.026, 0.011], normalSeed: 0x6e2f62
+          textureProfile: "storm", colorContrast: 0.3, crestStrength: 0.66,
+          repeat: 18, roughness: 0.72, metalness: 0.12, colorSpeed: [0.008, 0.0035],
+          normalRepeat: 18, normalMultipliers: [1, 2.15, 5.1],
+          normalWeights: [0.67, 0.24, 0.09], normalAngles: [0.2, -0.83, 1.06],
+          normalFades: [[620, 2050], [250, 1120], [90, 540]],
+          normalScale: [0.96, 1.16], normalSpeed: [0.026, 0.011], normalSeed: 0x6e2f62
         },
         // Wet rock. Nothing on this map is dry, so sand and grass are pulled
         // toward the same cold grey the water is - a warm beach under this sky
@@ -18227,8 +18239,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Slow colour drift. Normal octaves move independently, with different
       // directions and rates, so the same crest cannot line up into a fabric-like
       // repeat. All offsets remain absolute (drift + camera compensation).
-      oceanDriftU += dt * 0.0045;
-      oceanDriftV += dt * 0.0018;
+      const oceanColorSpeed = world.oceanColorSpeed || [0.0045, 0.0018];
+      oceanDriftU += dt * oceanColorSpeed[0];
+      oceanDriftV += dt * oceanColorSpeed[1];
       const oceanNormalSpeeds = world.oceanNormalSpeeds || [[0.0105, 0.0035], [-0.004, 0.007], [0.002, -0.01]];
       oceanNormalDriftU += dt * oceanNormalSpeeds[0][0];
       oceanNormalDriftV += dt * oceanNormalSpeeds[0][1];
@@ -23420,12 +23433,46 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return n0 * 0.45 + n1 * 0.29 + n2 * 0.18 + n3 * 0.08;
     }
 
+    function smoothstep01(edge0, edge1, value) {
+      const t = Math.min(1, Math.max(0, (value - edge0) / Math.max(1e-6, edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    // Profiled height source shared by ocean colour and normal generation.
+    // `storm` favours long correlated swell plus broken ridges; `sand` uses
+    // almost parallel, stationary periodic ripples warped by broad dune noise.
+    // The default branch is byte-for-byte the original ocean source.
+    function sampleOceanSurfaceHeight(u, v, seed, profile = "water") {
+      if (profile === "storm") {
+        const swell0 = tileableValueNoise(u, v, 3, seed ^ 0x6a2d31);
+        const swell1 = tileableValueNoise(fract01(u + v), fract01(v - u), 7, seed ^ 0x91c74b);
+        const chop = tileableValueNoise(fract01(2 * u + v), fract01(2 * v - u), 17, seed ^ 0x2de159);
+        const broken = tileableValueNoise(fract01(3 * u - 2 * v), fract01(2 * u + 3 * v), 29, seed ^ 0xb7438d);
+        const ridge = 1 - Math.abs(chop * 2 - 1);
+        return swell0 * 0.48 + swell1 * 0.27 + ridge * ridge * 0.18 + broken * 0.07;
+      }
+      if (profile === "sand") {
+        const dune = tileableValueNoise(u, v, 4, seed ^ 0x4bd1a7);
+        const warp = (tileableValueNoise(fract01(u + v), fract01(v - u), 7, seed ^ 0x8f62d3) - 0.5) * 0.85;
+        const tau = Math.PI * 2;
+        const ripple0 = 0.5 + 0.5 * Math.sin(tau * (24 * u + 5 * v + warp));
+        const ripple1 = 0.5 + 0.5 * Math.sin(tau * (31 * u + 7 * v + warp * 0.57 + 0.19));
+        const grain = tileableValueNoise(fract01(3 * u + v), fract01(3 * v - u), 53, seed ^ 0xd31579);
+        return dune * 0.5 + ripple0 * 0.27 + ripple1 * 0.15 + grain * 0.08;
+      }
+      const broad = isotropicTileNoise(u, v, seed);
+      const mid = tileableValueNoise(fract01(u + 2 * v), fract01(v - 2 * u), 19, seed ^ 0x37b91d);
+      const fine = tileableValueNoise(fract01(3 * u + v), fract01(3 * v - u), 41, seed ^ 0x9a13ef);
+      return broad * 0.58 + mid * 0.29 + fine * 0.13;
+    }
+
     // Compact, tileable material data for the terrain. The RGBA channels carry
     // independent sand/grass/rock/snow micro-patterns; the shader chooses among
     // them from normalized height and slope, then samples the same texture at a
     // rotated macro scale to hide repetition. Everything is authored here, so
     // the single-file/no-external-assets contract remains intact.
-    function makeTerrainTextureSet(seed, size = 256) {
+    function makeTerrainTextureSet(seed, options = {}, size = 256) {
+      const textureProfile = options.textureProfile || "natural";
       const detailCanvas = document.createElement("canvas");
       detailCanvas.width = size;
       detailCanvas.height = size;
@@ -23444,17 +23491,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const ridges = 1 - Math.abs(ridgeNoise * 2 - 1);
           const crackNoise = tileableValueNoise(fract01(3 * u + v), fract01(3 * v - u), 29, seed ^ 0xa521ef);
           const cracks = Math.pow(1 - Math.abs(crackNoise * 2 - 1), 9);
-          const sand = clamp01(0.68 + (broad - 0.5) * 0.32 + (grain - 0.5) * 0.12);
-          const grass = clamp01(0.55 + (broad - 0.5) * 0.48 + (grain - 0.5) * 0.2 - ridges * 0.05);
-          const rock = clamp01(0.48 + ridges * 0.28 + (grain - 0.5) * 0.22 - cracks * 0.16);
-          const snow = clamp01(0.82 + (broad - 0.5) * 0.18 + (grain - 0.5) * 0.08 - ridges * 0.035);
+          let sand = clamp01(0.68 + (broad - 0.5) * 0.32 + (grain - 0.5) * 0.12);
+          let grass = clamp01(0.55 + (broad - 0.5) * 0.48 + (grain - 0.5) * 0.2 - ridges * 0.05);
+          let rock = clamp01(0.48 + ridges * 0.28 + (grain - 0.5) * 0.22 - cracks * 0.16);
+          let snow = clamp01(0.82 + (broad - 0.5) * 0.18 + (grain - 0.5) * 0.08 - ridges * 0.035);
+          let surfaceHeight = broad * 0.62 + ridges * 0.23 + grain * 0.15 - cracks * 0.075;
+          if (textureProfile === "urban") {
+            const aggregate = tileableValueNoise(fract01(4 * u + v), fract01(4 * v - u), 61, seed ^ 0x5c21d7);
+            const seamNoise = tileableValueNoise(fract01(u + 3 * v), fract01(v - 3 * u), 13, seed ^ 0x37ab19);
+            const seam = Math.pow(1 - Math.abs(seamNoise * 2 - 1), 14);
+            const patch = tileableValueNoise(fract01(2 * u - v), fract01(u + 2 * v), 9, seed ^ 0xc135a9);
+            const asphalt = clamp01(0.42 + (aggregate - 0.5) * 0.34 + (patch - 0.5) * 0.18 - seam * 0.22);
+            sand = clamp01(asphalt * 0.96 + grain * 0.04);
+            grass = clamp01(asphalt * 0.92 + broad * 0.08);
+            rock = clamp01(asphalt + aggregate * 0.08 - seam * 0.08);
+            snow = clamp01(asphalt * 0.9 + patch * 0.1);
+            surfaceHeight = aggregate * 0.46 + patch * 0.34 + broad * 0.16 - seam * 0.1;
+          }
           const index = y * size + x;
           const offset = index * 4;
           detailImage.data[offset] = Math.round(sand * 255);
           detailImage.data[offset + 1] = Math.round(grass * 255);
           detailImage.data[offset + 2] = Math.round(rock * 255);
           detailImage.data[offset + 3] = Math.round(snow * 255);
-          heightField[index] = broad * 0.62 + ridges * 0.23 + grain * 0.15 - cracks * 0.075;
+          heightField[index] = surfaceHeight;
         }
       }
       detailCtx.putImageData(detailImage, 0, 0);
@@ -23618,7 +23678,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
     // Isotropic, tileable ocean normal data. The material samples this same map
     // at three scales and rotations; keeping one source texture limits memory and
     // lets mip filtering work consistently across all octaves.
-    function makeOceanNormalTexture(seed, size = 256) {
+    function makeOceanNormalTexture(seed, profile = "water", size = 256) {
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -23629,10 +23689,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         const v = y / size;
         for (let x = 0; x < size; x += 1) {
           const u = x / size;
-          const broad = isotropicTileNoise(u, v, seed);
-          const mid = tileableValueNoise(fract01(u + 2 * v), fract01(v - 2 * u), 19, seed ^ 0x37b91d);
-          const fine = tileableValueNoise(fract01(3 * u + v), fract01(3 * v - u), 41, seed ^ 0x9a13ef);
-          heightField[y * size + x] = broad * 0.58 + mid * 0.29 + fine * 0.13;
+          heightField[y * size + x] = sampleOceanSurfaceHeight(u, v, seed, profile);
         }
       }
       const wrapped = (value) => (value + size) % size;
@@ -23797,6 +23854,11 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.wrapS = THREE.ClampToEdgeWrapping;
       texture.wrapT = THREE.ClampToEdgeWrapping;
+      texture.generateMipmaps = true;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy());
+      texture.needsUpdate = true;
       return texture;
     }
 
@@ -23858,6 +23920,36 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // looks like a building at the range this is actually seen from.
       const repeat = cfg.repeat || 1;
       texture.repeat.set(repeat, repeat);
+      texture.generateMipmaps = true;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    // Neutral radial sprite for street lamps, distant windows and obstruction
+    // beacons. One tiny generated texture replaces hard square Points without
+    // increasing the point count or draw-call count.
+    function makeCityLightTexture(size = 32) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const c = size * 0.5;
+      const gradient = ctx.createRadialGradient(c, c, 0, c, c, c - 1);
+      gradient.addColorStop(0, "rgba(255,255,255,1)");
+      gradient.addColorStop(0.2, "rgba(255,255,255,0.96)");
+      gradient.addColorStop(0.5, "rgba(255,255,255,0.38)");
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.generateMipmaps = true;
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.needsUpdate = true;
       return texture;
     }
 
@@ -23942,6 +24034,14 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // a flat ball - the AC games lean hard on this. Same builder for the sun
       // and the moon; a preset supplies one, the other, or neither.
       const glareTexture = keepTexture(makeGlareTexture(), "celestialGlare", estimateWorldTextureBytes(128, 128));
+      let cityLightTexture = null;
+      const getCityLightTexture = () => {
+        if (!cityLightTexture) {
+          cityLightTexture = keepTexture(makeCityLightTexture(), "cityLightSprite", estimateWorldTextureBytes(32, 32));
+          cityLightTexture.anisotropy = Math.min(2, renderer.capabilities.getMaxAnisotropy());
+        }
+        return cityLightTexture;
+      };
       const addCelestial = (body) => {
         if (!body) return;
         const disc = new THREE.Mesh(
@@ -23982,19 +24082,39 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       const brightRgb = parseRgb(preset.ocean.bright);
       const darkRgb = parseRgb(preset.ocean.dark);
       const oceanSeed = preset.ocean.normalSeed ?? 0x0cea12;
+      const oceanProfile = preset.ocean.textureProfile || "water";
+      const oceanColorContrast = preset.ocean.colorContrast ?? 0.18;
+      const oceanCrestStrength = preset.ocean.crestStrength ?? 0;
       for (let y = 0; y < 256; y += 1) {
         const v = y / 256;
         for (let x = 0; x < 256; x += 1) {
           const u = x / 256;
-          const broad = isotropicTileNoise(u, v, oceanSeed ^ 0x5a31f7);
-          const fine = tileableValueNoise(fract01(u + 2 * v), fract01(v - 2 * u), 43, oceanSeed ^ 0xe17b49);
-          const signed = (broad - 0.5) * 0.72 + (fine - 0.5) * 0.28;
+          let signed;
+          let crest = 0;
+          if (oceanProfile === "storm") {
+            const h = sampleOceanSurfaceHeight(u, v, oceanSeed ^ 0x5a31f7, "storm");
+            const hx = sampleOceanSurfaceHeight(fract01(u + 1 / 256), v, oceanSeed ^ 0x5a31f7, "storm");
+            const hy = sampleOceanSurfaceHeight(u, fract01(v + 1 / 256), oceanSeed ^ 0x5a31f7, "storm");
+            const breakNoise = tileableValueNoise(fract01(3 * u + v), fract01(3 * v - u), 23, oceanSeed ^ 0xe17b49);
+            signed = (h - 0.5) * 1.25;
+            const slope = Math.min(1, (Math.abs(hx - h) + Math.abs(hy - h)) * 22);
+            crest = smoothstep01(0.61, 0.83, h) * smoothstep01(0.15, 0.62, slope) * smoothstep01(0.34, 0.72, breakNoise);
+          } else if (oceanProfile === "sand") {
+            const h = sampleOceanSurfaceHeight(u, v, oceanSeed ^ 0x5a31f7, "sand");
+            const dune = tileableValueNoise(u, v, 4, oceanSeed ^ 0x148ba3);
+            signed = (h - 0.5) * 0.82 + (dune - 0.5) * 0.32;
+          } else {
+            const broad = isotropicTileNoise(u, v, oceanSeed ^ 0x5a31f7);
+            const fine = tileableValueNoise(fract01(u + 2 * v), fract01(v - 2 * u), 43, oceanSeed ^ 0xe17b49);
+            signed = (broad - 0.5) * 0.72 + (fine - 0.5) * 0.28;
+          }
           const target = signed >= 0 ? brightRgb : darkRgb;
-          const amount = Math.min(0.18, Math.abs(signed) * 0.3);
+          const amount = Math.min(oceanColorContrast, Math.abs(signed) * (oceanProfile === "sand" ? 0.42 : 0.3));
+          const foam = Math.min(0.72, crest * oceanCrestStrength);
           const offset = (y * 256 + x) * 4;
-          oceanImage.data[offset] = Math.round(baseRgb[0] + (target[0] - baseRgb[0]) * amount);
-          oceanImage.data[offset + 1] = Math.round(baseRgb[1] + (target[1] - baseRgb[1]) * amount);
-          oceanImage.data[offset + 2] = Math.round(baseRgb[2] + (target[2] - baseRgb[2]) * amount);
+          oceanImage.data[offset] = Math.round(baseRgb[0] + (target[0] - baseRgb[0]) * Math.max(amount, foam));
+          oceanImage.data[offset + 1] = Math.round(baseRgb[1] + (target[1] - baseRgb[1]) * Math.max(amount, foam));
+          oceanImage.data[offset + 2] = Math.round(baseRgb[2] + (target[2] - baseRgb[2]) * Math.max(amount, foam));
           oceanImage.data[offset + 3] = 255;
         }
       }
@@ -24012,12 +24132,14 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       oceanTexture.needsUpdate = true;
 
       const oceanNormalRepeat = preset.ocean.normalRepeat || preset.ocean.repeat * 1.62;
-      const oceanNormalRepeats = [oceanNormalRepeat, oceanNormalRepeat * 2.35, oceanNormalRepeat * 5.6];
+      const oceanNormalMultipliers = preset.ocean.normalMultipliers || [1, 2.35, 5.6];
+      const oceanNormalRepeats = oceanNormalMultipliers.map((factor) => oceanNormalRepeat * factor);
       const oceanNormalTiles = oceanNormalRepeats.map((repeat) => OCEAN_PLANE_SIZE / repeat);
-      const oceanNormalTexture = keepTexture(makeOceanNormalTexture(oceanSeed), "oceanNormal", estimateWorldTextureBytes(256, 256));
+      const oceanNormalTexture = keepTexture(makeOceanNormalTexture(oceanSeed, oceanProfile), "oceanNormal", estimateWorldTextureBytes(256, 256));
       oceanNormalTexture.repeat.set(oceanNormalRepeats[0], oceanNormalRepeats[0]);
       oceanNormalTexture.anisotropy = maxAnisotropy;
       const oceanNormalScale = preset.ocean.normalScale || [0.2, 0.2];
+      const oceanColorSpeed = preset.ocean.colorSpeed || [0.0045, 0.0018];
       const baseNormalSpeed = preset.ocean.normalSpeed || [0.0105, 0.0035];
       const oceanNormalSpeeds = [
         [baseNormalSpeed[0], baseNormalSpeed[1]],
@@ -24027,12 +24149,14 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       const oceanWaveOffsets = [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()];
       const oceanWaveAngles = preset.ocean.normalAngles || [0.24, -0.71, 1.13];
       const oceanWaveDirections = oceanWaveAngles.map((angle) => new THREE.Vector2(Math.cos(angle), Math.sin(angle)));
-      const oceanWaveWeights = new THREE.Vector3(0.58, 0.29, 0.13);
-      const oceanWaveFades = [
-        new THREE.Vector2(900, Math.min(3600, preset.fog.far * 0.92)),
-        new THREE.Vector2(420, Math.min(2300, preset.fog.far * 0.62)),
-        new THREE.Vector2(160, Math.min(1250, preset.fog.far * 0.36))
+      const oceanWeightConfig = preset.ocean.normalWeights || [0.58, 0.29, 0.13];
+      const oceanWaveWeights = new THREE.Vector3(oceanWeightConfig[0], oceanWeightConfig[1], oceanWeightConfig[2]);
+      const oceanFadeConfig = preset.ocean.normalFades || [
+        [900, Math.min(3600, preset.fog.far * 0.92)],
+        [420, Math.min(2300, preset.fog.far * 0.62)],
+        [160, Math.min(1250, preset.fog.far * 0.36)]
       ];
+      const oceanWaveFades = oceanFadeConfig.map((range) => new THREE.Vector2(range[0], range[1]));
       const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
       oceanGeometry.rotateX(-Math.PI / 2);
       const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
@@ -24201,7 +24325,7 @@ varying vec2 vOceanUv;`
         snowSoftness: 0.085,
         ...(preset.terrain || {})
       };
-      const terrainTextures = makeTerrainTextureSet(terrainStyle.seed);
+      const terrainTextures = makeTerrainTextureSet(terrainStyle.seed, terrainStyle);
       const terrainDetailTexture = keepTexture(terrainTextures.detail, "terrainDetail", estimateWorldTextureBytes(256, 256));
       const terrainNormalTexture = keepTexture(terrainTextures.normal, "terrainNormal", estimateWorldTextureBytes(256, 256));
       const terrainAnisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -25055,8 +25179,9 @@ varying vec2 vOceanUv;`
                   // and letting it grow to a disc on a low pass is what makes
                   // procedural lighting look like confetti.
                   size: g.size, sizeAttenuation: false, vertexColors: true,
+                  map: g.softSprite ? getCityLightTexture() : null,
                   transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending,
-                  depthWrite: false
+                  depthWrite: false, alphaTest: g.softSprite ? 0.01 : 0
                 })));
                 addRoot(lamps);
               }
@@ -25077,8 +25202,9 @@ varying vec2 vOceanUv;`
                 beaconGeometry.setAttribute("position", new THREE.Float32BufferAttribute(beaconPositions, 3));
                 addRoot(new THREE.Points(beaconGeometry, keepMaterial(new THREE.PointsMaterial({
                   size: cfg.beacons.size, sizeAttenuation: false, color: cfg.beacons.color,
+                  map: cfg.beacons.softSprite ? getCityLightTexture() : null,
                   transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending,
-                  depthWrite: false
+                  depthWrite: false, alphaTest: cfg.beacons.softSprite ? 0.01 : 0
                 }))));
               }
             }
@@ -25121,8 +25247,9 @@ varying vec2 vOceanUv;`
             lightGeometry.setAttribute("color", new THREE.BufferAttribute(colors.subarray(0, n * 3), 3));
             const cityLights = new THREE.Points(lightGeometry, keepMaterial(new THREE.PointsMaterial({
               size: cfg.size, sizeAttenuation: false, vertexColors: true,
+              map: cfg.softSprite ? getCityLightTexture() : null,
               transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending,
-              depthWrite: false
+              depthWrite: false, alphaTest: cfg.softSprite ? 0.01 : 0
             })));
             addRoot(cityLights);
           }
@@ -25131,7 +25258,7 @@ varying vec2 vOceanUv;`
 
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains,
-        ocean, oceanTileSize, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
+        ocean, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
         textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
       };
