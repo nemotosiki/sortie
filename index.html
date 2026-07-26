@@ -5262,6 +5262,49 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: 98,
         life: 10,
         launchDot: -1
+      }),
+      // Missile boat's point-defence SAM - the weakest launcher afloat. The
+      // round's flight speed (maxSpeed) is the slowest of every surface
+      // launcher (Aegis 545, SAM site 520, frigate 470), and `speed` stays on
+      // the shared cold-launch idiom: everything that leaves a deck comes off
+      // the rail slowly and is then tipped over by guidance. A 14-20s gap
+      // between shots is nearly three times the Aegis', which is what makes a
+      // pack of boats a gun target rather than a SAM trap.
+      missileBoat: Object.freeze({
+        cooldownMin: 14.0,
+        cooldownSpread: 6.0,
+        range: 1100,
+        minRange: 200,
+        speed: 165,
+        maxSpeed: 420,
+        turnRate: THREE.MathUtils.degToRad(40),
+        damage: 98,
+        life: 8.0,
+        launchDot: -1
+      }),
+      // The Hind's outer pylons: an unguided rocket pod with just enough
+      // command guidance to be worth firing at a jet. It is deliberately the
+      // laziest seeker in the game - 18 deg/s against a fighter's 44-78 - so
+      // a player who is turning at all will not be hit by one.
+      //
+      // The reload is the longest in the game (14-20s, against the Aegis' 5-9)
+      // and that is not flavour, it is the balance point: a helicopter holds
+      // its nose on the player permanently, so unlike a fighter it satisfies
+      // its own launch cone every single time the clock comes up. Five of them
+      // on a 9s reload put an idle player on the ground in 11 seconds, which
+      // measured worse than the fleet mission four sorties later. `minRange`
+      // 260 is the other half - close in, the machine is a gun target only.
+      hind: Object.freeze({
+        cooldownMin: 14.0,
+        cooldownSpread: 6.0,
+        range: 1300,
+        minRange: 260,
+        speed: 210,
+        maxSpeed: 330,
+        turnRate: THREE.MathUtils.degToRad(18),
+        damage: 98,
+        life: 7.0,
+        launchDot: 0.55
       })
     });
 
@@ -5427,6 +5470,48 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         radarColor: "#ff8a6a",
         tracerColor: 0xff9a52,
         explosionColor: 0xffb648
+      }),
+      // Missile boat. 40m of hull doing 25 m/s - the fastest thing on the water
+      // by a factor of two, and the only one that does not steam in a straight
+      // line: `zigzag` slaloms it +/-35deg off its base course, which is what
+      // makes a gun pass on one an actual aiming problem.
+      //
+      // HP 98 = exactly one missile, so the pack dies to the tubes the player
+      // already carries. What it gives up for that is everything defensive: no
+      // CIWS drum, no subsystems at all, one AA barrel at half the Aegis' hit
+      // chance, and a SAM that reloads nearly three times slower than the
+      // fleet's. Closing to gun range is the intended answer.
+      missileBoat: Object.freeze({
+        key: "missileBoat",
+        surface: true,
+        label: "MSL BOAT",
+        role: "Missile Patrol Boat",
+        hp: 98,
+        cruiseSpeed: 25,
+        turnRate: THREE.MathUtils.degToRad(10),
+        hitRadius: 26,
+        crash: Object.freeze({ halfLen: 20, halfBeam: 5, top: 8 }),
+        hitBox: Object.freeze({ x: 9, y: 14, z: 42 }),
+        sinkDepth: 12,
+        blastSpread: 15,
+        smokeOffset: 1,
+        smokeHeight: 7,
+        sternOffset: 19,
+        bowOffset: 20,
+        // Slalom: amplitude off `baseHeading`, one full period every `period`
+        // seconds. Each hull carries its own phase (`seed`), so a pack of them
+        // weaves out of step instead of moving as one rigid body.
+        zigzag: Object.freeze({ amplitude: THREE.MathUtils.degToRad(35), period: 11 }),
+        // Box launchers amidships, not a fore-and-aft VLS field: the fleet's
+        // default +38/-32m fallback would put the round off the bow of a hull
+        // this short. Read by attemptEnemyMissile for hulls with no cells.
+        vls: Object.freeze({ fore: 5, aft: -9, height: 7 }),
+        aaMounts: Object.freeze([-7]),
+        aaHeight: 5,
+        aa: Object.freeze({ range: 460, cooldownMin: 1.1, cooldownSpread: 0.9, damage: 7, maxHitChance: 0.08, tracers: 1 }),
+        radarColor: "#ffd08a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
       })
     });
 
@@ -5587,6 +5672,86 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         explosionColor: 0xffa348
       })
     });
+
+    // ---- Rotary wing ----------------------------------------------------
+    // The third kind of enemy: it flies, so it is not `surface`, but it does
+    // not fly like anything else on the board either. A helicopter has no
+    // pursuit curve, no break, no vertical jink and no speed band - it crabs
+    // sideways at 46 m/s while its nose stays on you, and it can stop. None of
+    // that fits ENEMY_AI_PROFILES, which is a table of turn rates for aircraft
+    // that must keep flying forwards to stay up.
+    //
+    // So a heli carries its own spec table, its own spawner and its own
+    // updater (updateHeli), and a `heli:true` flag switches the three shared
+    // paths that would otherwise treat it as a fighter. Everything else -
+    // lock-on, the gun raycast, missile guidance, radar, the HUD, damage,
+    // scoring, TGT gating - is the generic enemies[] machinery, untouched.
+    //
+    // What the player is supposed to read off it: a target that does not run
+    // away and cannot be out-turned into, that lives below the altitude a jet
+    // is comfortable at, and whose threat is a cone in front of its nose. The
+    // answer is a slow gun pass, not a turning fight.
+    const HELI_TYPES = Object.freeze({
+      hind: Object.freeze({
+        key: "hind",
+        heli: true,
+        label: "Mi-24",
+        role: "Attack Helicopter",
+        // One missile. A gunship is a thin-skinned thing next to a fighter,
+        // and the mission fields enough of them that a two-missile hull would
+        // turn a six-ship sweep into a magazine problem instead of an
+        // altitude problem.
+        hp: 98,
+        hitRadius: 12,
+        hitBox: Object.freeze({ x: 9, y: 9, z: 22 }),
+        // True-scale-ish: a Hind cruises ~165 km/h and tops out ~335. Against
+        // a jet at 260 m/s that is close to stationary, which is the point.
+        cruiseSpeed: 46,
+        dashSpeed: 68,
+        // Acceleration is what makes it read as a helicopter rather than as a
+        // very slow aeroplane: it can go from a hover to full dash and back.
+        accel: 26,
+        // Yaw. Much faster than any fixed wing here, because it is a yaw and
+        // not a turn - the airframe pivots without going anywhere.
+        turnRate: THREE.MathUtils.degToRad(62),
+        climbRate: 22,
+        // Where it wants to sit relative to the player, and how fast that
+        // station walks around them. A ring rather than a point, so a flight
+        // of them does not stack into one blip.
+        standoff: 620,
+        orbitRate: 0.16,
+        // AGL band it holds station in, and the hard floor under it. 45m over
+        // the sea in SHALLOW WATER terms, low enough over the coastal plain
+        // that the player has to come down to it.
+        hoverBand: Object.freeze([55, 115]),
+        clearance: 28,
+        // Read by countEnemiesTargetingPlayer for the "you are being aimed at"
+        // audio cue. Matches the rocket's reach and its launch cone.
+        attackRange: 1500,
+        aimThreshold: 0.55,
+        // Main and tail disc, rad/s. Never zero - a stopped rotor reads as a
+        // static model rather than as an aircraft.
+        rotorSpin: 24,
+        // Nose gun (the chin turret), fired through the shared ship AA path:
+        // one mount forward of the hub, no subsystems table, so aaFiringPoints
+        // takes its legacy branch.
+        aaMounts: Object.freeze([7]),
+        aaHeight: 0,
+        aa: Object.freeze({ range: 900, cooldownMin: 1.5, cooldownSpread: 1.2, damage: 7, maxHitChance: 0.11, tracers: 2 }),
+        smokeHeight: 2.4,
+        explosionScale: 0.85,
+        radarColor: "#ff9a5a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      })
+    });
+
+    // Terrain under a helicopter is sampled on a clock, not per frame:
+    // surfaceHeightAt raycasts every mountain in range and calls
+    // updateMatrixWorld doing it. Six helicopters at 60fps would be 360 of
+    // those a second; at this interval it is ~17, and a hover station does not
+    // move far enough in a third of a second for the difference to be visible.
+    const HELI_TERRAIN_INTERVAL = 0.35;
 
     // ---- Missions -------------------------------------------------------------
     // A mission is an ordered list of wave entries; radio, banners, restock and
@@ -6695,6 +6860,136 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hasOutro: false,
         map: { x: 0.5, y: 0.27 },
         briefing: "敵は二正面攻勢を仕掛けてきた。第1波を叩いた直後、増援の第2波が到達する。\n指定目標は各波の先導機だけ——MiG-23が2、MiG-29が2の計4機。\n周りのMiG-21は数を撃ってくるが、腕は素人だ。付き合う必要はない。\n補給は無い。弾を数えながら、連続迎撃せよ。"
+      },
+      {
+        key: "m-heli",
+        world: "coastalPlain",
+        title: "LOW GUARDIAN",
+        jp: "敵の攻撃ヘリ部隊が海岸平野に低空浸透中。レーダーの下を這ってくる。降りて叩け。",
+        // Campaign 03, and the mission that teaches altitude. Everything the
+        // player has fought so far lived at the same height they do; this one
+        // lives at 60m over the grass, does not run away, and cannot be caught
+        // by turning harder. The lesson is "come down to it, take one pass,
+        // leave" - which is also the lesson every ground sortie later in the
+        // campaign is built on.
+        //
+        // Why a helicopter is a NEW unit rather than a slow aeroplane: it
+        // hovers. A Hind holds station and yaws, so it is always pointing at
+        // the player without ever having turned, and the threat it presents is
+        // a cone off its nose rather than a position behind the player. That
+        // inverts the dogfight - the dangerous place is in FRONT of it - and
+        // there is nothing else in the game that does that.
+        //
+        // 5 designated against 9 undesignated is 1:1.8, the heavy end of the
+        // spec's 1:1.5-2 band. The screen is deliberately mixed in KIND rather
+        // than just in number: MiG-21s overhead, which the player must ignore
+        // while they are down on the deck, and two more Hinds at 45s, which
+        // look exactly like the targets and are not. Reading the TGT box, not
+        // the silhouette, is the skill this sortie asks for.
+        sequence: [
+          // The infiltration itself. Three gunships, already inside the plain.
+          { types: ["hind", "hind", "hind"], band: 1, label: "HIND", idBase: 0 },
+          {
+            // Top cover. They are 2000m above the fight and they stay there
+            // unless the player climbs, which is the whole point: the sortie
+            // is fought at an altitude where these are somebody else's problem.
+            types: ["mig21", "mig21", "mig21"], tgt: false, band: 2, label: "TOP COVER",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "上空にMiG-21が3！ 放っておけ、こっちは下だ——ヘリを先に潰せ！", id: "heli-cover-1" }
+            ]
+          },
+          {
+            // Two more Hinds that are NOT targets. Identical silhouette,
+            // identical threat, no obligation - the mission's one real trick.
+            types: ["hind", "hind"], tgt: false, band: 1, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 45,
+            radio: [
+              { speaker: "command", text: "SKYEYEより、低空にヘリ2機追加——ただし指定目標ではない。TGT表示を見ろ。", id: "heli-decoy" }
+            ]
+          },
+          // The pair leading the penetration, deeper in and higher up the
+          // plain. Arrives once the first flight is down, so the sortie has a
+          // breath in it rather than one continuous brawl.
+          { types: ["hind", "hind"], band: 2, label: "HIND LEAD" },
+          {
+            types: ["mig21", "mig21", "mig23", "mig21"], tgt: false, band: 1, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 25,
+            radio: [
+              { speaker: "wingman", text: "増援のCAP、4機！ 数だけだ——低空を維持しろ、降りてこられたら向こうが不利だ！", id: "heli-cover-2" }
+            ]
+          }
+        ],
+        // Five 98 HP hulls is five rounds, and none of them evades - so par is
+        // almost entirely the flying: descending to the deck, setting up each
+        // pass at a speed the player can actually aim at a hovering target
+        // from, and getting back out of the gun cone between them.
+        parTime: 260,
+        hasOutro: false,
+        map: { x: 0.22, y: 0.5 },
+        briefing: "海岸平野の北、レーダーの死角を這って敵の攻撃ヘリ部隊が入ってきた。\n高度60。地面すれすれだ——上から見下ろさないと見つからん。\n指定目標はMi-24が5機。ホバリングして、こちらに機首を向けて撃ってくる。\n正面に入るな。奴らの武装は前だけだ、横か後ろから抜けろ。\n低空にはもう2機ヘリが来るが、そちらは指定目標ではない。TGT表示で見分けろ。\n上空のCAPは全部で7機。降りている限り、奴らは君に触れない。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより。敵攻撃ヘリが低空浸透中——高度を捨てろ、下でしか捕まらん。", id: "heli-brief" },
+          { speaker: "wingman", text: "ヘリ相手は初めてか？ 逃げないし、曲がりもしない。ただし正面は死ぬぞ。", id: "heli-brief-wing" }
+        ]
+      },
+      {
+        key: "m-boats",
+        world: "archipelagoDay",
+        title: "SHALLOW WATER",
+        jp: "島嶼の浅瀬にミサイル艇が潜んでいる。小型・高速・蛇行。数を頼りに出てくる前に掃討せよ。",
+        // Campaign 05, and the answer to FLEET DESTRUCTION: the same job
+        // against the opposite kind of hull. A task force is five big, slow,
+        // heavily defended targets that die to missiles; this is six small,
+        // fast, almost undefended ones that die to anything - and are hard to
+        // HIT because they weave. The anti-ship problem moves from "survive
+        // the SAM envelope" to "solve the aiming problem", which is a genuinely
+        // different sortie flown with the same weapons.
+        //
+        // 6 designated against 9 undesignated is 1:1.5, the light end of the
+        // band. It is the light end on purpose: the boats themselves are the
+        // difficulty here, and a heavy CAP on top of a target that has to be
+        // gunned would make the mission about the air fight instead.
+        sequence: [
+          {
+            // Six missile boats, spawned by the shared naval spawner - the
+            // formation code puts the leader in the middle and the rest on
+            // alternating beams, which for hulls this small reads as a pack
+            // spread across the shallows rather than as a line of battle.
+            kind: "naval", fleet: ["missileBoat", "missileBoat", "missileBoat", "missileBoat", "missileBoat", "missileBoat"],
+            band: 1, label: "MSL BOAT", idBase: 6
+          },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "CAP",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "上空にCAP！ 3機だ——相手をするな、艇を先に片付けろ！", id: "boats-cap-1" }
+            ]
+          },
+          {
+            types: ["mig21", "mig21", "mig23"], tgt: false, band: 2, label: "CAP RELIEF",
+            concurrent: true, role: "trash", delay: 70,
+            radio: [
+              { speaker: "wingman", text: "交代のCAPが上がってきた！ 高度を取ると付き合う羽目になるぞ——低く速く！", id: "boats-cap-2" }
+            ]
+          },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "SECOND FLIGHT",
+            concurrent: true, role: "trash", delay: 155
+          }
+        ],
+        // Six one-missile hulls, but the tubes are the wrong weapon for half of
+        // them: a boat doing 25 m/s across the line of a pass is a gun target,
+        // and the gun takes time. Below m03's 285 because there is no SAM
+        // envelope to respect, above a pure sweep because the aiming is real.
+        parTime: 240,
+        hasOutro: false,
+        map: { x: 0.3, y: 0.68 },
+        briefing: "群島の浅瀬に敵のミサイル艇が潜んでいる。島影に散って、こちらの接近を待っている状態だ。\n指定目標は6隻。全長40m——イージスの4分の1だ。速度25、しかも蛇行する。\n装甲は無いに等しい。一発当てれば沈む。機銃でも十分だ。\n問題は当てること。真横から入ると必ず逃げられる、進路の先を狙え。\n対空ミサイルは積んでいるが、再装填が遅い。撃たせてから入れば安全だ。\n上空のCAPは9機、3度に分けて上がってくる。全て無指定目標だ——高度を取るな。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより。浅瀬にミサイル艇6隻。散開している——一隻ずつ潰せ。", id: "boats-brief" },
+          { speaker: "wingman", text: "ちょろちょろ動く的だぞ。ミサイルがもったいない、機銃で行けるやつは機銃で行け。", id: "boats-brief-wing" }
+        ]
       },
       {
         key: "m03",
@@ -8736,7 +9031,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         forceSpawnRoleWave: (types, options = {}) => {
           if (gameState !== STATE_PLAYING) return false;
           if (!Array.isArray(types) || types.length === 0 || types.length > 16) return false;
-          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          if (types.some((type) => !ENEMY_TYPES[type] && !HELI_TYPES[type])) return false;
           if (!options.keep) {
             for (const enemy of enemies) {
               if (!enemy.alive) continue;
@@ -8768,7 +9063,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Everything a role/skill assignment derived, per living aircraft.
         // Reads the spec the spawner actually built, so it is proof about this
         // aircraft rather than a restatement of the tables.
-        roleProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface).map((enemy) => ({
+        // Fixed wing only: every field below is an ENEMY_AI_PROFILES number,
+        // and a helicopter's spec has none of them.
+        roleProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface && !enemy.heli).map((enemy) => ({
           id: enemy.id,
           type: enemy.type,
           roleId: enemy.spec.roleId,
@@ -8801,7 +9098,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         forceSpawnTypes: (types, ace = false) => {
           if (gameState !== STATE_PLAYING) return false;
           if (!Array.isArray(types) || types.length === 0) return false;
-          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          if (types.some((type) => !ENEMY_TYPES[type] && !HELI_TYPES[type])) return false;
           spawnMissionWave(normalizeWaveEntry({ types, band: 2, ace, tgt: false }));
           return enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
         },
@@ -8820,7 +9117,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // variable-geometry wing and the rotation of the first propeller disc.
         // Both are presentation, so this is the only way to assert on them
         // short of reading pixels.
-        airframeProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface).map((enemy) => ({
+        airframeProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface && !enemy.heli).map((enemy) => ({
           id: enemy.id,
           type: enemy.type,
           label: enemy.label,
@@ -9135,7 +9432,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // authors waves of up to nine, and the fps probe has to be able to
           // put a worst-case board up in one call.
           if (!Array.isArray(types) || types.length === 0 || types.length > 16) return false;
-          if (types.some((type) => !ENEMY_TYPES[type])) return false;
+          if (types.some((type) => !ENEMY_TYPES[type] && !HELI_TYPES[type])) return false;
           // `keep` leaves what is already flying alone, which is the only way
           // to measure the frame cost of N aircraft at once rather than the
           // frame cost of the last wave spawned.
@@ -11818,14 +12115,32 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // walks the live fields instead of two fixed offsets.
           root.position.copy(cell.group.position);
         } else {
+          // No cell fields on this hull. The fleet's default offsets are cut
+          // for a 130-160m warship; a 40m boat carries its box launchers
+          // amidships and says so with its own `vls` block.
+          const rails = enemy.spec.vls;
           root.position.copy(enemy.group.position)
-            .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
-            .addScaledVector(WORLD_UP, 13);
+            .addScaledVector(tmpV2, enemy.vlsSide > 0 ? (rails ? rails.fore : 38) : (rails ? rails.aft : -32))
+            .addScaledVector(WORLD_UP, rails ? rails.height : 13);
         }
         root.quaternion.setFromUnitVectors(LOCAL_FORWARD, WORLD_UP);
         for (let puff = 0; puff < 7; puff += 1) {
           tmpV9.set((Math.random() - 0.5) * 14, Math.random() * 5, (Math.random() - 0.5) * 14);
           smokeParticlePool.spawn(root.position, tmpV9, 1.6 + Math.random() * 0.9, 0xcfd6da, -0.25, 1.1);
+        }
+      } else if (enemy.heli) {
+        // Off the outboard pylon, alternating sides, with the pod's own smoke.
+        // It leaves along the airframe's axis rather than straight up: this is
+        // a rocket fired from a pod, not a round tipped out of a cell.
+        enemy.vlsSide = -enemy.vlsSide;
+        root.position.copy(enemy.group.position)
+          .addScaledVector(tmpV2, 1.5)
+          .addScaledVector(tmpV3, enemy.vlsSide > 0 ? 4.2 : -4.2)
+          .addScaledVector(tmpV4, -0.4);
+        root.quaternion.copy(enemy.group.quaternion);
+        for (let puff = 0; puff < 4; puff += 1) {
+          tmpV9.set((Math.random() - 0.5) * 6, Math.random() * 2, (Math.random() - 0.5) * 6);
+          smokeParticlePool.spawn(root.position, tmpV9, 0.9 + Math.random() * 0.6, 0xcfd6da, -0.2, 0.7);
         }
       } else {
         root.position.copy(enemy.group.position)
@@ -11843,6 +12158,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
       } else if (enemy.surface) {
         triggerRadioLine("wingman", "敵艦からミサイル発射！ 垂直発射だ——見えたらブレイクしろ！", RADIO_PRIORITY.NORMAL, "ship-sam");
+      } else if (enemy.heli) {
+        triggerRadioLine("wingman", "ヘリからロケット弾！ 真正面に入るな——横から抜けろ！", RADIO_PRIORITY.NORMAL, "heli-rocket");
       } else {
         triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
       }
@@ -12222,6 +12539,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           .addScaledVector(spawnForward, depth)
           .addScaledVector(spawnRight, lateral)
           .addScaledVector(spawnUp, altitude);
+        // A helicopter is placed by the same formation geometry and then put
+        // back where a helicopter belongs: on its own hover band over whatever
+        // is under it, rather than on the 110m floor the air waves use. The
+        // lateral/depth spread is kept, so a flight of them still arrives as a
+        // flight rather than as a stack.
+        if (HELI_TYPES[waveTypes[i]]) {
+          spawnHeli(position, band, i, waveTypes[i], idBase, wave.role);
+          continue;
+        }
         position.y = Math.max(110, position.y);
         spawnEnemy(
           position, band, i, waveTypes[i],
@@ -12229,6 +12555,109 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           wave.role, wave.skill
         );
       }
+    }
+
+    // Rotary wing. Deliberately NOT built on spawnEnemy: that function's whole
+    // body is role/skill merging over an ENEMY_AI_PROFILES entry, and a
+    // helicopter has none of those fields. What it shares with an aircraft is
+    // the shape of the object in enemies[], which is written out here in full
+    // so the generic paths (lock, damage, radar, HUD, scoring) never have to
+    // ask what kind of thing they are looking at.
+    function spawnHeli(position, band, slot, typeKey, idBase = 0, roleId = null) {
+      const spec = HELI_TYPES[typeKey];
+      if (!spec) return null;
+      enemySerial += 1;
+      const id = idBase + slot + 1;
+      // `trash` on a helicopter means the same two things it means on a
+      // fighter - it manoeuvres at three quarters and shoots half as often -
+      // and nothing else. HP is the airframe's, per spec_wave_variety §4.
+      const role = ENEMY_ROLES[roleId] || ENEMY_ROLES[DEFAULT_ENEMY_ROLE];
+
+      const root = new THREE.Group();
+      // Yaw first: a helicopter's bank and nose-down are attitudes taken about
+      // a heading it already holds, not the other way round.
+      root.rotation.order = "YXZ";
+      root.position.copy(position);
+      root.userData.enemyType = typeKey;
+
+      const model = createHeliModel(typeKey);
+      root.add(model.group);
+
+      const hitbox = new THREE.Mesh(geometry.panel, shared.hitbox);
+      hitbox.userData.enemyId = id;
+      hitbox.scale.set(spec.hitBox.x, spec.hitBox.y, spec.hitBox.z);
+      root.add(hitbox);
+      scene.add(root);
+
+      const ground = surfaceHeightAt(position.x, position.z);
+      const hoverAlt = spec.hoverBand[0] + Math.random() * (spec.hoverBand[1] - spec.hoverBand[0]);
+      root.position.y = Math.max(position.y, ground + hoverAlt);
+
+      enemies.push({
+        id,
+        serial: enemySerial,
+        wave: band,
+        slot,
+        type: typeKey,
+        label: spec.label,
+        shortName: spec.label,
+        name: null,
+        role: spec.role,
+        behavior: "rotary",
+        tgt: spawningTgt,
+        heli: true,
+        isAce: false,
+        aceEngageLineFired: true,
+        aceHalfLineFired: true,
+        spec,
+        group: root,
+        model,
+        hitbox,
+        alive: true,
+        maxHp: spec.hp,
+        hp: spec.hp,
+        speed: 0,
+        targetSpeed: spec.cruiseSpeed,
+        mode: "patrol",
+        baseHeading: root.rotation.y,
+        vlsSide: 1,
+        // Never populated - a helicopter carries no mounts - but damageEnemy
+        // and the dispose path both walk this unconditionally. The same
+        // omission is what made every ground mission unstartable once.
+        subsystems: [],
+        waypoints: [],
+        waypointIndex: 0,
+        // Its station on the ring around the player, its hover height over
+        // whatever is below, and the throttled terrain sample that height is
+        // measured from.
+        orbitPhase: Math.random() * Math.PI * 2,
+        orbitDir: slot % 2 === 0 ? 1 : -1,
+        hoverAlt,
+        groundHeight: ground,
+        terrainTimer: Math.random() * HELI_TERRAIN_INTERVAL,
+        roleTurnScale: role.turnScale,
+        roleCooldownScale: role.missileCooldownScale,
+        roleGunScale: role.gunAccuracyScale,
+        velocity: new THREE.Vector3(),
+        fireCooldown: 999,
+        missileCooldown: 9 + slot * 3 + Math.random() * 4,
+        aaCooldown: 1.5 + Math.random() * 2,
+        wakeTimer: 0,
+        sinkBoomTimer: 0,
+        sinkRoll: 0,
+        sinkPitch: 0,
+        deadTimer: 0,
+        hitFlash: 0,
+        smokeTimer: 0,
+        seed: Math.random() * Math.PI * 2,
+        formationLeaderId: null,
+        formationSide: 1,
+        formationActive: false,
+        targetPoint: new THREE.Vector3(),
+        formationPoint: new THREE.Vector3(),
+        safeTarget: new THREE.Vector3()
+      });
+      return id;
     }
 
     function spawnEnemy(position, wave, slot, typeKey, aceId = null, idBase = 0, roleId = null, skillId = null) {
@@ -13442,19 +13871,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const band = wave.band || waveNumber;
       if (wave.kind === "naval") {
         spawnNavalWave(wave, idBase);
-        if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
-        else showBanner(`WAVE ${waveNumber} · ENEMY FLEET DETECTED`, 2.2, "danger");
+        // A naval wave used to be one thing - the task force - so both calls
+        // named its hulls outright. A pack of missile boats is a naval wave
+        // too, and being told to expect a carrier and two Aegis when there are
+        // six 40m hulls on the radar is worse than being told nothing.
+        const lightHulls = wave.fleet.every((hull) => hull === "missileBoat");
+        if (first) showBanner(lightHulls ? "WAVE 1 · SURFACE CONTACTS" : "WAVE 1 · ENEMY FLEET AHEAD", 2.2);
+        else showBanner(`WAVE ${waveNumber} · ${lightHulls ? "SURFACE CONTACTS" : "ENEMY FLEET DETECTED"}`, 2.2, "danger");
         triggerRadioLine(
           "command",
-          "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
+          lightHulls
+            ? "レーダーに小型水上反応、多数。ミサイル艇だ——浅瀬に散っている。対艦攻撃に移れ。"
+            : "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
           RADIO_PRIORITY.NORMAL,
           "wave-naval-inbound"
         );
         triggerRadioLine(
           "wingman",
-          first
-            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
-            : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
+          lightHulls
+            ? "小さいぞ、しかも速い！ 蛇行してやがる——一発で沈む、機銃でも十分だ！"
+            : (first
+              ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
+              : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！"),
           RADIO_PRIORITY.NORMAL,
           "wave-naval-brief"
         );
@@ -13602,6 +14040,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // Mounts follow the hull the instant it has moved, alive or wrecked,
           // so a lock box never trails the deck it is drawn on.
           for (let s = 0; s < enemy.subsystems.length; s += 1) positionSubsystem(enemy.subsystems[s]);
+          continue;
+        }
+
+        // Rotary wing owns its frame outright. Everything below this line is
+        // the fixed-wing flight model - patrol/pursuit, the missile break,
+        // formation keeping, post-stall - and none of it describes a machine
+        // that can hover.
+        if (enemy.heli) {
+          updateHeli(enemy, dt, time);
           continue;
         }
 
@@ -14088,9 +14535,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
       enemy.baseHeading += THREE.MathUtils.clamp(headingDelta, -spec.turnRate * dt, spec.turnRate * dt);
 
+      // Slalom, for the hulls that have one. It is applied to the DRAWN
+      // heading rather than to `baseHeading`, so the boat weaves about the
+      // course the steering above chose instead of walking off it - and the
+      // forward vector below is read back off the group, so the hull actually
+      // travels along the weave rather than sliding sideways through it.
+      // Every hull carries its own `seed`, so a pack of them is out of step.
+      const weave = spec.zigzag
+        ? Math.sin((time / spec.zigzag.period) * Math.PI * 2 + enemy.seed) * spec.zigzag.amplitude
+        : 0;
       enemy.group.rotation.set(
         Math.sin(time * 0.41 + enemy.seed) * 0.006,
-        enemy.baseHeading + Math.sin(time * 0.23 + enemy.seed) * 0.015,
+        enemy.baseHeading + weave + Math.sin(time * 0.23 + enemy.seed) * 0.015,
         Math.sin(time * 0.57 + enemy.seed) * 0.01
       );
       forwardOf(enemy.group, tmpV4);
@@ -14128,6 +14584,182 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.missileCooldown = launched
             ? profile.cooldownMin + Math.random() * profile.cooldownSpread
             : 1.3 + Math.random() * 0.9;
+        }
+      }
+    }
+
+    // ---- Rotary wing ----------------------------------------------------------
+    // A helicopter does not fly a pursuit curve. It takes a STATION - a point
+    // on a slow ring around the player, at its own height over whatever is
+    // underneath it - flies to that station in whatever direction the station
+    // happens to be, and keeps its nose on the player the entire time. Those
+    // two things are decoupled, which is the whole identity of the machine:
+    // the model below can be moving left while pointing forwards, and it can
+    // stop moving at all without falling out of the sky.
+    //
+    // Mechanically that produces the fight the mission wants. The helicopter
+    // never runs away, so the player is never dragged into a tail chase; it
+    // sits low, so the player has to come down to the deck to work it; and its
+    // weapons only reach forward, so its nose is the thing to stay out of. The
+    // answer is a gun pass from behind, not a turning fight.
+    const heliToStation = new THREE.Vector3();
+    const heliDesired = new THREE.Vector3();
+    const heliToPlayer = new THREE.Vector3();
+    // Read back off the group after its attitude is set rather than rebuilt
+    // from the heading angle: the axis convention lives in one place
+    // (forwardOf/rightOf) and this code cannot get it subtly wrong.
+    const heliForward = new THREE.Vector3();
+    const heliRight = new THREE.Vector3();
+
+    function updateHeli(enemy, dt, time) {
+      const spec = enemy.spec;
+      const position = enemy.group.position;
+
+      // Damage states, same read as an aircraft: grey smoke below half, black
+      // smoke and sparks below a quarter. Written out here rather than shared
+      // because the plume comes off the engine deck above the hull, not off a
+      // tailpipe behind it.
+      const hpRatio = enemy.hp / spec.hp;
+      if (hpRatio < 0.5) {
+        enemy.smokeTimer -= dt;
+        if (enemy.smokeTimer <= 0) {
+          const burning = hpRatio < 0.25;
+          tmpV8.copy(position);
+          tmpV8.y += spec.smokeHeight;
+          tmpV2.set((Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 1.6 + Math.random() * 0.8, burning ? 0x17181c : 0x3a3f45, -0.7, 0.6);
+          if (burning) {
+            tmpV2.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 6);
+            sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.2, 0xffab4a, 2, 0.3);
+          }
+          enemy.smokeTimer += burning ? 0.06 : 0.1;
+        }
+      }
+
+      // Ground under the aircraft, on a clock. See HELI_TERRAIN_INTERVAL.
+      enemy.terrainTimer -= dt;
+      if (enemy.terrainTimer <= 0) {
+        enemy.terrainTimer = HELI_TERRAIN_INTERVAL;
+        enemy.groundHeight = surfaceHeightAt(position.x, position.z);
+      }
+
+      // --- Where it wants to be -------------------------------------------
+      // A point on a ring of radius `standoff` around the player, walking
+      // slowly round it. Each machine owns its phase and its direction, so a
+      // flight spreads into an encirclement instead of stacking into one blip.
+      enemy.orbitPhase += spec.orbitRate * enemy.orbitDir * dt;
+      heliDesired.set(
+        player.position.x + Math.cos(enemy.orbitPhase) * spec.standoff,
+        0,
+        player.position.z + Math.sin(enemy.orbitPhase) * spec.standoff
+      );
+      heliToStation.set(heliDesired.x - position.x, 0, heliDesired.z - position.z);
+      const stationRange = heliToStation.length();
+      // "Engaged" for the audio cue and the probe, on range alone - there is
+      // no pursuit/patrol machine here to read.
+      heliToPlayer.copy(player.position).sub(position);
+      const playerRange = heliToPlayer.length();
+      enemy.mode = playerRange < spec.attackRange ? "pursuit" : "patrol";
+
+      // Dash when the station is far, ease off as it arrives, hover when it is
+      // there. `accel` rather than a straight assignment is what makes it read
+      // as a helicopter: it leans into the run and settles out of it.
+      const wanted = stationRange > 260 ? spec.dashSpeed : spec.cruiseSpeed * Math.min(1, stationRange / 150);
+      enemy.targetSpeed = wanted * (enemy.roleTurnScale < 1 ? 0.9 : 1);
+      enemy.speed = THREE.MathUtils.clamp(
+        enemy.speed + THREE.MathUtils.clamp(enemy.targetSpeed - enemy.speed, -spec.accel * dt, spec.accel * dt),
+        0,
+        spec.dashSpeed
+      );
+      if (stationRange > 1e-3) {
+        heliToStation.multiplyScalar(1 / stationRange);
+        position.x += heliToStation.x * enemy.speed * dt;
+        position.z += heliToStation.z * enemy.speed * dt;
+      }
+
+      // --- Height ----------------------------------------------------------
+      // Its own hover band over the ground, plus a slow bob. Rate-limited, so
+      // crossing a shoreline or a ridge is a climb rather than a teleport.
+      const wantedY = enemy.groundHeight + enemy.hoverAlt + Math.sin(time * 0.55 + enemy.seed) * 3.5;
+      position.y += THREE.MathUtils.clamp(wantedY - position.y, -spec.climbRate * dt, spec.climbRate * dt);
+      const floor = enemy.groundHeight + spec.clearance;
+      if (position.y < floor) position.y = floor;
+
+      // --- Attitude ---------------------------------------------------------
+      // Nose on the player, yaw-rate limited. This is the only thing that
+      // decides where the gun and the rockets can reach, and it is independent
+      // of which way the machine is travelling. The heading that makes
+      // forwardOf() point along (dx,dz) is atan2(-dx,-dz): local forward is
+      // -Z, so a +X target is a negative yaw.
+      const desiredHeading = Math.atan2(-heliToPlayer.x, -heliToPlayer.z);
+      let headingDelta = desiredHeading - enemy.baseHeading;
+      while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
+      while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
+      const yawStep = spec.turnRate * enemy.roleTurnScale * dt;
+      enemy.baseHeading += THREE.MathUtils.clamp(headingDelta, -yawStep, yawStep);
+      enemy.group.rotation.y = enemy.baseHeading;
+
+      // Bank and nose-down are read off the motion, not commanded: a machine
+      // that translates has to tilt its disc into the direction it is going,
+      // and the component of that motion across its own nose is what the
+      // player sees as bank. Purely presentational.
+      forwardOf(enemy.group, heliForward);
+      rightOf(enemy.group, heliRight);
+      const speedFraction = enemy.speed / spec.dashSpeed;
+      const alongNose = stationRange > 1e-3
+        ? heliToStation.x * heliForward.x + heliToStation.z * heliForward.z
+        : 0;
+      const acrossNose = stationRange > 1e-3
+        ? heliToStation.x * heliRight.x + heliToStation.z * heliRight.z
+        : 0;
+      enemy.group.rotation.x = THREE.MathUtils.lerp(
+        enemy.group.rotation.x,
+        -alongNose * speedFraction * 0.22,
+        damping(0.18, dt)
+      );
+      enemy.group.rotation.z = THREE.MathUtils.lerp(
+        enemy.group.rotation.z,
+        -acrossNose * speedFraction * 0.3,
+        damping(0.22, dt)
+      );
+
+      // Rotors. Rate is nearly constant - a rotor at flight RPM does not spin
+      // faster because the aircraft is moving - with just enough of a speed
+      // term to be visible when it dashes.
+      const rotors = enemy.model.rotors;
+      if (rotors) {
+        const rate = spec.rotorSpin * (1 + speedFraction * 0.12);
+        for (let r = 0; r < rotors.length; r += 1) rotors[r].rotation.y += rate * dt;
+      }
+
+      // --- Weapons ----------------------------------------------------------
+      // Chin gun through the shared surface-AA path (the spec carries `aa`,
+      // `aaMounts` and `aaHeight` and no subsystems table, which is exactly
+      // the legacy branch of aaFiringPoints), and the rocket pods through the
+      // shared enemy-missile path. `trash` stretches both, which is the whole
+      // of what the role means here.
+      enemy.aaCooldown -= dt;
+      if (enemy.aaCooldown <= 0) {
+        // The gun only reaches forward. Without this a helicopter would strafe
+        // the player through its own tail boom while yawing round to face them.
+        // heliForward/heliToPlayer are both read before shipAaBurst, which
+        // uses the shared tmp vectors for its own aim solution.
+        const nose = playerRange > 1
+          ? (heliToPlayer.x * heliForward.x + heliToPlayer.y * heliForward.y + heliToPlayer.z * heliForward.z) / playerRange
+          : 1;
+        if (nose > spec.aimThreshold) shipAaBurst(enemy);
+        const gunScale = enemy.roleGunScale > 0 ? 1 / enemy.roleGunScale : 1;
+        enemy.aaCooldown = (spec.aa.cooldownMin + Math.random() * spec.aa.cooldownSpread) * gunScale;
+      }
+
+      const profile = ENEMY_MISSILE_PROFILES[enemy.type];
+      if (profile) {
+        enemy.missileCooldown -= dt;
+        if (enemy.missileCooldown <= 0) {
+          const launched = attemptEnemyMissile(enemy);
+          enemy.missileCooldown = launched
+            ? (profile.cooldownMin + Math.random() * profile.cooldownSpread) * enemy.roleCooldownScale
+            : 1.5 + Math.random() * 1.2;
         }
       }
     }
@@ -14547,7 +15179,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           "wingman",
           enemy.type === "carrier"
             ? "でかいぞ……空母、轟沈！ やったな{nickname}！"
-            : "イージス艦、沈黙！ 対空砲火が薄くなったぞ！",
+            : (enemy.type === "missileBoat"
+              ? "ミサイル艇、撃沈！ 一発で十分だ——次を探せ！"
+              : "イージス艦、沈黙！ 対空砲火が薄くなったぞ！"),
           RADIO_PRIORITY.NORMAL,
           `ship-down-${enemy.id}`
         );
@@ -16442,6 +17076,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         behavior: enemy.behavior,
         surface: Boolean(enemy.surface),
         ground: Boolean(enemy.ground),
+        heli: Boolean(enemy.heli),
         subsystem: Boolean(enemy.subsystem),
         subsystemKind: enemy.subsystemKind ?? null,
         subsystemIndex: enemy.subsystemIndex ?? null,
@@ -19070,6 +19705,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Aft: low helo deck with the landing circle, no hangar block.
         add(geometry.panel, deck, 0, 8.1, 44, 12.4, 0.7, 26);
         add(geometry.shockRing, markings, 0, 8.55, 46, 5.6, 5.6, 1, -Math.PI / 2);
+      } else if (kind === "missileBoat") {
+        // Fast attack craft, ~40m: a hull two thirds the length of the
+        // frigate's BOW section. At that size the readable silhouette is not
+        // detail, it is proportion - almost no freeboard, one squat bridge
+        // well forward, and two fat canted box launchers amidships that are
+        // visibly too big for the boat carrying them. That last part IS the
+        // identity: this thing is a missile with a hull attached.
+        add(geometry.panel, hull, 0, 2.6, 3, 8, 5.2, 30);
+        add(geometry.shipBow, hull, 0, 2.6, -16.5, 4, 9, 2.6, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 0.6, 3, 8.4, 1.4, 30.5);
+        add(geometry.panel, deck, 0, 5.35, 4, 7.6, 0.5, 26);
+        // Bridge block forward with a pole mast - a boat this size carries a
+        // pole and a small plate, not a lattice tower.
+        add(geometry.panel, house, 0, 7, -5, 5, 3.4, 8);
+        add(geometry.panel, dark, 0, 8.85, -5, 5.4, 0.5, 8.4);
+        add(geometry.shipCylinder, dark, 0, 12.4, -3.6, 0.3, 7, 0.3);
+        add(geometry.shipOctPlate, light, 0, 15.9, -3.6, 1.7, 0.35, 1.7);
+        // 76mm mount on the bow.
+        add(geometry.shipCylinder, house, 0, 5.9, -12.5, 1.5, 1.2, 1.5);
+        add(geometry.panel, house, 0, 6.5, -15.4, 0.5, 0.5, 4.4, 0.1);
+        // The launchers: canted up and outboard, one pack per beam. `vls`
+        // (fore 5 / aft -9 / height 7) is measured off these.
+        add(geometry.panel, light, -2.8, 7, 6, 2.5, 2.5, 8, -0.34, 0, 0.2);
+        add(geometry.panel, light, 2.8, 7, 6, 2.5, 2.5, 8, -0.34, 0, -0.2);
+        add(geometry.panel, dark, -2.8, 7, 2.2, 2.7, 2.7, 0.5, -0.34, 0, 0.2);
+        add(geometry.panel, dark, 2.8, 7, 2.2, 2.7, 2.7, 0.5, -0.34, 0, -0.2);
+        // Engine box and the single AA barrel aft, matching aaMounts:[-7].
+        add(geometry.panel, house, 0, 6.2, 12.5, 4.4, 2, 5);
+        add(geometry.shipCylinder, light, 0, 6.1, 7, 1.1, 1.4, 1.1);
+        add(geometry.panel, dark, 0, 7.6, 5.5, 0.35, 0.35, 4.2, -0.32);
       } else {
         // Carrier (~330m): full-length flight deck with painted runway decals,
         // starboard island, parked-aircraft clutter and sponsons.
@@ -19254,6 +19919,131 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         flameMaterial: markings,
         extraMaterials,
         dish
+      };
+    }
+
+    // Attack helicopter, built to the same contract as the ships and the
+    // ground units so the hit flash and the dispose path work unchanged, plus
+    // one extra: `rotors`, the pivots updateHeli spins.
+    //
+    // A Hind is one of the few military aircraft that is unmistakable in
+    // silhouette, and three things do all of that work at the range this is
+    // ever seen from: the stepped tandem bubble canopies, the enormous
+    // anhedral stub wings hung with pods, and a five-blade disc that is wider
+    // than the aircraft is long. Detail below that scale is wasted here, so
+    // the model spends its parts on those three and nothing else.
+    function createHeliModel(kind) {
+      const root = new THREE.Group();
+      const olive = makeAircraftMaterial(0x53603f, 0.2, 0.78);
+      const dark = makeAircraftMaterial(0x23272a, 0.34, 0.58);
+      const glass = makeAircraftMaterial(0x2b4a52, 0.7, 0.22);
+      const light = makeAircraftMaterial(0x8b9483, 0.24, 0.62);
+      // The discs. A rotor at flight RPM is something you SEE THROUGH, and an
+      // opaque plate 17m across parked in front of the player at gun range is
+      // the single most wrong thing this model could do. Still a standard
+      // material, so it takes the hit flash and is disposed with the rest.
+      const rotorSkin = makeAircraftMaterial(0x2b2f33, 0.28, 0.62);
+      rotorSkin.transparent = true;
+      rotorSkin.opacity = 0.3;
+      rotorSkin.depthWrite = false;
+      const markings = new THREE.MeshBasicMaterial({ color: 0xb8452f });
+      const extraMaterials = [];
+      const rotors = [];
+
+      const parts = [];
+      const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+        const m = new THREE.Mesh(geo, material);
+        m.position.set(x, y, z);
+        m.scale.set(sx, sy, sz);
+        m.rotation.set(rx, ry, rz);
+        parts.push(m);
+        return m;
+      };
+
+      // Fuselage: a deep, narrow box that steps DOWN toward the nose - the
+      // gunner sits below and ahead of the pilot, which is the profile.
+      add(geometry.panel, olive, 0, 0, 1, 3.1, 3.2, 12);
+      add(geometry.panel, olive, 0, -0.45, -5.4, 2.4, 2.1, 3.4);
+      add(geometry.shipBow, olive, 0, -0.6, -7.8, 1.2, 2.4, 1.2, -Math.PI / 2);
+      // Tandem canopies, stepped. Front (gunner) low and small, rear (pilot)
+      // raised and set back.
+      add(geometry.panel, glass, 0, 0.75, -4.6, 2, 1.5, 2.8, -0.12);
+      add(geometry.panel, glass, 0, 1.85, -1.9, 2.3, 1.7, 3.2, -0.06);
+      add(geometry.panel, dark, 0, 2.75, -1.9, 2.5, 0.3, 3.4);
+      // Chin turret, at the mount the gun fires from (aaMounts [7] forward).
+      add(geometry.shipCylinder, dark, 0, -1.5, -6.2, 0.55, 0.7, 0.55);
+      add(geometry.panel, dark, 0, -1.75, -7.6, 0.22, 0.22, 2.6, 0.08);
+      // Stub wings with pronounced anhedral, and the pods on them. These are
+      // the Hind's other signature and the reason its rockets read as coming
+      // off a wing rather than out of a bay.
+      for (const side of [-1, 1]) {
+        add(geometry.panel, olive, side * 3.1, -0.5, 0.4, 4.6, 0.45, 3.4, 0, 0, side * 0.28);
+        add(geometry.shipCylinder, dark, side * 4.4, -1.5, 0.2, 0.62, 3.2, 0.62, Math.PI / 2);
+        add(geometry.shipCylinder, light, side * 5.4, -1.15, 0.6, 0.42, 2.4, 0.42, Math.PI / 2);
+        // Sponson / wheel fairing under the wing root.
+        add(geometry.panel, dark, side * 1.5, -1.6, 1.6, 1, 1, 3.2);
+      }
+      // Engine deck and intakes above the cabin, then the mast.
+      add(geometry.panel, olive, 0, 1.9, 1.6, 2.9, 1.3, 4.4);
+      add(geometry.shipCylinder, dark, -1.05, 2.5, -0.4, 0.7, 1.8, 0.7, Math.PI / 2);
+      add(geometry.shipCylinder, dark, 1.05, 2.5, -0.4, 0.7, 1.8, 0.7, Math.PI / 2);
+      add(geometry.shipCylinder, dark, 0, 3.1, 1.2, 0.42, 1.6, 0.42);
+      // Tail boom, fin and the low tailplane.
+      add(geometry.shipCylinder, olive, 0, 0.35, 9.4, 0.62, 9, 0.62, Math.PI / 2);
+      add(geometry.panel, olive, 0, 1.6, 13.4, 0.5, 3.6, 2.6, 0.16);
+      add(geometry.panel, olive, 0, 3.2, 14, 0.42, 1.4, 1.8, 0.3);
+      add(geometry.panel, olive, 0, 0.3, 11.4, 4.2, 0.3, 1.5);
+      add(geometry.panel, dark, 0, -0.7, 13.9, 0.36, 1.2, 0.9);
+      // Red star on the boom - the one marking, and the faction read.
+      add(geometry.shipOctPlate, markings, -0.66, 0.6, 8.6, 0.85, 0.06, 0.85, 0, 0, Math.PI / 2);
+      add(geometry.shipOctPlate, markings, 0.66, 0.6, 8.6, 0.85, 0.06, 0.85, 0, 0, Math.PI / 2);
+
+      // Main disc. A five-blade rotor at speed is a translucent plate, not five
+      // blades - so it is drawn as the plate, with two blade shadows across it
+      // to give the eye something to see turning.
+      const mainRotor = new THREE.Group();
+      mainRotor.position.set(0, 3.9, 1.2);
+      const disc = new THREE.Mesh(geometry.shipOctPlate, rotorSkin);
+      disc.scale.set(8.7, 0.06, 8.7);
+      mainRotor.add(disc);
+      for (const angle of [0, Math.PI * 0.4]) {
+        const blade = new THREE.Mesh(geometry.panel, dark);
+        blade.scale.set(17.4, 0.16, 0.8);
+        blade.rotation.y = angle;
+        mainRotor.add(blade);
+      }
+      root.add(mainRotor);
+      rotors.push(mainRotor);
+
+      // Tail rotor: the same trick on its side. The pivot is rolled 90deg so
+      // its local Y - the axis updateHeli spins every entry in `rotors` about -
+      // lies across the aircraft.
+      const tailRotor = new THREE.Group();
+      tailRotor.position.set(-0.7, 2.9, 13.8);
+      tailRotor.rotation.z = Math.PI / 2;
+      const tailDisc = new THREE.Mesh(geometry.shipOctPlate, rotorSkin);
+      tailDisc.scale.set(1.9, 0.05, 1.9);
+      tailRotor.add(tailDisc);
+      const tailBlade = new THREE.Mesh(geometry.panel, dark);
+      tailBlade.scale.set(3.8, 0.12, 0.35);
+      tailRotor.add(tailBlade);
+      root.add(tailRotor);
+      rotors.push(tailRotor);
+
+      root.add(...parts);
+      return {
+        group: root,
+        flames: [],
+        standardMaterials: [olive, dark, glass, light, rotorSkin],
+        flameMaterial: markings,
+        extraMaterials,
+        rotors,
+        // updateEnemyWingSweep / updateEnemyProps and the airframe probe all
+        // read these unconditionally. A helicopter never reaches those paths,
+        // but an empty array costs nothing and makes that a design choice
+        // rather than a landmine.
+        wingPivots: [],
+        propSpinners: []
       };
     }
 
