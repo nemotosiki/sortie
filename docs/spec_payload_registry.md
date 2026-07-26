@@ -40,6 +40,11 @@
 > シンボル名（`const MISSIONS` / `let currentMissionIndex` 等）で再検索して位置を取り直すこと。
 > 行番号を信用して機械挿入してはいけない。
 
+> **★実装時の訂正（2026-07-27）**: 外す `Object.freeze` は各テーブルの**外側1個だけ**でよい。
+> エントリ毎の内側 `Object.freeze({...})` はそのまま残す（payload は新しいトップレベルキーを
+> 足すだけで既存エントリを書き換えないため干渉しない）。内側まで外すと差分が数百行に膨らむ。
+> 実際の Phase 0 の freeze 剥がしは **11テーブル22行**で済んだ。
+
 ### 登録テーブルの位置（12個すべて `Object.freeze` 済みを実測確認）
 | テーブル | 行 | 備考 |
 |---|---|---|
@@ -76,8 +81,19 @@ ACCOMPLISHED 判定が壊れる。**
 | 行 | 内容 | 影響 |
 |---|---|---|
 | 5149 | `ENEMY_TYPES`（`ENEMY_AI_PROFILES`×`AIRCRAFT_TYPES` から派生） | 敵種を足すなら**再構築が要る** |
-| **9039** | `campaignMissionIndices`（MISSIONSから派生） | 既に `rebuildCampaignMissionIndices()`(9043) がある＝呼ぶだけ |
-| **9943** | `window.__game.missionTable`（MISSIONSをmapで固める） | 再構築が要る |
+| 8995 | `ACT_OPENER_KEYS`（MISSIONSから派生） | **旧版の見落とし。アンカーより前に確定するので再構築が要る** |
+| **9039** | `campaignMissionIndices`（MISSIONSから派生） | ★訂正: 再構築**不要**（下記） |
+| **9943** | `window.__game.missionTable`（MISSIONSをmapで固める） | ★訂正: 再構築**不要**（下記） |
+
+#### ★訂正（2026-07-27 実装時に実測）
+- **`ACT_OPENER_KEYS`(8995) が旧版の表に抜けていた。** MISSIONS由来の `const` で、アンカー
+  (`let currentMissionIndex`) より**前**に確定する。payloadで `act`/`storyNo` 付きミッションを
+  足すとACTバナーが古いままになるため、`buildActOpenerKeys()` を抽出して `let` 化し、
+  `finalizeRegistries()` から呼び直す。
+- **`campaignMissionIndices` と `window.__game.missionTable` は再構築してはいけない。**
+  どちらも**アンカーより後**（9039 / 9943）で初期化されるので、payload適用後のMISSIONSを
+  最初から見る。むしろ `finalizeRegistries()` から `rebuildCampaignMissionIndices()` を
+  呼ぶと `let campaignMissionIndices` が**TDZ**で `ReferenceError` になる。
 
 **payloadブロックの設置位置＝ MISSIONS文の閉じ（8975行 `}));`）の直後、
 `let currentMissionIndex`（9011行）より前。** 途中に `ACTS` / `missionActBanner()` の定義があるので、

@@ -2504,7 +2504,7 @@
     // quantum is a property of the airframe, so how many rounds a contact takes
     // is always readable off the aircraft table no matter who is flying it.
     // `trash` is not "dies in one hit", it is "cannot fly the jet it is in".
-    const ENEMY_ROLES = Object.freeze({
+    const ENEMY_ROLES = {
       // The named pilots. turnScale 1.20 is the historic ACE_TURN_SCALE, moved
       // here verbatim so every existing ace fight turns exactly as it did.
       ace: Object.freeze({
@@ -2534,7 +2534,7 @@
         missileCooldownScale: 2.00, gunAccuracyScale: 0.55,
         skill: "rookie"
       })
-    });
+    };
 
     const DEFAULT_ENEMY_ROLE = "line";
 
@@ -2548,7 +2548,7 @@
     // what it was before the tiers existed; what expert actually buys is the
     // decision fields at the bottom - instant break, tighter launch envelope,
     // better gunnery.
-    const SKILL_TIERS = Object.freeze({
+    const SKILL_TIERS = {
       // Flies flat, clumps up with its flight, chases past the point where it
       // should have left, and never once breaks on a missile.
       rookie: Object.freeze({
@@ -2594,7 +2594,7 @@
         launchDotScale: 1.15, missileEnvelopeScale: 0.82, missileCooldownScale: 1.00,
         breakChance: 1.00, breakReaction: 0
       })
-    });
+    };
 
     // ---- Named pilots ---------------------------------------------------------
     // An ace is an identity bolted onto an airframe, never a different physics
@@ -2620,7 +2620,7 @@
     // orphaned, and both are written against airframes that survived the
     // faction split (Su-37, MiG-31). Placing one in a wave is a one-line
     // `ace: "vulture"` on that wave.
-    const ACE_PROFILES = Object.freeze({
+    const ACE_PROFILES = {
       // The campaign's recurring antagonist, and the only ace with a scripted
       // post-stall (see ACE_POSTSTALL_*). Flies the Felon - which is the
       // airframe the manoeuvre belongs to anyway, Su-57 being the direct
@@ -2825,7 +2825,7 @@
           down: "こちらスコル…ハティ……先に行ったか…"
         })
       })
-    });
+    };
 
     const DEFAULT_ACE_ID = "ironback";
 
@@ -2853,9 +2853,9 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    const AIRCRAFT_ORDER = Object.freeze([
+    const AIRCRAFT_ORDER = [
       "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22"
-    ]);
+    ];
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Campaigns -----------------------------------------------------------
@@ -3070,7 +3070,7 @@
       })
     });
 
-    const AIRCRAFT_TYPES = Object.freeze({
+    const AIRCRAFT_TYPES = {
       f16: Object.freeze({
         id: "f16",
         label: "F-16 FIGHTING FALCON",
@@ -3805,7 +3805,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           canopy: 0xa8e4ff, exhaust: 0xffc47a, scale: 2.3, variant: "bear"
         })
       })
-    });
+    };
 
     // The two stock fighter waves. NO MISSION FLIES THESE ANY MORE - every
     // sortie in the campaign now authors its own composition inline, because
@@ -4009,7 +4009,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // come from the shared table, so an enemy F-22 is exactly as strong as the
     // player's F-22. Only the fields below are AI-side behaviour that the player
     // has no equivalent for (patrol pattern, engagement envelope, gun accuracy).
-    const ENEMY_AI_PROFILES = Object.freeze({
+    const ENEMY_AI_PROFILES = {
       f16: Object.freeze({
         behavior: "evasive",
         hitboxScale: 0.9,
@@ -5076,7 +5076,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           variant: "bear"
         })
       })
-    });
+    };
 
     // Enemy turn rates are derived from the shared turnRateDeg so the ranking
     // (F-22 > F-15 > F-16 > F-4) is identical to the player's. Pursuit turning is
@@ -5146,24 +5146,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const ACE_POSTSTALL_SPEED = 90;
     const ACE_POSTSTALL_TRACK_SCALE = 2.0;
 
-    const ENEMY_TYPES = Object.freeze(Object.fromEntries(
-      Object.keys(ENEMY_AI_PROFILES).map((id) => {
-        const air = AIRCRAFT_TYPES[id];
-        const ai = ENEMY_AI_PROFILES[id];
-        return [id, Object.freeze({
-          ...ai,
-          key: id,
-          label: ai.label || air.label.split(" ")[0],
-          role: air.role,
-          hp: air.maxHealth,
-          patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
-          pursuitBonus: Math.round((air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE),
-          maxSpeed: air.boostSpeed,
-          patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
-          pursuitTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR)
-        })];
-      })
-    ));
+    // Derived from ENEMY_AI_PROFILES x AIRCRAFT_TYPES. `let` + a build function
+    // because a payload may add entries to either source table after this line
+    // runs; finalizeRegistries() calls buildEnemyTypes() again to pick them up.
+    let ENEMY_TYPES = buildEnemyTypes();
+
+    function buildEnemyTypes() {
+      return Object.freeze(Object.fromEntries(
+        Object.keys(ENEMY_AI_PROFILES).map((id) => {
+          const air = AIRCRAFT_TYPES[id];
+          const ai = ENEMY_AI_PROFILES[id];
+          return [id, Object.freeze({
+            ...ai,
+            key: id,
+            label: ai.label || air.label.split(" ")[0],
+            role: air.role,
+            hp: air.maxHealth,
+            patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
+            pursuitBonus: Math.round((air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE),
+            maxSpeed: air.boostSpeed,
+            patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
+            pursuitTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR)
+          })];
+        })
+      ));
+    }
 
     // Airframes the briefing map draws with the heavy glyph instead of the
     // fighter chevron. Membership is "is this a large, slow, non-manoeuvring
@@ -5185,7 +5192,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
     // an F-22's the deadliest.
-    const ENEMY_MISSILE_PROFILES = Object.freeze({
+    const ENEMY_MISSILE_PROFILES = {
       f16: Object.freeze({
         cooldownMin: 9.4,
         cooldownSpread: 4.8,
@@ -5552,7 +5559,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         life: 7.0,
         launchDot: 0.55
       })
-    });
+    };
 
     // The anti-ship round, and the one missile in the game that is never
     // pointed at an aircraft. Carried by whatever airframe a mission sends
@@ -5646,7 +5653,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     });
 
-    const SHIP_TYPES = Object.freeze({
+    const SHIP_TYPES = {
       aegis: Object.freeze({
         key: "aegis",
         surface: true,
@@ -5844,7 +5851,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       })
-    });
+    };
 
     // M3 ground installations. They live in enemies[] exactly like the ships, so
     // lock-on, the gun raycast, missile guidance, the radar and the whole kill
@@ -5853,7 +5860,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // one does not sink or vanish: the wreck burns where it stood until the
     // mission ends.
     const GROUND_WRECK_FOREVER = 9999;
-    const GROUND_TYPES = Object.freeze({
+    const GROUND_TYPES = {
       samSite: Object.freeze({
         key: "samSite",
         surface: true,
@@ -6082,7 +6089,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       })
-    });
+    };
 
     // ---- Rotary wing ----------------------------------------------------
     // The third kind of enemy: it flies, so it is not `surface`, but it does
@@ -6174,7 +6181,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // pre-M2 world exactly - same numbers, same RNG draw order - and is the
     // regression baseline; the other three reuse the identical build path.
     // ---------------------------------------------------------------------
-    const WORLD_PRESETS = Object.freeze({
+    const WORLD_PRESETS = {
       archipelagoDay: {
         label: "ARCHIPELAGO DAY",
         clearColor: 0x6698b2,
@@ -7175,11 +7182,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         }
       }
-    });
+    };
 
     const DEFAULT_WORLD_PRESET = "archipelagoDay";
 
-    const MISSIONS = Object.freeze([
+    const MISSIONS = [
       {
         key: "m01",
         world: "archipelagoDay",
@@ -8909,7 +8916,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hasOutro: true,
         map: { x: 0.8, y: 0.34 },
         briefing: "総力戦だ。敵航空戦力、IRONBACK、そして敵艦隊——すべてを叩く。\n指定目標は10。先導機2、IRONBACK、艦隊5隻、そして最後のSu-57編隊だ。\nそれ以外は全て雑魚だ。数は多いが腕は素人——付き合えば時間だけが溶ける。\n艦隊にはエース級のCAPが張り付いている。相手をするかは君の判断だ。\n途中、補給ラインでミサイルを再装填できる。\n最後にSu-57が上がってくる。データ上、旋回でこちらのF-22を上回る唯一の機体だ。僚機のSu-47はさらに曲がる——振り切ろうとすれば、もう1機の懐に入るぞ。\nこの空と海を取り戻せ。幸運を祈る。"
-      }].map((mission) => {
+      }].map(normalizeMission);
+
+    // The one place an authored mission definition turns into the resolved
+    // shape the rest of the game reads. Extracted from the `.map()` above so
+    // that `ctx.addMission()` (payload registry) runs the identical
+    // normalisation - a payload mission that skipped this would arrive with
+    // `totalTargets` undefined and break ACCOMPLISHED. Declared as a function
+    // so hoisting lets the MISSIONS literal above call it.
+    function normalizeMission(mission) {
       const waves = Object.freeze(mission.sequence.map(normalizeWaveEntry));
       // One frozen path per mission, whether the mission calls it a road
       // (IRON COLUMN) or a rail line (STEEL SNAKE). Every vehicle in the
@@ -8972,7 +8987,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         introRadio: mission.introRadio ? Object.freeze(mission.introRadio.map(Object.freeze)) : null,
         map: Object.freeze(mission.map)
       });
-    }));
+    }
 
     // ---- Acts (C3) ---------------------------------------------------------
     // The campaign is four acts (story bible §3). A mission declares which one
@@ -8992,21 +9007,261 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // implemented in it. Derived rather than flagged by hand, so when the six
     // missing sorties land (03, 05, 10, 13, 14, 16) the banner moves to the
     // real opener on its own instead of needing a second table maintained.
-    const ACT_OPENER_KEYS = Object.freeze(new Set(
-      Object.values(
-        MISSIONS.reduce((best, mission) => {
-          if (!mission.act || !mission.storyNo) return best;
-          const held = best[mission.act];
-          if (!held || mission.storyNo < held.storyNo) best[mission.act] = mission;
-          return best;
-        }, {})
-      ).map((mission) => mission.key)
-    ));
+    // `let` + rebuild function because it is derived from MISSIONS, which the
+    // payload registry may still append to: finalizeRegistries() recomputes it.
+    let ACT_OPENER_KEYS = buildActOpenerKeys();
+
+    function buildActOpenerKeys() {
+      return Object.freeze(new Set(
+        Object.values(
+          MISSIONS.reduce((best, mission) => {
+            if (!mission.act || !mission.storyNo) return best;
+            const held = best[mission.act];
+            if (!held || mission.storyNo < held.storyNo) best[mission.act] = mission;
+            return best;
+          }, {})
+        ).map((mission) => mission.key)
+      ));
+    }
 
     function missionActBanner(mission) {
       if (!mission || !mission.act || !ACT_OPENER_KEYS.has(mission.key)) return null;
       return ACTS[mission.act] || null;
     }
+
+    // ==== Payload registry (docs/spec_payload_registry.md) ===================
+    // Everything above this line is authored inline; everything a parallel
+    // branch adds arrives as a payload function spliced between the two
+    // @PAYLOADS markers below by tools/inline_payload.mjs. The point is that no
+    // two branches ever edit the same region of this file, so the registry
+    // tables stop being a merge battleground.
+    //
+    // This is the only position in the module that satisfies both constraints:
+    // all twelve registry tables are defined by now, and none of the state
+    // derived from MISSIONS (campaignMissionIndices, __game.missionTable) has
+    // been built yet. Moving the block breaks one or the other.
+
+    // Registration is refused for a key that already exists. Silent overwrite is
+    // how a payload would clobber an inline entry without anyone noticing, and
+    // "add-only" is the whole safety property the registry is meant to have.
+    function registryAdd(table, tableName, key, def, required) {
+      if (typeof key !== "string" || !key) {
+        throw new Error(`[payload] ${tableName}: key must be a non-empty string`);
+      }
+      if (Object.prototype.hasOwnProperty.call(table, key)) {
+        throw new Error(`[payload] ${tableName}: duplicate key "${key}" - registration is add-only`);
+      }
+      if (!def || typeof def !== "object") {
+        throw new Error(`[payload] ${tableName}.${key}: definition must be an object`);
+      }
+      // The failure this catches is the truncated-merge class from 2026-07-26:
+      // a hunk that shared a closing brace swallowed `damage` / `life` /
+      // `launchDot` off an existing profile and the file still parsed. Requiring
+      // the keys every sibling entry already has turns that into a load-time
+      // throw instead of a bug someone finds in the air.
+      const missing = required.filter((field) => def[field] === undefined);
+      if (missing.length) {
+        throw new Error(`[payload] ${tableName}.${key}: missing required field(s) ${missing.join(", ")}`);
+      }
+      table[key] = def;
+      return def;
+    }
+
+    // The required-key set for a table is the intersection of the key sets of
+    // everything already in it - i.e. "what every sibling agrees is mandatory".
+    // Derived rather than hand-listed so the check cannot drift out of date when
+    // a field is added to the inline entries.
+    function requiredKeysOf(table) {
+      const entries = Object.values(table).filter((entry) => entry && typeof entry === "object");
+      if (!entries.length) return [];
+      return Object.keys(entries[0]).filter((field) => entries.every((entry) => field in entry));
+    }
+
+    const PAYLOAD_REQUIRED = {
+      ACE_PROFILES: requiredKeysOf(ACE_PROFILES),
+      AIRCRAFT_TYPES: requiredKeysOf(AIRCRAFT_TYPES),
+      ENEMY_AI_PROFILES: requiredKeysOf(ENEMY_AI_PROFILES),
+      ENEMY_MISSILE_PROFILES: requiredKeysOf(ENEMY_MISSILE_PROFILES),
+      SHIP_TYPES: requiredKeysOf(SHIP_TYPES),
+      GROUND_TYPES: requiredKeysOf(GROUND_TYPES),
+      WORLD_PRESETS: requiredKeysOf(WORLD_PRESETS)
+    };
+    // A mission is an array element, not a keyed entry, so its required set is
+    // spelled out: these are the fields normalizeMission and the briefing read
+    // unconditionally.
+    const MISSION_REQUIRED = ["key", "title", "sequence", "map"];
+
+    // Handed to every payload's default export. Deliberately the only surface a
+    // payload gets - it cannot reach the tables directly, so every addition goes
+    // through the duplicate and schema checks above.
+    const payloadContext = {
+      addMission(def, options) {
+        if (!def || typeof def !== "object") throw new Error("[payload] addMission: definition must be an object");
+        const missing = MISSION_REQUIRED.filter((field) => def[field] === undefined);
+        if (missing.length) {
+          throw new Error(`[payload] addMission("${def && def.key}"): missing required field(s) ${missing.join(", ")}`);
+        }
+        if (MISSIONS.some((mission) => mission.key === def.key)) {
+          throw new Error(`[payload] addMission: duplicate mission key "${def.key}" - registration is add-only`);
+        }
+        // The same normalisation the inline table runs. Skipping it is the one
+        // mistake that produces a mission with `totalTargets` undefined, which
+        // reads as a mission that can never be ACCOMPLISHED.
+        const normalized = normalizeMission(def);
+        // MISSIONS order is campaign order, so where a payload mission lands is
+        // a design decision the payload has to state. `after` names the mission
+        // it follows; omitting it appends.
+        const after = options && options.after;
+        if (after === undefined || after === null) {
+          MISSIONS.push(normalized);
+          return normalized;
+        }
+        const at = MISSIONS.findIndex((mission) => mission.key === after);
+        if (at < 0) throw new Error(`[payload] addMission("${def.key}"): { after: "${after}" } names no existing mission`);
+        MISSIONS.splice(at + 1, 0, normalized);
+        return normalized;
+      },
+      addAircraft(id, def, options) {
+        registryAdd(AIRCRAFT_TYPES, "AIRCRAFT_TYPES", id, def, PAYLOAD_REQUIRED.AIRCRAFT_TYPES);
+        // AIRCRAFT_ORDER is a hand-authored display order, not a derived list,
+        // so a new airframe has to say where in the hangar it belongs. Opt out
+        // with { order: false } for an airframe only the enemy flies.
+        const order = options && options.order;
+        if (order !== false && !AIRCRAFT_ORDER.includes(id)) {
+          const after = options && options.after;
+          const at = after ? AIRCRAFT_ORDER.indexOf(after) : -1;
+          if (at >= 0) AIRCRAFT_ORDER.splice(at + 1, 0, id);
+          else AIRCRAFT_ORDER.push(id);
+        }
+        return def;
+      },
+      addEnemyProfile(id, def) {
+        return registryAdd(ENEMY_AI_PROFILES, "ENEMY_AI_PROFILES", id, def, PAYLOAD_REQUIRED.ENEMY_AI_PROFILES);
+      },
+      addEnemyMissileProfile(id, def) {
+        return registryAdd(ENEMY_MISSILE_PROFILES, "ENEMY_MISSILE_PROFILES", id, def, PAYLOAD_REQUIRED.ENEMY_MISSILE_PROFILES);
+      },
+      addAceProfile(id, def) {
+        return registryAdd(ACE_PROFILES, "ACE_PROFILES", id, def, PAYLOAD_REQUIRED.ACE_PROFILES);
+      },
+      addShipType(id, def) {
+        return registryAdd(SHIP_TYPES, "SHIP_TYPES", id, def, PAYLOAD_REQUIRED.SHIP_TYPES);
+      },
+      addGroundType(id, def) {
+        return registryAdd(GROUND_TYPES, "GROUND_TYPES", id, def, PAYLOAD_REQUIRED.GROUND_TYPES);
+      },
+      addWorldPreset(key, def) {
+        return registryAdd(WORLD_PRESETS, "WORLD_PRESETS", key, def, PAYLOAD_REQUIRED.WORLD_PRESETS);
+      },
+      // Read-only views, for a payload that needs to copy an existing entry as
+      // its starting point rather than restate 40 fields.
+      tables: {
+        ACE_PROFILES, AIRCRAFT_TYPES, AIRCRAFT_ORDER, ENEMY_AI_PROFILES,
+        ENEMY_MISSILE_PROFILES, SHIP_TYPES, GROUND_TYPES, WORLD_PRESETS, MISSIONS,
+        ENEMY_ROLES, SKILL_TIERS
+      }
+    };
+
+    // Every payload runs through here so that a throw names the payload that
+    // threw. A payload that fails registration takes the page down on purpose:
+    // half-registered content is worse than a hard stop at boot.
+    function applyPayload(register, name) {
+      const label = name || register.name || "anonymous";
+      if (typeof register !== "function") throw new Error(`[payload] ${label}: expected a function`);
+      try {
+        register(payloadContext);
+      } catch (error) {
+        console.error(`[payload] ${label} failed to register:`, error);
+        throw error;
+      }
+      APPLIED_PAYLOADS.push(label);
+    }
+    const APPLIED_PAYLOADS = [];
+
+    // Re-derives everything computed from a registry table, then freezes the
+    // tables so nothing can register after this point. Called exactly once,
+    // below the payload block.
+    function finalizeRegistries() {
+      // Derived from ENEMY_AI_PROFILES x AIRCRAFT_TYPES, built before payloads ran.
+      ENEMY_TYPES = buildEnemyTypes();
+      // Derived from MISSIONS.
+      ACT_OPENER_KEYS = buildActOpenerKeys();
+      // `campaignMissionIndices` and `window.__game.missionTable` are NOT
+      // rebuilt here: both are initialised further down the module body, i.e.
+      // after this call, so they already see the post-payload MISSIONS. Calling
+      // rebuildCampaignMissionIndices() from here would in fact throw, since
+      // its `let` is still in the temporal dead zone at this point.
+      Object.freeze(ENEMY_ROLES);
+      Object.freeze(SKILL_TIERS);
+      Object.freeze(ACE_PROFILES);
+      Object.freeze(AIRCRAFT_ORDER);
+      Object.freeze(AIRCRAFT_TYPES);
+      Object.freeze(ENEMY_AI_PROFILES);
+      Object.freeze(ENEMY_MISSILE_PROFILES);
+      Object.freeze(SHIP_TYPES);
+      Object.freeze(GROUND_TYPES);
+      Object.freeze(WORLD_PRESETS);
+      Object.freeze(MISSIONS);
+      Object.freeze(payloadContext);
+    }
+
+    // The snapshot tools/registry_gate.mjs diffs against. Keys only, never
+    // values: the accident being guarded against is a key that DISAPPEARED in a
+    // merge, and a key-structure diff is the smallest thing that catches it
+    // while staying quiet about every legitimate balance tweak.
+    function registrySnapshot() {
+      const keyPaths = (value, prefix, sink, depth) => {
+        if (!value || typeof value !== "object" || depth > 3) return sink;
+        if (Array.isArray(value)) { sink.push(`${prefix}[]`); return sink; }
+        for (const field of Object.keys(value).sort()) {
+          const at = prefix ? `${prefix}.${field}` : field;
+          sink.push(at);
+          keyPaths(value[field], at, sink, depth + 1);
+        }
+        return sink;
+      };
+      const shapeOf = (table) => Object.fromEntries(
+        Object.keys(table).sort().map((key) => [key, keyPaths(table[key], "", [], 0)])
+      );
+      return {
+        ENEMY_ROLES: shapeOf(ENEMY_ROLES),
+        SKILL_TIERS: shapeOf(SKILL_TIERS),
+        ACE_PROFILES: shapeOf(ACE_PROFILES),
+        AIRCRAFT_TYPES: shapeOf(AIRCRAFT_TYPES),
+        ENEMY_AI_PROFILES: shapeOf(ENEMY_AI_PROFILES),
+        ENEMY_MISSILE_PROFILES: shapeOf(ENEMY_MISSILE_PROFILES),
+        ENEMY_TYPES: shapeOf(ENEMY_TYPES),
+        SHIP_TYPES: shapeOf(SHIP_TYPES),
+        GROUND_TYPES: shapeOf(GROUND_TYPES),
+        WORLD_PRESETS: shapeOf(WORLD_PRESETS),
+        AIRCRAFT_ORDER: [...AIRCRAFT_ORDER],
+        MISSIONS: Object.fromEntries(MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)]))
+      };
+    }
+
+    // ==== @PAYLOADS:BEGIN ====
+    // ==== @PAYLOADS:END ====
+
+    // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
+    // imports each module and runs its default export through the same ctx the
+    // spliced payloads use, so a branch can verify its payload against the real
+    // game before anything is written into this file. Absent from a normal load.
+    const payloadQuery = new URLSearchParams(location.search).get("payloads");
+    if (payloadQuery) {
+      for (const spec of payloadQuery.split(",").map((entry) => entry.trim()).filter(Boolean)) {
+        const module = await import(new URL(spec, location.href).href);
+        if (typeof module.default !== "function") {
+          throw new Error(`[payload] ${spec}: module has no default-exported register(ctx) function`);
+        }
+        applyPayload(module.default, spec);
+      }
+    }
+
+    finalizeRegistries();
+
+    window.__REGISTRY_SNAPSHOT__ = registrySnapshot();
+    window.__APPLIED_PAYLOADS__ = [...APPLIED_PAYLOADS];
+    // ==== end payload registry ===============================================
 
     let currentMissionIndex = 0;
     let missionWaveIndex = 0;
