@@ -2826,6 +2826,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // authored before this existed still counts toward ACCOMPLISHED.
         tgt: entry.tgt !== false,
         label: entry.label || null,
+        // Naval only. null = the task-force screen every fleet has always
+        // spawned in; "convoy" is a merchant column with its escorts on the
+        // flanks. See spawnNavalWave.
+        formation: entry.formation || null,
         // Spawns together with the wave before it instead of waiting for that
         // wave to be cleared. Escorts and CAP have to be on the board while
         // their charges are, or they are not escorting anything.
@@ -3255,6 +3259,25 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         damage: 98,
         life: 10,
         launchDot: -1
+      }),
+      // Missile boat's point-defence SAM - the weakest launcher afloat. The
+      // spec's headline "speed 420" is the round's flight speed, i.e. maxSpeed:
+      // slowest of every surface launcher (Aegis 545, SAM site 520, frigate
+      // 470). `speed` stays on the shared cold-launch idiom - everything that
+      // leaves a deck comes off the rail slowly and is then tipped over by
+      // guidance. A 14-20s gap between shots is nearly three times the Aegis',
+      // which is what makes a pack of boats a gun target rather than a SAM trap.
+      missileBoat: Object.freeze({
+        cooldownMin: 14.0,
+        cooldownSpread: 6.0,
+        range: 1100,
+        minRange: 200,
+        speed: 165,
+        maxSpeed: 420,
+        turnRate: THREE.MathUtils.degToRad(40),
+        damage: 98,
+        life: 8.0,
+        launchDot: -1
       })
     });
 
@@ -3342,6 +3365,79 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         radarColor: "#ff8a6a",
         tracerColor: 0xff9a52,
         explosionColor: 0xffb648
+      }),
+      // Missile boat (M9 batch 8). 40m of hull doing 25 m/s - the fastest thing
+      // on the water by a factor of two, and the only one that does not steam in
+      // a straight line: `zigzag` slaloms it +/-35deg off its base course, which
+      // is what makes a gun pass on one an actual aiming problem.
+      //
+      // HP 98 = exactly one missile, so the pack dies to the tubes the player
+      // already carries. What it gives up for that is everything defensive:
+      // no CIWS mount, one AA barrel at a third of the Aegis' hit chance, and a
+      // SAM that reloads three times slower than the fleet's. Closing to gun
+      // range is the intended answer, and the design has to reward it.
+      missileBoat: Object.freeze({
+        key: "missileBoat",
+        surface: true,
+        // Screens the convoy rather than being the convoy - see the naval
+        // spawner's `convoy` formation, which reads this to pick the flanks.
+        escort: true,
+        label: "MSL BOAT",
+        role: "Missile Patrol Boat",
+        hp: 98,
+        cruiseSpeed: 25,
+        turnRate: THREE.MathUtils.degToRad(10),
+        hitRadius: 26,
+        crash: Object.freeze({ halfLen: 20, halfBeam: 5, top: 8 }),
+        hitBox: Object.freeze({ x: 9, y: 14, z: 42 }),
+        sinkDepth: 12,
+        blastSpread: 15,
+        smokeOffset: 1,
+        smokeHeight: 7,
+        sternOffset: 19,
+        bowOffset: 20,
+        // Slalom: amplitude off `baseHeading`, one full period every `period`
+        // seconds. Each hull carries its own phase (`seed`), so a pack of them
+        // weaves out of step instead of moving as one rigid body.
+        zigzag: Object.freeze({ amplitude: THREE.MathUtils.degToRad(35), period: 11 }),
+        // Box launchers amidships, not a fore-and-aft VLS field: the fleet's
+        // default +38/-32m offsets would put the round off the bow of a hull
+        // this short.
+        vls: Object.freeze({ fore: 5, aft: -9, height: 7 }),
+        aaMounts: Object.freeze([-7]),
+        aaHeight: 5,
+        aa: Object.freeze({ range: 460, cooldownMin: 1.1, cooldownSpread: 0.9, damage: 7, maxHitChance: 0.08, tracers: 1 }),
+        radarColor: "#ffd08a",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
+      }),
+      // Merchant hull for the convoy mission. Completely passive: no `aa`, no
+      // entry in ENEMY_MISSILE_PROFILES, nothing that shoots back. HP 196 = two
+      // missiles, so three of them are a six-round job on their own - the time
+      // pressure in CONVOY BREAK is the escort, not the freighters.
+      cargo: Object.freeze({
+        key: "cargo",
+        surface: true,
+        label: "CARGO",
+        role: "Cargo Transport",
+        hp: 196,
+        cruiseSpeed: 9,
+        turnRate: THREE.MathUtils.degToRad(2),
+        hitRadius: 60,
+        crash: Object.freeze({ halfLen: 62, halfBeam: 12, top: 18 }),
+        hitBox: Object.freeze({ x: 22, y: 30, z: 126 }),
+        sinkDepth: 26,
+        blastSpread: 30,
+        // Engines and funnel are right aft on a freighter, so the damage plume
+        // comes off the stern rather than off a midships superstructure.
+        smokeOffset: -34,
+        smokeHeight: 20,
+        sternOffset: 58,
+        bowOffset: 60,
+        aa: null,
+        radarColor: "#ffe0a8",
+        tracerColor: 0xffb04a,
+        explosionColor: 0xffa348
       })
     });
 
@@ -3761,6 +3857,103 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
             distance: [1200, 3000]
           }
         }
+      },
+
+      // Storm map (M9 batch 8). The first preset built around taking visibility
+      // AWAY: fog closes to 2.2km, there is no sun and no glint road, and the
+      // cloud decks are doubled and dropped to half altitude so the lid sits
+      // just over the fight. Everything the other maps use to give the player a
+      // horizon reference is deliberately gone - what is left is the weather.
+      //
+      // Two systems are unique to it, both declared here and driven by
+      // updateWorld: `rain` (camera-space streaks) and `lightning` (a scheduled
+      // flash on the key light plus a sky wash and delayed thunder). Neither
+      // touches gameplay - no damage, no lock, no AI input. The storm is set
+      // dressing with teeth only in how hard it is to see.
+      stormFront: {
+        label: "STORM FRONT",
+        clearColor: 0x525d68,
+        // Iron, not blue. The band at the horizon (stop 0.5) is the LIGHTEST
+        // part of the dome - a bright overcast base under a black lid, which is
+        // what a squall line actually looks like from underneath.
+        sky: [[0, "#0b1015"], [0.3, "#1e262f"], [0.44, "#39444f"], [0.5, "#5b6773"], [0.58, "#333c45"], [1, "#12171c"]],
+        fog: { color: 0x5a6570, near: 380, far: 2200 },
+        sun: null,
+        moon: null,
+        stars: null,
+        // No sun means no glint road: an additive streak on this water would
+        // read as a spotlight with nothing casting it.
+        sunRoad: null,
+        // Angry water. The speckle count and alpha are pushed well past every
+        // other map (900 at 1.0) so the surface is all broken white crests, and
+        // the drift runs at 1.6x - the sea itself is moving, not just the boat
+        // over it.
+        ocean: {
+          base: "#0e1b22", bright: "158, 178, 192", dark: "2, 8, 12",
+          repeat: 26, roughness: 0.52, metalness: 0.16,
+          speckleCount: 1500, speckleAlpha: 1.85, drift: 1.6
+        },
+        // Flat, sourceless overcast light. `key` is the light the lightning
+        // drives, so its base intensity is deliberately low - a 3.2x boost off
+        // 0.75 has to read as a flash, and off 3.2 it would not.
+        lights: {
+          hemi: { sky: 0x707e8b, ground: 0x0d1319, intensity: 1.15 },
+          key: { color: 0xa8bccd, intensity: 0.75, position: [-700, 950, -1500] },
+          fill: { color: 0x3d5165, intensity: 0.4, position: [600, 260, 900] }
+        },
+        // Close in, unlike every other map: at fog far 2200 the usual 2.6-3.9km
+        // ring is pure haze. These sit just inside the murk so they loom.
+        mountains: {
+          count: 3, radius: [190, 330], height: [130, 240], distance: [1500, 2100],
+          snowyAbove: 9999, snowLine: 0.7, roughness: 0.95,
+          palette: { low: 0x2a3138, mid: 0x333b43, rock: 0x3d454e, peak: 0x474f58, snow: 0x8a95a0 },
+          corridor: null, plateau: null
+        },
+        islands: { count: 4, stone: 0x252c33, green: 0x232a2c },
+        // Double the count (spec) at just over half the altitude: the decks come
+        // down to ~165-375m and ~495-760m, which is squarely in the fight.
+        clouds: {
+          scale: 2, hero: true, deckScale: 0.55, color: 0x59636f, opacity: 0.74,
+          cirrusColor: 0x38414a, cirrusOpacity: 0.22
+        },
+        rain: {
+          count: 200, box: { x: 30, y: 22, near: -1.5, far: -48 },
+          fall: 190, length: [3.2, 7.5], color: 0xa8bccb, opacity: 0.36
+        },
+        lightning: {
+          intervalMin: 4, intervalMax: 9,
+          // Spec: 80ms at 3.2x on the directional light, plus a sky wash. The
+          // strike also re-aims the key light to a random bearing, so the flash
+          // comes from somewhere new each time instead of always lighting the
+          // same side of the player's aircraft.
+          flash: 0.08, lightBoost: 3.2, skyFlash: 0.5,
+          // Sound lags light. 0.4s is about 140m of "distance", which is close
+          // enough to be a crack rather than a rumble - this is inside the front.
+          thunderDelay: 0.4
+        },
+        decor: {
+          seed: 0x5e2b07,
+          // m-storm is an air mission, but the fence costs nothing and keeps a
+          // future naval wave on this map out of the scenery, same as the other
+          // open-water presets.
+          keepClear: [{ x: 0, z: 0, r: 2400 }],
+          extraIslands: {
+            count: 8, radius: [140, 320], height: [36, 96], distance: [1300, 2100]
+          },
+          // Barely there: no sun to light a beach, and the surf is the only
+          // thing that would catch what light there is.
+          shore: { sand: 0x4a545e, shallow: 0x27333c, opacity: 0.3, width: 1.22 },
+          trees: null,
+          rocks: { count: 22, color: 0x1e252b, scale: [9, 28] },
+          // The squall line itself: a heavy low shelf of stratus close in, plus
+          // a few build-ups. stratusBase sits under the base decks so the sky
+          // has a floor to it from any altitude the player fights at.
+          extraClouds: {
+            towers: 6, towerSize: [100, 170], towerBase: 380,
+            stratus: 16, stratusSize: [200, 360], stratusBase: 640,
+            distance: [900, 2200]
+          }
+        }
       }
     });
 
@@ -3972,6 +4165,75 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         introRadio: [
           { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
           { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
+        ]
+      },
+      {
+        key: "m-convoy",
+        world: "sunsetOcean",
+        title: "CONVOY BREAK",
+        jp: "敵補給船団を捕捉。護衛のミサイル艇を排除し、輸送船もろとも撃沈せよ。",
+        // The anti-fleet mission inverted. FLEET DESTRUCTION is five hulls that
+        // all shoot back and the answer is stand-off missiles; this is three
+        // that cannot shoot at all, screened by three that die to a single
+        // round each. Nothing here carries a CIWS, so the gun is live the whole
+        // sortie - which is the point of fielding the boats.
+        //
+        // Every hull is a designated target (`殲滅`), so the escort is not a
+        // bonus contact the way m03's CAP is. Six kills: 3 x 196 + 3 x 98.
+        sequence: [
+          {
+            kind: "naval",
+            fleet: ["cargo", "missileBoat", "cargo", "missileBoat", "cargo", "missileBoat"],
+            formation: "convoy",
+            band: 3,
+            label: "ENEMY CONVOY",
+            radio: [
+              { speaker: "command", text: "水上に反応6——敵補給船団だ。輸送船3、護衛のミサイル艇3。全て沈めろ。", id: "m-convoy-inbound" },
+              { speaker: "wingman", text: "艇は小さいが速い、しかもジグザグに逃げる。CIWSは積んでない——機銃で削れるぞ！", id: "m-convoy-brief" }
+            ]
+          }
+        ],
+        // Six hulls, and the three that matter are 2-missile jobs. Par assumes
+        // the boats go down to guns and the freighters to the tubes, with the
+        // slaloming escorts costing a couple of extra passes.
+        parTime: 300,
+        hasOutro: false,
+        map: { x: 0.62, y: 0.44 },
+        briefing: "敵の補給船団を洋上で捕捉した。輸送船3隻、護衛にミサイル艇が3隻。\n輸送船は非武装だ——だが頑丈で、1隻あたりミサイル2発は要る。\nミサイル艇は一撃で沈むが、ジグザグに走って狙いを外させてくる。\n奴らにCIWSは無い。接近しての機銃掃射が最も速い。\nSAMは撃ってくるぞ。発射煙を見たらフレアを焚いて回避しろ。\n船団を全て沈めれば作戦完了だ。"
+      },
+      {
+        key: "m-storm",
+        world: "stormFront",
+        title: "STORM INTERCEPT",
+        jp: "雷雨の前線で敵爆撃編隊を迎撃。視界は最悪、護衛のF-15に注意しろ。",
+        // The visibility mission. Fog closes to 2.2km on this map, so contacts
+        // arrive out of the murk with almost no warning and the HUD marker is
+        // doing far more of the work than the eye is - which is exactly what
+        // the storm is for.
+        //
+        // Spec asked for transport x2 here. That airframe is batch 7 and is not
+        // in this branch, so the heavy slot is flown by the bomber instead: same
+        // role in the fight (a slow, tough, non-manoeuvring target the escort
+        // has to be peeled off), and it already exists. Swap the two type names
+        // once the transport lands if the slower, unarmed version is wanted.
+        sequence: [
+          { types: ["bomber", "bomber"], band: 1, label: "BOMBER" },
+          {
+            types: ["f15", "f15"], tgt: false, band: 2, label: "ESCORT", concurrent: true,
+            radio: [
+              { speaker: "wingman", text: "護衛のF-15が2機、雲から出てきた！ 見失うなよ——この視界だ、一度切れたら終わりだぞ！", id: "m-storm-escort-inbound" }
+            ]
+          }
+        ],
+        // Longer than m-intercept's 260 despite being a third of the contacts:
+        // finding them in this weather is most of the clock.
+        parTime: 250,
+        hasOutro: false,
+        map: { x: 0.12, y: 0.68 },
+        briefing: "前線の真下だ。雷雨、視界は2km を切っている。\nその中を敵の重爆撃編隊が抜けようとしている——大型機2、護衛にF-15が2。\n目視は当てにするな。レーダーとHUDのマーカーで捕捉しろ。\n雷は演出だ、機体には影響しない——だが閃光で目をやられるな。\n指定目標は爆撃機のみ。護衛は無視して構わない。",
+        introRadio: [
+          { speaker: "command", text: "嵐の中だ。敵重爆編隊が前線に紛れて侵入中——見つけ出して叩き落とせ。", id: "m-storm-brief" },
+          { speaker: "wingman", text: "ひどい天気だ……視界が全く無い。レーダーから目を離すなよ！", id: "m-storm-brief-wing" }
         ]
       }
     ].map((mission) => {
@@ -4312,6 +4574,37 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     windStreaks.frustumCulled = false;
     windStreaks.renderOrder = 9;
     camera.add(windStreaks);
+
+    // Storm rain (M9 batch 8). Same device as the wind streaks - short lines
+    // parented to the camera, one draw call for the lot - with one difference
+    // that matters: the streaks run along WORLD down, not along the camera's
+    // own axis. Rain that pivots with the airframe reads as a screen overlay;
+    // rain that stays vertical while the aircraft rolls reads as weather.
+    //
+    // Built once at boot and parked invisible. Only a preset that declares
+    // `rain` ever switches it on, so every other map pays nothing for it.
+    const RAIN_COUNT = 200;
+    const rainPositions = new Float32Array(RAIN_COUNT * 6);
+    const rainDrops = [];
+    for (let i = 0; i < RAIN_COUNT; i += 1) rainDrops.push({ x: 0, y: 0, z: 0, len: 4 });
+    const rainGeometry = new THREE.BufferGeometry();
+    const rainAttribute = new THREE.BufferAttribute(rainPositions, 3);
+    rainAttribute.setUsage(THREE.DynamicDrawUsage);
+    rainGeometry.setAttribute("position", rainAttribute);
+    const rainMaterial = new THREE.LineBasicMaterial({
+      color: 0xa8bccb, transparent: true, opacity: 0, depthWrite: false, fog: false
+    });
+    const rainStreaks = new THREE.LineSegments(rainGeometry, rainMaterial);
+    rainStreaks.frustumCulled = false;
+    rainStreaks.renderOrder = 8;
+    rainStreaks.visible = false;
+    camera.add(rainStreaks);
+    // Drops are placed the first frame the rain is live, because the box they
+    // fill is a property of the preset, not of the pool.
+    let rainSeeded = false;
+    // Lightning schedule for the live map. `timer` counts down to the next
+    // strike, `flash` is what is left of the current one.
+    const lightningState = { timer: 0, flash: 0, strikes: 0 };
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x6698b2, 1);
@@ -5030,6 +5323,27 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           return true;
         },
         worldPresets: () => Object.keys(WORLD_PRESETS),
+        // Storm map. `forceLightning` fires a strike now so a screenshot gate
+        // can catch the flash instead of waiting out a 4-9s random interval;
+        // the probe reports what the weather is actually doing.
+        forceLightning: () => triggerLightning(),
+        weatherProbe: () => ({
+          preset: world.preset,
+          rain: world.rain
+            ? { count: world.rain.count, opacity: Number(rainMaterial.opacity.toFixed(4)), visible: rainStreaks.visible }
+            : null,
+          lightning: world.lightning
+            ? {
+              nextIn: Number(lightningState.timer.toFixed(3)),
+              flash: Number(lightningState.flash.toFixed(4)),
+              strikes: lightningState.strikes,
+              keyIntensity: Number(world.keyLight.intensity.toFixed(3)),
+              baseIntensity: world.keyLightIntensity,
+              skyFlash: world.skyFlash ? Number(world.skyFlash.material.opacity.toFixed(4)) : null
+            }
+            : null,
+          oceanDrift: world.oceanDrift
+        }),
         worldMountains: () => world.mountains.map((mountain) => ({
           x: mountain.x, z: mountain.z, r: mountain.r, h: mountain.h
         })),
@@ -7562,9 +7876,13 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           // group origin, so the round leaves 6m up instead of off a deck.
           root.position.copy(enemy.group.position).addScaledVector(WORLD_UP, 6);
         } else {
+          // Cell-field geometry is per hull. The defaults are the numbers the
+          // fleet has always launched from (fore/aft VLS on a 135-155m hull);
+          // a spec supplies its own when its launchers are somewhere else.
+          const cells = enemy.spec.vls;
           root.position.copy(enemy.group.position)
-            .addScaledVector(tmpV2, enemy.vlsSide > 0 ? 38 : -32)
-            .addScaledVector(WORLD_UP, 13);
+            .addScaledVector(tmpV2, enemy.vlsSide > 0 ? (cells ? cells.fore : 38) : (cells ? cells.aft : -32))
+            .addScaledVector(WORLD_UP, cells ? cells.height : 13);
         }
         root.quaternion.setFromUnitVectors(LOCAL_FORWARD, WORLD_UP);
         for (let puff = 0; puff < 7; puff += 1) {
@@ -8405,17 +8723,49 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       // Escorts ride alternating beams, one rank further out each pair, so a
       // fleet of any size stays a screen around the capital ship. The first
       // three positions are identical to the hand-written ones this replaced.
+      //
+      // `across` runs along the fleet's own line of travel (fleetHeading is the
+      // player's bearing turned 90deg), so spreading on it is line astern and
+      // spreading on tmpV1 is abeam. Both layouts below are written in those
+      // two vectors rather than in a heading, which keeps them independent of
+      // the yaw convention.
       const positions = [];
-      for (let i = 0; i < fleet.length; i += 1) {
-        if (i === 0) {
-          positions.push(center.clone());
-          continue;
+      if (wave.formation === "convoy") {
+        // Merchant column with its screen out on the flanks: the freighters
+        // steam nose-to-tail down the middle and the boats weave along either
+        // beam. A convoy laid out in the task-force screen reads as a fleet
+        // with an odd centre ship, which is the whole thing this avoids - the
+        // player has to fly the length of the column to work it.
+        const escorts = fleet.map((type) => Boolean(SHIP_TYPES[type] && SHIP_TYPES[type].escort));
+        const columnCount = Math.max(1, escorts.filter((isEscort) => !isEscort).length);
+        const screenCount = Math.max(1, escorts.filter((isEscort) => isEscort).length);
+        let columnSlot = 0;
+        let screenSlot = 0;
+        for (let i = 0; i < fleet.length; i += 1) {
+          if (escorts[i]) {
+            const side = screenSlot % 2 === 0 ? -1 : 1;
+            positions.push(center.clone()
+              .addScaledVector(across, (screenSlot - (screenCount - 1) / 2) * 330)
+              .addScaledVector(tmpV1, side * 430));
+            screenSlot += 1;
+          } else {
+            positions.push(center.clone()
+              .addScaledVector(across, (columnSlot - (columnCount - 1) / 2) * 300));
+            columnSlot += 1;
+          }
         }
-        const side = i % 2 === 1 ? -1 : 1;
-        const rank = Math.ceil(i / 2);
-        positions.push(center.clone()
-          .addScaledVector(across, side * 430 * rank)
-          .addScaledVector(tmpV1, (side < 0 ? 150 : -170) * rank));
+      } else {
+        for (let i = 0; i < fleet.length; i += 1) {
+          if (i === 0) {
+            positions.push(center.clone());
+            continue;
+          }
+          const side = i % 2 === 1 ? -1 : 1;
+          const rank = Math.ceil(i / 2);
+          positions.push(center.clone()
+            .addScaledVector(across, side * 430 * rank)
+            .addScaledVector(tmpV1, (side < 0 ? 150 : -170) * rank));
+        }
       }
       for (const position of positions) {
         for (const mountain of world.mountains) {
@@ -8473,22 +8823,31 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const band = wave.band || waveNumber;
       if (wave.kind === "naval") {
         spawnNavalWave(wave, idBase);
-        if (first) showBanner("WAVE 1 · ENEMY FLEET AHEAD", 2.2);
-        else showBanner(`WAVE ${waveNumber} · ENEMY FLEET DETECTED`, 2.2, "danger");
-        triggerRadioLine(
-          "command",
-          "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
-          RADIO_PRIORITY.NORMAL,
-          "wave-naval-inbound"
-        );
-        triggerRadioLine(
-          "wingman",
-          first
-            ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
-            : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
-          RADIO_PRIORITY.NORMAL,
-          "wave-naval-brief"
-        );
+        const navalLabel = wave.label || "ENEMY FLEET";
+        if (first) showBanner(`WAVE 1 · ${navalLabel} AHEAD`, 2.2);
+        else showBanner(`WAVE ${waveNumber} · ${navalLabel} DETECTED`, 2.2, "danger");
+        // The default pair names the carrier group by composition, which is
+        // only true of the task force. A wave that fields anything else - the
+        // convoy - authors its own lines instead of being announced as five
+        // ships it does not have.
+        if (wave.radio) {
+          for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+        } else {
+          triggerRadioLine(
+            "command",
+            "レーダーに水上反応。敵艦隊だ——空母1、イージス艦2、フリゲート2。対艦攻撃に移れ。",
+            RADIO_PRIORITY.NORMAL,
+            "wave-naval-inbound"
+          );
+          triggerRadioLine(
+            "wingman",
+            first
+              ? "イージスのSAMは垂直発射だ——甲板から煙が立ったら回避機動！ フリゲートは単装ランチャー、脅威度は低い！"
+              : "補給ラインを通過、ミサイルはフルだ。イージスのSAMに気をつけろ——甲板から煙が立ったら回避機動！",
+            RADIO_PRIORITY.NORMAL,
+            "wave-naval-brief"
+          );
+        }
       } else {
         const withAce = wave.ace;
         spawnWave(wave, band, idBase);
@@ -9028,10 +9387,22 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
       enemy.baseHeading += THREE.MathUtils.clamp(headingDelta, -spec.turnRate * dt, spec.turnRate * dt);
 
+      // Slalom, for hulls that own a `zigzag` profile. It is an offset laid over
+      // `baseHeading` rather than a change to it, so the avoidance steering
+      // above still owns the boat's mean course - it weaves about the line it
+      // is told to hold instead of wandering off it. `seed` is per hull, so a
+      // pack weaves out of phase. Movement follows for free: forwardOf() is
+      // read from the rotation this writes.
+      const zigzag = spec.zigzag;
+      const weave = zigzag
+        ? Math.sin(time * (Math.PI * 2 / zigzag.period) + enemy.seed) * zigzag.amplitude
+        : 0;
       enemy.group.rotation.set(
         Math.sin(time * 0.41 + enemy.seed) * 0.006,
-        enemy.baseHeading + Math.sin(time * 0.23 + enemy.seed) * 0.015,
-        Math.sin(time * 0.57 + enemy.seed) * 0.01
+        enemy.baseHeading + weave + Math.sin(time * 0.23 + enemy.seed) * 0.015,
+        // Heel outward through the weave - a hull this small leans into a hard
+        // rudder, and the roll is what sells the turn at a distance.
+        Math.sin(time * 0.57 + enemy.seed) * 0.01 - weave * 0.22
       );
       forwardOf(enemy.group, tmpV4);
       enemy.group.position.x += tmpV4.x * enemy.speed * dt;
@@ -9054,10 +9425,14 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         enemy.wakeTimer += 0.1;
       }
 
-      enemy.aaCooldown -= dt;
-      if (enemy.aaCooldown <= 0) {
-        shipAaBurst(enemy);
-        enemy.aaCooldown = spec.aa.cooldownMin + Math.random() * spec.aa.cooldownSpread;
+      // Unarmed hulls exist as of the convoy (`cargo` carries aa: null), so the
+      // gun is no longer something every ship is assumed to have.
+      if (spec.aa) {
+        enemy.aaCooldown -= dt;
+        if (enemy.aaCooldown <= 0) {
+          shipAaBurst(enemy);
+          enemy.aaCooldown = spec.aa.cooldownMin + Math.random() * spec.aa.cooldownSpread;
+        }
       }
 
       if (ENEMY_MISSILE_PROFILES[enemy.type]) {
@@ -9988,11 +10363,157 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // texture.
     let oceanDriftU = 0;
     let oceanDriftV = 0;
+    // ---- Weather (M9 batch 8) -------------------------------------------------
+    // Rain and lightning. Both are declared by the preset and both are pure
+    // presentation: they deal no damage, break no lock, and feed nothing into
+    // the AI. A map that declares neither runs none of this.
+
+    const rainDir = new THREE.Vector3();
+    const rainCamQuat = new THREE.Quaternion();
+
+    function updateRain(dt) {
+      const rain = world.rain;
+      // Only while flying: the streaks are camera children, so they would
+      // otherwise hang over the hangar and the mission select as well.
+      const active = Boolean(rain) && gameState === STATE_PLAYING;
+      rainMaterial.opacity = THREE.MathUtils.lerp(
+        rainMaterial.opacity, active ? rain.opacity : 0, damping(0.02, dt)
+      );
+      rainStreaks.visible = rainMaterial.opacity > 0.005;
+      if (!rain || !rainStreaks.visible) return;
+
+      const box = rain.box;
+      const spanX = box.x * 2;
+      const spanY = box.y * 2;
+      const spanZ = box.near - box.far;
+      const used = Math.min(RAIN_COUNT, rain.count || RAIN_COUNT);
+      if (!rainSeeded) {
+        for (let i = 0; i < used; i += 1) {
+          const drop = rainDrops[i];
+          drop.x = (Math.random() - 0.5) * spanX;
+          drop.y = (Math.random() - 0.5) * spanY;
+          drop.z = box.far + Math.random() * spanZ;
+          drop.len = rain.length[0] + Math.random() * (rain.length[1] - rain.length[0]);
+        }
+        rainGeometry.setDrawRange(0, used * 2);
+        rainSeeded = true;
+      }
+
+      // World-down rotated into camera space, then pushed backward by the
+      // aircraft's own speed: at cruise the rain slants, at boost it comes at
+      // the canopy nearly flat. That shear is most of the sense of speed the
+      // effect carries, and it costs one quaternion inverse per frame.
+      rainCamQuat.copy(camera.quaternion).invert();
+      rainDir.set(0, -1, 0).applyQuaternion(rainCamQuat);
+      rainDir.z += THREE.MathUtils.clamp(playerSpeed / rain.fall, 0, 3.2);
+      const rush = rainDir.length() || 1;
+      rainDir.multiplyScalar(1 / rush);
+      const step = rain.fall * rush * dt;
+      const stretch = THREE.MathUtils.clamp(rush, 1, 3.4);
+
+      for (let i = 0; i < used; i += 1) {
+        const drop = rainDrops[i];
+        drop.x += rainDir.x * step;
+        drop.y += rainDir.y * step;
+        drop.z += rainDir.z * step;
+        // Toroidal wrap inside the box, deliberately direction-agnostic:
+        // `rainDir` swings through every orientation as the aircraft rolls, so
+        // a "respawn on the upstream face" rule would have to work out which
+        // face that is. Wrapping does not need to know, and a drop carries no
+        // identity for the seam to give away.
+        if (drop.x > box.x) drop.x -= spanX; else if (drop.x < -box.x) drop.x += spanX;
+        if (drop.y > box.y) drop.y -= spanY; else if (drop.y < -box.y) drop.y += spanY;
+        if (drop.z > box.near) drop.z -= spanZ; else if (drop.z < box.far) drop.z += spanZ;
+        const len = drop.len * stretch;
+        const offset = i * 6;
+        rainPositions[offset] = drop.x;
+        rainPositions[offset + 1] = drop.y;
+        rainPositions[offset + 2] = drop.z;
+        rainPositions[offset + 3] = drop.x - rainDir.x * len;
+        rainPositions[offset + 4] = drop.y - rainDir.y * len;
+        rainPositions[offset + 5] = drop.z - rainDir.z * len;
+      }
+      rainAttribute.needsUpdate = true;
+    }
+
+    // One strike: the key light jumps to `lightBoost` from a fresh bearing, the
+    // sky dome washes out, and thunder follows `thunderDelay` later. Also the
+    // dev hook's entry point, so a screenshot gate can catch a flash on demand
+    // instead of waiting out a 4-9s random interval.
+    function triggerLightning() {
+      const config = world.lightning;
+      if (!config) return false;
+      lightningState.flash = config.flash;
+      lightningState.strikes += 1;
+      lightningState.timer = config.intervalMin + Math.random() * (config.intervalMax - config.intervalMin);
+      // Same elevation, new bearing. Successive strikes lighting the aircraft
+      // from different sides is what stops the effect reading as a brightness
+      // pulse on a static scene.
+      const light = world.keyLight;
+      if (light) {
+        const bearing = Math.random() * Math.PI * 2;
+        light.position.set(
+          Math.cos(bearing) * world.keyLightRadius,
+          world.keyLightHeight,
+          Math.sin(bearing) * world.keyLightRadius
+        );
+      }
+      // Thunder, on the existing tone bench: a long low sawtooth body, a
+      // sub-bass under it and a short crack on top. playTone owns the delay, so
+      // the lag is scheduled in the audio clock rather than on a game timer.
+      playTone(46 + Math.random() * 14, 1.5, 0.1, "sawtooth", config.thunderDelay);
+      playTone(31 + Math.random() * 8, 2.1, 0.075, "triangle", config.thunderDelay + 0.04);
+      playTone(88 + Math.random() * 26, 0.5, 0.055, "square", config.thunderDelay + 0.02);
+      return true;
+    }
+
+    function updateLightning(dt) {
+      const config = world.lightning;
+      if (!config) return;
+      // The schedule only runs in flight - no thunder over the menus.
+      if (gameState === STATE_PLAYING) {
+        lightningState.timer -= dt;
+        if (lightningState.timer <= 0) triggerLightning();
+      }
+      if (lightningState.flash > 0) lightningState.flash = Math.max(0, lightningState.flash - dt);
+      const remaining = config.flash > 0 ? lightningState.flash / config.flash : 0;
+      // Squared decay: a strike is a spike with a tail, not a linear fade.
+      const level = remaining * remaining;
+      if (world.keyLight) {
+        world.keyLight.intensity = world.keyLightIntensity * (1 + (config.lightBoost - 1) * level);
+      }
+      if (world.skyFlash) {
+        world.skyFlash.material.opacity = config.skyFlash * level;
+        world.skyFlash.visible = world.skyFlash.material.opacity > 0.004;
+      }
+    }
+
+    // Called whenever the live map changes or a sortie restarts: a new sortie
+    // must not inherit the previous one's strike clock or drop layout.
+    function resetWeatherState() {
+      rainSeeded = false;
+      lightningState.flash = 0;
+      lightningState.strikes = 0;
+      const config = world && world.lightning;
+      // Not on frame one: the storm has to be established before it is
+      // punctuated, so the first strike lands at least half an interval in.
+      lightningState.timer = config
+        ? config.intervalMin * 0.5 + Math.random() * (config.intervalMax - config.intervalMin)
+        : 0;
+      if (world && world.skyFlash) {
+        world.skyFlash.material.opacity = 0;
+        world.skyFlash.visible = false;
+      }
+      if (world && world.keyLight) world.keyLight.intensity = world.keyLightIntensity;
+    }
+
     function updateWorld(dt) {
       // Slow wave drift; the plane's own motion over the fixed pattern is the
-      // real speed cue.
-      oceanDriftU += dt * 0.0045;
-      oceanDriftV += dt * 0.0018;
+      // real speed cue. The storm map runs it at 1.6x - on that sea the water
+      // is moving on its own, not just passing under the aircraft.
+      const drift = world.oceanDrift || 1;
+      oceanDriftU += dt * 0.0045 * drift;
+      oceanDriftV += dt * 0.0018 * drift;
 
       // The ocean plane is finite (OCEAN_PLANE_SIZE), so left alone its rim
       // shows up as "the world ends" after ~18s of boost. Snap it under the
@@ -10040,6 +10561,10 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const target = THREE.MathUtils.clamp(veil * 1.5, 0, 0.86);
       cloudVeilLevel = THREE.MathUtils.lerp(cloudVeilLevel, target, damping(0.0012, dt));
       ui.cloudVeil.style.opacity = cloudVeilLevel < 0.01 ? "0" : cloudVeilLevel.toFixed(3);
+
+      // Weather last: both are no-ops unless the live preset declares them.
+      updateRain(dt);
+      updateLightning(dt);
     }
 
     function updateVisualStatus(dt) {
@@ -12855,6 +13380,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const light = makeAircraftMaterial(0xd6dde2, 0.3, 0.45);
       const markings = new THREE.MeshBasicMaterial({ color: 0xf0f5f8 });
       const extraMaterials = [];
+      // Merchant paint. Built only for the hull that uses it and pushed onto the
+      // flash list below, so a hit lights it exactly like every other panel -
+      // the reason it is a standard material and not an `extraMaterials` entry.
+      const rust = kind === "cargo" ? makeAircraftMaterial(0x8d4a33, 0.18, 0.84) : null;
+      const standardMaterials = [hull, deck, house, dark, light];
+      if (rust) standardMaterials.push(rust);
 
       const parts = [];
       const add = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
@@ -12937,6 +13468,68 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         // Aft: low helo deck with the landing circle, no hangar block.
         add(geometry.panel, deck, 0, 8.1, 44, 12.4, 0.7, 26);
         add(geometry.shockRing, markings, 0, 8.55, 46, 5.6, 5.6, 1, -Math.PI / 2);
+      } else if (kind === "missileBoat") {
+        // Fast attack craft, ~40m: a hull two thirds the length of the frigate's
+        // BOW section. At that size the readable silhouette is not detail, it is
+        // proportion - almost no freeboard, one squat bridge well forward, and
+        // two fat canted box launchers amidships that are visibly too big for
+        // the boat carrying them. That last part IS the identity: this thing is
+        // a missile with a hull attached.
+        add(geometry.panel, hull, 0, 2.6, 3, 8, 5.2, 30);
+        add(geometry.shipBow, hull, 0, 2.6, -16.5, 4, 9, 2.6, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 0.6, 3, 8.4, 1.4, 30.5);
+        add(geometry.panel, deck, 0, 5.35, 4, 7.6, 0.5, 26);
+        // Bridge block forward with a lattice-free pole mast - a boat this size
+        // carries a pole and a small plate, not a tower.
+        add(geometry.panel, house, 0, 7, -5, 5, 3.4, 8);
+        add(geometry.panel, dark, 0, 8.85, -5, 5.4, 0.5, 8.4);
+        add(geometry.shipCylinder, dark, 0, 12.4, -3.6, 0.3, 7, 0.3);
+        add(geometry.shipOctPlate, light, 0, 15.9, -3.6, 1.7, 0.35, 1.7);
+        // 76mm mount on the bow.
+        add(geometry.shipCylinder, house, 0, 5.9, -12.5, 1.5, 1.2, 1.5);
+        add(geometry.panel, house, 0, 6.5, -15.4, 0.5, 0.5, 4.4, 0.1);
+        // The launchers: canted up and outboard, one pack per beam.
+        add(geometry.panel, light, -2.8, 7, 6, 2.5, 2.5, 8, -0.34, 0, 0.2);
+        add(geometry.panel, light, 2.8, 7, 6, 2.5, 2.5, 8, -0.34, 0, -0.2);
+        add(geometry.panel, dark, -2.8, 7, 2.2, 2.7, 2.7, 0.5, -0.34, 0, 0.2);
+        add(geometry.panel, dark, 2.8, 7, 2.2, 2.7, 2.7, 0.5, -0.34, 0, -0.2);
+        // Engine box and the single AA barrel aft, matching aaMounts:[-7].
+        add(geometry.panel, house, 0, 6.2, 12.5, 4.4, 2, 5);
+        add(geometry.shipCylinder, light, 0, 6.1, 7, 1.1, 1.4, 1.1);
+        add(geometry.panel, dark, 0, 7.6, 5.5, 0.35, 0.35, 4.2, -0.32);
+      } else if (kind === "cargo") {
+        // Merchant hull, ~126m. Everything about it says "not a warship": a
+        // rust-red slab of a hull with no sheer, a flat cargo deck stacked with
+        // containers, and the whole superstructure crammed right aft behind the
+        // funnel. Read at a kilometre that block-at-the-back profile is the one
+        // thing that separates it from the escorts at a glance, which is what
+        // the mission needs - the freighters are the targets worth missiles.
+        add(geometry.panel, rust, 0, 5.5, 4, 20, 11, 108);
+        add(geometry.shipBow, rust, 0, 5.5, -57, 10, 22, 5.2, -Math.PI / 2);
+        add(geometry.panel, dark, 0, 1, 4, 20.6, 2.4, 109);
+        add(geometry.panel, deck, 0, 11.2, 0, 19.4, 0.7, 100);
+        // Container stacks in the holds. Two rows of three, alternating between
+        // the light and dark paints so the deck reads as cargo rather than as a
+        // flat lid, and kept forward of the bridge block.
+        for (let bay = 0; bay < 3; bay += 1) {
+          const bz = -38 + bay * 26;
+          add(geometry.panel, bay % 2 === 0 ? light : dark, -5.2, 14.2, bz, 8.4, 5.6, 21);
+          add(geometry.panel, bay % 2 === 0 ? dark : light, 5.2, 14.2, bz, 8.4, 5.6, 21);
+          add(geometry.panel, bay % 2 === 0 ? house : light, 0, 19, bz, 15, 4.4, 19);
+        }
+        // Kingpost and derrick forward - the classic break in a merchant's
+        // profile, and it keeps the bow from reading as an empty wedge.
+        add(geometry.shipCylinder, dark, 0, 19, -50, 0.6, 16, 0.6);
+        add(geometry.panel, dark, 0, 24, -46, 0.5, 0.5, 13, 0.45);
+        // Aft block: accommodation, bridge wings, funnel. smokeOffset (-34) puts
+        // the damage plume here, which is where a freighter's machinery is.
+        add(geometry.panel, house, 0, 16.6, 36, 15, 10, 17);
+        add(geometry.panel, dark, 0, 21.4, 33, 15.6, 1.4, 11);
+        add(geometry.panel, house, 0, 23.4, 36, 19.6, 3, 9);
+        add(geometry.panel, dark, 0, 25.2, 36, 20, 0.6, 9.4);
+        add(geometry.panel, dark, 0, 27.6, 45, 6, 9, 7.4);
+        add(geometry.panel, light, 0, 32.4, 45, 6.4, 1.2, 7.8);
+        add(geometry.shipCylinder, dark, 0, 32, 36, 0.34, 8, 0.34);
       } else {
         // Carrier (~330m): full-length flight deck with painted runway decals,
         // starboard island, parked-aircraft clutter and sponsons.
@@ -12966,7 +13559,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return {
         group: root,
         flames: [],
-        standardMaterials: [hull, deck, house, dark, light],
+        standardMaterials,
         flameMaterial: markings,
         extraMaterials
       };
@@ -13760,6 +14353,27 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       };
       addCelestial(preset.sun);
       addCelestial(preset.moon);
+
+      // Lightning's sky wash: a second dome inside the sky group, additive and
+      // normally invisible. Riding in skyGroup means it inherits the "stays at
+      // infinity" behaviour of the sky itself, so the flash washes the whole
+      // vault rather than a patch of it. `visible` is driven per frame by
+      // updateWorld and stays false when nothing is striking, which keeps it off
+      // the draw list entirely on every map that has no lightning.
+      let skyFlash = null;
+      if (preset.lightning) {
+        skyFlash = new THREE.Mesh(
+          keepGeometry(new THREE.SphereGeometry(3560, 24, 12)),
+          keepMaterial(new THREE.MeshBasicMaterial({
+            color: 0xcfe0ff, side: THREE.BackSide, transparent: true, opacity: 0,
+            blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false
+          }))
+        );
+        skyFlash.renderOrder = -98;
+        skyFlash.visible = false;
+        skyFlash.frustumCulled = false;
+        skyGroup.add(skyFlash);
+      }
       addRoot(skyGroup);
 
       // Ocean with a scrolling wave-noise texture (replaces the dev grid as the
@@ -13771,11 +14385,18 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const oceanRng = mulberry32(0x0cea11);
       oceanCtx.fillStyle = preset.ocean.base;
       oceanCtx.fillRect(0, 0, 256, 256);
-      for (let i = 0; i < 900; i += 1) {
+      // Speckle density and strength are per map (the storm's sea is nearly all
+      // broken crest). Both default to the numbers every existing preset was
+      // authored against, and `oceanRng` is a stream of its own that nothing
+      // outside this texture draws from - so changing them here cannot shift
+      // where a mountain, island or cloud lands on any other map.
+      const speckleCount = preset.ocean.speckleCount || 900;
+      const speckleAlpha = preset.ocean.speckleAlpha || 1;
+      for (let i = 0; i < speckleCount; i += 1) {
         const bright = oceanRng() > 0.45;
         oceanCtx.fillStyle = bright
-          ? `rgba(${preset.ocean.bright}, ${0.05 + oceanRng() * 0.1})`
-          : `rgba(${preset.ocean.dark}, ${0.06 + oceanRng() * 0.1})`;
+          ? `rgba(${preset.ocean.bright}, ${(0.05 + oceanRng() * 0.1) * speckleAlpha})`
+          : `rgba(${preset.ocean.dark}, ${(0.06 + oceanRng() * 0.1) * speckleAlpha})`;
         const w = 4 + oceanRng() * 22;
         oceanCtx.fillRect(oceanRng() * 256, oceanRng() * 256, w, 1 + oceanRng() * 2);
       }
@@ -14052,13 +14673,18 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       const lowCount = Math.max(1, Math.round(13 * cloudConfig.scale));
       const midCount = Math.max(1, Math.round(9 * cloudConfig.scale));
       const cirrusCount = Math.max(1, Math.round(7 * cloudConfig.scale));
-      for (let i = 0; i < lowCount; i += 1) buildCluster(300 + rng() * 380, 32 + rng() * 24, 6 + Math.floor(rng() * 4), 0.5);
-      for (let i = 0; i < midCount; i += 1) buildCluster(900 + rng() * 480, 36 + rng() * 26, 5 + Math.floor(rng() * 4), 0.42);
+      // Deck altitude multiplier - the storm map's lid sits at half height. It
+      // scales the y each cluster is placed at and nothing else, so the rng draw
+      // order (and therefore every other map's cloud layout) is untouched; at
+      // the default 1 the arithmetic is identity.
+      const deckScale = cloudConfig.deckScale || 1;
+      for (let i = 0; i < lowCount; i += 1) buildCluster((300 + rng() * 380) * deckScale, 32 + rng() * 24, 6 + Math.floor(rng() * 4), 0.5);
+      for (let i = 0; i < midCount; i += 1) buildCluster((900 + rng() * 480) * deckScale, 36 + rng() * 26, 5 + Math.floor(rng() * 4), 0.42);
       // Hero cumulus near the arena - big enough to actually disappear into
       // mid-dogfight, the way AC7 uses its one big cloud bank.
       if (cloudConfig.hero) {
-        buildCluster(470, 95, 11, 0.5, { x: 620, z: -420 });
-        buildCluster(520, 80, 9, 0.5, { x: -900, z: 1050 });
+        buildCluster(470 * deckScale, 95, 11, 0.5, { x: 620, z: -420 });
+        buildCluster(520 * deckScale, 80, 9, 0.5, { x: -900, z: 1050 });
       }
       for (let i = 0; i < cirrusCount; i += 1) {
         const streak = new THREE.Mesh(cloudGeometry, cirrusMaterial);
@@ -14502,6 +15128,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, cloudVolumes, mountains,
         ocean, oceanTileSize, sunRoad,
+        // Wave-drift multiplier (1 = every map but the storm).
+        oceanDrift: preset.ocean.drift || 1,
+        // Weather. Both null on every map that does not declare them, which is
+        // the flag updateWorld tests - no per-frame work is done for rain or
+        // lightning unless the live preset asked for them.
+        rain: preset.rain || null,
+        lightning: preset.lightning || null,
+        // The directional light a strike drives, and the intensity it returns
+        // to. Held here rather than re-found each frame.
+        keyLight: sunLight,
+        keyLightIntensity: preset.lights.key.intensity,
+        keyLightRadius: Math.hypot(preset.lights.key.position[0], preset.lights.key.position[2]),
+        keyLightHeight: preset.lights.key.position[1],
+        skyFlash,
         roots, geometries, materials, textures
       };
     }
@@ -14527,13 +15167,20 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
     // restart of the same mission never rebuilds (and never hitches).
     function applyWorldPreset(presetKey) {
       const key = WORLD_PRESETS[presetKey] ? presetKey : DEFAULT_WORLD_PRESET;
-      if (world && world.preset === key) return false;
+      if (world && world.preset === key) {
+        // Same map, so nothing to rebuild - but the weather still starts over.
+        // A restart inheriting the previous sortie's strike clock would fire a
+        // bolt on the opening frame of the new one.
+        resetWeatherState();
+        return false;
+      }
       disposeWorld(world);
       world = createWorld(key);
       // The new preset brings a fresh texture at offset 0; carrying the old
       // drift over would jump the wave pattern on the swap frame.
       oceanDriftU = 0;
       oceanDriftV = 0;
+      resetWeatherState();
       return true;
     }
 
