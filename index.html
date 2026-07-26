@@ -2857,8 +2857,15 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
+    // Hangar order, and the only thing that decides whether an airframe can be
+    // flown at all - campaignAircraft() is this list narrowed to the campaign's
+    // allow-list, and selectAircraft() checks nothing else. The Western jets
+    // come first in their own progression, then the Northern Federation's, each
+    // running weakest to strongest so the campaign filter yields a sane order
+    // on either side.
     const AIRCRAFT_ORDER = [
-      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22"
+      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
+      "mig21", "mig23", "mig29", "su25", "su33", "su47", "su35", "su57"
     ];
     const DEFAULT_AIRCRAFT_ID = "f16";
 
@@ -2895,7 +2902,15 @@
         jp: "北方連邦軍。同じ戦争を反対側から描く編。現在準備中。",
         locked: true,
         lockNote: "COMING SOON",
-        aircraft: Object.freeze(["mig31", "su37"])
+        // Ten airframes against the American twelve. Every one of these was
+        // already written out in full to fly as an enemy - flight model, hull,
+        // gun and missile damage, stall behaviour - so admitting them to the
+        // hangar is a registration change, not a design one. The Su-57 is
+        // IRONBACK's own jet, which is the point: this campaign is flown as
+        // IRONBACK.
+        aircraft: Object.freeze([
+          "mig21", "mig23", "mig29", "mig31", "su25", "su33", "su37", "su47", "su35", "su57"
+        ])
       })
     ]);
     const DEFAULT_CAMPAIGN_ID = "usa";
@@ -3591,7 +3606,6 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         label: "MiG-21bis FISHBED",
         role: "Legacy Light Fighter",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の旧世代軽戦闘機。小柄で軽快だが火力も装甲も乏しく、数を頼みに向かってくる。",
         cruiseSpeed: 170, boostSpeed: 330, brakeSpeed: 146,
         pitchRateDeg: 34, rollRateDeg: 128, yawRateDeg: 9, maxBankAngleDeg: 46,
@@ -3603,6 +3617,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         // (the UAV is the other). This is what "weak early enemy" means here,
         // and it is a full step below the F-4's 125.
         missileCapacity: 6, maxHealth: 98,
+        spw: Object.freeze({ key: "qaam", capacity: 10 }),
         tipSpan: 6.2, tipZ: 2.6,
         theme: Object.freeze({
 primary: 0x9fa8a2, secondary: 0x69726c, accent: 0xb5423c,
@@ -3614,7 +3629,6 @@ canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
         label: "MiG-29A FULCRUM",
         role: "Frontline Fighter",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の主力戦闘機。癖のない中堅機で、編隊を組んで正面から向かってくる。",
         cruiseSpeed: 198, boostSpeed: 392, brakeSpeed: 130,
         pitchRateDeg: 43, rollRateDeg: 152, yawRateDeg: 12, maxBankAngleDeg: 55,
@@ -3625,6 +3639,7 @@ canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
         // Every number sits between the F-16 and the F/A-18F: the enemy's
         // ordinary jet, with no weakness worth exploiting and no edge either.
         missileCapacity: 10, maxHealth: 135,
+        spw: Object.freeze({ key: "qaam", capacity: 12 }),
         tipSpan: 7.7, tipZ: 2.8,
         theme: Object.freeze({
 primary: 0x8e97a0, secondary: 0x555f68, accent: 0xb5423c,
@@ -3636,7 +3651,6 @@ canopy: 0x8fe0ff, exhaust: 0xffc79a, scale: 0.95, variant: "fulcrum"
         label: "Su-33 FLANKER-D",
         role: "Carrier Air Defense",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵艦隊の防空を担う大型艦載機。カナードと広い主翼で低中速域でも粘り強く、艦隊上空に居座り続ける。",
         cruiseSpeed: 214, boostSpeed: 418, brakeSpeed: 124,
         pitchRateDeg: 48, rollRateDeg: 162, yawRateDeg: 13, maxBankAngleDeg: 59,
@@ -3649,6 +3663,7 @@ canopy: 0x8fe0ff, exhaust: 0xffc79a, scale: 0.95, variant: "fulcrum"
         gunDamage: 21, missileDamage: 98,
         boostResponse: 0.49, brakeResponse: 0.49, cruiseResponse: 0.56,
         missileCapacity: 12, maxHealth: 165,
+        spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 9.2, tipZ: 2.9,
         theme: Object.freeze({
 primary: 0x7d8894, secondary: 0x49535d, accent: 0x2f6fa8,
@@ -3660,7 +3675,6 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
         label: "Su-35S FLANKER-E",
         role: "Superiority Fighter",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の最新鋭制空機。推力偏向による高機動と厚い装甲を併せ持つ、エースが駆る難敵。",
         cruiseSpeed: 228, boostSpeed: 440, brakeSpeed: 118,
         pitchRateDeg: 52, rollRateDeg: 180, yawRateDeg: 15, maxBankAngleDeg: 64,
@@ -3672,6 +3686,7 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
         // hardest enemy airframe short of the F-22's 200, which is what an
         // ace is supposed to feel like.
         missileCapacity: 14, maxHealth: 196,
+        spw: Object.freeze({ key: "aam6", capacity: 22 }),
         tipSpan: 9.0, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0x5c666f, secondary: 0x333b42, accent: 0xd8b23a,
@@ -3700,7 +3715,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         label: "Su-57 FELON",
         role: "Stealth Air Superiority",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の第5世代ステルス戦闘機。旋回・速度ともに最上位で、装甲も厚い。後半戦の主力にして最大の脅威。",
         cruiseSpeed: 238, boostSpeed: 462, brakeSpeed: 120,
         pitchRateDeg: 52, rollRateDeg: 188, yawRateDeg: 15, maxBankAngleDeg: 66,
@@ -3708,7 +3722,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 13.0, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.4, structuralG: 3.5,
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
-        missileCapacity: 0, maxHealth: 196,
+        missileCapacity: 14, maxHealth: 196,
+        spw: Object.freeze({ key: "aam8", capacity: 24 }),
         tipSpan: 7.0, tipZ: 2.8,
         theme: Object.freeze({
           primary: 0x2f3a3f, secondary: 0x1b2226, accent: 0xd9542a,
@@ -3726,7 +3741,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         label: "Su-47 BERKUT",
         role: "Experimental Agility Fighter",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の実験機。前進翼がもたらす低速域の運動性は全機中最高で、旋回勝負では手が付けられない。ただし速度は現代機に劣る。",
         cruiseSpeed: 205, boostSpeed: 405, brakeSpeed: 104,
         pitchRateDeg: 54, rollRateDeg: 178, yawRateDeg: 16, maxBankAngleDeg: 68,
@@ -3734,7 +3748,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 12.4, stallWarnSpeed: 68, stallEntrySpeed: 56, stallAuthorityLoss: 0.36, structuralG: 3.3,
         gunDamage: 24, missileDamage: 98,
         boostResponse: 0.46, brakeResponse: 0.4, cruiseResponse: 0.54,
-        missileCapacity: 0, maxHealth: 165,
+        missileCapacity: 12, maxHealth: 165,
+        spw: Object.freeze({ key: "aam4", capacity: 20 }),
         // Forward-swept: the geometric tip is AHEAD of the root, so tipZ is
         // negative here where every other airframe in the table is positive.
         tipSpan: 7.9, tipZ: -2.6,
@@ -3753,7 +3768,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         label: "MiG-23 FLOGGER",
         role: "Variable-Geometry Interceptor",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の可変翼戦闘機。速度に応じて主翼を後退させる旧世代の中堅機。直線は速いが旋回は鈍い。",
         cruiseSpeed: 178, boostSpeed: 372, brakeSpeed: 148,
         pitchRateDeg: 32, rollRateDeg: 118, yawRateDeg: 9, maxBankAngleDeg: 44,
@@ -3761,7 +3775,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 8.2, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.84, structuralG: 2.7,
         gunDamage: 16, missileDamage: 98,
         boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.68,
-        missileCapacity: 0, maxHealth: 135,
+        missileCapacity: 10, maxHealth: 135,
+        spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 7.4, tipZ: 2.6,
         theme: Object.freeze({
           primary: 0x8a8f7c, secondary: 0x5d6353, accent: 0xc4622c,
@@ -3779,7 +3794,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         label: "Su-25 FROGFOOT",
         role: "Close Air Support",
         tag: "ENEMY",
-        enemyOnly: true,
         blurb: "敵の対地攻撃機。低速で鈍重だが装甲は極めて厚く、ミサイル3発を要する。懐に入られると重機関砲が痛い。",
         cruiseSpeed: 148, boostSpeed: 232, brakeSpeed: 118,
         pitchRateDeg: 20, rollRateDeg: 62, yawRateDeg: 6, maxBankAngleDeg: 30,
@@ -3787,7 +3801,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 7.0, stallWarnSpeed: 72, stallEntrySpeed: 60, stallAuthorityLoss: 0.9, structuralG: 2.2,
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.75, brakeResponse: 0.7, cruiseResponse: 0.8,
-        missileCapacity: 0, maxHealth: 294,
+        missileCapacity: 6, maxHealth: 294,
+        spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 8.6, tipZ: 1.4,
         theme: Object.freeze({
           primary: 0x767c69, secondary: 0x4c5244, accent: 0xb35a28,
