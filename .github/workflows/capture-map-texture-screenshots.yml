@@ -72,6 +72,17 @@ jobs:
           if (!(await page.evaluate(() => Boolean(window.__game?.debug?.forceWorld)))) {
             throw new Error('game did not initialize');
           }
+          await page.evaluate(() => {
+            const canvas = document.querySelector('#gameRoot canvas');
+            if (!canvas) throw new Error('render canvas not found');
+            for (const element of document.body.querySelectorAll('*')) {
+              if (element === canvas || element.contains(canvas)) continue;
+              element.style.setProperty('visibility', 'hidden', 'important');
+              element.style.setProperty('pointer-events', 'none', 'important');
+            }
+            canvas.style.setProperty('visibility', 'visible', 'important');
+            canvas.style.setProperty('opacity', '1', 'important');
+          });
           const canvas = page.locator('#gameRoot canvas');
           const presets = ['archipelagoDay', 'sunsetOcean', 'glacierCanyon', 'nightBase'];
           const metadata = [];
