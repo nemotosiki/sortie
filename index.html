@@ -2125,6 +2125,12 @@
     let STALL_WARNING_SPEED = 96;
     let STALL_ENTRY_SPEED = 84;
     let GUN_DAMAGE = 16;
+    // Multiplies GUN_DAMAGE, but only on a burst that lands on a surface
+    // target. 1 for every airframe that does not set `gunGroundBonus`, so the
+    // gun behaves exactly as it always has unless the aircraft is built around
+    // an anti-armour cannon. See the A-10C entry for why the strength cannot
+    // live in gunDamage itself.
+    let GUN_GROUND_BONUS = 1;
     let MISSILE_DAMAGE = 130;
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
@@ -2248,7 +2254,7 @@
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
     const AIRCRAFT_ORDER = Object.freeze([
-      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "f22"
+      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22"
     ]);
     const DEFAULT_AIRCRAFT_ID = "f16";
 
@@ -2382,6 +2388,35 @@
         tubes: 2,
         reload: 5,
         lockRange: null
+      }),
+      // A-10C: the multi-lock salvo pointed at the ground. It is the LASM's
+      // surface-only seeker and the 4AAM's four-target acquisition in one
+      // round, and that combination is what makes it the only 1.0 on the
+      // AIR-TO-GROUND bar - a bomb hits one aim point, this clears a revetment.
+      // No new machinery: updateLock() already drops aircraft from the cone for
+      // `surfaceOnly`, and updateMultiLock()/launchSpSalvo() already read
+      // `multi`/`multiLockTime`, so the two flags compose on their own.
+      //
+      // 120 damage against the 4AAM's 90 because these targets are not jets:
+      // the light installations sit at 50-90 HP and die to one round either
+      // way, but 120 takes a bunker (120) in a single hit and an AEGIS (250) in
+      // three, where 90 would need two and three. Below the plain missile's
+      // 98-per-shot rate of fire, so it never becomes the anti-ship answer the
+      // LASM is - it is a weapon of width, four aim points at once.
+      agm4: Object.freeze({
+        key: "agm4",
+        label: "4AGM",
+        kind: "aam",
+        damage: 120,
+        turnRateDeg: 120,
+        maxSpeed: 460,
+        life: 11,
+        multi: 4,
+        multiLockTime: 0.45,
+        tubes: 2,
+        reload: 8,
+        lockRange: 1500,
+        surfaceOnly: true
       })
     });
 
@@ -2409,7 +2444,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
       // Gripen E: the deliberate valley in the hangar. Where the F-35C is
       // built to have no weakness, this one is built to have exactly one -
       // 125 HP, level with the F-4 and second-lowest in the set, which reads as
-      // DEFENSE 40. Everything else is bought with lightness: the third-best
+      // DEFENSE 34. Everything else is bought with lightness: the third-best
       // roll rate behind only the Raptor, and MOBILITY 87 from an airframe that
       // gives up top speed to every jet above it. The 6AAM is the compensation:
       // it cannot out-armour a swarm, so it clears one in a single trigger pull.
@@ -2700,7 +2735,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.10, variant: "terminator"
         label: "F-4 PHANTOM II",
         role: "Legacy Interceptor",
         tag: "LEGACY",
-        blurb: "1960年代の旧世代機。速度は現代機に遠く及ばず旋回も鈍いが、無骨な機体は軽量機より打たれ強く、対地攻撃では全機中最良だ。",
+        // "対地攻撃では全機中最良" held while the UGB was the only bomb in the
+        // hangar. The A-10C's 4AGM reads 1.0 against this airframe's 0.95, so
+        // the superlative moved to the attacker and this line now claims second.
+        blurb: "1960年代の旧世代機。速度は現代機に遠く及ばず旋回も鈍いが、無骨な機体は軽量機より打たれ強く、無誘導爆弾による対地攻撃なら攻撃機に次ぐ働きをする。",
         cruiseSpeed: 165, boostSpeed: 320, brakeSpeed: 152,
         pitchRateDeg: 30, rollRateDeg: 105, yawRateDeg: 8, maxBankAngleDeg: 40,
         normalRollSpring: 27, rollRateLimitDeg: 100, turnRateDeg: 21,
@@ -2715,12 +2753,63 @@ primary: 0xcdd6c2, secondary: 0x6b7a5c, accent: 0x35507a,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         })
       }),
+      // A-10C: the attacker, and the first airframe here that is not trying to
+      // win a dogfight. It sets a new floor under SPEED and MOBILITY and a new
+      // ceiling over DEFENSE, which is the one entry in this table that moves
+      // every other jet's bars - see the note on maxHealth below.
+      //
+      // The GAU-8 is the reason the aircraft exists, and it cannot be spelled
+      // `gunDamage`. AIR-TO-AIR is missileDamage*0.35 + gunDamage*5 +
+      // missileCapacity*3, and the gun term dominates at x5: a gunDamage that
+      // reads as a 30 mm tank-killer would put the attacker above the Raptor on
+      // the air-to-air bar, which is exactly backwards. So gunDamage stays at a
+      // low 19 - what that gun is worth against a fighter - and `gunGroundBonus`
+      // multiplies it only when the burst lands on a surface target. 19 x 3.2 =
+      // 60.8 a round against ships and vehicles, more than double the Raptor's
+      // 26, while AIR-TO-AIR still reads second-lowest in the hangar.
+      //
+      // WARNING - the stall invariants are at ZERO margin here, as on the Su-37:
+      //   brakeSpeed 116 - 52 = 64 >= stallEntrySpeed 64  (margin 0)
+      //   stallEntrySpeed 64 > STALL_DEEP_SPEED 62        (margin 2)
+      // The first is the "airbrake alone can never stall you" guarantee, and it
+      // matters more on this airframe than any other: it is the slowest jet in
+      // the set, so it lives closest to the stall the whole time.
+      //
+      // maxHealth 240 is load-bearing and deliberately above the F-22's 200.
+      // DEFENSE is normalised against fleet min/max HP, so this raises the
+      // ceiling and pushes every other airframe's DEFENSE bar down - the F-22
+      // included, which is why its blurb no longer claims the best armour.
+      a10: Object.freeze({
+        id: "a10",
+        label: "A-10C THUNDERBOLT II",
+        role: "Ground Attack",
+        tag: "ATTACKER",
+        blurb: "対地攻撃に特化した重装甲の攻撃機。速度と旋回は全機中最低で空戦では狙われるだけだが、チタン装甲は全機中最も打たれ強く、30mm機関砲は地上目標を一連射で薙ぎ払う。4目標同時の対地ミサイルと合わせ、対地攻撃力は他機の追随を許さない。",
+        cruiseSpeed: 150, boostSpeed: 265, brakeSpeed: 116,
+        pitchRateDeg: 26, rollRateDeg: 92, yawRateDeg: 9, maxBankAngleDeg: 38,
+        normalRollSpring: 24, rollRateLimitDeg: 88, turnRateDeg: 20,
+        rollDamping: 12.6, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.50, structuralG: 2.4,
+        gunDamage: 19, missileDamage: 98, gunGroundBonus: 3.2,
+        boostResponse: 0.82, brakeResponse: 0.70, cruiseResponse: 0.80,
+        missileCapacity: 6, maxHealth: 240,
+        spw: Object.freeze({ key: "agm4", capacity: 16 }),
+        tipSpan: 9.6, tipZ: 1.6,
+        theme: Object.freeze({
+primary: 0x5d6660, secondary: 0x3f4642, accent: 0x2a2f2c,
+canopy: 0x9fd8e8, exhaust: 0xbfd9d0, scale: 1.06, variant: "hog"
+        })
+      }),
       f22: Object.freeze({
         id: "f22",
         label: "F-22 RAPTOR",
         role: "Stealth Air Superiority",
         tag: "TOP TIER",
-        blurb: "全性能で他を圧倒する最強のステルス戦闘機。旋回・火力・装甲は全機中最高で、速度も最速機に次ぐ。",
+        // The blurb no longer claims the best armour. It is not a wording
+        // preference: the A-10C's 240 HP took the top of the DEFENSE bar and
+        // dropped this airframe to 77, so "装甲は全機中最高" became false the
+        // moment the attacker joined the hangar. Best among FIGHTERS is still
+        // true at 200 HP, and that is what it says now.
+        blurb: "空戦性能で他を圧倒する最強のステルス戦闘機。旋回・火力は全機中最高で、速度も最速機に次ぐ。装甲は重装甲の攻撃機に譲るが、戦闘機の中では最も打たれ強い。",
         cruiseSpeed: 240, boostSpeed: 460, brakeSpeed: 118,
         pitchRateDeg: 51, rollRateDeg: 190, yawRateDeg: 14, maxBankAngleDeg: 65,
         normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
@@ -4981,6 +5070,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         maxHealth: PLAYER_MAX_HEALTH,
         missileCapacity: PLAYER_MISSILE_CAPACITY,
         gunDamage: GUN_DAMAGE,
+        gunGroundBonus: GUN_GROUND_BONUS,
         missileDamage: MISSILE_DAMAGE,
         spw: {
           key: null, label: null, kind: null, capacity: 0, ammo: 0,
@@ -7119,7 +7209,12 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         const enemy = enemies.find((candidate) => candidate.id === hit.object.userData.enemyId);
         if (enemy && enemy.alive) {
           end = hit.point.clone();
-          damageEnemy(enemy, GUN_DAMAGE, false);
+          // The anti-armour multiplier is applied here, at the one place that
+          // knows WHAT was hit - `enemy.surface` is set on ships and ground
+          // installations and on nothing that flies. Putting the strength in
+          // the aircraft's gunDamage instead would have leaked it into the
+          // AIR-TO-AIR bar and into every air kill.
+          damageEnemy(enemy, enemy.surface ? GUN_DAMAGE * GUN_GROUND_BONUS : GUN_DAMAGE, false);
           createImpactBurst(end, 0x9df8ff, 0.7);
         }
       }
@@ -11058,6 +11153,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
       hook.loadout.gunDamage = GUN_DAMAGE;
+      hook.loadout.gunGroundBonus = GUN_GROUND_BONUS;
       hook.loadout.spw.key = PLAYER_SPW ? PLAYER_SPW.key : null;
       hook.loadout.spw.label = PLAYER_SPW ? PLAYER_SPW.label : null;
       hook.loadout.spw.kind = PLAYER_SPW ? PLAYER_SPW.kind : null;
@@ -12237,6 +12333,17 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         [0, -6.2], [7.2, 2.6], [7.2, 3.4], [2.2, 4.2],
         [0, 4.6], [-2.2, 4.2], [-7.2, 3.4], [-7.2, 2.6]
       ], 0.22);
+      // A-10C: the only UNSWEPT wing in the hangar, and the whole point of the
+      // silhouette. Every other planform in this file rakes its leading edge
+      // aft; this one runs straight out at a constant chord to half-span 9.6 -
+      // the widest wing on any airframe here - and the tips are the only thing
+      // the player has to see to know which jet is theirs. The leading edge
+      // sits at z -2.6 and the trailing edge at z 2.6 all the way out, so there
+      // is no taper either: a plank, exactly as on the real aircraft.
+      const wingHog = extrudedSurface([
+        [0, -2.8], [9.6, -2.6], [9.6, 2.6], [0, 2.8],
+        [-9.6, 2.6], [-9.6, -2.6]
+      ], 0.34);
       // Su-37: the Flanker planform - a big swept wing blended into the body,
       // cropped square at the tip for the missile rail. Half-span 8.9 matches
       // the airframe's tipSpan. Wider chord than the Raptor's diamond because
@@ -12344,7 +12451,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
 
       return {
         fuselage, rearBody, nose, wing, tailWing, fin, canopy, intake, nozzle, flame,
-        wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingRaptor, stabRaptor,
+        wingViper, wingViperZero, wingEagle, wingHornet, wingTomcat, wingPhantom, wingBomber, wingHog, wingRaptor, stabRaptor,
         wingLightning, stabLightning, panel,
         wingRafale, wingTyphoon, wingGripen, canard,
         wingTerminator, canardTerminator,
@@ -13085,6 +13192,69 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         add(geometry.missileNose, dark, 6.6, -0.22, 1.3, 0.66, 0.66, 0.66);
         add(geometry.canopy, navL, -6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
         add(geometry.canopy, navR, 6.72, 0.06, 3.4, 0.11, 0.11, 0.11);
+      } else if (theme.variant === "hog") {
+        // A-10C. Four features carry the read, and every one of them is a
+        // deliberate break from the twelve fighters above:
+        //   1. the straight wing (wingHog) - nothing else here is unswept
+        //   2. two engine pods slung HIGH on the rear fuselage sides, where
+        //      every other airframe buries its engines inside the body
+        //   3. twin fins standing straight up at the tips of the tailplane,
+        //      outboard of the pods rather than on the spine
+        //   4. the GAU-8 under the nose, offset left as on the real aircraft
+        // Together they mean the player never has to read a label to know this
+        // is the attacker, at any range or angle.
+        add(geometry.fuselage, primary, 0, 0, -0.7, 0.94, 0.92, 0.98);
+        // Blunt short nose: no radome to speak of, because the volume is gun.
+        add(geometry.nose, primary, 0, -0.06, -7.4, 0.86, 0.8, 0.8);
+        // Bubble canopy set well forward and high - the cockpit sits ahead of
+        // the wing on this aircraft, unlike every fighter here.
+        add(geometry.canopy, canopy, 0, 0.92, -4.3, 0.7, 0.66, 1.15);
+        add(geometry.wingHog, secondary, 0, -0.42, 1.3);
+        // Engine pods: y +1.35 puts them ABOVE the fuselage centreline and
+        // x +/-2.6 holds them clear of it, which is the shape everyone
+        // recognises. Long nacelles (sz 1.7) so they read as podded turbofans
+        // and not as the twin nozzles of an F-15.
+        for (const side of [-1, 1]) {
+          add(geometry.rearBody, secondary, side * 2.6, 1.35, 4.3, 1.02, 1.02, 1.7);
+          add(geometry.nozzle, accent, side * 2.6, 1.35, 7.0, 1.05, 1.05, 1.15);
+          // Pylon tying each pod down to the fuselage, so they do not read as
+          // floating next to the aircraft.
+          add(geometry.panel, secondary, side * 1.55, 0.85, 4.3, 1.3, 0.9, 3.0);
+          // No afterburner on this airframe - the flame is deliberately less
+          // than half the size every other variant uses, and theme.exhaust is a
+          // pale grey-green rather than the blue-white of a fighter in reheat.
+          // Holding the boost must not grow a torch here.
+          addFlame(side * 2.6, 1.35, 8.2, 0.42, 0.42);
+        }
+        // Tailplane with a fin standing vertically at each tip. rz stays 0 on
+        // both: no cant either way, unlike the F-22's outward splay or the
+        // F-14's inward lean.
+        add(geometry.tailWing, primary, 0, 0.55, 7.3, 0.92, 1, 0.95);
+        add(geometry.fin, secondary, -4.2, 0.6, 7.0, 0.72, 1.0, 0.78);
+        add(geometry.fin, secondary, 4.2, 0.6, 7.0, 0.72, 1.0, 0.78);
+        // GAU-8: a fat short barrel under the nose, offset to port exactly as
+        // on the real aircraft (the firing barrel, not the assembly, is what
+        // sits on the centreline). This is the airframe's whole identity, so it
+        // is drawn oversized enough to be visible from the chase camera.
+        add(geometry.missileBody, dark, -0.38, -0.92, -6.9, 1.75, 1.75, 1.15);
+        add(geometry.panel, accent, -0.3, -0.75, -3.9, 1.5, 0.95, 3.4);
+        // Main gear pods: the A-10 does not fully retract its wheels, and the
+        // two bulges under the wing are part of the head-on silhouette.
+        add(geometry.nozzle, dark, -3.9, -0.95, 0.4, 1.15, 1.15, 2.0);
+        add(geometry.nozzle, dark, 3.9, -0.95, 0.4, 1.15, 1.15, 2.0);
+        // Details: no pitot boom (the gun occupies the nose), an anti-glare
+        // panel, a short spine, and underwing stores - this jet carries its
+        // ordnance under the wing, not on the tips.
+        add(geometry.panel, dark, 0, 0.62, -5.6, 0.6, 0.08, 1.6);
+        add(geometry.panel, secondary, 0, 0.6, 2.6, 0.26, 0.18, 4.0);
+        add(geometry.missileBody, light, -6.2, -0.78, 2.0, 1.0, 1.0, 0.9);
+        add(geometry.missileBody, light, 6.2, -0.78, 2.0, 1.0, 1.0, 0.9);
+        add(geometry.missileNose, dark, -6.2, -0.78, 0.0, 0.95, 0.95, 0.9);
+        add(geometry.missileNose, dark, 6.2, -0.78, 0.0, 0.95, 0.95, 0.9);
+        // Nav lights at the geometric tips, so the contrail emitters at
+        // tipSpan 9.6 line up with a visible feature.
+        add(geometry.canopy, navL, -9.7, -0.3, 1.3, 0.13, 0.13, 0.13);
+        add(geometry.canopy, navR, 9.7, -0.3, 1.3, 0.13, 0.13, 0.13);
       } else {
         // F-22: flat wide chined body, diamond wing, clipped-diamond stabs,
         // big outward-canted twin tails, rectangular nozzle shells.
@@ -13452,6 +13622,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       TIP_OFFSET_Z = spec.tipZ * spec.theme.scale;
       // AIR-TO-AIR: per-aircraft weapon punch.
       GUN_DAMAGE = spec.gunDamage;
+      GUN_GROUND_BONUS = spec.gunGroundBonus || 1;
       MISSILE_DAMAGE = spec.missileDamage;
       // Throttle response (smaller k = reaches target speed sooner).
       BOOST_SPEED_RESPONSE_K = spec.boostResponse;
@@ -13525,6 +13696,12 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       const groundScore = (spec) => {
         const weapon = SPW_TYPES[spec.spw && spec.spw.key];
         if (!weapon) return 0.25;
+        // A surface-only round that engages several targets per trigger pull is
+        // the dedicated attack role, and the only thing in the hangar that
+        // reads 1.0: the guided round's accuracy without the single-aim-point
+        // limit that keeps a bomb at 0.95. Checked before the plain
+        // surface-only branch below, which the 4AGM would otherwise match.
+        if (weapon.surfaceOnly && weapon.multi > 1) return 1.0;
         if (weapon.kind === "bomb") return 0.95;
         // A guided anti-ship round is a surface attack role too - less flexible
         // than a bomb (it only takes hulls and installations, never a runway or
