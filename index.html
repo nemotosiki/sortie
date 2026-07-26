@@ -2239,18 +2239,21 @@
     // the one geometry field a profile may pin, because a flight leader's jet
     // reading fractionally larger than its wingmen is a deliberate tell.
     //
-    // `label` is deliberately NOT overridden: the HUD wants "F-22 IRONBACK" -
+    // `label` is deliberately NOT overridden: the HUD wants "Su-57 IRONBACK" -
     // airframe designation from the aircraft table, callsign from here - so a
-    // profile that clobbered `label` would print the callsign twice.
+    // profile that clobbered `label` would print the callsign twice. That the
+    // designation changed when the enemy roster went Russian without one line
+    // here changing is the point of the split.
     //
     // IRONBACK is the only profile any mission currently flies. VULTURE and
-    // LONGBOW are staged, not orphaned: the enemy roster is being moved to
-    // Soviet/Russian airframes in a separate batch, and both are written
-    // against aircraft that survive that change (Su-37, MiG-31). Placing them
-    // in a wave is a one-line `ace: "vulture"` on that wave when it lands.
+    // LONGBOW are staged, not orphaned, and both are written against airframes
+    // that survived the faction split (Su-37, MiG-31). Placing them in a wave
+    // is a one-line `ace: "vulture"` on that wave when it lands.
     const ACE_PROFILES = Object.freeze({
       // The campaign's recurring antagonist, and the only ace with a scripted
-      // post-stall (see ACE_POSTSTALL_*). Flies the Raptor: black airframe,
+      // post-stall (see ACE_POSTSTALL_*). Flies the Felon - which is the
+      // airframe the manoeuvre belongs to anyway, Su-57 being the direct
+      // descendant of the jets the cobra was demonstrated on. Black airframe,
       // gold trim.
       ironback: Object.freeze({
         callsign: "IRONBACK",
@@ -3263,9 +3266,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     });
 
+    // The two stock fighter waves, now flown entirely by the other side's
+    // airframes. Each slot was replaced by its opposite number rather than by
+    // the nearest Russian jet in the abstract, so the waves weigh what they
+    // always weighed and every mission built on them keeps its difficulty:
+    //
+    //   air1  F-16 -> MiG-29A  F-15 -> Su-33      F-4 -> MiG-21bis  375 -> 398 HP
+    //   air2  F-22 -> Su-57    F-4 -> MiG-21bis  F-16 -> MiG-29A    425 -> 429 HP
+    //
+    // Su-33 rather than Su-35S in air1: the Flanker-D turns at exactly the
+    // Eagle's 34 deg/s, so the wave the player meets from m-glacier onward
+    // handles the way it always did. The Su-35S is held back for the late
+    // missions, which is where the campaign wants the step up. air2's leader
+    // is the slot IRONBACK flies, and Su-57 against F-22 is 196 HP at 40 deg/s
+    // against 200 at 39 - the closest like-for-like swap in the roster.
     const ENEMY_TYPE_ORDER = Object.freeze([
-      Object.freeze(["f16", "f15", "f4"]),
-      Object.freeze(["f22", "f4", "f16"])
+      Object.freeze(["mig29", "su33", "mig21"]),
+      Object.freeze(["su57", "mig21", "mig29"])
     ]);
 
     // ---- Wave composition -----------------------------------------------------
@@ -5613,18 +5630,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         key: "m01",
         world: "archipelagoDay",
         title: "FIRST CONTACT",
-        jp: "敵爆撃編隊が本基地へ直行中。護衛は旧式のF-4。爆撃機を撃墜し、基地を守れ。",
+        jp: "敵爆撃編隊が本基地へ直行中。護衛は旧式のMiG-21。爆撃機を撃墜し、基地を守れ。",
         // The traditional Ace Combat first sortie: a bomber intercept. The
         // bombers never turn to fight (engageRange 0) and the escort is the
-        // weakest airframe in the game, so the tutorial teaches "hit the
+        // weakest airframe in the game - the MiG-21bis at 98 HP, below even
+        // the Phantom it replaced - so the tutorial teaches "hit the
         // designated targets, ignore the rest" without being able to punish
         // a first-time player for taking the lesson literally.
         sequence: [
           { types: ["bomber", "bomber"], band: 1, label: "BOMBER" },
           {
-            types: ["f4", "f4"], tgt: false, band: 2, label: "ESCORT", concurrent: true,
+            types: ["mig21", "mig21"], tgt: false, band: 2, label: "ESCORT", concurrent: true,
             radio: [
-              { speaker: "wingman", text: "護衛のF-4が2機！ 旧式だ、無理に相手をするな——爆撃機を先に落とせ！", id: "m01-escort-inbound" }
+              { speaker: "wingman", text: "護衛のMiG-21が2機！ 旧式だ、無理に相手をするな——爆撃機を先に落とせ！", id: "m01-escort-inbound" }
             ]
           }
         ],
@@ -5654,10 +5672,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // overshoot past the field and turn around.
         battleCenter: { x: 0, z: -9900 },
         battleRadius: 13500,
-        briefing: "敵爆撃編隊が本基地へ向かっている——大型機2、護衛は旧式のF-4が2。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標は爆撃機のみ。護衛のF-4は無視して構わない。",
+        briefing: "敵爆撃編隊が本基地へ向かっている——大型機2、護衛は旧式のMiG-21が2。\n君は編隊の後方だ。追いつき、投弾される前に叩き落とせ。\n奴らは回避しない。ただ一直線に飛んで、基地に爆弾を落とすだけだ。\n投弾を許しても作戦は続く——ただし基地の被害は君の評価に響く。\n指定目標は爆撃機のみ。護衛のMiG-21は無視して構わない。",
         introRadio: [
           { speaker: "command", text: "初任務だ。敵爆撃編隊、本基地へ直行中——投弾される前に叩き落とせ。", id: "m01-brief" },
-          { speaker: "wingman", text: "護衛のF-4は放っておいていい。爆撃機は逃げも隠れもしない、狙って撃つだけだ。", id: "m01-brief-wing" }
+          { speaker: "wingman", text: "護衛のMiG-21は放っておいていい。爆撃機は逃げも隠れもしない、狙って撃つだけだ。", id: "m01-brief-wing" }
         ]
       },
       {
@@ -5665,12 +5683,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "TWO-PRONGED",
         jp: "二正面攻勢。第1波を叩いた直後に増援の第2波が来る。連続迎撃せよ。",
-        // The first fighters the player ever dogfights. F-4 throughout, with a
-        // single F-16 leading the second wave as the step up - the difficulty
-        // curve starts at the weakest airframe and climbs from here.
+        // The first fighters the player ever dogfights. MiG-21bis throughout,
+        // with a single MiG-29A leading the second wave as the step up - the
+        // difficulty curve starts at the weakest airframe and climbs from here.
         sequence: [
-          { types: ["f4", "f4", "f4"], band: 1, idBase: 0 },
-          { types: ["f16", "f4", "f4"], band: 2, idBase: 3 }
+          { types: ["mig21", "mig21", "mig21"], band: 1, idBase: 0 },
+          { types: ["mig29", "mig21", "mig21"], band: 2, idBase: 3 }
         ],
         parTime: 210,
         hasOutro: false,
@@ -5783,14 +5801,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         world: "archipelagoDay",
         title: "IRONBACK",
         jp: "エース『IRONBACK』率いる精鋭飛行隊が空域に侵入。撃墜せよ。",
-        // Was the "air2" preset (F-22 / F-4 / F-16). Written inline now so the
-        // ace flies an Su-35S: an enemy squadron leader in a Russian jet is the
-        // faction split at its most visible, and IRONBACK's 196 HP against the
-        // Raptor's 200 keeps it in the same two-missile band it always was.
+        // Was the "air2" preset (F-22 / F-4 / F-16), written inline so the
+        // wingmen could be picked for this fight rather than inherited. The
+        // ace flies the Felon, the same jet he flies in air2 and in m05's last
+        // wave - the player has to be able to recognise IRONBACK's aircraft on
+        // sight for the callsign to mean anything. 196 HP against the Raptor's
+        // 200 keeps him in the two-missile band he was always in, and the
+        // scripted post-stall is a manoeuvre this airframe is known for.
         // `band` and `idBase` reproduce air2's, so the HUD target numbers and
         // the wave's spawn geometry are unchanged.
         sequence: [
-          { types: ["su35", "mig29", "mig29"], ace: true, band: 2, idBase: 3 }
+          { types: ["su57", "mig29", "mig29"], ace: true, band: 2, idBase: 3 }
         ],
         parTime: 135,
         hasOutro: false,
@@ -5922,7 +5943,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // objective; the fighters are a decision, exactly as in m03.
         sequence: [
           {
-            types: ["f16", "f15"], tgt: false, band: 2, label: "CAP",
+            // Late-campaign CAP, so this is where the Su-35S belongs: the
+            // heavy Flanker over land, with a Fulcrum on its wing. Harder than
+            // the F-16/F-15 pair it replaces (331 HP against 250), which is
+            // the point - the player meets this one at the end of the run, and
+            // it is optional anyway.
+            types: ["mig29", "su35"], tgt: false, band: 2, label: "CAP",
             radio: [
               { speaker: "wingman", text: "上空にCAP！ 付き合う必要はない——狙いは車列だ！", id: "convoy-cap-inbound" }
             ]
