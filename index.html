@@ -3710,6 +3710,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         label: "ARCHIPELAGO DAY",
         clearColor: 0x6698b2,
         sky: [[0, "#06172f"], [0.32, "#174f7a"], [0.62, "#79b7d1"], [0.74, "#d7d5c0"], [1, "#305d75"]],
+        atmosphere: { seed: 0x1d4a11, noise: 0.026, haze: 0.12, thinClouds: 18, cloudOpacity: 0.07, cloudBand: [0.48, 0.72], cloudTint: 0xe7f4f8 },
         // near pushed out and far extended (M9): the fleet-safety fence puts
         // scenery islands past 2500m, and at the old far=3350 they dissolved
         // into haze before they could read as land. Visibility only increases.
@@ -3729,7 +3730,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         },
         ocean: {
           base: "#16506a", bright: "140, 214, 228", dark: "10, 48, 66",
-          repeat: 26, roughness: 0.4, metalness: 0.2
+          repeat: 26, roughness: 0.4, metalness: 0.2,
+          normalRepeat: 42, normalScale: [0.42, 0.68], normalSpeed: [0.011, 0.004], normalSeed: 0x1d4a12
+        },
+        terrain: {
+          seed: 0x1d4a13, sand: 0xbbaa78, grass: 0x4e713f, rock: 0x706a5f,
+          peak: 0x817c70, snow: 0xedf3f5, fineRepeat: 17, macroRepeat: 3.6,
+          normalRepeat: 22, normalStrength: 0.48, islandNormalStrength: 0.27,
+          rockSlope: [0.22, 0.66], shoreHeight: 0.2, snowSoftness: 0.08
         },
         lights: {
           hemi: { sky: 0xc9efff, ground: 0x152839, intensity: 2.25 },
@@ -3753,7 +3761,8 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         islands: { count: 10, stone: 0x53675d, green: 0x527951 },
         clouds: {
           scale: 1, hero: true, color: 0xf4f8f9, opacity: 0.72,
-          cirrusColor: 0xeef6f8, cirrusOpacity: 0.3
+          cirrusColor: 0xeef6f8, cirrusOpacity: 0.3,
+          texture: { seed: 0x1d4a14, contrast: 1.04, underside: 0.36, softness: 1 }
         },
         decor: {
           seed: 0x1d3a01,
@@ -3791,6 +3800,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         clearColor: 0x9a6a52,
         // Horizon is stop 0.5 - the ember band has to sit just above it.
         sky: [[0, "#101a3d"], [0.26, "#2d2657"], [0.4, "#7b3450"], [0.47, "#cc6238"], [0.5, "#ffb96e"], [0.58, "#8e3a49"], [1, "#3a1c33"]],
+        atmosphere: { seed: 0x2c6f21, noise: 0.034, haze: 0.18, thinClouds: 24, cloudOpacity: 0.105, cloudBand: [0.34, 0.62], cloudTint: 0xffb083 },
         // Same reasoning as the day map: the fleet fence pushes land out, so
         // the haze has to start later and reach further for it to be visible.
         fog: { color: 0x9a6a52, near: 1000, far: 4600 },
@@ -3809,7 +3819,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         },
         ocean: {
           base: "#102f38", bright: "255, 168, 104", dark: "5, 22, 30",
-          repeat: 26, roughness: 0.33, metalness: 0.3
+          repeat: 26, roughness: 0.33, metalness: 0.3,
+          normalRepeat: 36, normalScale: [0.48, 0.82], normalSpeed: [0.013, 0.003], normalSeed: 0x2c6f22
+        },
+        terrain: {
+          seed: 0x2c6f23, sand: 0x75503e, grass: 0x403733, rock: 0x554047,
+          peak: 0x6b4b46, snow: 0xd9bca8, fineRepeat: 15, macroRepeat: 3.2,
+          normalRepeat: 20, normalStrength: 0.4, islandNormalStrength: 0.23,
+          rockSlope: [0.18, 0.58], shoreHeight: 0.17, snowSoftness: 0.1
         },
         lights: {
           hemi: { sky: 0xffb98a, ground: 0x2a1b2e, intensity: 1.5 },
@@ -3825,7 +3842,8 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         islands: { count: 6, stone: 0x36262c, green: 0x3b2f2c },
         clouds: {
           scale: 1.5, hero: true, color: 0xffb894, opacity: 0.78,
-          cirrusColor: 0xff9f7a, cirrusOpacity: 0.36
+          cirrusColor: 0xff9f7a, cirrusOpacity: 0.36,
+          texture: { seed: 0x2c6f24, contrast: 1.14, underside: 0.5, softness: 1.04 }
         },
         // Dusk map: the shore catches the last warm light, the water beside it
         // stays cold, and a small harbour village gives the fleet something to
@@ -3869,6 +3887,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         label: "GLACIER CANYON",
         clearColor: 0xcfe0ea,
         sky: [[0, "#1d3f6b"], [0.28, "#4d80ad"], [0.44, "#a8cfe4"], [0.5, "#e6f2f8"], [0.62, "#9dbccb"], [1, "#7fa3b5"]],
+        atmosphere: { seed: 0x3a8c31, noise: 0.017, haze: 0.2, thinClouds: 30, cloudOpacity: 0.09, cloudBand: [0.4, 0.75], cloudTint: 0xe7f3f8 },
         // Kept the tightest of the four - this map's whole point is the walls
         // looming out of the murk - but opened enough that the far spires in
         // the slalom read as a receding ladder instead of a grey wall.
@@ -3888,7 +3907,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         },
         ocean: {
           base: "#4f86a0", bright: "222, 240, 250", dark: "36, 76, 98",
-          repeat: 26, roughness: 0.26, metalness: 0.36
+          repeat: 26, roughness: 0.26, metalness: 0.36,
+          normalRepeat: 30, normalScale: [0.24, 0.38], normalSpeed: [0.006, 0.0015], normalSeed: 0x3a8c32
+        },
+        terrain: {
+          seed: 0x3a8c33, sand: 0x7595a8, grass: 0xa8c5d2, rock: 0x91aebb,
+          peak: 0xdcebf2, snow: 0xf1f8fb, fineRepeat: 13, macroRepeat: 2.8,
+          normalRepeat: 18, normalStrength: 0.32, islandNormalStrength: 0.18,
+          rockSlope: [0.16, 0.5], shoreHeight: 0.16, snowLine: 0.14, snowSoftness: 0.12
         },
         lights: {
           hemi: { sky: 0xdcefff, ground: 0x2a3a49, intensity: 2.4 },
@@ -3911,7 +3937,8 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         islands: { count: 4, stone: 0x7d97a8, green: 0xdfeef5 },
         clouds: {
           scale: 0.8, hero: true, color: 0xeaf4fa, opacity: 0.7,
-          cirrusColor: 0xdfeaf2, cirrusOpacity: 0.3
+          cirrusColor: 0xdfeaf2, cirrusOpacity: 0.3,
+          texture: { seed: 0x3a8c34, contrast: 0.92, underside: 0.3, softness: 1.1 }
         },
         // Ice, not sand: the "shore" ring is pale meltwater, and drifting floes
         // fill the corridor floor so a low run past the spires has scale cues.
@@ -3948,6 +3975,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         label: "NIGHT BASE",
         clearColor: 0x05080f,
         sky: [[0, "#01030a"], [0.3, "#040a18"], [0.44, "#0d1830"], [0.5, "#17243f"], [0.62, "#0a1220"], [1, "#050a14"]],
+        atmosphere: { seed: 0x4b2d41, noise: 0.04, haze: 0.035, thinClouds: 9, cloudOpacity: 0.032, cloudBand: [0.4, 0.68], cloudTint: 0x7586ad },
         // Opened up so the distant city glow is not swallowed before it can be
         // seen. Still by far the shortest visibility of the four - it is the
         // night map, and the dark is doing the work.
@@ -3967,7 +3995,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         },
         ocean: {
           base: "#050c1c", bright: "70, 100, 160", dark: "1, 3, 9",
-          repeat: 26, roughness: 0.42, metalness: 0.4
+          repeat: 26, roughness: 0.42, metalness: 0.4,
+          normalRepeat: 46, normalScale: [0.3, 0.52], normalSpeed: [0.008, 0.002], normalSeed: 0x4b2d42
+        },
+        terrain: {
+          seed: 0x4b2d43, sand: 0x111927, grass: 0x15202a, rock: 0x1c2836,
+          peak: 0x2a384b, snow: 0x465a78, fineRepeat: 19, macroRepeat: 4.1,
+          normalRepeat: 24, normalStrength: 0.5, islandNormalStrength: 0.25,
+          rockSlope: [0.2, 0.62], shoreHeight: 0.18, snowSoftness: 0.09
         },
         lights: {
           hemi: { sky: 0x2a3a5a, ground: 0x05070d, intensity: 0.55 },
@@ -3985,7 +4020,8 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         islands: { count: 3, stone: 0x131a24, green: 0x11181f },
         clouds: {
           scale: 0.5, hero: true, color: 0x27324a, opacity: 0.5,
-          cirrusColor: 0x1c2436, cirrusOpacity: 0.22
+          cirrusColor: 0x1c2436, cirrusOpacity: 0.22,
+          texture: { seed: 0x4b2d44, contrast: 0.82, underside: 0.58, softness: 1.06 }
         },
         // Night map: no shore band (there is no light to catch it), just cold
         // moon-rim on the waterline plus distant civilian light. `keepClear`
