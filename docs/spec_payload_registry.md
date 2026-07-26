@@ -34,22 +34,33 @@
   [git公式が「追加行の順序がランダムになり得る。含意を理解せずに使うな」と明記]
   (https://git-scm.com/docs/gitattributes)しており、行ベース故に閉じ括弧共有hunkの切り落としも防げない
 
-## 2. 実測済みのアンカー情報（実装者はここを信用してよい・2026-07-26 6528f87 時点）
+## 2. 実測済みのアンカー情報（**2026-07-27 `378814a` で再測定**）
 
-### 登録テーブルの位置（全て `Object.freeze` されている）
+> **行番号は実装のたびにズレる。** 下表は 378814a 時点の実測値であり、着手時は必ず
+> シンボル名（`const MISSIONS` / `let currentMissionIndex` 等）で再検索して位置を取り直すこと。
+> 行番号を信用して機械挿入してはいけない。
+
+### 登録テーブルの位置（12個すべて `Object.freeze` 済みを実測確認）
 | テーブル | 行 | 備考 |
 |---|---|---|
-| `ENEMY_ROLES` | 2407 | 役割倍率 |
-| `SKILL_TIERS` | 2451 | AIの賢さ |
-| `ACE_PROFILES` | 2522 | ネームド機の塗装 |
-| `AIRCRAFT_ORDER` | 2635 | **`AIRCRAFT_TYPES` から派生する順序配列**（ハンガー表示順） |
-| `AIRCRAFT_TYPES` | 2852 | 機体性能表（自機・敵で共有） |
-| `ENEMY_AI_PROFILES` | 3766 | 敵AI。**`ENEMY_TYPES` (4903) がここから派生** |
-| `ENEMY_MISSILE_PROFILES` | 4942 | 無い機種＝機銃のみ |
-| `SHIP_TYPES` | 5327 | subsystems を持つ |
-| `GROUND_TYPES` | 5440 | |
-| `WORLD_PRESETS` | 5601 | マップ定義 |
-| `MISSIONS` | 6594〜**7579** | |
+| `ENEMY_ROLES` | 2507 | 役割倍率 |
+| `SKILL_TIERS` | 2551 | AIの賢さ |
+| `ACE_PROFILES` | 2623 | ネームド機の塗装 |
+| `AIRCRAFT_ORDER` | 2856 | ★**手書きリテラル。派生ではない**（後述の訂正参照） |
+| `AIRCRAFT_TYPES` | 3073 | 機体性能表（自機・敵で共有） |
+| `ENEMY_AI_PROFILES` | 4012 | 敵AI。**`ENEMY_TYPES` (5149) がここから派生** |
+| `ENEMY_MISSILE_PROFILES` | 5188 | 無い機種＝機銃のみ |
+| `SHIP_TYPES` | 5649 | subsystems を持つ |
+| `GROUND_TYPES` | 5856 | |
+| `WORLD_PRESETS` | 6177 | マップ定義（8プリセット） |
+| `MISSIONS` | 7182〜**8975** | 20ミッション |
+
+### ★訂正: `AIRCRAFT_ORDER` は派生ではない（旧版の記述は誤り）
+実体は 14個のIDを並べた**手書き配列リテラル**で、`AIRCRAFT_TYPES` から生成していない。
+かつ `AIRCRAFT_TYPES`(3073) より**前**(2856)に置かれている。
+→ **`finalizeRegistries()` で作り直す必要があるのは `ENEMY_TYPES` だけ。**
+機体を payload で足す場合は `AIRCRAFT_ORDER` へ**明示的に push** する
+（ハンガーの表示順は作者が決める意図的な並びなので、自動生成に変えないこと）。
 
 ### ★ MISSIONS は「素の配列リテラル」ではない
 `const MISSIONS = Object.freeze([...authored...].map((mission) => { ...正規化... return Object.freeze({...}) }))`
@@ -64,22 +75,22 @@ ACCOMPLISHED 判定が壊れる。**
 ### ★ テーブルを参照するトップレベル派生state（payloadブロックの位置を決める制約）
 | 行 | 内容 | 影響 |
 |---|---|---|
-| 2635 | `AIRCRAFT_ORDER`（AIRCRAFT_TYPESから派生） | 機体を足すなら再構築が要る |
-| 4903 | `ENEMY_TYPES`（ENEMY_AI_PROFILESから派生） | 敵種を足すなら再構築が要る |
-| **7606** | `campaignMissionIndices`（MISSIONSから派生） | 既に `rebuildCampaignMissionIndices()` がある |
-| **8445** | `window.__game.missionTable`（MISSIONSをmapで固める） | 再構築が要る |
+| 5149 | `ENEMY_TYPES`（`ENEMY_AI_PROFILES`×`AIRCRAFT_TYPES` から派生） | 敵種を足すなら**再構築が要る** |
+| **9039** | `campaignMissionIndices`（MISSIONSから派生） | 既に `rebuildCampaignMissionIndices()`(9043) がある＝呼ぶだけ |
+| **9943** | `window.__game.missionTable`（MISSIONSをmapで固める） | 再構築が要る |
 
-**payloadブロックの設置位置＝ 7579行（MISSIONS の閉じ）の直後、7581行の `let currentMissionIndex` の前。**
-この位置なら全10テーブルが定義済みで、MISSIONS由来の派生stateはまだ作られていない。
-`AIRCRAFT_ORDER` と `ENEMY_TYPES` は**この位置より前で確定してしまう**ので、
-`finalizeRegistries()` の中で**この2つを作り直す**こと。
+**payloadブロックの設置位置＝ MISSIONS文の閉じ（8975行 `}));`）の直後、
+`let currentMissionIndex`（9011行）より前。** 途中に `ACTS` / `missionActBanner()` の定義があるので、
+**アンカーは `let currentMissionIndex` の直前**に置くのが確実（この1点だけが、
+12テーブル全てが定義済みかつ MISSIONS 由来の派生stateが未構築という条件を満たす）。
+`ENEMY_TYPES` はこの位置より前で確定するので `finalizeRegistries()` の中で作り直すこと。
 
 ## 3. 実装手順
 
 ### Phase 0 — `index.html` への一度きりの改修（メインループが実施。並列班には絶対に触らせない）
-1. 10テーブルの定義から `Object.freeze` を外し、代わりに `finalizeRegistries()` で deep freeze する。
-   **現状freezeされているので、これをやらないと payload の追加が例外になる**
-2. 7579行の直後に合流点ブロックを設置:
+1. 12テーブルの定義から `Object.freeze` を外し、代わりに `finalizeRegistries()` で deep freeze する。
+   **12個すべてfreezeされているのを実測確認済み。これをやらないと payload の追加が例外になる**
+2. `let currentMissionIndex` の直前に合流点ブロックを設置:
    ```js
    // ==== @PAYLOADS:BEGIN ====
    // ==== @PAYLOADS:END ====
@@ -91,7 +102,9 @@ ACCOMPLISHED 判定が壊れる。**
      `addShipType` / `addGroundType` / `addAceProfile` / `addEnemyMissileProfile`
    - **登録時に必須キーのスキーマ検査と重複key検査を行う**（`damage`/`life`/`launchDot` 欠落クラスを
      ロード時に即死させる＝切り落とし事故の再発防止）
-4. `finalizeRegistries()`: `AIRCRAFT_ORDER` と `ENEMY_TYPES` を作り直してから全テーブルを deep freeze
+4. `finalizeRegistries()`: `ENEMY_TYPES` を作り直し、`rebuildCampaignMissionIndices()` を呼び、
+   `window.__game.missionTable` を作り直してから全テーブルを deep freeze
+   （`AIRCRAFT_ORDER` は手書きリテラルなので再構築不要＝上の訂正参照）
 5. devローダー（~30行）: `?payloads=a.js,b.js` があれば finalize 前に各URLを動的 `import` して
    `mod.default(ctx)` を実行。あわせて `window.__REGISTRY_SNAPSHOT__`
    （各テーブルの key一覧 + エントリ毎のキーパス集合）を返す devフックを追加
@@ -126,13 +139,37 @@ ACCOMPLISHED 判定が壊れる。**
   これは別クラスとして**直列化**するか、担当領域の排他で回す
 - 今後の主戦場（ミッション追加・機体追加・地上ユニット追加＝ロシア陣営編20本を含む）は
   登録テーブル支配なので大半はカバーされる
-- 既存13ミッションの作り直しは**不要**。インラインのまま置き、payload化するのは今後の追加分だけ
+- 既存20ミッションの作り直しは**不要**。インラインのまま置き、payload化するのは今後の追加分だけ
 
 ## 5. 移行コスト
 
 Phase 0+1 で Opus 1セッション（実装 + registry_gate の初回スナップショット生成 +
-既存13ミッションでのゲート緑確認）。既存資産の書き直しゼロ。
+既存20ミッションでのゲート緑確認）。既存資産の書き直しゼロ。
 
-**着手タイミング: 走行中の7ミッション班の合流が終わってから。**
-Phase 0 は index.html の登録テーブル全てを触るので、走行中worktreeとの衝突を避ける。
+**着手タイミング: 米国編20本の合流・順序確定が完了した `378814a` 以降＝いま。**
 ロシア陣営編20本の実装より前に必ず入れる。
+
+## 6. 検収ゲート（Phase 0+1 完了の判定条件）
+
+1. `node --check` 相当の構文パースが通る（`<script type="module">` を抽出して検査）
+2. **既存20ミッションの挙動が不変**: 全20本が正しいキーで起動し pageerror 0、
+   各ミッションの `totalTargets` / `totalContacts` が変更前と**完全一致**
+   （変更前の値は本specの末尾表を参照）
+3. **ダミーpayloadのE2E**: ミッション1本を足す payload を書き、
+   `index.html?payloads=...` で読み込み→ `normalizeMission` を通って `totalTargets` が
+   数値になり、実際に出撃して ACCOMPLISHED 判定が成立することを確認してから、ダミーを除去
+4. `registry_gate.mjs` が既存スナップショットに対して緑
+
+### 変更前の基準値（378814a 実測・上の条件2で使う）
+| # | key | TGT | contacts | # | key | TGT | contacts |
+|---|---|---|---|---|---|---|---|
+| 1 | m01 | 2 | 5 | 11 | m-desert | 12 | 31 |
+| 2 | m02 | 4 | 11 | 12 | m-swarm | 6 | 15 |
+| 3 | m-heli | 5 | 14 | 13 | m-escort | 6 | 17 |
+| 4 | m03 | 5 | 13 | 14 | m-landing | 5 | 15 |
+| 5 | m-boats | 6 | 15 | 15 | m-city | 6 | 17 |
+| 6 | m-glacier | 6 | 16 | 16 | m-carrier | 6 | 17 |
+| 7 | m-storm | 4 | 11 | 17 | m-intercept | 6 | 18 |
+| 8 | m-night | 11 | 21 | 18 | m-squadron | 4 | 11 |
+| 9 | m-convoy | 8 | 16 | 19 | m04 | 1 | 7 |
+| 10 | m-train | 6 | 17 | 20 | m05 | 10 | 29 |
