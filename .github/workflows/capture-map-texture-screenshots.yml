@@ -1,0 +1,101 @@
+name: Capture map texture screenshots
+
+on:
+  push:
+    branches:
+      - chatgpt/map-texture-upgrade-screenshot
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out screenshot branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/map-texture-upgrade-screenshot
+
+      - name: Record screenshot run id
+        run: |
+          printf '%s\n' '${{ github.run_id }}' > screenshot-run-id.txt
+          git config user.name 'ChatGPT Screenshot'
+          git config user.email 'chatgpt@users.noreply.github.com'
+          git add screenshot-run-id.txt
+          git commit -m 'test: record screenshot run [skip ci]'
+          git push origin HEAD:chatgpt/map-texture-upgrade-screenshot
+
+      - name: Install browser driver
+        run: |
+          rm -rf /tmp/sortie-shot
+          mkdir -p /tmp/sortie-shot/screenshots
+          cd /tmp/sortie-shot
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright-core@1.55.0 >/dev/null
+
+      - name: Capture four presets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4175 --bind 127.0.0.1 --directory "$GITHUB_WORKSPACE" >/tmp/sortie-shot-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:4175/ >/dev/null && break
+            sleep 0.2
+          done
+          cat > /tmp/sortie-shot/capture.mjs <<'JS'
+          import fs from 'node:fs';
+          import { chromium } from 'playwright-core';
+
+          const candidates = ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+          const executablePath = candidates.find((path) => fs.existsSync(path));
+          if (!executablePath) throw new Error('Chrome/Chromium not found');
+          const browser = await chromium.launch({
+            executablePath,
+            headless: true,
+            args: [
+              '--no-sandbox', '--disable-dev-shm-usage', '--ignore-gpu-blocklist',
+              '--enable-webgl', '--enable-unsafe-swiftshader', '--use-angle=swiftshader',
+              '--disable-background-timer-throttling', '--disable-renderer-backgrounding',
+              '--disable-backgrounding-occluded-windows'
+            ]
+          });
+          const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, deviceScaleFactor: 1 });
+          await page.goto('http://127.0.0.1:4175/', { waitUntil: 'load', timeout: 60000 });
+          for (let i = 0; i < 80; i += 1) {
+            if (await page.evaluate(() => Boolean(window.__game?.debug?.forceWorld))) break;
+            await page.waitForTimeout(250);
+          }
+          if (!(await page.evaluate(() => Boolean(window.__game?.debug?.forceWorld)))) {
+            throw new Error('game did not initialize');
+          }
+          const canvas = page.locator('#gameRoot canvas');
+          const presets = ['archipelagoDay', 'sunsetOcean', 'glacierCanyon', 'nightBase'];
+          const metadata = [];
+          for (const preset of presets) {
+            await page.evaluate((key) => window.__game.debug.forceWorld(key), preset);
+            await page.waitForTimeout(1800);
+            metadata.push(await page.evaluate((key) => ({
+              preset: key,
+              activePreset: window.__game.world.preset,
+              gpu: window.__game.debug.gpuMemory(),
+              mountains: window.__game.debug.worldMountains().length
+            }), preset));
+            await canvas.screenshot({ path: `/tmp/sortie-shot/screenshots/${preset}.png` });
+          }
+          fs.writeFileSync('/tmp/sortie-shot/screenshots/metadata.json', `${JSON.stringify(metadata, null, 2)}\n`);
+          await browser.close();
+          JS
+          cd /tmp/sortie-shot
+          node capture.mjs
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: sortie-map-texture-screenshots
+          path: /tmp/sortie-shot/screenshots/
+          if-no-files-found: error
+          retention-days: 1
