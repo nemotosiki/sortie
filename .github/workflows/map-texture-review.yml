@@ -16,6 +16,10 @@ env:
   TARGET_BRANCH: chatgpt/map-texture-upgrade
   RUNNER_BRANCH: chatgpt/map-texture-review-20260726-a
 
+concurrency:
+  group: map-texture-review-${{ github.repository }}
+  cancel-in-progress: true
+
 jobs:
   patch-test-publish:
     runs-on: ubuntu-latest
