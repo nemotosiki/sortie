@@ -1628,6 +1628,29 @@
     .menuRecordList li { display: flex; justify-content: space-between; padding: 1px 2px; color: #cfe8fb; }
     .menuRecordList li span:first-child { color: #7fb0d4; font-size: 11px; }
     .menuRankBig { font-size: 34px; line-height: 1; color: #ffd27a; text-shadow: 0 0 16px rgba(255, 190, 90, 0.5); }
+
+    /* Briefing difficulty selector: same wireframe plate as the spec bars
+       beside it, not a new component - a bordered row with the value centred
+       between two idle arrows that light up gold like every other legend key. */
+    .difficultySelector {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border: 1px solid rgba(110, 190, 255, 0.22);
+      background: rgba(4, 13, 25, 0.72);
+    }
+    .difficultyArrow { color: rgba(160, 200, 230, 0.55); font-size: 12px; }
+    .difficultyValue {
+      font-size: 18px;
+      letter-spacing: 0.16em;
+      color: #eaf7ff;
+      text-shadow: 0 0 10px rgba(80, 190, 255, 0.35);
+    }
+    .difficultySelector.aceTier .difficultyValue {
+      color: #ffd27a;
+      text-shadow: 0 0 14px rgba(255, 190, 90, 0.55);
+    }
     #missionThumb { width: 100%; height: 110px; border: 1px solid rgba(110, 190, 255, 0.18); background: rgba(6, 18, 34, 0.6); }
 
     .specRow { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 8px; padding: 3px 0; }
@@ -2356,12 +2379,19 @@
           <ul id="briefingObjectives"></ul>
           <div class="menuRecordHeader">[ PAR TIME ]</div>
           <div class="menuRankBig" id="briefingPar">—</div>
+          <div class="menuRecordHeader">[ DIFFICULTY ]</div>
+          <div class="difficultySelector" id="briefingDifficultyRow">
+            <span class="difficultyArrow">◀</span>
+            <span class="difficultyValue" id="briefingDifficultyValue">NORMAL</span>
+            <span class="difficultyArrow">▶</span>
+          </div>
         </aside>
       </div>
       <p id="briefingStory" class="hidden"></p>
       <p class="briefingBody" id="briefingText"></p>
       <footer class="menuLegend">
         <span id="briefingHint"><span class="legendKey">ENTER / ○</span> 進む</span>
+        <span><span class="legendKey">← →</span> 難易度</span>
         <span><span class="legendKey">ESC / □</span> ミッション選択</span>
         <button id="briefingNextBtn" class="actionButton" type="button">PROCEED</button>
       </footer>
@@ -2544,6 +2574,22 @@
       B: 0.45,
       TIME_ZERO_MULT: 1.8
     });
+
+    // ---- Difficulty --------------------------------------------------------
+    // Three multipliers, each with exactly one point of contact downstream:
+    // incomingDamage scales the player's own damage taken (applyPlayerDamage),
+    // skillShift walks the enemy's resolved SKILL_TIERS index (spawnEnemy),
+    // scoreMult scales the recorded total (recordMissionResult) after ranking
+    // has already happened. Enemy HP, RANK_TUNING and the rank ratio itself
+    // are never touched - see the call sites for why.
+    const DIFFICULTY_ORDER = ["easy", "normal", "hard", "ace"];
+    const DIFFICULTY_TUNING = Object.freeze({
+      easy:   { label: "EASY",   incomingDamage: 0.6,  skillShift: -1, scoreMult: 0.8 },
+      normal: { label: "NORMAL", incomingDamage: 1.0,  skillShift:  0, scoreMult: 1.0 },
+      hard:   { label: "HARD",   incomingDamage: 1.35, skillShift: +1, scoreMult: 1.2 },
+      ace:    { label: "ACE",    incomingDamage: 1.75, skillShift: +1, scoreMult: 1.5 }
+    });
+    const DIFFICULTY_STORAGE_KEY = "sortieDifficulty";
 
     // ---- Hangar economy ------------------------------------------------------
     // AC7 spends mission reward points on an aircraft tree; AC5 gates the next
@@ -2731,6 +2777,9 @@
         breakChance: 1.00, breakReaction: 0
       })
     };
+    // Ladder order for DIFFICULTY_TUNING's skillShift to walk - weakest to
+    // strongest, matching the progression the comments above describe.
+    const SKILL_TIER_ORDER = ["rookie", "regular", "veteran", "expert"];
 
     // ---- Named pilots ---------------------------------------------------------
     // An ace is an identity bolted onto an airframe, never a different physics
@@ -8342,10 +8391,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         ],
         // Twelve ground kills at ground-attack pace, flown through nineteen
-        // fighters that never have to be engaged, on a map with no cover. Par
-        // sits between m-night's 330 (eleven targets, ten fighters, and the
-        // dark to hide in) and m-convoy's scoring pressure.
-        parTime: 360,
+        // fighters that never have to be engaged, on a map with no cover.
+        //
+        // 360 was set by comparison with m-night's 330 and never against this
+        // mission's own board, which is half again as big: thirty-one contacts
+        // in 360s is 11.6 seconds each, where every other sortie in the
+        // campaign sits between 15 and 36 and m-night - the closest thing to
+        // this, ground attack in the dark - runs 15.7. The rank rework made
+        // that gap bite, since the time bonus now decays from par rather than
+        // just gating S. 487 is m-night's pace over this board's contact count.
+        parTime: 487,
         hasOutro: false,
         map: { x: 0.24, y: 0.82 },
         // The airbase, laid out on the sand pan centred at (0, -1500).
@@ -9870,8 +9925,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 { speaker: "wingman", text: "交代のCAPです！ 高度を取ると付き合う羽目になりますよ！", id: "r05-cap-2" }
               ]
             },
+            // Three, not one. r04 puts thirteen contacts on the board and r05
+            // followed it with eleven, so the campaign got easier at the point
+            // it should have been tightening - and the American mirror
+            // (m-boats) fields fifteen for the same fight. The late flight is
+            // where the extra weight belongs: it arrives after the surface
+            // group is already under attack, so it lengthens the sortie without
+            // making the opening any harder to survive.
             {
-              types: ["fa18"], tgt: false, band: 1, label: "SECOND FLIGHT",
+              types: ["fa18", "fa18", "f16"], tgt: false, band: 1, label: "SECOND FLIGHT",
               concurrent: true, role: "trash", delay: 150
             }
           ],
@@ -11870,6 +11932,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const entry = missionRecords[key] || { rank: null, scores: [], times: [], cleared: false };
       entry.cleared = true;
       if (!entry.rank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[entry.rank] || 0)) entry.rank = rank;
+      // Per-difficulty best, alongside the untouched overall-best `rank` above -
+      // existing UI and the unlock chain keep reading `rank`/`cleared`, so a
+      // clear on any tier still unlocks the next sortie exactly as before.
+      const priorRanks = entry.ranks && typeof entry.ranks === "object" ? entry.ranks : {};
+      const priorTierRank = priorRanks[sortieDifficulty];
+      if (!priorTierRank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[priorTierRank] || 0)) {
+        priorRanks[sortieDifficulty] = rank;
+      }
+      entry.ranks = priorRanks;
       // Sticky, like the rank: one clean sortie earns the emblem for the record
       // and a later scrappy one does not take it away. Absent on records
       // written by older builds, which read as "never flown clean".
@@ -11880,7 +11951,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // player just flew.
       const priorScores = Array.isArray(entry.scores) ? entry.scores : [];
       const priorTimes = Array.isArray(entry.times) ? entry.times : [];
-      entry.scores = [...priorScores, result.total].sort((a, b) => b - a).slice(0, 3);
+      // scoreMult lands here, on the recorded/stored total only - the rank
+      // that produced it was already decided by computeMissionRank()'s ratio,
+      // which never sees this multiplier.
+      const scoreMult = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).scoreMult;
+      const scoredTotal = Math.round(result.total * scoreMult);
+      entry.scores = [...priorScores, scoredTotal].sort((a, b) => b - a).slice(0, 3);
       entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
       missionRecords[key] = entry;
       saveMissionRecords();
@@ -12074,6 +12150,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       briefingText: document.getElementById("briefingText"),
       briefingHint: document.getElementById("briefingHint"),
       briefingNextBtn: document.getElementById("briefingNextBtn"),
+      briefingDifficultyRow: document.getElementById("briefingDifficultyRow"),
+      briefingDifficultyValue: document.getElementById("briefingDifficultyValue"),
       changeMissionBtn: document.getElementById("changeMissionBtn"),
       aircraftList: document.getElementById("aircraftList"),
       specRole: document.getElementById("specRole"),
@@ -12315,6 +12393,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let gameState = STATE_READY;
     let score = 0;
     let highscore = readHighscore();
+    let sortieDifficulty = readDifficulty();
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
     let aircraftSpecBarCache = null;
@@ -12707,6 +12786,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       state: gameState,
       score,
       highscore,
+      difficulty: {
+        selected: sortieDifficulty,
+        tuning: DIFFICULTY_TUNING[sortieDifficulty],
+        available: availableDifficulties(),
+        aceUnlocked: isAceUnlocked()
+      },
       health,
       missiles: missileCount,
       kills,
@@ -13707,6 +13792,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     buildCampaignScreen();
     buildMissionList();
     buildHangarUI();
+    updateDifficultySelector();
     {
       const nextUp = campaignMissionIndices.find(
         (index) => isMissionUnlocked(index) && !missionRecords[MISSIONS[index].key]?.cleared
@@ -13827,6 +13913,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            event.code === "ArrowDown" || event.code === "KeyS") &&
           !event.repeat && gameState === STATE_READY) {
         cycleAircraft(1);
+        return;
+      }
+
+      // Briefing's own axis: left/right only, no up/down alias - there is
+      // nothing vertical on this screen to confuse it with.
+      if ((event.code === "ArrowLeft" || event.code === "KeyA") &&
+          !event.repeat && gameState === STATE_BRIEFING) {
+        cycleDifficulty(-1);
+        return;
+      }
+      if ((event.code === "ArrowRight" || event.code === "KeyD") &&
+          !event.repeat && gameState === STATE_BRIEFING) {
+        cycleDifficulty(1);
         return;
       }
 
@@ -15043,6 +15142,68 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
+    function readDifficulty() {
+      try {
+        const value = window.localStorage.getItem(DIFFICULTY_STORAGE_KEY);
+        return DIFFICULTY_TUNING[value] ? value : "normal";
+      } catch {
+        return "normal";
+      }
+    }
+
+    function saveDifficulty() {
+      try {
+        window.localStorage.setItem(DIFFICULTY_STORAGE_KEY, sortieDifficulty);
+      } catch {
+        // Storage can be unavailable; the choice simply doesn't persist.
+      }
+    }
+
+    // ACE stays out of the rotation until the active campaign has nothing left
+    // to clear - derived from the records the player already has, so no new
+    // flag has to be introduced or kept in sync with them.
+    function isAceUnlocked() {
+      const total = campaignMissionCount(selectedCampaignId);
+      return total > 0 && campaignClearedCount(selectedCampaignId) >= total;
+    }
+
+    // The rotation the player can actually land on right now: ACE drops out
+    // until isAceUnlocked(), so cycling never stops on a locked tier.
+    function availableDifficulties() {
+      return isAceUnlocked() ? DIFFICULTY_ORDER : DIFFICULTY_ORDER.filter((id) => id !== "ace");
+    }
+
+    function setDifficulty(id) {
+      if (!DIFFICULTY_TUNING[id]) return;
+      sortieDifficulty = id;
+      saveDifficulty();
+      updateDifficultySelector();
+    }
+
+    function cycleDifficulty(delta) {
+      const roster = availableDifficulties();
+      const idx = roster.indexOf(sortieDifficulty);
+      const from = idx < 0 ? 0 : idx;
+      setDifficulty(roster[(from + delta + roster.length) % roster.length]);
+      playTone(760, 0.03, 0.03, "square");
+    }
+
+    // Dropped out of the rotation without warning if it was actually selected
+    // and the campaign switched to one still in progress - normal is always a
+    // safe landing spot, unlike leaving the stale choice pointed at a tier that
+    // no longer appears in the list.
+    function updateDifficultySelector() {
+      if (!isAceUnlocked() && sortieDifficulty === "ace") {
+        sortieDifficulty = "normal";
+        saveDifficulty();
+      }
+      const tuning = DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal;
+      if (ui.briefingDifficultyValue) ui.briefingDifficultyValue.textContent = tuning.label;
+      if (ui.briefingDifficultyRow) {
+        ui.briefingDifficultyRow.classList.toggle("aceTier", sortieDifficulty === "ace");
+      }
+    }
+
     function startMission() {
       // Preview is open to any roster jet (see selectAircraft), but launching
       // one the player hasn't bought yet would let a look become a free
@@ -15346,6 +15507,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       } else if (nextState === STATE_BRIEFING) {
         hideBigBanner();
         startBriefing();
+        updateDifficultySelector();
         queueMicrotask(() => ui.briefingNextBtn.focus({ preventScroll: true }));
       } else if (nextState === STATE_READY) {
         hideBigBanner();
@@ -17309,7 +17471,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A wave may name a tier independently of the role - "a MiG-21, but the
       // man in it is first rate" is a legitimate thing for a mission to want.
       // Unstated, the role's own default applies.
-      const resolvedSkillId = SKILL_TIERS[skillId] ? skillId : role.skill;
+      const baseSkillId = SKILL_TIERS[skillId] ? skillId : role.skill;
+      // Difficulty's one point of contact with enemy skill: walk the tier
+      // ladder by skillShift and clamp at both ends, so EASY never demotes a
+      // rookie past rookie and HARD/ACE never promote an expert past expert.
+      const skillShift = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).skillShift;
+      const baseSkillIndex = SKILL_TIER_ORDER.indexOf(baseSkillId);
+      const resolvedSkillId = baseSkillIndex < 0
+        ? baseSkillId
+        : SKILL_TIER_ORDER[THREE.MathUtils.clamp(baseSkillIndex + skillShift, 0, SKILL_TIER_ORDER.length - 1)];
       const skill = SKILL_TIERS[resolvedSkillId];
       // The ace flies the same airframe, just sharper - never a different
       // physics table. The role's turnScale is the only stat bonus it gets, and
@@ -20772,8 +20942,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gameState !== STATE_PLAYING) return false;
       if (!bypassCooldown && (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0)) return false;
 
+      // incomingDamage is difficulty's one point of contact with the player's
+      // own health - never the enemy's, never a friendly's, and applied here
+      // so every source (gun, missile, AA, CIWS, ship SAM) is scaled alike.
+      const difficultyDamage = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).incomingDamage;
       const safeAmount = Number.isFinite(amount)
-        ? THREE.MathUtils.clamp(Math.round(amount), 1, PLAYER_MAX_HEALTH)
+        ? THREE.MathUtils.clamp(Math.round(amount * difficultyDamage), 1, PLAYER_MAX_HEALTH)
         : 0;
       if (safeAmount <= 0) return false;
 
@@ -22331,6 +22505,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.state = gameState;
       hook.score = Math.round(score);
       hook.highscore = Math.round(highscore);
+      hook.difficulty.selected = sortieDifficulty;
+      hook.difficulty.tuning = DIFFICULTY_TUNING[sortieDifficulty];
+      hook.difficulty.available = availableDifficulties();
+      hook.difficulty.aceUnlocked = isAceUnlocked();
       hook.health = Math.round(health);
       hook.missiles = Math.round(missileCount);
       hook.kills = Math.round(kills);
@@ -26435,6 +26613,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       currentMissionIndex = nextUp !== undefined ? nextUp : (campaignMissionIndices[0] ?? 0);
       missionCursor = currentMissionIndex;
       buildMissionList();
+      // ACE's unlock is campaign-scoped, so switching sides can drop the
+      // player out of a tier the other campaign hasn't earned yet.
+      updateDifficultySelector();
       syncGameHook();
     }
 
