@@ -465,9 +465,7 @@
       box-shadow: 0 0 10px rgba(94, 230, 255, 0.9);
     }
 
-    #spwTubes,
-    #missilePips,
-    #flarePips {
+    #wpnPips {
       display: flex;
       gap: 3px;
       margin: 0;
@@ -874,6 +872,13 @@
 
     .enemyMarker.active .enemyMarkerName { opacity: 0.92; }
     .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
+
+    /* #targetBox is already sitting on the seeker's target with the same name
+       and range. A salvo target keeps its frame (the count has to stay
+       readable) but must not caption itself as well, or the aircraft carries
+       two identical readouts a dozen pixels apart. */
+    .enemyMarker.captioned .enemyMarkerName,
+    .enemyMarker.captioned .enemyMarkerTgt { opacity: 0; }
 
     .enemyMarker.selected {
       width: 29px;
@@ -2151,9 +2156,8 @@
 
     <section id="statusPanel" class="panel">
       <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">GUN</span><strong class="hudVal">----</strong></div>
-      <div class="hudRow wpnActive" id="mslRow"><span class="wpnSel">▶</span><span class="hudBox">MSSL</span><span id="missilePips"></span><strong class="hudVal" id="missiles">10</strong></div>
-      <div class="hudRow" id="spwRow"><span class="wpnSel">▶</span><span class="hudBox" id="spwLabel">SP.W</span><span id="spwTubes"></span><span id="spwPips"></span><strong class="hudVal" id="spwCount">0</strong></div>
-      <div class="hudRow"><span class="wpnSel"></span><span class="hudPlain">FLR</span><span id="flarePips"></span><strong class="hudVal" id="flares">2</strong></div>
+      <div class="hudRow wpnActive" id="wpnRow"><span class="wpnSel">▶</span><span class="hudBox" id="wpnLabel">MSSL</span><span id="wpnPips"></span><strong class="hudVal" id="wpnCount">10</strong></div>
+      <div class="hudRow"><span class="wpnSel"></span><span class="hudPlain">FLR</span><strong class="hudVal" id="flares">2</strong></div>
       <div class="hudRow"><span class="wpnSel"></span><span class="hudBox">DMG</span><strong class="hudVal" id="health">0%</strong></div>
     </section>
 
@@ -2935,7 +2939,8 @@
         multi: 1,
         tubes: 2,
         reload: 6,
-        lockRange: null
+        lockRange: null,
+        lockKind: "air"
       }),
       // F-2A: the anti-ship round. Locks only what floats or sits on the ground -
       // pointing it at a fighter gets you nothing - and reaches far past the standard
@@ -2954,7 +2959,7 @@
         tubes: 1,
         reload: 9,
         lockRange: 1600,
-        surfaceOnly: true
+        lockKind: "surface"
       }),
       // F-15: BVR sniper. Sees past the standard 1200 m seeker, but flies
       // almost straight once it is off the rail.
@@ -2969,7 +2974,8 @@
         multi: 1,
         tubes: 2,
         reload: 8,
-        lockRange: 2000
+        lockRange: 2000,
+        lockKind: "air"
       }),
       // F-35C: the eight-target salvo cut down to four. Same acquisition path as
       // the 8AAM - updateMultiLock() reads `multi` and `multiLockTime` and knows
@@ -2988,7 +2994,10 @@
         life: 9.5,
         multi: 4,
         multiLockTime: 0.45,
-        lockRange: null
+        tubes: 4,
+        reload: 8,
+        lockRange: null,
+        lockKind: "air"
       }),
       // F-22: one trigger, up to eight targets, at 78 damage a round.
       aam8: Object.freeze({
@@ -3001,9 +3010,10 @@
         life: 9.5,
         multi: 8,
         multiLockTime: 0.45,
-        tubes: 1,
+        tubes: 8,
         reload: 12,
-        lockRange: null
+        lockRange: null,
+        lockKind: "air"
       }),
       // Gripen E: six targets to the 8AAM's eight and the 4AAM's four. The
       // small jet's answer to being outnumbered - it cannot out-armour a swarm,
@@ -3023,7 +3033,10 @@
         life: 9.5,
         multi: 6,
         multiLockTime: 0.45,
-        lockRange: null
+        tubes: 6,
+        reload: 10,
+        lockRange: null,
+        lockKind: "air"
       }),
       // F-4: free-fall bomb, no lock at all - the CCIP marker is the sight.
       ugb: Object.freeze({
@@ -3037,15 +3050,16 @@
         multi: 1,
         tubes: 2,
         reload: 5,
-        lockRange: null
+        lockRange: null,
+        lockKind: "none"
       }),
       // A-10C: the multi-lock salvo pointed at the ground. It is the LASM's
       // surface-only seeker and the 4AAM's four-target acquisition in one
       // round, and that combination is what makes it the only 1.0 on the
       // AIR-TO-GROUND bar - a bomb hits one aim point, this clears a revetment.
-      // No new machinery: updateLock() already drops aircraft from the cone for
-      // `surfaceOnly`, and updateMultiLock()/launchSpSalvo() already read
-      // `multi`/`multiLockTime`, so the two flags compose on their own.
+      // No new machinery: canLock() already drops aircraft from the cone for
+      // `lockKind: "surface"`, and updateMultiLock()/launchSpSalvo() already read
+      // `multi`/`multiLockTime`, so the two settings compose on their own.
       //
       // 120 damage against the 4AAM's 90 because these targets are not jets:
       // the light installations sit at 50-90 HP and die to one round either
@@ -3066,7 +3080,7 @@
         tubes: 2,
         reload: 8,
         lockRange: 1500,
-        surfaceOnly: true
+        lockKind: "surface"
       })
     });
 
@@ -9545,12 +9559,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       specRole: document.getElementById("specRole"),
       specName: document.getElementById("specName"),
       specBars: document.getElementById("specBars"),
-      mslRow: document.getElementById("mslRow"),
-      spwRow: document.getElementById("spwRow"),
-      spwLabel: document.getElementById("spwLabel"),
-      spwTubes: document.getElementById("spwTubes"),
-      spwPips: document.getElementById("spwPips"),
-      spwCount: document.getElementById("spwCount"),
+      wpnRow: document.getElementById("wpnRow"),
+      wpnLabel: document.getElementById("wpnLabel"),
+      wpnPips: document.getElementById("wpnPips"),
+      wpnCount: document.getElementById("wpnCount"),
       ccipMarker: document.getElementById("ccipMarker"),
       ccipLabel: document.getElementById("ccipLabel"),
       ammoGrid: document.getElementById("ammoGrid"),
@@ -9560,7 +9572,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
       health: document.getElementById("health"),
-      missiles: document.getElementById("missiles"),
       flares: document.getElementById("flares"),
       kills: document.getElementById("kills"),
       tgtRemain: document.getElementById("tgtRemain"),
@@ -9569,8 +9580,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       guardLabel: document.getElementById("guardLabel"),
       guardVal: document.getElementById("guardVal"),
       statusPanel: document.getElementById("statusPanel"),
-      missilePips: document.getElementById("missilePips"),
-      flarePips: document.getElementById("flarePips"),
       rackLeft: document.getElementById("rackLeft"),
       rackRight: document.getElementById("rackRight"),
       speed: document.getElementById("speedValue"),
@@ -9857,7 +9866,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // 8AAM acquisition: one more target latched every multiLockTime, nearest
     // first, all inside the same cone the single lock uses.
     const multiLock = { ids: [], timer: 0 };
-    const SPW_PIP_MAX = 6;
     const BOMB_GRAVITY = 110;
     const BOMB_MAX_FLIGHT = 14;
     const BOMB_PREDICT_STEP = 0.1;
@@ -14150,6 +14158,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : LOCK_RANGE;
     }
 
+    // What the currently selected trigger can take a lock on. The plain missile
+    // is the only "any" seeker in the game; an SP.W is a specialist by
+    // definition, so its entry says so and nothing else has to know which weapon
+    // it is looking at.
+    function currentLockKind() {
+      if (selectedWeapon !== "spw" || !PLAYER_SPW) return "any";
+      return PLAYER_SPW.lockKind || "any";
+    }
+
+    // The one predicate every lock path goes through. Keeping it a single
+    // function is the point: updateLock() and updateMultiLock() disagreeing
+    // about what a weapon may see is exactly the bug this replaces.
+    function canLock(enemy, lockKind) {
+      if (lockKind === "air") return !enemy.surface;
+      if (lockKind === "surface") return Boolean(enemy.surface);
+      if (lockKind === "none") return false;
+      return true;
+    }
+
     function updateLock(dt) {
       // A bomb has no seeker. Measured on the F-4 before this gate existed: with
       // the UGB selected the lock still ran to completion - progress 0 -> 1.0,
@@ -14161,7 +14188,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // since every one of them reads lock.targetId/progress. Manual target
       // selection is untouched: the TGT box reads preferredTargetId, so the
       // range readout a bombing run wants stays, and the CCIP marker is the sight.
-      if (selectedWeapon === "spw" && PLAYER_SPW && PLAYER_SPW.kind === "bomb") {
+      if (currentLockKind() === "none") {
         if (lock.targetId !== null || lock.progress > 0) resetLock();
         clearMultiLock();
         return;
@@ -14176,15 +14203,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const preferred = enemies.find((enemy) => enemy.id === preferredTargetId && enemy.alive);
       if (preferredTargetId !== null && !preferred) preferredTargetId = null;
 
-      // A surface-only SP.W (LASM) never sees an aircraft. Gated on the SP.W
-      // actually being selected, so the plain missile's lock is untouched, and
-      // on a flag the other four SP.Ws don't set, so they are untouched too.
-      const surfaceOnlyLock =
-        selectedWeapon === "spw" && Boolean(PLAYER_SPW) && Boolean(PLAYER_SPW.surfaceOnly);
+      // What the currently selected trigger is allowed to see. The plain missile
+      // is "any"; every SP.W declares its own seeker in SPW_TYPES.
+      const lockKind = currentLockKind();
 
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
-        if (surfaceOnlyLock && !enemy.surface) continue;
+        if (!canLock(enemy, lockKind)) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
         if (distance > lockRange || distance < 1) continue;
@@ -14196,7 +14221,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // gun tub 50 m in front of a hull would trade lock with the ship every
         // few frames, and every missile meant for the hull would go to it.
         // Manual selection is untouched: preferredCandidate below still wins.
-        if (!enemy.subsystem) inCone.push({ id: enemy.id, distance });
+        if (!enemy.subsystem) inCone.push({ id: enemy.id, distance, enemy });
         let selectionScore = dot * 4 - distance / lockRange;
         if (enemy.subsystem) selectionScore -= SUBSYSTEM_LOCK_PENALTY;
         if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
@@ -14246,16 +14271,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         clearMultiLock();
         return;
       }
+      // The same seeker rule the single lock goes through. The cone list is
+      // already filtered upstream, but a salvo that ignores lockKind is the
+      // exact failure this replaces (a 4AAM raining on a fleet), so the salvo
+      // path states it for itself rather than trusting its caller.
+      const lockKind = currentLockKind();
+      const eligible = candidates.filter((entry) => canLock(entry.enemy, lockKind));
+      if (eligible.length === 0) {
+        clearMultiLock();
+        return;
+      }
       multiLock.timer += dt;
-      candidates.sort((a, b) => a.distance - b.distance);
+      eligible.sort((a, b) => a.distance - b.distance);
       const step = weapon.multiLockTime || 0.45;
       const count = Math.min(
         weapon.multi,
-        candidates.length,
+        eligible.length,
         Math.floor(multiLock.timer / step)
       );
       multiLock.ids.length = 0;
-      for (let i = 0; i < count; i += 1) multiLock.ids.push(candidates[i].id);
+      for (let i = 0; i < count; i += 1) multiLock.ids.push(eligible[i].id);
     }
 
     function clearMultiLock() {
@@ -14269,13 +14304,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gameState !== STATE_PLAYING || !PLAYER_SPW) return false;
       selectedWeapon = selectedWeapon === "msl" ? "spw" : "msl";
       clearMultiLock();
-      // Selecting a surface-only round drops an air lock in the same frame it is
-      // selected. updateLock would clear it on the next tick anyway, but the
-      // trigger is polled in between, and a LASM must never leave the rail after
-      // a fighter.
-      if (selectedWeapon === "spw" && PLAYER_SPW.surfaceOnly && lock.targetId !== null) {
-        const locked = enemies.find((enemy) => enemy.id === lock.targetId);
-        if (!locked || !locked.surface) resetLock();
+      // A lock taken with the previous weapon belongs to the previous weapon's
+      // seeker. Dropped in the same frame the switch happens: updateLock would
+      // clear it on the next tick anyway, but the trigger is polled in between,
+      // and a LASM must never leave the rail after a fighter (nor a 4AAM after a
+      // destroyer). Kept only when the new round can legally see it.
+      if (lock.targetId !== null) {
+        const lockKind = currentLockKind();
+        const locked = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
+        if (!locked || !canLock(locked, lockKind)) resetLock();
       }
       playTone(1240, 0.05, 0.05, "square");
       showBanner(
@@ -19163,6 +19200,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // target has to keep its own LOCK frame or the count is unreadable.
         const coveredByLockBox = onScreen && lock.targetId === enemy.id && !multiLocked;
         const active = onScreen && !coveredByLockBox;
+        // ...but keeping the frame is not the same as keeping the readout. The
+        // salvo target that is ALSO the seeker's target had both its own name
+        // tag and #targetBox on it, a dozen pixels apart - the same aircraft
+        // captioned twice. The frame is what the salvo needs; the name comes
+        // from the lock box, which is already sitting on this contact.
+        const nameShownByLockBox = onScreen && lock.targetId === enemy.id;
         const selected = selectedId === enemy.id;
         const locked = lock.locked && lock.targetId === enemy.id;
 
@@ -19177,6 +19220,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         marker.classList.toggle("multiLocked", multiLocked);
         marker.classList.toggle("tgt", isTgt);
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
+        marker.classList.toggle("captioned", nameShownByLockBox);
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
         const displayName = enemyDisplayName(enemy);
         const nameLine = nameTag.firstElementChild;
@@ -19354,12 +19398,37 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return `${Math.floor(total / 60)}'${String(Math.floor(total % 60)).padStart(2, "0")}"`;
     }
 
+    // Tube diamonds, AC style: one frame per tube, lit = loaded, brightening =
+    // reloading, near-invisible = the tube has nothing coming. One function for
+    // both launchers, so a diamond means the same thing whichever weapon the
+    // trigger is on: one diamond, one round ready to leave the rail.
+    function renderLoadedPips(container, loaded, tubes, timers, reloadSpan) {
+      const total = Math.max(0, tubes);
+      if (container.childElementCount !== total) {
+        container.replaceChildren(...Array.from({ length: total }, () => {
+          const pip = document.createElement("span");
+          pip.className = "missilePip";
+          pip.textContent = "◆";
+          return pip;
+        }));
+      }
+      Array.from(container.children).forEach((pip, index) => {
+        if (index < loaded) {
+          pip.style.opacity = "1";
+          return;
+        }
+        const timer = timers ? timers[index - loaded] : undefined;
+        pip.style.opacity = timer === undefined || !(reloadSpan > 0)
+          ? "0.12"
+          : String((0.15 + 0.55 * (1 - timer / reloadSpan)).toFixed(2));
+      });
+    }
+
     function updateHud() {
       ui.state.textContent = gameState;
       ui.score.textContent = String(Math.round(score));
       ui.highscore.textContent = String(Math.round(highscore));
       ui.health.textContent = `${Math.round((1 - health / PLAYER_MAX_HEALTH) * 100)}%`;
-      ui.missiles.textContent = String(Math.round(missileCount));
       ui.flares.textContent = String(flareCount);
       ui.kills.textContent = String(Math.round(kills));
       const remaining = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
@@ -19416,87 +19485,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? `MISSILE ALERT · ${threat.direction} · ${Math.round(threat.distance)}M`
         : "MISSILE ALERT";
 
-      // Tube diamonds, AC style: lit = loaded, brightening = reloading,
-      // near-invisible = no stock left for that tube.
-      if (ui.missilePips.childElementCount !== MISSILE_TUBE_COUNT) {
-        ui.missilePips.replaceChildren(...Array.from({ length: MISSILE_TUBE_COUNT }, () => {
-          const pip = document.createElement("span");
-          pip.className = "missilePip";
-          pip.textContent = "\u25c6";
-          return pip;
-        }));
+      // ONE weapon row, AC style: the HUD shows the launcher the trigger is
+      // actually on, and nothing else. Two permanently visible pip rows - one
+      // for MSSL, one for SP.W - meant the player read a loaded diamond next to
+      // a weapon that was not selected. The row's label, pip column and count
+      // are all swapped together.
+      const spwSelected = selectedWeapon === "spw";
+      ui.wpnLabel.textContent = spwSelected && PLAYER_SPW ? PLAYER_SPW.label : "MSSL";
+      ui.wpnCount.textContent = String(spwSelected ? spwAmmo : Math.round(missileCount));
+      if (spwSelected) {
+        renderLoadedPips(ui.wpnPips, spwLoaded, spwTubeCount(), spwReloadTimers, spwReloadTime());
+      } else {
+        renderLoadedPips(
+          ui.wpnPips, loadedMissiles, MISSILE_TUBE_COUNT, missileReloadTimers, MISSILE_RELOAD_TIME
+        );
       }
-      Array.from(ui.missilePips.children).forEach((pip, index) => {
-        if (index < loadedMissiles) {
-          pip.style.opacity = "1";
-          return;
-        }
-        const timer = missileReloadTimers[index - loadedMissiles];
-        pip.style.opacity = timer === undefined
-          ? "0.12"
-          : String((0.15 + 0.55 * (1 - timer / MISSILE_RELOAD_TIME)).toFixed(2));
-      });
-      if (ui.flarePips.childElementCount !== FLARE_CAPACITY) {
-        ui.flarePips.replaceChildren(...Array.from({ length: FLARE_CAPACITY }, () => {
-          const pip = document.createElement("span");
-          pip.className = "missilePip";
-          pip.textContent = "\u25c6";
-          return pip;
-        }));
-      }
-      Array.from(ui.flarePips.children).forEach((pip, index) => {
-        pip.style.opacity = index < flareCount ? "1" : "0.12";
-      });
       ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
       ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
-
-      // SP.W row: the launcher name, a six-diamond gauge (one diamond can stand
-      // for several rounds when the magazine is deep) and the count. The lit row
-      // is the one the trigger will fire.
-      const spwSelected = selectedWeapon === "spw";
-      ui.mslRow.classList.toggle("wpnActive", !spwSelected);
-      ui.spwRow.classList.toggle("wpnActive", spwSelected);
-      ui.spwLabel.textContent = PLAYER_SPW ? PLAYER_SPW.label : "SP.W";
-      ui.spwCount.textContent = String(spwAmmo);
-      // SP.W tube diamonds: lit = a trigger pull is ready, brightening = a tube
-      // is reloading, near-invisible = the magazine cannot pay for that tube.
-      // Identical treatment to the MSSL row above, so the reload reads the same
-      // way on both launchers.
-      const spwTubeTotal = spwTubeCount();
-      if (ui.spwTubes.childElementCount !== spwTubeTotal) {
-        ui.spwTubes.replaceChildren(...Array.from({ length: spwTubeTotal }, () => {
-          const pip = document.createElement("span");
-          pip.className = "missilePip";
-          pip.textContent = "\u25c6";
-          return pip;
-        }));
-      }
-      const spwReloadSpan = spwReloadTime();
-      Array.from(ui.spwTubes.children).forEach((pip, index) => {
-        if (index < spwLoaded) {
-          pip.style.opacity = "1";
-          return;
-        }
-        const timer = spwReloadTimers[index - spwLoaded];
-        pip.style.opacity = timer === undefined || spwReloadSpan <= 0
-          ? "0.12"
-          : String((0.15 + 0.55 * (1 - timer / spwReloadSpan)).toFixed(2));
-      });
-
-      const spwPipUnit = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / SPW_PIP_MAX));
-      const spwPipCount = Math.max(1, Math.ceil(PLAYER_SPW_CAPACITY / spwPipUnit));
-      if (ui.spwPips.childElementCount !== spwPipCount) {
-        ui.spwPips.replaceChildren(...Array.from({ length: spwPipCount }, () => {
-          const pip = document.createElement("span");
-          pip.className = "missilePip";
-          pip.textContent = "\u25c6";
-          return pip;
-        }));
-      }
-      Array.from(ui.spwPips.children).forEach((pip, index) => {
-        const full = (index + 1) * spwPipUnit;
-        pip.style.opacity = spwAmmo >= full ? "1" : spwAmmo > index * spwPipUnit ? "0.5" : "0.12";
-      });
 
       forwardOf(player, tmpV1);
       rightOf(player, tmpV2);
@@ -19539,6 +19544,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.loadout.spw.key = PLAYER_SPW ? PLAYER_SPW.key : null;
       hook.loadout.spw.label = PLAYER_SPW ? PLAYER_SPW.label : null;
       hook.loadout.spw.kind = PLAYER_SPW ? PLAYER_SPW.kind : null;
+      hook.loadout.spw.lockKind = PLAYER_SPW ? PLAYER_SPW.lockKind || "any" : null;
+      hook.loadout.lockKind = currentLockKind();
       hook.loadout.spw.capacity = PLAYER_SPW_CAPACITY;
       hook.loadout.spw.ammo = spwAmmo;
       hook.flares = flareCount;
@@ -23092,13 +23099,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // reads 1.0: the guided round's accuracy without the single-aim-point
         // limit that keeps a bomb at 0.95. Checked before the plain
         // surface-only branch below, which the 4AGM would otherwise match.
-        if (weapon.surfaceOnly && weapon.multi > 1) return 1.0;
+        if (weapon.lockKind === "surface" && weapon.multi > 1) return 1.0;
         if (weapon.kind === "bomb") return 0.95;
         // A guided anti-ship round is a surface attack role too - less flexible
         // than a bomb (it only takes hulls and installations, never a runway or
         // a soft target the seeker can't see) but far more accurate. Absolute,
         // like the other two branches, so no existing airframe's bar moves.
-        if (weapon.surfaceOnly) return 0.8;
+        if (weapon.lockKind === "surface") return 0.8;
         return 0.25;
       };
       const stabilities = specs.map(stabilityScore);
