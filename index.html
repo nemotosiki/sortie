@@ -10292,11 +10292,16 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
     // texture.
     let oceanDriftU = 0;
     let oceanDriftV = 0;
+    let oceanNormalDriftU = 0;
+    let oceanNormalDriftV = 0;
     function updateWorld(dt) {
       // Slow wave drift; the plane's own motion over the fixed pattern is the
       // real speed cue.
       oceanDriftU += dt * 0.0045;
       oceanDriftV += dt * 0.0018;
+      const oceanNormalSpeed = world.oceanNormalSpeed || [0.0105, 0.0035];
+      oceanNormalDriftU += dt * oceanNormalSpeed[0];
+      oceanNormalDriftV += dt * oceanNormalSpeed[1];
 
       // The ocean plane is finite (OCEAN_PLANE_SIZE), so left alone its rim
       // shows up as "the world ends" after ~18s of boost. Snap it under the
@@ -10318,8 +10323,18 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
           oceanDriftU + camX / tile,
           oceanDriftV - camZ / tile
         );
+        if (world.oceanNormalTexture) {
+          const normalTile = world.oceanNormalTileSize || tile;
+          world.oceanNormalTexture.offset.set(
+            oceanNormalDriftU + camX / normalTile,
+            oceanNormalDriftV - camZ / normalTile
+          );
+        }
       } else {
         world.oceanTexture.offset.set(oceanDriftU, oceanDriftV);
+        if (world.oceanNormalTexture) {
+          world.oceanNormalTexture.offset.set(oceanNormalDriftU, oceanNormalDriftV);
+        }
       }
 
       // The sun glint is a view-relative reflection, not a place on the map, so
@@ -14317,6 +14332,47 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       return material;
     }
 
+    // Tileable crossing-wave normal map. The colour texture remains the existing
+    // hand-authored speckle field; this data texture only bends the lighting.
+    function makeOceanNormalTexture(seed, size = 256) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      const image = ctx.createImageData(size, size);
+      const phase = ((seed >>> 0) % 104729) / 104729 * Math.PI * 2;
+      const tau = Math.PI * 2;
+      for (let y = 0; y < size; y += 1) {
+        const v = y / size * tau;
+        for (let x = 0; x < size; x += 1) {
+          const u = x / size * tau;
+          const a = u * 9 + v * 2 + phase;
+          const b = -u * 4 + v * 13 + phase * 1.7;
+          const c = u * 19 - v * 7 + Math.sin(u * 3 + v * 2) * 1.2;
+          const dhdu = Math.cos(a) * 9 * 0.46 + Math.cos(b) * -4 * 0.26 + Math.cos(c) * 19 * 0.08;
+          const dhdv = Math.cos(a) * 2 * 0.46 + Math.cos(b) * 13 * 0.26 + Math.cos(c) * -7 * 0.08;
+          let nx = -dhdu * 0.055;
+          let ny = 1;
+          let nz = -dhdv * 0.055;
+          const inv = 1 / Math.hypot(nx, ny, nz);
+          nx *= inv;
+          ny *= inv;
+          nz *= inv;
+          const offset = (y * size + x) * 4;
+          image.data[offset] = Math.round((nx * 0.5 + 0.5) * 255);
+          image.data[offset + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+          image.data[offset + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+          image.data[offset + 3] = 255;
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.colorSpace = THREE.NoColorSpace;
+      return texture;
+    }
+
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
     // returned record so disposeWorld() can hand it all back when a mission
     // switches maps - otherwise each swap would leak a whole world.
@@ -14438,10 +14494,18 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       oceanTexture.wrapT = THREE.RepeatWrapping;
       oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
       oceanTexture.colorSpace = THREE.SRGBColorSpace;
+      const oceanNormalRepeat = preset.ocean.normalRepeat || preset.ocean.repeat * 1.62;
+      const oceanNormalTexture = keepTexture(makeOceanNormalTexture(preset.ocean.normalSeed ?? 0x0cea12));
+      oceanNormalTexture.repeat.set(oceanNormalRepeat, oceanNormalRepeat);
+      oceanNormalTexture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+      const oceanNormalScale = preset.ocean.normalScale || [0.42, 0.64];
+      const oceanNormalSpeed = preset.ocean.normalSpeed || [0.0105, 0.0035];
       const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
       oceanGeometry.rotateX(-Math.PI / 2);
       const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
         map: oceanTexture,
+        normalMap: oceanNormalTexture,
+        normalScale: new THREE.Vector2(oceanNormalScale[0], oceanNormalScale[1]),
         roughness: preset.ocean.roughness,
         metalness: preset.ocean.metalness
       }));
@@ -14457,6 +14521,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // snap offset by this to cancel the motion in UV space, so the wave
       // pattern stays pinned to the world instead of sliding with the mesh.
       const oceanTileSize = OCEAN_PLANE_SIZE / preset.ocean.repeat;
+      const oceanNormalTileSize = OCEAN_PLANE_SIZE / oceanNormalRepeat;
 
       let sunRoad = null;
       if (preset.sunRoad) {
@@ -15192,8 +15257,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       }
 
       return {
-        preset: key, label: preset.label, skyGroup, oceanTexture, cloudVolumes, mountains,
-        ocean, oceanTileSize, sunRoad,
+        preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains,
+        ocean, oceanTileSize, oceanNormalTileSize, oceanNormalSpeed, sunRoad,
         roots, geometries, materials, textures
       };
     }
@@ -15226,6 +15291,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       // drift over would jump the wave pattern on the swap frame.
       oceanDriftU = 0;
       oceanDriftV = 0;
+      oceanNormalDriftU = 0;
+      oceanNormalDriftV = 0;
       return true;
     }
 
