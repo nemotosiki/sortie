@@ -2762,6 +2762,63 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
 primary: 0x4c5550, secondary: 0x333b38, accent: 0x20262a,
 canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         })
+      }),
+      // Enemy-only. The UAV is the opposite end of the roster from the bomber:
+      // where the heavy is slow, huge and unmissable, this is the smallest and
+      // sharpest thing in the air. HP 98 is one missile - the whole point, since
+      // a swarm is only a swarm if each round removes one of it - and turn 44
+      // beats every crewed airframe here including the Raptor's 39, which is
+      // exactly what "unmanned" buys: structuralG 5.0 is not a pilot's limit.
+      //
+      // It fights with the gun alone (no ENEMY_MISSILE_PROFILES entry, which is
+      // how attemptEnemyMissile is told an airframe carries nothing) and hits
+      // for 5 against a fighter's 7. One UAV is a nuisance; six is a problem.
+      uav: Object.freeze({
+        id: "uav",
+        label: "MQ-99 DRONE",
+        role: "Unmanned Combat Aerial Vehicle",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の無人戦闘機。極小・軽量で、有人機には許されない機動を平然とこなす。装甲は無いに等しく、ミサイル1発で落ちる。",
+        cruiseSpeed: 210, boostSpeed: 430, brakeSpeed: 130,
+        pitchRateDeg: 56, rollRateDeg: 200, yawRateDeg: 16, maxBankAngleDeg: 70,
+        normalRollSpring: 54, rollRateLimitDeg: 190, turnRateDeg: 44,
+        rollDamping: 13.6, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.4, structuralG: 5.0,
+        // Player-side field, inert for an enemy-only entry: what the AI actually
+        // shoots for is ENEMY_AI_PROFILES.uav damageMin/damageMax.
+        gunDamage: 5, missileDamage: 98,
+        boostResponse: 0.4, brakeResponse: 0.42, cruiseResponse: 0.5,
+        missileCapacity: 0, maxHealth: 98,
+        tipSpan: 7.2, tipZ: 1.6,
+        theme: Object.freeze({
+primary: 0x5b6169, secondary: 0x393f46, accent: 0x2a2f35,
+canopy: 0x9dff4d, exhaust: 0xb6ff6a, scale: 0.45, variant: "uav"
+        })
+      }),
+      // Enemy-only. The transport is a target, not an opponent: unarmed (the AI
+      // profile's attackRange 0 is what states that), turn 8 like the bomber and
+      // slower than anything else that flies here. HP 196 is two missiles, so it
+      // is a deliberate two-trigger detour rather than the bomber's three.
+      transport: Object.freeze({
+        id: "transport",
+        label: "C-17 GLOBEMASTER III",
+        role: "Strategic Airlifter",
+        tag: "ENEMY",
+        enemyOnly: true,
+        blurb: "敵の大型輸送機。武装は一切無く、ただ荷を積んで飛ぶだけの的だ。だが図体は大きく、落とすには2発要る。",
+        cruiseSpeed: 150, boostSpeed: 170, brakeSpeed: 130,
+        pitchRateDeg: 11, rollRateDeg: 30, yawRateDeg: 4, maxBankAngleDeg: 16,
+        normalRollSpring: 11, rollRateLimitDeg: 27, turnRateDeg: 8,
+        rollDamping: 5.6, stallWarnSpeed: 90, stallEntrySpeed: 78, stallAuthorityLoss: 0.92, structuralG: 1.5,
+        // Unarmed: there is no gun anywhere on this airframe, player-side or AI.
+        gunDamage: 0, missileDamage: 98,
+        boostResponse: 0.92, brakeResponse: 0.88, cruiseResponse: 0.94,
+        missileCapacity: 0, maxHealth: 196,
+        tipSpan: 11.4, tipZ: 1.0,
+        theme: Object.freeze({
+primary: 0x8d99a3, secondary: 0x5f6a74, accent: 0x333b42,
+canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
+        })
       })
     });
 
@@ -3074,6 +3131,108 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
           scale: 2.2,
           variant: "bomber"
         })
+      }),
+      // The UAV is "evasive" taken past what the F-22 does with it: 95 of
+      // lateral jink at 3.0 Hz against the Raptor's 82 at 2.4, on an airframe
+      // that also out-turns it. Sitting behind one is not a firing solution,
+      // which is the entire design - it is what makes a multi-lock launcher
+      // (QAAM/4AAM/6AAM/8AAM) the answer to a swarm instead of the gun.
+      //
+      // The gun it carries back is deliberately feeble: 5 damage against a
+      // fighter's 7, a 440 m envelope and a 0.20 hit ceiling. Six of them are
+      // dangerous by arithmetic, never by any one of them shooting well.
+      uav: Object.freeze({
+        behavior: "evasive",
+        // Enemy display name. The airframe label's first word would be "MQ-99";
+        // the HUD wants the class, as with the bomber.
+        label: "UAV",
+        // Small target, honestly. A fighter's 0.9 would wrap a sphere four
+        // times the drone's own span around it. 0.55 gives 5.8 m of hitbox
+        // against a 3.2 m half-span - ratio 1.78, which is what the F-16
+        // already runs (9.45 against 5.18) - so the UAV is hard to hit because
+        // it is small and jinking, never because its hitbox cheats either way.
+        hitboxScale: 0.55,
+        patrolSpeedScale: 1.08,
+        patrolPathScale: 1.3,
+        engageRange: 1040,
+        disengageRange: 1660,
+        pursuitBack: 86,
+        verticalBias: 14,
+        verticalAmplitude: 42,
+        verticalFrequency: 1.9,
+        evadeLateral: 95,
+        evadeVertical: 34,
+        evadeFrequency: 3.0,
+        speedResponse: 0.012,
+        fireMin: 1.5,
+        fireSpread: 1.2,
+        attackRange: 440,
+        aimThreshold: 0.95,
+        hitChanceScale: 0.34,
+        maxHitChance: 0.2,
+        damageMin: 5,
+        damageMax: 5,
+        // A fifth of a fighter's span, so the fireball is scaled down to match.
+        explosionScale: 0.55,
+        radarColor: "#a6ff4d",
+        tracerColor: 0x9dff4d,
+        explosionColor: 0xc4ff6a,
+        theme: Object.freeze({
+          primary: 0x5b6169,
+          secondary: 0x393f46,
+          accent: 0x2a2f35,
+          canopy: 0x9dff4d,
+          exhaust: 0xb6ff6a,
+          scale: 0.45,
+          variant: "uav"
+        })
+      }),
+      // Unarmed, and stated in one number: attackRange 0 makes the first range
+      // gate in attemptEnemyAttack reject every shot, exactly the way the
+      // bomber's engageRange 0 keeps it out of pursuit. No rearGun, and no
+      // ENEMY_MISSILE_PROFILES entry either - nothing on this aircraft shoots.
+      transport: Object.freeze({
+        behavior: "armored",
+        label: "TRANSPORT",
+        // 31.5 m against a 29.6 m half-span, the ~1.0 ratio the bomber already
+        // runs. A heavy is a big target because it is big.
+        hitboxScale: 3.0,
+        patrolSpeedScale: 1.0,
+        patrolPathScale: 0.25,
+        engageRange: 0,
+        disengageRange: 0,
+        pursuitBack: 0,
+        verticalBias: 24,
+        verticalAmplitude: 5,
+        verticalFrequency: 0.22,
+        evadeLateral: 0,
+        evadeVertical: 0,
+        evadeFrequency: 0,
+        speedResponse: 0.07,
+        // The gun timer still ticks for every aircraft; these keep it lazy and
+        // attemptEnemyAttack throws the shot away on range regardless.
+        fireMin: 4.0,
+        fireSpread: 2.0,
+        attackRange: 0,
+        aimThreshold: 2,
+        hitChanceScale: 0,
+        maxHitChance: 0,
+        damageMin: 0,
+        damageMax: 0,
+        // Bigger than the bomber (scale 2.6 against 2.2), so is the fireball.
+        explosionScale: 1.7,
+        radarColor: "#4dffb0",
+        tracerColor: 0x4dffb0,
+        explosionColor: 0xffc46a,
+        theme: Object.freeze({
+          primary: 0x8d99a3,
+          secondary: 0x5f6a74,
+          accent: 0x333b42,
+          canopy: 0x8fe0ff,
+          exhaust: 0xa8b6c0,
+          scale: 2.6,
+          variant: "transport"
+        })
       })
     });
 
@@ -3158,6 +3317,12 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         })];
       })
     ));
+
+    // Airframes the briefing map draws with the heavy glyph instead of the
+    // fighter chevron. Membership is "is this a large, slow, non-manoeuvring
+    // aircraft" - the player plans a different sortie for one of these, and the
+    // map is where they find that out.
+    const HEAVY_AIR_TYPES = Object.freeze(new Set(["bomber", "transport"]));
 
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
@@ -3972,6 +4137,50 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         introRadio: [
           { speaker: "command", text: "高高度に大型機の反応、6。重爆だ——市街地に落とされる前に叩き落とせ。", id: "intercept-brief" },
           { speaker: "wingman", text: "護衛が張り付いてる。先に蹴散らさないと爆撃機に取り付けないぞ！", id: "intercept-brief-wing" }
+        ]
+      },
+      {
+        key: "m-swarm",
+        world: "nightBase",
+        title: "UAV SWARM",
+        jp: "敵の無人機群が夜間に展開。UAV6機を2波で迎撃せよ。地上目標は無い、純粋な空戦だ。",
+        // The swarm mission, and the first sortie in the campaign with nothing
+        // on the ground at all. Six UAVs in two waves of three: each dies to a
+        // single missile, and none of them can be out-turned by any airframe in
+        // the hangar - turn 44 beats the Raptor's 39. That pair of facts is the
+        // whole design. A multi-lock launcher (QAAM / 4AAM / 6AAM / 8AAM) turns
+        // a wave into one trigger pull; a single-target loadout still wins, but
+        // spends the entire par time chasing jinks to do it.
+        //
+        // The drone carrier is deliberately NOT a designated target. It is the
+        // reason six drones are out here, it is unarmed, and killing it is a
+        // bonus - so the objective stays exactly "UAV x6" while the board has
+        // something on it that explains itself.
+        sequence: [
+          { types: ["uav", "uav", "uav"], band: 1, idBase: 0, label: "UAV" },
+          {
+            types: ["transport"], tgt: false, band: 1, label: "DRONE CARRIER", concurrent: true,
+            // Numbered outside the objective block on purpose: the six drones
+            // own TGT 1-6, so a bonus contact must not take a number out of
+            // that run. 16 is clear of the wave blocks and of the ground
+            // installations that own 21 and up.
+            idBase: 15,
+            radio: [
+              { speaker: "wingman", text: "でかい反応が1つ……無人機の母機だ！ 武装は無い、指定目標でもない——余裕があれば落とせ！", id: "swarm-carrier-inbound" }
+            ]
+          },
+          { types: ["uav", "uav", "uav"], band: 2, idBase: 3, label: "UAV" }
+        ],
+        // Six kills against targets that cannot be out-turned, in two waves,
+        // with a transit between them. Roughly m02's clock (210) less the time
+        // a drone does not survive: one hit each rather than three.
+        parTime: 205,
+        hasOutro: false,
+        map: { x: 0.57, y: 0.72 },
+        briefing: "夜間、前線基地上空に多数の小型反応——敵の無人戦闘機だ。\n3機ずつ、2波で来る。装甲は無く1発で落ちるが、旋回はこちらの全機を上回る。\n後ろに張り付こうとするな。追い回した時点で相手の土俵だ。\n複数同時ロックの兵装があるなら、今日がその日だ——1回の斉射で1波を消せる。\n母機らしい大型機が1機。無指定目標だが、落とせば加点になる。",
+        introRadio: [
+          { speaker: "command", text: "小型高機動の反応が多数。無人機だ——数で来るぞ、1機ずつ丁寧に処理しろ。", id: "swarm-brief" },
+          { speaker: "wingman", text: "旋回でこいつらに勝てる機体は無い。追いかけっこはするな、正面から撃て！", id: "swarm-brief-wing" }
         ]
       }
     ].map((mission) => {
@@ -12002,6 +12211,32 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         [0, -3.0], [1.6, -2.7], [12.5, 5.4], [12.5, 6.6], [3.0, 3.2],
         [0, 3.2], [-3.0, 3.2], [-12.5, 6.6], [-12.5, 5.4], [-1.6, -2.7]
       ], 0.26);
+      // C-17: the transport's wing has to read as NOT a B-52's. Same idea -
+      // one big swept surface - but 11.4 half-span over a 7.0 root chord
+      // against the bomber's 12.5 over 6.2, so it is visibly shorter and much
+      // fatter. Slenderness is the whole difference between an airlifter and a
+      // strategic bomber from the outside, and the model is mounted high on the
+      // fuselage while the B-52's sits low.
+      const wingTransport = extrudedSurface([
+        [0, -3.4], [1.8, -3.0], [11.4, 3.2], [11.4, 4.6], [3.2, 3.6],
+        [0, 3.6], [-3.2, 3.6], [-11.4, 4.6], [-11.4, 3.2], [-1.8, -3.0]
+      ], 0.3);
+      // T-tail plane, carried at the top of the fin rather than on the fuselage
+      // like every other airframe here. Wide enough to be unmistakable in
+      // silhouette - the tail is what identifies a C-17 at range.
+      const stabTransport = extrudedSurface([
+        [0, -2.2], [5.4, 0.9], [5.4, 2.0], [1.6, 2.6],
+        [-1.6, 2.6], [-5.4, 2.0], [-5.4, 0.9]
+      ], 0.26);
+      // MQ-99: a tailless delta, and the ONLY planform here with no separate
+      // tailplane or fin anywhere on the aircraft - that absence is the
+      // identification, the way the bomber's four pods are. The trailing edge
+      // steps forward at the tips and back at the centreline, so what reads
+      // from above is a shallow W rather than a plain triangle.
+      const wingUav = extrudedSurface([
+        [0, -6.2], [7.2, 2.6], [7.2, 3.4], [2.2, 4.2],
+        [0, 4.6], [-2.2, 4.2], [-7.2, 3.4], [-7.2, 2.6]
+      ], 0.22);
       // Su-37: the Flanker planform - a big swept wing blended into the body,
       // cropped square at the tip for the missile rail. Half-span 8.9 matches
       // the airframe's tipSpan. Wider chord than the Raptor's diamond because
@@ -12113,6 +12348,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         wingLightning, stabLightning, panel,
         wingRafale, wingTyphoon, wingGripen, canard,
         wingTerminator, canardTerminator,
+        wingTransport, stabTransport, wingUav,
         shockRing, enemyHitbox, flash, smoke, spark, explosionChunk,
         shipBow, shipCylinder, shipOctPlate, shipDeck,
         missileBody, missileNose, missileFins, missileGlow
@@ -12642,6 +12878,82 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         add(geometry.panel, dark, 0, 0.7, -10.6, 0.6, 0.08, 2.0);
         add(geometry.canopy, navL, -12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
         add(geometry.canopy, navR, 12.5, 0.72, 6.0, 0.14, 0.14, 0.14);
+      } else if (theme.variant === "transport") {
+        // C-17: a HIGH wing with the engines slung underneath it, a T-tail, and
+        // a fat slab fuselage that sweeps up into a loading ramp. Every one of
+        // those is the opposite of the B-52 in the same table - low thin wing,
+        // paired pods ahead of it, one conventional fin - so the two heavies
+        // never read as the same aircraft however far away they are.
+        add(geometry.fuselage, primary, 0, 0, -1.0, 1.35, 1.3, 1.55);
+        // Upswept aft body: the ramp. The shared fuselage cylinder is already
+        // narrower at its +z end, so lifting this section and running it back
+        // to z 13.6 gives the tail-up, tapering profile an airlifter has and a
+        // bomber does not.
+        add(geometry.fuselage, primary, 0, 0.95, 8.4, 1.12, 1.02, 0.9);
+        add(geometry.nose, primary, 0, 0.05, -11.2, 1.28, 1.2, 1.1);
+        // Flight deck: high and well forward, sitting on top of the hold.
+        add(geometry.canopy, canopy, 0, 1.35, -8.6, 0.72, 0.5, 1.3);
+        // The wing rides the spine at y 1.55, not the belly.
+        add(geometry.wingTransport, secondary, 0, 1.55, 0.6);
+        for (const side of [-1, 1]) {
+          // Four engines slung UNDER the wing on pylons and ahead of its
+          // leading edge - the airliner idiom, and the reason this cannot be
+          // mistaken for the B-52's paired pods. The nacelles hang clear of the
+          // wing (tops at y 0.60 and 0.80 against a wing underside of 1.40)
+          // with the pylons visibly bridging the gap; the outboard pair sits
+          // further aft because the wing is swept and they follow its edge out.
+          add(geometry.rearBody, accent, side * 4.6, -0.55, -3.6, 0.85, 0.85, 1.45);
+          add(geometry.rearBody, accent, side * 8.2, -0.35, -1.2, 0.85, 0.85, 1.4);
+          add(geometry.panel, secondary, side * 4.6, 1.0, -3.0, 0.24, 0.8, 1.4);
+          add(geometry.panel, secondary, side * 8.2, 1.11, -0.6, 0.22, 0.62, 1.3);
+          add(geometry.nozzle, dark, side * 4.6, -0.55, -1.35, 0.95, 0.95, 1);
+          add(geometry.nozzle, dark, side * 8.2, -0.35, 0.97, 0.95, 0.95, 1);
+          addFlame(side * 4.6, -0.55, -0.15, 0.55, 0.55);
+          addFlame(side * 8.2, -0.35, 2.2, 0.55, 0.55);
+          // Landing-gear blisters down the lower fuselage sides: the pods that
+          // carry the main bogies, and one of the type's clearest tells. Set
+          // out at 1.95 so they bulge past the fuselage skin instead of sitting
+          // inside it.
+          add(geometry.panel, secondary, side * 1.95, -1.05, 1.2, 0.9, 0.78, 4.4);
+        }
+        // T-tail, carried at the very top of the fin - no other airframe here
+        // does that. Both sit at the back of the ramp section, not beyond it.
+        add(geometry.fin, secondary, 0, 0.7, 10.0, 1.25, 2.3, 1.2);
+        add(geometry.stabTransport, primary, 0, 9.3, 9.6);
+        // Details: radome, flight-deck anti-glare panel, the wing-to-tail
+        // fairing behind the wing root, and nav lights at the geometric tips.
+        add(geometry.nose, dark, 0, 0.02, -13.0, 0.42, 0.4, 0.4);
+        add(geometry.panel, dark, 0, 1.62, -9.9, 0.75, 0.09, 1.8);
+        add(geometry.panel, secondary, 0, 1.78, 5.8, 0.34, 0.24, 4.2);
+        add(geometry.canopy, navL, -11.4, 1.7, 3.9, 0.15, 0.15, 0.15);
+        add(geometry.canopy, navR, 11.4, 1.7, 3.9, 0.15, 0.15, 0.15);
+      } else if (theme.variant === "uav") {
+        // MQ-99: a tailless delta with a dorsal intake and no cockpit anywhere.
+        // There is no fin, no tailplane and no canopy on this aircraft - at
+        // theme scale 0.45 the whole silhouette is a small arrowhead, and the
+        // absence of a crew station is what says "unmanned" from head-on.
+        add(geometry.fuselage, primary, 0, -0.1, 0.2, 0.62, 0.5, 0.72);
+        add(geometry.nose, primary, 0, -0.15, -4.6, 0.62, 0.5, 0.9);
+        add(geometry.wingUav, secondary, 0, -0.15, 0.6);
+        // Dorsal intake: a box on TOP of the spine, the arrangement a
+        // low-observable drone uses to hide the compressor face from below.
+        // Every crewed airframe in this table breathes from the chin or the
+        // flanks, so an intake on the back is the second read after the
+        // missing tail.
+        add(geometry.intake, accent, 0, 0.62, -1.4, 0.95, 0.62, 1.35);
+        add(geometry.panel, secondary, 0, 0.42, 0.9, 0.5, 0.36, 3.0);
+        add(geometry.nozzle, accent, 0, 0.05, 4.3, 0.9, 0.9, 0.95);
+        addFlame(0, 0.05, 5.5, 0.85, 0.85);
+        // The canopy material is spent on a sensor turret under the nose
+        // instead of a cockpit: emissive, so head-on it reads as one staring
+        // eye rather than a windscreen.
+        add(geometry.canopy, canopy, 0, -0.55, -3.4, 0.34, 0.3, 0.34);
+        // Details: no pitot boom - there is no pilot to trust it - just two
+        // small wing fences and nav lights at the geometric tips.
+        add(geometry.panel, dark, -3.4, 0.05, 1.9, 0.08, 0.3, 1.6);
+        add(geometry.panel, dark, 3.4, 0.05, 1.9, 0.08, 0.3, 1.6);
+        add(geometry.canopy, navL, -7.1, 0.0, 2.9, 0.13, 0.13, 0.13);
+        add(geometry.canopy, navR, 7.1, 0.0, 2.9, 0.13, 0.13, 0.13);
       } else if (theme.variant === "rafale") {
         // Rafale M: delta wing with CLOSE-COUPLED canards - the foreplanes sit
         // just ahead of the wing root at z -4.2, almost touching the leading
@@ -13559,7 +13871,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
         }
         // Per type, not per wave: a mixed wave shows what is actually in it,
         // and the heavies get their own glyph.
-        for (const type of wave.types) place(type === "bomber" ? "bomber" : "air", 0.055);
+        for (const type of wave.types) place(HEAVY_AIR_TYPES.has(type) ? "bomber" : "air", 0.055);
       });
       if (mission.groundUnits) {
         // Tighter ring than the air/naval contacts - a base is one footprint -
