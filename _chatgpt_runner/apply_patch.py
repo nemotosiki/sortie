@@ -661,31 +661,42 @@ varying vec2 vOceanUv;`
   #endif
   normal = normalize(normalMatrix * normal);
 #elif defined(USE_NORMALMAP_TANGENTSPACE)
-  vec2 base0 = vOceanUv * oceanWaveRepeat.x + oceanWaveOffset0;
-  vec2 base1 = vOceanUv * oceanWaveRepeat.y + oceanWaveOffset1;
-  vec2 base2 = vOceanUv * oceanWaveRepeat.z + oceanWaveOffset2;
-  vec2 uv0 = vec2(oceanWaveDirection0.x * base0.x - oceanWaveDirection0.y * base0.y,
-                  oceanWaveDirection0.y * base0.x + oceanWaveDirection0.x * base0.y);
-  vec2 uv1 = vec2(oceanWaveDirection1.x * base1.x - oceanWaveDirection1.y * base1.y,
-                  oceanWaveDirection1.y * base1.x + oceanWaveDirection1.x * base1.y);
-  vec2 uv2 = vec2(oceanWaveDirection2.x * base2.x - oceanWaveDirection2.y * base2.y,
-                  oceanWaveDirection2.y * base2.x + oceanWaveDirection2.x * base2.y);
-  vec2 n0 = texture2D(normalMap, uv0).xy * 2.0 - 1.0;
-  vec2 n1 = texture2D(normalMap, uv1).xy * 2.0 - 1.0;
-  vec2 n2 = texture2D(normalMap, uv2).xy * 2.0 - 1.0;
-  n0 = vec2(oceanWaveDirection0.x * n0.x + oceanWaveDirection0.y * n0.y,
-            -oceanWaveDirection0.y * n0.x + oceanWaveDirection0.x * n0.y);
-  n1 = vec2(oceanWaveDirection1.x * n1.x + oceanWaveDirection1.y * n1.y,
-            -oceanWaveDirection1.y * n1.x + oceanWaveDirection1.x * n1.y);
-  n2 = vec2(oceanWaveDirection2.x * n2.x + oceanWaveDirection2.y * n2.y,
-            -oceanWaveDirection2.y * n2.x + oceanWaveDirection2.x * n2.y);
   float oceanDistance = length(vViewPosition);
   float fade0 = 1.0 - smoothstep(oceanWaveFade0.x, oceanWaveFade0.y, oceanDistance);
   float fade1 = 1.0 - smoothstep(oceanWaveFade1.x, oceanWaveFade1.y, oceanDistance);
   float fade2 = 1.0 - smoothstep(oceanWaveFade2.x, oceanWaveFade2.y, oceanDistance);
-  vec2 oceanSlope = n0 * oceanWaveWeights.x * fade0 +
-                    n1 * oceanWaveWeights.y * fade1 +
-                    n2 * oceanWaveWeights.z * fade2;
+  vec2 oceanSlope = vec2(0.0);
+
+  // Coherent distance branches skip texture fetches after an octave has
+  // faded out. Nearby water still receives all three independently
+  // rotated/scrolled octaves; most horizon pixels sample one or none.
+  if (fade0 > 0.001) {
+    vec2 base0 = vOceanUv * oceanWaveRepeat.x + oceanWaveOffset0;
+    vec2 uv0 = vec2(oceanWaveDirection0.x * base0.x - oceanWaveDirection0.y * base0.y,
+                    oceanWaveDirection0.y * base0.x + oceanWaveDirection0.x * base0.y);
+    vec2 n0 = texture2D(normalMap, uv0).xy * 2.0 - 1.0;
+    n0 = vec2(oceanWaveDirection0.x * n0.x + oceanWaveDirection0.y * n0.y,
+              -oceanWaveDirection0.y * n0.x + oceanWaveDirection0.x * n0.y);
+    oceanSlope += n0 * oceanWaveWeights.x * fade0;
+  }
+  if (fade1 > 0.001) {
+    vec2 base1 = vOceanUv * oceanWaveRepeat.y + oceanWaveOffset1;
+    vec2 uv1 = vec2(oceanWaveDirection1.x * base1.x - oceanWaveDirection1.y * base1.y,
+                    oceanWaveDirection1.y * base1.x + oceanWaveDirection1.x * base1.y);
+    vec2 n1 = texture2D(normalMap, uv1).xy * 2.0 - 1.0;
+    n1 = vec2(oceanWaveDirection1.x * n1.x + oceanWaveDirection1.y * n1.y,
+              -oceanWaveDirection1.y * n1.x + oceanWaveDirection1.x * n1.y);
+    oceanSlope += n1 * oceanWaveWeights.y * fade1;
+  }
+  if (fade2 > 0.001) {
+    vec2 base2 = vOceanUv * oceanWaveRepeat.z + oceanWaveOffset2;
+    vec2 uv2 = vec2(oceanWaveDirection2.x * base2.x - oceanWaveDirection2.y * base2.y,
+                    oceanWaveDirection2.y * base2.x + oceanWaveDirection2.x * base2.y);
+    vec2 n2 = texture2D(normalMap, uv2).xy * 2.0 - 1.0;
+    n2 = vec2(oceanWaveDirection2.x * n2.x + oceanWaveDirection2.y * n2.y,
+              -oceanWaveDirection2.y * n2.x + oceanWaveDirection2.x * n2.y);
+    oceanSlope += n2 * oceanWaveWeights.z * fade2;
+  }
   oceanSlope *= oceanNormalStrength;
   vec3 mapN = normalize(vec3(oceanSlope, 1.0));
   normal = normalize(tbn * mapN);
@@ -693,7 +704,7 @@ varying vec2 vOceanUv;`
           );
         oceanMaterial.userData.shader = shader;
       };
-      oceanMaterial.customProgramCacheKey = () => "sortie-ocean-v3";
+      oceanMaterial.customProgramCacheKey = () => "sortie-ocean-v4-distance-branches";
       const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
       ocean.position.y = 0;
       // The plane rides with the camera (see updateWorld), so its own extent is
