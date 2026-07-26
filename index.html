@@ -5735,6 +5735,213 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       },
 
+      // City air-defence map (campaign 15, CITY LIGHTS). The night map already
+      // proved the dark sky; what this one has to add is the thing the mission
+      // is about - a lit city under the player, close enough and dense enough
+      // that "全部は守れない" is a thing the eye can see rather than a line of
+      // briefing text.
+      //
+      // The land is one very wide, very low plateau (r 1900 at the waterline,
+      // 24m tall, flat out to 0.93 of its radius) centred just off the origin.
+      // Low on purpose: the district's towers stand ON that cap, and the whole
+      // point is that the player can fly BETWEEN them. A tall mesa would put
+      // the roofline at an altitude where the fight has to happen above the
+      // city instead of in it.
+      //
+      // Fog is opened up relative to nightBase (far 4200 against 3400): the
+      // city is the scenery, and swallowing it at 3.4km would leave the same
+      // black horizon the night map has.
+      nightCity: {
+        label: "NIGHT CITY",
+        clearColor: 0x070a14,
+        // The map's subject is not at the origin: the city sits 9km down-range
+        // so the bombers have a run to fly. Every ring of origin-relative
+        // scenery (background mountains, islands, sea stacks, cloud decks,
+        // suburb glow) is re-centred on it, or the horizon around the city
+        // would be bare while a full archipelago sat in empty water behind
+        // the player's back. Unset on every other preset, which is why none of
+        // them move.
+        sceneryOrigin: [0, -9000],
+        sky: [[0, "#02040c"], [0.3, "#060c1c"], [0.44, "#111c34"], [0.5, "#1b2743"], [0.62, "#0d1524"], [1, "#0a0f1c"]],
+        atmosphere: { seed: 0x3c7a29, noise: 0.038, haze: 0.06, thinClouds: 10, cloudOpacity: 0.04, cloudBand: [0.4, 0.7], cloudTint: 0x8a7c9c },
+        // Warmer and further than the night base: a lit city throws sodium
+        // glow into its own haze, and the fog colour is what carries that to
+        // the horizon. Pure blue-black here reads as "the city is a sticker".
+        fog: { color: 0x141527, near: 800, far: 4200 },
+        sun: null,
+        moon: {
+          position: [-1250, 980, -2500], color: 0xf6f2ff, radius: 60,
+          glare: [
+            { scale: 720, color: 0xc6c8ff, opacity: 0.3 },
+            { scale: 200, color: 0xffffff, opacity: 0.78 }
+          ]
+        },
+        // Fewer and dimmer than nightBase's 420: the city below is throwing
+        // light up, and a full star field over a lit city is the one thing
+        // that never happens. The dome still has to be populated, just faint.
+        stars: { count: 260, radius: 3200, size: 2.2, seed: 0x3c7a2a, color: 0xcdd6f2, warm: 0xffd2a8 },
+        sunRoad: {
+          color: 0xa8b6ff, opacity: 0.2, width: 380, length: 3000,
+          rotationY: Math.atan2(1250, 2500), position: [-740, 0.4, -1480]
+        },
+        ocean: {
+          base: "#060a18", bright: "84, 96, 150", dark: "1, 2, 8",
+          repeat: 26, roughness: 0.44, metalness: 0.42,
+          normalRepeat: 46, normalScale: [0.28, 0.5], normalSpeed: [0.008, 0.002], normalSeed: 0x3c7a2b
+        },
+        // The plateau's cap is the ground the city stands on, so `peak` is the
+        // colour of the streets seen between the blocks - dark asphalt with a
+        // trace of warmth, not the blue-grey rock nightBase uses. Same reason
+        // coastalPlain puts dry grass in `peak`.
+        terrain: {
+          seed: 0x3c7a2c, sand: 0x14161f, grass: 0x171a22, rock: 0x1d2029,
+          peak: 0x23242c, snow: 0x3a3d4c, fineRepeat: 21, macroRepeat: 4.4,
+          normalRepeat: 26, normalStrength: 0.42, islandNormalStrength: 0.24,
+          rockSlope: [0.2, 0.62], shoreHeight: 0.18, snowSoftness: 0.09
+        },
+        // Ambient is lifted well above nightBase and tinted warm from below:
+        // the hemisphere light's GROUND colour is what puts sodium bounce on
+        // the underside of every aircraft over the city, which is the single
+        // cheapest thing that sells "flying over a lit city" at zero cost.
+        // Warm bounce from below, but far less of it than the first pass had:
+        // at hemi 0.78 with a 0x3a2a1c ground the ROOFS lit up to a flat brown
+        // and the skyline read as a mud field seen from above (measured on the
+        // 01-skyline pass). The city's light has to come from the emissive
+        // windows and the street points, not from the ambient - ambient only
+        // has to keep the aircraft from being silhouettes.
+        lights: {
+          hemi: { sky: 0x232a44, ground: 0x1d160f, intensity: 0.5 },
+          key: { color: 0xc2c8f0, intensity: 0.34, position: [-1250, 980, -900] },
+          fill: { color: 0x4a3626, intensity: 0.22, position: [400, 180, 700] }
+        },
+        mountains: {
+          // Pushed out past the plateau's own footprint so the background ring
+          // can never be drawn inside the city. Same reasoning as coastalPlain.
+          count: 4, radius: [180, 320], height: [150, 300], distance: [4200, 5400],
+          snowyAbove: 999, snowLine: 0.7, roughness: 0.95,
+          palette: { low: 0x11151d, mid: 0x141922, rock: 0x181d27, peak: 0x1e2430, snow: 0x333c4c },
+          corridor: null,
+          // The city's landmass. topRadius 0.93 is what makes it buildable -
+          // the 7% rim climbs 24m over ~130m of ground, so the blocks stand on
+          // level ground rather than on a slope, and the waterfront reads as a
+          // shoreline instead of a cliff.
+          //
+          // Sited 9km down-range for the same reason m01's airfield is 19.8km
+          // out: a strike run needs RUN. The bombers spawn ~1km ahead of the
+          // player, and a target any closer than this would be inside their
+          // release radius within seconds - the mission would be over before
+          // the player could turn. At Tu-95 cruise (142 m/s) 9km is a ~60s
+          // window per stream, which is the time the player is being asked to
+          // spend choosing which stream to defend.
+          plateau: {
+            radius: [1900, 1900], height: [24, 24], topRadius: 0.93,
+            at: [0, -9000], snowyAbove: 9999
+          }
+        },
+        islands: { count: 4, stone: 0x121722, green: 0x101620 },
+        clouds: {
+          scale: 0.6, hero: true, color: 0x2b2b40, opacity: 0.46,
+          cirrusColor: 0x21212f, cirrusOpacity: 0.2,
+          texture: { seed: 0x3c7a2d, contrast: 0.84, underside: 0.56, softness: 1.05 }
+        },
+        decor: {
+          seed: 0x3c6a08,
+          // Fences the whole landmass. Scenery islands, rocks and sea stacks
+          // dropped on the city would stand in the streets, and nothing in the
+          // decoration pass knows where the blocks are.
+          keepClear: [{ x: 0, z: -9000, r: 2400 }],
+          shore: { sand: 0x2e3448, shallow: 0x1c2338, opacity: 0.26, width: 1.14 },
+          trees: null,
+          extraIslands: {
+            count: 7, radius: [130, 260], height: [26, 70], distance: [2900, 4000]
+          },
+          rocks: { count: 10, color: 0x0c1018, scale: [6, 14] },
+          // ---- The city itself ------------------------------------------
+          // Three cooperating pieces, all of them cheap:
+          //   `blocks`   - the built volume. ONE InstancedMesh for every
+          //                building on the map, so the skyline costs a single
+          //                draw call however many towers are in it.
+          //   `grid`     - the street lighting, as one Points cloud laid out
+          //                on the same block lattice the towers use, so the
+          //                lamps line the streets instead of dusting the map.
+          //   `windows`  - the lit-window sheen, an emissive procedural
+          //                texture mapped onto the same instanced boxes.
+          // Districts are concentric rings: the core is tall and tight, the
+          // outskirts low and loose, which is what makes a skyline read as a
+          // city rather than as a field of posts.
+          city: {
+            at: [0, -9000],
+            // Street lattice. `cell` is block pitch; `street` is the gap left
+            // between blocks, i.e. the width of the road the player can fly
+            // down. 128/34 gives ~94m of building and a 34m canyon.
+            cell: 128, street: 34,
+            districts: [
+              // radius band, height range, how often a cell is actually built
+              { r: [0, 420], height: [90, 190], fill: 0.86 },
+              { r: [420, 900], height: [50, 120], fill: 0.78 },
+              { r: [900, 1450], height: [24, 62], fill: 0.62 }
+            ],
+            // Tallest thing on the map, and the reason a hard ceiling exists:
+            // the flight band below is set off this number, not the other way
+            // round. 190m of tower plus the 24m plateau puts the highest
+            // roofline at 214m, so the mission's bombers run at 300m+ and the
+            // player has ~90m of clear air even flying flat over downtown.
+            maxHeight: 190,
+            // Both very dark on purpose. The image is carried by the emissive
+            // windows and the street points; the surfaces themselves only have
+            // to be dark shapes those lights sit on. Roof darker than wall
+            // because the sortie is flown looking down at roofs.
+            wall: 0x14161d, roof: 0x0b0d13,
+            // Emissive window sheet. `lit` is the fraction of window cells
+            // that are on; the rest stay dark, which is what stops the towers
+            // reading as glowing slabs.
+            // rows/cols is the window count on ONE tile of the sheet, and the
+            // sheet is tiled `repeat` times across each face, so a face
+            // carries rows*repeat storeys of cols*repeat windows - here 144 x
+            // 96. Tuned against two measured passes: at 26x12 untiled each
+            // "window" came out ~8m across and the towers read as a
+            // checkerboard, and at 3x tiling they were still ~3m. A window is
+            // ~1.5m, and a 90m frontage holds ~60 of them.
+            // `lit` is also what the wall averages to at distance, and that
+            // average is what the skyline is actually made of: mipmapping
+            // collapses the whole sheet to one colour past a few hundred
+            // metres, so a high `lit` does not read as "many windows", it
+            // reads as "the building is painted glowing orange" (measured on
+            // the 01-skyline pass at 0.42/0.34 - the towers came out solid
+            // brown from above). 0.20 keeps the close-range canyon lit while
+            // letting the distant skyline stay dark with light ON it.
+            windows: { warm: 0xffc978, cold: 0x9fd0ff, lit: 0.2, rows: 18, cols: 12, repeat: 8 },
+            // Street lamps and traffic. Laid on the road lattice between the
+            // blocks. `perCell` is lamps per street segment, and the count is
+            // capped so a big map can never blow the point budget.
+            // These points, not the walls, are what carries "a lit city" at
+            // range: sizeAttenuation is off, so a lamp stays a crisp point of
+            // light at any distance while the wall texture mips away to a
+            // flat average. Density is up and the budget with it, because the
+            // street lattice is the thing the player is defending and it has
+            // to be legible from the 800m the sortie is flown at.
+            grid: {
+              perCell: 4, size: 3.0, warm: 0xffb95e, cold: 0xbfd8ff,
+              coldChance: 0.22, max: 14000
+            },
+            // A handful of red obstruction beacons on the tallest towers. Pure
+            // flavour, but it is the detail that says "these are buildings".
+            beacons: { count: 22, color: 0xff4436, size: 5.5, minHeight: 110 }
+          },
+          // Distant suburb glow OUTSIDE the plateau, so the horizon past the
+          // waterfront is not black. Reuses the night map's point cloud.
+          cityLights: {
+            clusters: 7, perCluster: 30, spread: 260, color: 0xffc078,
+            cold: 0x9fc4ff, size: 5.5, minDistance: 2500, maxDistance: 3900
+          },
+          extraClouds: {
+            towers: 2, towerSize: [70, 110], towerBase: 900,
+            stratus: 5, stratusSize: [200, 340], stratusBase: 1500,
+            distance: [1600, 3200]
+          }
+        }
+      },
+
       // Ground-attack map for the armoured convoy (M9). The other four maps
       // were measured before this was written and none of them can carry a
       // road: the glacier corridor floor is open water with drift ice, the
@@ -6349,6 +6556,121 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         introRadio: [
           { speaker: "command", text: "小型高機動の反応が多数。無人機だ——数で来るぞ、指定目標だけ数えろ。", id: "swarm-brief" },
           { speaker: "wingman", text: "旋回でこいつらに勝てる機体は無い。追いかけっこはするな、正面から撃て！", id: "swarm-brief-wing" }
+        ]
+      },
+      {
+        key: "m-city",
+        world: "nightCity",
+        title: "CITY LIGHTS",
+        jp: "セント・ヴェルダ市街へ夜間爆撃。爆撃編隊は3波に分かれて来る。護衛は厚い。街の灯を守れ。",
+        // Campaign 15. Story bible: "街の明かりが一区画ずつ落ちる。撃墜しても、
+        // 落ちる爆弾は落ちる。全部は守れない" - and the wave composition has to
+        // be what says that, not the briefing text.
+        //
+        // How the composition says it: six bombers arrive in THREE waves on a
+        // clock, each one already inside its run when it appears, and eleven
+        // escorts are on the board with them. The player physically cannot be
+        // in front of all three streams at once. Losing a district is not a
+        // failure state - it is a score penalty (BASE_BOMB_PENALTY) and a
+        // radio call - so the mission's own rules let the player fail partly
+        // and keep flying, which is the only way "全部は守れない" can be a
+        // thing the game says rather than a thing the briefing claims.
+        //
+        // 6 TGT against 11 non-TGT is 1:1.83, inside the 1:1.5-2 band that
+        // spec_wave_variety §4 sets as the default shape, and at the heavy end
+        // of it because §5 names this mission specifically: "TGT=爆撃機、
+        // 雑魚=大量の護衛".
+        //
+        // Escorts are `trash` and `line` mixed rather than uniformly trash.
+        // This is the fifteenth mission of twenty and the escorts are the
+        // point of it: a pure trash screen would be scenery. The line-role
+        // elements are the ones that will actually get behind the player while
+        // the bombers are being worked, and they are the reason the choice of
+        // WHICH bomber stream to defend costs something.
+        //
+        // Russian airframes only, per the faction split: MiG-21/23/29 escorts
+        // and Su-27 for the heavy element, Tu-95 for the bombers themselves.
+        sequence: [
+          // First stream. Already committed when the player arrives - the
+          // opening shot of the mission is bombers over a lit city.
+          { types: ["tu95", "tu95"], band: 1, label: "BEAR" },
+          {
+            types: ["mig29", "mig21", "mig21"], tgt: false, band: 1, label: "ESCORT",
+            concurrent: true, role: "trash",
+            radio: [
+              { speaker: "wingman", text: "HAMMER 2だ、護衛が3機付いてる！ 相手をするな——爆撃機だ、爆撃機を落とせ！", id: "city-escort-1" }
+            ]
+          },
+          // Second stream, on a clock rather than on the first stream's death:
+          // it has to be able to arrive while the player is still working the
+          // first, because being made to choose is the mission.
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR" },
+          {
+            types: ["mig23", "mig21"], tgt: false, band: 2, label: "ESCORT",
+            concurrent: true, role: "trash"
+          },
+          // The one element on the board flown at full airframe. A Su-35 pair
+          // at `line` (all scale factors 1.0 - the airframe exactly as
+          // published) is what makes the middle of this sortie dangerous
+          // while the second stream is still running in. Everything else out
+          // here is `trash`, so this pair is the threat the player has to
+          // decide whether to answer - and answering it costs a bomber.
+          {
+            types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
+            concurrent: true, role: "line", delay: 55,
+            radio: [
+              { speaker: "command", text: "SKYEYEより全機——高高度に上位掩護。Su-27だ、こいつらは本気で来る。", id: "city-top-cover" }
+            ]
+          },
+          // Third stream. The heaviest cover in the mission arrives with it,
+          // so the last two bombers have to be taken through a screen.
+          { types: ["tu95", "tu95"], band: 2, label: "BEAR", delay: 30 },
+          {
+            types: ["mig29", "mig29", "mig21", "mig21"], tgt: false, band: 2, label: "LATE ESCORT",
+            concurrent: true, role: "trash", delay: 40,
+            radio: [
+              { speaker: "wingman", text: "第3波、護衛4機！ 街の灯が消えていく……HAMMER 2、まだ飛べる、行くぞ！", id: "city-escort-3" }
+            ]
+          }
+        ],
+        // Six 294 HP hulls at three missiles each, flown through eleven
+        // fighters that never have to be killed, on a map whose streets the
+        // player will spend part of the sortie flying down. Between
+        // m-intercept's 410 (six bombers, twelve escorts, open water) and
+        // m-swarm's 250 - the bombers are the same hull count as BOMBER
+        // STREAM but they arrive on a clock rather than on demand.
+        parTime: 390,
+        hasOutro: false,
+        map: { x: 0.44, y: 0.60 },
+        // The city IS the objective the bombers are flying at. `style: "city"`
+        // swaps the runway and hangars for a civic tower at the aim point -
+        // everything else about the mechanic (strike run, breach penalty,
+        // blue HUD diamond, the two approach warnings) is the shared code m01
+        // already uses, because what is being defended was only ever a
+        // labelled coordinate.
+        //
+        // x/z is nightCity's `plateau.at`, i.e. the centre of the district the
+        // map stands up, so the tower lands on the flat cap the blocks stand
+        // on rather than on the slope. failRadius 620 is wider than m01's 400
+        // because a city is wider than a runway: a bomber that reaches the
+        // built-up area has hit the city, and making it fly to one exact
+        // pixel downtown would read as a bug.
+        friendlyBase: {
+          x: 0, z: -9000, heading: 0, label: "SAINT VERDA", failRadius: 620,
+          style: "city"
+        },
+        // Laid over the whole run the way m01's is, not centred on the player:
+        // spawn is z +620 and the city is z -9000, so an origin-centred arena
+        // would call the player out of bounds long before the chase reaches
+        // the target. Centred midway down the corridor and sized so spawn,
+        // every bomber stream, the city and an overshoot past the far
+        // waterfront all sit inside the 90% warning ring.
+        battleCenter: { x: 0, z: -4200 },
+        battleRadius: 8600,
+        briefing: "セント・ヴェルダ——連合の首都だ。今夜、そこに爆弾が落ちる。\n街の灯が一区画ずつ消えていくのを、君は上空から見ることになる。\n指定目標はTu-95が6機。3波に分かれ、時間差で市街へ直進してくる。\n護衛は11機。落とす義務は無いが、放置すれば背後を取られる。\n覚えておけ——全部は守れない。守れる分を守れ。\nビル街の谷間は飛べる。ただし高度に気をつけろ、最も高い建物で地上200mを超える。",
+        introRadio: [
+          { speaker: "command", text: "SKYEYEより。セント・ヴェルダ上空、爆撃編隊が進入中——Tu-95が6、3波だ。", id: "city-brief" },
+          { speaker: "wingman", text: "眼下は街だ。……全部は無理でも、落とせるだけ落とすぞ。HAMMER 2、続く。", id: "city-brief-wing" }
         ]
       },
       {
@@ -11460,23 +11782,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return mesh;
       };
 
-      // Runway strip, 900m x 70m, with a dashed centreline and two aprons.
-      add(asphalt, 0, 0.6, 0, 70, 1.2, 900);
-      for (let i = -6; i <= 6; i += 1) {
-        add(stripe, 0, 1.3, i * 62, 3.2, 0.4, 30);
-      }
-      add(concrete, 66, 0.8, -150, 60, 1.4, 220);
+      // A `city` base has no airfield to build: the place the bombers are
+      // aiming at is the district the map itself already stands up, and a
+      // runway painted down the middle of downtown would be nonsense. What it
+      // gets instead is the one thing the city block grid cannot provide - a
+      // named landmark at the aim point, so the blue diamond on the HUD sits
+      // on something the player can see rather than on an empty intersection.
+      //
+      // Everything after this branch (the friendlyBase record, the strike
+      // run, the breach penalty, the HUD marker) is shared: what is being
+      // defended is a coordinate with a label, and the mechanic never cared
+      // whether that coordinate had a runway on it.
+      if (config.style === "city") {
+        const spireWall = makeAircraftMaterial(0x2a2e3a, 0.16, 0.72);
+        const beaconMaterial = new THREE.MeshBasicMaterial({ color: 0xff5a3c });
+        const litMaterial = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+        materials.push(spireWall, beaconMaterial, litMaterial);
+        // A civic tower: a stepped block taller than anything the procedural
+        // grid puts up (its 190m ceiling), lit at the crown, with an
+        // obstruction beacon on top. This is the aim point.
+        add(spireWall, 0, 55, 0, 46, 110, 46);
+        add(spireWall, 0, 145, 0, 32, 70, 32);
+        add(spireWall, 0, 196, 0, 20, 32, 20);
+        add(litMaterial, 0, 214, 0, 12, 4, 12);
+        add(beaconMaterial, 0, 222, 0, 5, 12, 5);
+        // A lit plaza at its foot, so the tower has a base rather than
+        // sprouting out of the street lamps.
+        add(concrete, 0, 0.8, 0, 150, 1.6, 150);
+        for (let i = -2; i <= 2; i += 1) {
+          add(litMaterial, i * 34, 2.2, 0, 3, 1, 140);
+        }
+      } else {
+        // Runway strip, 900m x 70m, with a dashed centreline and two aprons.
+        add(asphalt, 0, 0.6, 0, 70, 1.2, 900);
+        for (let i = -6; i <= 6; i += 1) {
+          add(stripe, 0, 1.3, i * 62, 3.2, 0.4, 30);
+        }
+        add(concrete, 66, 0.8, -150, 60, 1.4, 220);
 
-      // A short row of hangars and a control tower along the apron, so the
-      // field reads as inhabited from the air rather than as a painted strip.
-      for (let i = 0; i < 3; i += 1) {
-        const z = -230 + i * 78;
-        add(wall, 66, 8, z, 44, 16, 52);
-        add(roof, 66, 17, z, 47, 3, 55);
+        // A short row of hangars and a control tower along the apron, so the
+        // field reads as inhabited from the air rather than as a painted strip.
+        for (let i = 0; i < 3; i += 1) {
+          const z = -230 + i * 78;
+          add(wall, 66, 8, z, 44, 16, 52);
+          add(roof, 66, 17, z, 47, 3, 55);
+        }
+        add(wall, 108, 13, 20, 16, 26, 16);
+        add(roof, 108, 27.5, 20, 22, 3, 22);
+        add(wall, 108, 24, 20, 18, 7, 18);
       }
-      add(wall, 108, 13, 20, 16, 26, 16);
-      add(roof, 108, 27.5, 20, 22, 3, 22);
-      add(wall, 108, 24, 20, 18, 7, 18);
 
       scene.add(group);
       missionProps.push({ node: group, geometries, materials });
@@ -18387,6 +18741,66 @@ diffuseColor.rgb = terrainBase * terrainShade;`
     }
 
 
+    // Lit-window sheet for the night city. One 128x256 canvas that every
+    // building on the map shares as its emissive map, so the whole skyline is
+    // one material and one texture no matter how many towers stand in it.
+    //
+    // Two things make this read as windows rather than as a checkerboard:
+    // only `lit` of the cells are on at all, and the ones that are on are
+    // drawn at scattered brightness with an occasional cold (fluorescent)
+    // tint among the warm (domestic) majority. A uniform grid of identical
+    // squares is what makes procedural cities look like spreadsheets.
+    //
+    // Black elsewhere: this is an emissiveMap, so an unlit cell contributes
+    // nothing and the wall colour underneath is what shows.
+    function makeCityWindowTexture(cfg, seed) {
+      const cols = cfg.cols || 12;
+      const rows = cfg.rows || 26;
+      // Cell size in pixels, chosen so the sheet lands on a power of two.
+      const cell = 8;
+      const canvas = document.createElement("canvas");
+      canvas.width = cols * cell;
+      canvas.height = rows * cell;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const rng = mulberry32(seed >>> 0);
+      const warm = new THREE.Color(cfg.warm);
+      const cold = new THREE.Color(cfg.cold);
+      const lit = cfg.lit ?? 0.42;
+      const tint = new THREE.Color();
+      for (let row = 0; row < rows; row += 1) {
+        // Whole floors are more likely to be lit or dark together than
+        // individual rooms are - an office floor is on or it is not - so a
+        // per-row bias rides on top of the per-cell draw. This is what breaks
+        // up the uniform speckle into bands.
+        const floorBias = (rng() - 0.5) * 0.5;
+        for (let col = 0; col < cols; col += 1) {
+          if (rng() > lit + floorBias) continue;
+          tint.copy(rng() > 0.78 ? cold : warm);
+          const shade = 0.45 + rng() * 0.55;
+          ctx.fillStyle = `rgb(${Math.round(tint.r * shade * 255)},${Math.round(tint.g * shade * 255)},${Math.round(tint.b * shade * 255)})`;
+          // Inset by a pixel on each side so the dark mullion between panes
+          // survives at every mip level the camera will ever see this at.
+          ctx.fillRect(col * cell + 1, row * cell + 1, cell - 2, cell - 3);
+        }
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      // Tiled across each face rather than stretched over it. A box's UVs run
+      // 0-1 per face, so an untiled sheet puts `cols` windows across a 90m
+      // frontage - windows several metres wide, which is what made the first
+      // build read as a checkerboard. Repeating gives a storey count that
+      // looks like a building at the range this is actually seen from.
+      const repeat = cfg.repeat || 1;
+      texture.repeat.set(repeat, repeat);
+      return texture;
+    }
+
     // Approximate live GPU storage for generated RGBA CanvasTextures. The value
     // includes a 4/3 mip-chain allowance where Three.js generates mipmaps, but
     // deliberately excludes driver alignment/compression and non-world textures.
@@ -18621,6 +19035,19 @@ diffuseColor.rgb = terrainBase * terrainShade;`
           terrainDetailTexture, terrainNormalTexture, mountainConfig, terrainStyle, true
         ))
       };
+      // Where the origin-relative scenery rings are centred. Every preset that
+      // shipped before this leaves it unset and gets (0,0) - the literal
+      // origin - so their mountain ring, scenery islands, sea stacks and
+      // distant glow land on exactly the coordinates they always did and their
+      // RNG draw order is untouched.
+      //
+      // A map whose SUBJECT is not at the origin needs it. nightCity puts its
+      // plateau 9km down-range (a strike run needs run-up), and without this
+      // the background ring, the islands and the suburb glow would all still
+      // be huddled around a patch of empty sea 9km behind the city.
+      const sceneryOrigin = preset.sceneryOrigin || [0, 0];
+      const sceneryX = sceneryOrigin[0];
+      const sceneryZ = sceneryOrigin[1];
       const mountains = [];
       const mountainTotal = corridorSlots.length + mountainConfig.count + (mountainConfig.plateau ? 1 : 0);
       for (let i = 0; i < mountainTotal; i += 1) {
@@ -18640,8 +19067,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         mountain.rotation.y = rng() * Math.PI * 2;
         const angle = rng() * Math.PI * 2;
         const distance = mountainConfig.distance[0] + rng() * (mountainConfig.distance[1] - mountainConfig.distance[0]);
-        let x = Math.cos(angle) * distance;
-        let z = Math.sin(angle) * distance;
+        let x = sceneryX + Math.cos(angle) * distance;
+        let z = sceneryZ + Math.sin(angle) * distance;
         if (slot) {
           x = slot.x;
           z = slot.z;
@@ -18654,6 +19081,15 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         mountains.push({
           x: mountain.position.x, z: mountain.position.z,
           r: Math.max(radius, depth) * 0.85, h: height * 0.92,
+          // Per-axis footprint and cap size. `r` above is one number for the
+          // collision test, but a plateau is an ELLIPSE - depth is a random
+          // 0.75-1.1 of radius - and anything that has to stand on the flat
+          // top (the night city's blocks) needs to know how far the cap
+          // actually reaches on each axis or it builds out over the edge.
+          // `capHeight` is the full mesh height; `h` is the 0.92 collision
+          // clamp, which is 8% short of the surface things stand on.
+          rx: radius, rz: depth, topRadius: plateau ? plateau.topRadius : 0.08,
+          capHeight: height,
           mesh: mountain
         });
       }
@@ -18780,7 +19216,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         // Archetype from the draws above, not a new one - the per-island draw
         // count stays 8, so clouds and everything downstream are unaffected.
         buildIsland(
-          Math.cos(angle) * distance, Math.sin(angle) * distance,
+          sceneryX + Math.cos(angle) * distance, sceneryZ + Math.sin(angle) * distance,
           radius, height, squash, capSquash, baseSpin, capSpin,
           Math.floor(squash * 4) % 4
         );
@@ -18817,9 +19253,9 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         const angle = rng() * Math.PI * 2;
         const distance = 500 + rng() * 2900;
         cloud.position.set(
-          at ? at.x : Math.cos(angle) * distance,
+          at ? sceneryX + at.x : sceneryX + Math.cos(angle) * distance,
           y,
-          at ? at.z : Math.sin(angle) * distance
+          at ? sceneryZ + at.z : sceneryZ + Math.sin(angle) * distance
         );
         cloud.rotateY(rng() * Math.PI);
         addRoot(cloud);
@@ -18843,7 +19279,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         const streak = new THREE.Mesh(cloudGeometry, cirrusMaterial);
         const angle = rng() * Math.PI * 2;
         const distance = 900 + rng() * 2600;
-        streak.position.set(Math.cos(angle) * distance, 1750 + rng() * 550, Math.sin(angle) * distance);
+        streak.position.set(sceneryX + Math.cos(angle) * distance, 1750 + rng() * 550, sceneryZ + Math.sin(angle) * distance);
         streak.scale.set(200 + rng() * 140, 4 + rng() * 4, 50 + rng() * 40);
         streak.rotation.y = rng() * Math.PI;
         addRoot(streak);
@@ -18895,8 +19331,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
             const angle = decorRng() * Math.PI * 2;
             const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
             const shape = Math.floor(decorRng() * 4) % 4;
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
+            const x = sceneryX + Math.cos(angle) * distance;
+            const z = sceneryZ + Math.sin(angle) * distance;
             // Padded by the island's own radius so nothing overhangs a fence.
             if (blocked(x, z, radius * 1.6)) continue;
             buildIsland(x, z, radius, height, squash, capSquash, baseSpin, capSpin, shape);
@@ -19027,8 +19463,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
           for (let i = 0; i < decor.rocks.count; i += 1) {
             const angle = decorRng() * Math.PI * 2;
             const distance = 900 + decorRng() * 2400;
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
+            const x = sceneryX + Math.cos(angle) * distance;
+            const z = sceneryZ + Math.sin(angle) * distance;
             const s = decor.rocks.scale[0] + decorRng() * (decor.rocks.scale[1] - decor.rocks.scale[0]);
             const spin = decorRng() * Math.PI * 2;
             const tilt = (decorRng() - 0.5) * 0.5;
@@ -19175,8 +19611,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
           for (let i = 0; i < cfg.towers; i += 1) {
             const angle = decorRng() * Math.PI * 2;
             const distance = cfg.distance[0] + decorRng() * (cfg.distance[1] - cfg.distance[0]);
-            const x = Math.cos(angle) * distance;
-            const z = Math.sin(angle) * distance;
+            const x = sceneryX + Math.cos(angle) * distance;
+            const z = sceneryZ + Math.sin(angle) * distance;
             const tower = new THREE.Group();
             const stacks = 4 + Math.floor(decorRng() * 3);
             const base = cfg.towerSize[0] + decorRng() * (cfg.towerSize[1] - cfg.towerSize[0]);
@@ -19225,12 +19661,235 @@ diffuseColor.rgb = terrainBase * terrainShade;`
               shelf.add(slab);
             }
             shelf.position.set(
-              Math.cos(angle) * distance,
+              sceneryX + Math.cos(angle) * distance,
               cfg.stratusBase + decorRng() * 160,
-              Math.sin(angle) * distance
+              sceneryZ + Math.sin(angle) * distance
             );
             shelf.rotation.y = decorRng() * Math.PI;
             addRoot(shelf);
+          }
+        }
+
+        // ---- The city (CITY LIGHTS) ---------------------------------------
+        // A whole skyline in three draw calls: one InstancedMesh for every
+        // building, one Points cloud for every street lamp, one Points cloud
+        // for the obstruction beacons. Everything is laid out on a single
+        // street lattice so the towers stand in blocks with roads between
+        // them, which is the difference between a city and a spike field.
+        //
+        // Standing ON the plateau cap, not on the sea: the cap height is
+        // sampled once here (the plateau is flat by construction, so one
+        // sample is the whole answer) and every block is placed off it. That
+        // also means this block is inert on any preset without a plateau.
+        if (decor.city) {
+          const cfg = decor.city;
+          const cx = cfg.at[0];
+          const cz = cfg.at[1];
+          // The cap the city stands on, read off the plateau that was just
+          // built in THIS call's `mountains` list.
+          //
+          // Deliberately NOT surfaceTopAt(): that sampler reads the global
+          // `world`, and during createWorld the global still points at the
+          // map being replaced - so it would return the OLD map's ground and
+          // leave the whole city hovering or buried. The plateau is flat by
+          // construction (topRadius 0.93), so its cap is one number and the
+          // local record is the authority on it.
+          const plateauRecord = mountains.find((mountain) =>
+            Math.abs(mountain.x - cx) < 1 && Math.abs(mountain.z - cz) < 1);
+          // `capHeight` is the full mesh height. `h` on the same record is the
+          // 0.92 collision clamp, and building off that would sink every
+          // tower 8% of the plateau into the ground.
+          const groundY = plateauRecord ? plateauRecord.capHeight : 0;
+          // How far the FLAT top actually reaches, per axis. The cap is an
+          // ellipse (rx by rz, times topRadius), and the angular displacement
+          // in buildMountainGeometry pulls the rim in by up to ~27% at its
+          // worst - so 0.72 of the nominal cap is the last radius guaranteed
+          // to be on level ground. Building past it puts blocks on the slope.
+          const capX = plateauRecord ? plateauRecord.rx * plateauRecord.topRadius * 0.72 : Infinity;
+          const capZ = plateauRecord ? plateauRecord.rz * plateauRecord.topRadius * 0.72 : Infinity;
+          const outer = cfg.districts[cfg.districts.length - 1].r[1];
+          const pitch = cfg.cell;
+          const width = cfg.cell - cfg.street;
+          const span = Math.ceil(outer / pitch);
+          // A lot is built only if it is inside the district ring AND inside
+          // the flat cap. The ellipse test is what keeps the waterfront blocks
+          // off the plateau's slope.
+          const onCap = (x, z) => {
+            const ex = (x - cx) / capX;
+            const ez = (z - cz) / capZ;
+            return ex * ex + ez * ez <= 1;
+          };
+
+          // Pass 1: decide what stands where. Done before any GPU object is
+          // built so the InstancedMesh can be allocated at the exact count -
+          // an over-allocated instance buffer is memory paid for nothing.
+          const lots = [];
+          for (let gx = -span; gx <= span; gx += 1) {
+            for (let gz = -span; gz <= span; gz += 1) {
+              // Jitter inside the lot so the blocks are not a perfect grid,
+              // but never more than a third of the street width - the roads
+              // have to stay flyable, which is the whole reason they exist.
+              const jx = (decorRng() - 0.5) * cfg.street * 0.6;
+              const jz = (decorRng() - 0.5) * cfg.street * 0.6;
+              const x = cx + gx * pitch + jx;
+              const z = cz + gz * pitch + jz;
+              const radial = Math.hypot(x - cx, z - cz);
+              if (radial > outer || !onCap(x, z)) continue;
+              const district = cfg.districts.find((d) => radial >= d.r[0] && radial < d.r[1]);
+              if (!district) continue;
+              if (decorRng() > district.fill) continue;
+              // Falls off toward the district's outer edge, so the skyline
+              // steps down from the core instead of ending in a wall.
+              const t = district.r[1] > district.r[0]
+                ? (radial - district.r[0]) / (district.r[1] - district.r[0])
+                : 0;
+              const top = district.height[1] - (district.height[1] - district.height[0]) * t * 0.7;
+              const h = Math.min(
+                cfg.maxHeight,
+                district.height[0] + decorRng() * Math.max(1, top - district.height[0])
+              );
+              // Footprint varies per lot but never spills into the street.
+              const w = width * (0.6 + decorRng() * 0.4);
+              const d = width * (0.6 + decorRng() * 0.4);
+              lots.push({ x, z, h, w, d });
+            }
+          }
+
+          if (lots.length > 0) {
+            const windowTexture = keepTexture(
+              makeCityWindowTexture(cfg.windows, decor.seed ^ 0x51ed),
+              "cityWindows",
+              estimateWorldTextureBytes((cfg.windows.cols || 12) * 8, (cfg.windows.rows || 26) * 8)
+            );
+            // A box, not a beveled anything: this is one geometry shared by
+            // every building on the map and it is seen at 300m+ for almost
+            // the whole sortie. Detail here buys nothing and costs everything.
+            //
+            // Two materials, assigned by FACE via the geometry's groups: the
+            // four walls carry the lit-window sheet, the roof and the underside
+            // do not. This is not cosmetic tidying - the whole mission is flown
+            // ABOVE the city, so the roofs are most of what is on screen, and
+            // with the window sheet on them the skyline read as a field of
+            // glowing brown slabs (measured on the 01-skyline pass). A roof at
+            // night is the darkest thing in a city, and making it so is what
+            // lets the lit walls and the street grid carry the image.
+            //
+            // BoxGeometry's groups are ordered +X, -X, +Y, -Y, +Z, -Z, so
+            // material index 1 is the roof and the underside and 0 is walls.
+            const blockGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            for (const group of blockGeometry.groups) group.materialIndex = 0;
+            blockGeometry.groups[2].materialIndex = 1;
+            blockGeometry.groups[3].materialIndex = 1;
+            const wallMaterial = keepMaterial(new THREE.MeshLambertMaterial({
+              color: cfg.wall,
+              emissive: 0xffffff,
+              emissiveMap: windowTexture,
+              // The emissive map IS the light - `emissiveIntensity` scales it
+              // globally, and this is the knob that decides whether the city
+              // reads as inhabited or as a Christmas tree. 0.9 was the
+              // Christmas tree: measured against the 02-streets pass, the lit
+              // cells blew out to flat saturated orange and the wall colour
+              // underneath stopped existing.
+              emissiveIntensity: 0.55
+            }));
+            const roofMaterial = keepMaterial(new THREE.MeshLambertMaterial({ color: cfg.roof }));
+            const blocks = new THREE.InstancedMesh(blockGeometry, [wallMaterial, roofMaterial], lots.length);
+            const m = new THREE.Matrix4();
+            const q = new THREE.Quaternion();
+            const pos = new THREE.Vector3();
+            const scl = new THREE.Vector3();
+            const tall = [];
+            for (let i = 0; i < lots.length; i += 1) {
+              const lot = lots[i];
+              // Buildings sit on the cap and are scaled up from it, so the
+              // box's centre is at half its height. Never rotated: a city
+              // block grid IS axis-aligned, and a rotated box would break the
+              // street lines the lamps below are laid on.
+              q.identity();
+              pos.set(lot.x, groundY + lot.h * 0.5, lot.z);
+              scl.set(lot.w, lot.h, lot.d);
+              blocks.setMatrixAt(i, m.compose(pos, q, scl));
+              if (cfg.beacons && lot.h >= cfg.beacons.minHeight) {
+                tall.push({ x: lot.x, y: groundY + lot.h + 4, z: lot.z });
+              }
+            }
+            blocks.instanceMatrix.needsUpdate = true;
+            // The blocks are the one thing on this map that is never past the
+            // fog plane while the player is over the city, and they are a
+            // single instanced draw - so frustum culling on the whole batch
+            // (which is what an InstancedMesh gets) would only ever cost a
+            // bounding-sphere test it always passes. Left on regardless: the
+            // approach and egress legs put the city behind the camera.
+            addRoot(blocks);
+
+            // Street lighting. Laid on the ROADS - the lattice lines between
+            // the lots - rather than sprinkled over the district, because
+            // "the streets are lit" is what makes a night city legible from
+            // above. One Points cloud for the whole map.
+            if (cfg.grid) {
+              const g = cfg.grid;
+              const lampPositions = [];
+              const lampColors = [];
+              const tint = new THREE.Color();
+              const lampY = groundY + 3;
+              for (let gx = -span; gx <= span && lampPositions.length / 3 < g.max; gx += 1) {
+                for (let gz = -span; gz <= span && lampPositions.length / 3 < g.max; gz += 1) {
+                  // The road running along +Z on this lot's edge, and the one
+                  // running along +X. Two segments per lot covers the lattice
+                  // without drawing every road twice.
+                  for (let axis = 0; axis < 2; axis += 1) {
+                    for (let n = 0; n < g.perCell; n += 1) {
+                      const t = (n + 0.5) / g.perCell;
+                      const along = (t - 0.5) * pitch;
+                      const off = pitch * 0.5;
+                      const x = cx + gx * pitch + (axis === 0 ? along : off);
+                      const z = cz + gz * pitch + (axis === 0 ? off : along);
+                      if (Math.hypot(x - cx, z - cz) > outer || !onCap(x, z)) continue;
+                      lampPositions.push(x, lampY, z);
+                      tint.setHex(decorRng() < g.coldChance ? g.cold : g.warm);
+                      const shade = 0.5 + decorRng() * 0.5;
+                      lampColors.push(tint.r * shade, tint.g * shade, tint.b * shade);
+                    }
+                  }
+                }
+              }
+              if (lampPositions.length > 0) {
+                const lampGeometry = keepGeometry(new THREE.BufferGeometry());
+                lampGeometry.setAttribute("position", new THREE.Float32BufferAttribute(lampPositions, 3));
+                lampGeometry.setAttribute("color", new THREE.Float32BufferAttribute(lampColors, 3));
+                const lamps = new THREE.Points(lampGeometry, keepMaterial(new THREE.PointsMaterial({
+                  // sizeAttenuation off, exactly like the night map's distant
+                  // lights: a street lamp is a point of light at any range,
+                  // and letting it grow to a disc on a low pass is what makes
+                  // procedural lighting look like confetti.
+                  size: g.size, sizeAttenuation: false, vertexColors: true,
+                  transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending,
+                  depthWrite: false
+                })));
+                addRoot(lamps);
+              }
+            }
+
+            // Red obstruction beacons on the tallest towers. Flavour, but it
+            // is the detail that reads as "these are buildings that aircraft
+            // are warned about" rather than "these are boxes".
+            if (cfg.beacons && tall.length > 0) {
+              const take = Math.min(cfg.beacons.count, tall.length);
+              const step = Math.max(1, Math.floor(tall.length / take));
+              const beaconPositions = [];
+              for (let i = 0; i < tall.length && beaconPositions.length / 3 < take; i += step) {
+                beaconPositions.push(tall[i].x, tall[i].y, tall[i].z);
+              }
+              if (beaconPositions.length > 0) {
+                const beaconGeometry = keepGeometry(new THREE.BufferGeometry());
+                beaconGeometry.setAttribute("position", new THREE.Float32BufferAttribute(beaconPositions, 3));
+                addRoot(new THREE.Points(beaconGeometry, keepMaterial(new THREE.PointsMaterial({
+                  size: cfg.beacons.size, sizeAttenuation: false, color: cfg.beacons.color,
+                  transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending,
+                  depthWrite: false
+                }))));
+              }
+            }
           }
         }
 
@@ -19247,8 +19906,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
           for (let c = 0; c < cfg.clusters; c += 1) {
             const angle = decorRng() * Math.PI * 2;
             const distance = cfg.minDistance + decorRng() * (cfg.maxDistance - cfg.minDistance);
-            const cx = Math.cos(angle) * distance;
-            const cz = Math.sin(angle) * distance;
+            const cx = sceneryX + Math.cos(angle) * distance;
+            const cz = sceneryZ + Math.sin(angle) * distance;
             if (blocked(cx, cz, cfg.spread)) continue;
             for (let i = 0; i < cfg.perCluster; i += 1) {
               const x = cx + (decorRng() - 0.5) * cfg.spread;
