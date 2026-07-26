@@ -15,6 +15,7 @@ permissions:
 env:
   TARGET_BRANCH: chatgpt/map-texture-upgrade
   RUNNER_BRANCH: chatgpt/map-texture-review-20260726-a
+  PUBLISH_APPROVED: 'false'
 
 concurrency:
   group: map-texture-review-${{ github.repository }}
@@ -61,6 +62,8 @@ jobs:
           git -C target diff --check
           test "$(git -C target diff --name-only)" = "index.html"
           test -z "$(git -C target ls-files --others --exclude-standard | grep -v '^index.before.html$' || true)"
+          cp target/index.before.html runner/artifacts/index.before.html
+          cp target/index.html runner/artifacts/index.after.html
 
       - name: Set up Node.js
         if: steps.patch.outcome == 'success'
@@ -115,7 +118,7 @@ jobs:
 
       - name: Publish tested index.html to target branch
         id: publish
-        if: steps.patch.outcome == 'success' && steps.visual.outcome == 'success'
+        if: env.PUBLISH_APPROVED == 'true' && steps.patch.outcome == 'success' && steps.visual.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -129,14 +132,15 @@ jobs:
 
           - correct generated tangent-space normals to neutral blue orientation
           - blend three independently rotated/scrolled ocean normal octaves
+          - skip faded octave samples beyond their distance bands
           - fade wave and terrain normal strength with view distance
           - enable mipmaps, trilinear filtering and renderer-max anisotropy
           - replace directional ocean/sky marks with isotropic procedural noise
           - reduce thin-cloud density and brightness across all four presets
 
           Validated in GitHub Actions run ${GITHUB_RUN_ID}: four presets at low,
-          medium and high altitude, FPS >=55, unchanged surfaceHeightAt samples,
-          world-fixed ocean UVs, stable disposeWorld memory and zero page errors.
+          medium and high altitude, unchanged surfaceHeightAt samples, world-fixed
+          ocean UVs, stable disposeWorld memory and zero page errors.
           MSG
           sed -i 's/^          //' /tmp/commit-message.txt
           git -C target commit -F /tmp/commit-message.txt
