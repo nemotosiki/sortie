@@ -9560,6 +9560,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ACE_PROFILES, AIRCRAFT_TYPES, AIRCRAFT_ORDER, ENEMY_AI_PROFILES,
         ENEMY_MISSILE_PROFILES, SHIP_TYPES, GROUND_TYPES, HELI_TYPES, WORLD_PRESETS,
         MISSIONS, ENEMY_ROLES, SKILL_TIERS
+      },
+      // How many of `mark` the player took the last time they flew `missionKey`.
+      // A function rather than a snapshot because payloads register once at
+      // boot, long before any of this is decided - a mission that reacts to a
+      // choice made in the other campaign has to ask at the moment it needs to
+      // know. Zero for a mission never flown, which is the same answer as a
+      // mission flown without taking the optional objective, and deliberately
+      // so: the story only distinguishes "the relays are down" from "they are
+      // not", never "you have not been there yet".
+      marksTaken(missionKey, mark) {
+        const entry = missionRecords[missionKey];
+        if (!entry || !entry.marks) return 0;
+        return entry.marks[mark] || 0;
       }
     };
 
@@ -12354,6 +12367,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // banked wave had taken, which can be zero even though the sortie ended
       // with the aircraft destroyed. NO DAMAGE has to mean the whole sortie.
       if (damageTaken === 0 && !checkpoint.used) entry.noDamage = true;
+      // What the player chose to do about this sortie's optional objectives.
+      // Overwritten rather than accumulated across replays: a later mission asks
+      // "did they take the relays out", and the answer that matters is the one
+      // from the last time this sortie was flown, not the union of every attempt.
+      // Absent keys read as never taken, which is what an older record means too.
+      entry.marks = { ...sortieMarks };
       // localStorage is whatever an older build - or a hand-seeded test profile -
       // last wrote there, so the arrays cannot be assumed present. Spreading a
       // missing one throws on the completion path, which loses the sortie the
@@ -13028,6 +13047,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let missileKills = 0;
     let damageTaken = 0;
     let playerNickname = null;
+    // Optional objectives taken this sortie, keyed by the `mark` authored on the
+    // unit. The campaigns are two halves of one story and several missions are
+    // the consequence of a choice made in the other half - the relays knocked
+    // out in one sortie are the city grid that goes dark in another - so what a
+    // mission needs to read is not a kill count but whether a specific thing was
+    // done. Written to the mission record on completion; see recordMissionResult.
+    let sortieMarks = {};
 
     const radioQueue = [];
     const radioSpeakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
@@ -13207,6 +13233,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     window.__game = {
+      // Same reader the payload context exposes, surfaced here because a
+      // mission's own code runs against window.__game rather than against the
+      // registration-time ctx. A function, not a value: every other field on
+      // this object is a snapshot taken when it was built, and the answer to
+      // "did they take the relays out" is not knowable then.
+      marksTaken: (missionKey, mark) => {
+        const entry = missionRecords[missionKey];
+        if (!entry || !entry.marks) return 0;
+        return entry.marks[mark] || 0;
+      },
       state: gameState,
       score,
       highscore,
@@ -14230,7 +14266,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           waveNumber: checkpoint.waveNumber,
           score: checkpoint.score,
           kills: checkpoint.kills
-        })
+        }),
+        // Optional objectives: what has been taken so far this sortie, and what
+        // every previously flown mission recorded. A mission that reacts to a
+        // choice made in the other campaign is a claim about the second of
+        // these, and there is no way to read it from outside otherwise.
+        markProbe: () => ({
+          sortie: { ...sortieMarks },
+          records: Object.fromEntries(
+            Object.entries(missionRecords)
+              .filter(([, entry]) => entry && entry.marks && Object.keys(entry.marks).length)
+              .map(([key, entry]) => [key, { ...entry.marks }])
+          )
+        }),
+        // Records a mark without having to find and destroy the unit carrying
+        // it, the way forceDamageEnemy stands in for shooting something down.
+        forceMark: (mark, count = 1) => {
+          if (gameState !== STATE_PLAYING || !mark) return false;
+          sortieMarks[mark] = (sortieMarks[mark] || 0) + count;
+          return sortieMarks[mark];
+        }
       },
       world: { preset: null, label: null, mountains: 0 },
       enemyCatalog: Object.keys(ENEMY_TYPES),
@@ -15765,6 +15820,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gunKills = 0;
       missileKills = 0;
       damageTaken = 0;
+      sortieMarks = {};
       // Zeroed before any spawner runs, so the field this sortie is ranked
       // against is this sortie's field and not the previous one's.
       rankStats.spawnedValue = 0;
@@ -22309,6 +22365,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.breakTimer = 0;
       enemy.postStallTimer = 0;
       enemy.postStallPhase = 0;
+      // An optional objective the player chose to take. `mark` is authored on
+      // the unit, not derived, because the thing a later mission wants to know
+      // is never "how many did they kill" but "did they take out the relays" -
+      // a question only the mission that placed them can phrase. Counted here
+      // rather than at mission end so it survives a sortie that is failed and
+      // resumed: the shot was fired either way.
+      if (enemy.mark) sortieMarks[enemy.mark] = (sortieMarks[enemy.mark] || 0) + 1;
       let chainBlast = null;
       if (enemy.subsystem) {
         // A mount neither sinks nor leaves a hulk in the sky: it blows up where
