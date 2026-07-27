@@ -3119,9 +3119,10 @@
     // launcher has ready, and how long one tube takes to come back. Without them
     // the SP.W was a trigger-mash weapon that emptied a 12-round magazine as
     // fast as the button could be pressed, which is what separates a special
-    // from the standard missile in AC. A salvo weapon (multi > 1) spends one
-    // tube per SALVO, not per round: the 8AAM's single tube is the whole
-    // eight-round volley, and the 12 s clock is what that volley costs.
+    // from the standard missile in AC. A salvo weapon (multi > 1) carries one
+    // tube per target it can latch and spends one per ROUND, so a full 8AAM
+    // volley empties all eight and puts all eight on the 12 s clock; with only
+    // three back, the next trigger pull is a three-round volley.
     const SPW_TYPES = Object.freeze({
       // F-16: dogfight round. Turns hard enough to follow a break.
       qaam: Object.freeze({
@@ -3155,7 +3156,8 @@
         tubes: 1,
         reload: 9,
         lockRange: 1600,
-        lockKind: "surface"
+        lockKind: "surface",
+        popup: true
       }),
       // F-15: BVR sniper. Sees past the standard 1200 m seeker, but flies
       // almost straight once it is off the rail.
@@ -3176,10 +3178,14 @@
       // F-35C: the eight-target salvo cut down to four. Same acquisition path as
       // the 8AAM - updateMultiLock() reads `multi` and `multiLockTime` and knows
       // nothing about either weapon by name - so this entry is the whole feature.
-      // Four targets at 0.45 s a step fills in 1.8 s against the 8AAM's 3.6: half
-      // the salvo, acquired in half the time. 90 damage sits above the 8AAM's 78
-      // and below the plain missile's 98, so it still takes two rounds to down
-      // anything in the hangar - a multi-target weapon wins on count, not punch.
+      // Four targets at 0.22 s a step fills in 0.88 s against the 8AAM's 1.76:
+      // half the salvo, acquired in half the time. 0.45 was the number that made
+      // this weapon a single-shot in practice - four targets wanted 1.8 s with
+      // all four held inside the cone for every frame of it, and a turning fight
+      // never holds still that long, so the salvo fired one round. Under a second
+      // latches while manoeuvring. 90 damage sits above the 8AAM's 78 and below
+      // the plain missile's 98, so it still takes two rounds to down anything in
+      // the hangar - a multi-target weapon wins on count, not punch.
       aam4: Object.freeze({
         key: "aam4",
         label: "4AAM",
@@ -3189,13 +3195,16 @@
         maxSpeed: 520,
         life: 9.5,
         multi: 4,
-        multiLockTime: 0.45,
+        multiLockTime: 0.22,
         tubes: 4,
         reload: 8,
         lockRange: null,
         lockKind: "air"
       }),
-      // F-22: one trigger, up to eight targets, at 78 damage a round.
+      // F-22: one trigger, up to eight targets, at 78 damage a round. Same 0.22 s
+      // step as the 4AAM for the same reason: at 0.45 the eighth target landed
+      // 3.6 s after the first, which is longer than any eight contacts stay
+      // inside one cone. 1.76 s for the full eight is a pass through a formation.
       aam8: Object.freeze({
         key: "aam8",
         label: "8AAM",
@@ -3205,7 +3214,7 @@
         maxSpeed: 520,
         life: 9.5,
         multi: 8,
-        multiLockTime: 0.45,
+        multiLockTime: 0.22,
         tubes: 8,
         reload: 12,
         lockRange: null,
@@ -3228,7 +3237,10 @@
         maxSpeed: 520,
         life: 9.5,
         multi: 6,
-        multiLockTime: 0.45,
+        // 0.22 は 4AAM/8AAM/4AGM と同じ刻み。ここだけ 0.45 のままだと 6 目標に
+        // 2.7 秒かかり、その間ずっと 6 機をコーン内に保持し続けねばならない -
+        // 揃わないまま撃つ launcher は multi の意味が無い。
+        multiLockTime: 0.22,
         tubes: 6,
         reload: 10,
         lockRange: null,
@@ -3272,11 +3284,18 @@
         maxSpeed: 460,
         life: 11,
         multi: 4,
-        multiLockTime: 0.45,
-        tubes: 2,
+        // 0.22 s a step for the same reason the 4AAM has it: 0.45 wanted all four
+        // aim points inside the cone for 1.8 s straight.
+        multiLockTime: 0.22,
+        // Latch count and tube count match, as they do on every other multi-lock
+        // round (4AAM 4/4, 6AAM 6/6, 8AAM 8/8). `tubes: 2` was a config slip: it
+        // latched four targets and then fired two rounds, which is exactly the
+        // "4AGM that cannot shoot four" the report describes.
+        tubes: 4,
         reload: 8,
         lockRange: 1500,
-        lockKind: "surface"
+        lockKind: "surface",
+        popup: true
       })
     });
 
@@ -12486,6 +12505,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Outside it nothing changes, so the cost is a few rounds per frame at most.
     const MISSILE_TERMINAL_RANGE = 150;
     const MISSILE_TERMINAL_SUBSTEPS = 8;
+    // Sea-skimming profile for the surface rounds. They run level at launch
+    // altitude to the target's ground position and only then tip over, instead
+    // of sinking towards the sea from the rail - the run-in the LASM is
+    // described by. POPUP_DIVE_RATIO is the pushover point in horizontal
+    // distance per metre of height left to lose: at 1.2 the straight line from
+    // there meets the target at atan(1/1.2) = 40 deg, and the chase steepens it
+    // through 45 on the way in. POPUP_MIN_DROP is the floor below which there is
+    // no height to trade - a round released level with a hull has no dive to
+    // make, and manufacturing one only puts it in the water short of the target.
+    const POPUP_DIVE_RATIO = 1.2;
+    const POPUP_MIN_DROP = 60;
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
     const FLARE_CAPACITY = 2;
@@ -12501,9 +12531,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // SP.W firing discipline. Same shape as the missile tubes above - a loaded
     // count plus a list of running reload clocks - but per weapon rather than
     // global, because tube count and reload time come off the SPW_TYPES entry.
-    // A salvo weapon spends one tube per trigger pull however many rounds leave
-    // the rail, so this counts trigger pulls, not ordnance; spwAmmo remains the
-    // magazine and is still decremented per round.
+    // A salvo weapon spends one tube per ROUND, so a four-target 4AAM volley
+    // costs four tubes and starts four reload clocks. spwAmmo is the magazine
+    // and moves by the same amount, which is the point: the two counts have to
+    // stay in step or a full magazine sits behind tubes that never come back.
     let spwLoaded = spwTubeCount();
     const spwReloadTimers = [];
     let spwLaunched = 0;
@@ -12513,8 +12544,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let lastBombImpact = null;
     const bombsInFlight = [];
     // 8AAM acquisition: one more target latched every multiLockTime, nearest
-    // first, all inside the same cone the single lock uses.
-    const multiLock = { ids: [], timer: 0 };
+    // first, all inside the same cone the single lock uses. `grace` is how long
+    // the cone has been empty: a salvo that reset the instant one contact slid
+    // out could not be built while manoeuvring, because building it is exactly
+    // when the cone is being swept across the formation.
+    const multiLock = { ids: [], timer: 0, grace: 0 };
+    const MULTI_LOCK_GRACE = 0.4;
     const BOMB_GRAVITY = 110;
     const BOMB_MAX_FLIGHT = 14;
     const BOMB_PREDICT_STEP = 0.1;
@@ -13353,6 +13388,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return {
             targetId: missile.targetId,
             spw: missile.spw ?? null,
+            // Where the round is, the same way bombProbe reports it. The
+            // sea-skimming profile is a claim about altitude over time, and
+            // there is no other way to read altitude off a round in flight.
+            x: Number(missile.mesh.position.x.toFixed(2)),
+            y: Number(missile.mesh.position.y.toFixed(2)),
+            z: Number(missile.mesh.position.z.toFixed(2)),
+            diving: Boolean(missile.diving),
             life: missile.life,
             speed: missile.speed,
             closing: Boolean(missile.closing),
@@ -16037,7 +16079,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               }
               missile.los.copy(tmpV1);
               missile.losValid = true;
-              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+
+              // Cruise leg of the sea-skimming profile: steer at the target's
+              // horizontal position only, which holds the launch altitude
+              // because the round flies where its nose points. Steering only -
+              // the seeker LOS recorded above is the true one, so lock-loss is
+              // untouched. The pushover latches: while diving, height falls as
+              // fast as ground range does, so a live ratio test would flick back
+              // to level halfway down and porpoise the round into the target.
+              let aim = tmpV1;
+              if (missile.popup && !missile.diving) {
+                const drop = missile.mesh.position.y - target.group.position.y;
+                tmpV5.set(
+                  target.group.position.x - missile.mesh.position.x,
+                  0,
+                  target.group.position.z - missile.mesh.position.z
+                );
+                const pushover = drop * POPUP_DIVE_RATIO;
+                if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+                  missile.diving = true;
+                } else {
+                  aim = tmpV5.normalize();
+                }
+              }
+              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, aim);
               missile.mesh.quaternion.rotateTowards(tmpQ1, seekerRate * slice);
             }
           }
@@ -16218,51 +16283,63 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playTone(320, 0.05, 0.028, "square");
         return false;
       }
-      // The launch paths below decide whether the shot actually happens (no
-      // lock, no target in the salvo list, and so on). A tube is only spent
-      // when one of them reports a round away.
+      // The launch paths below report how many rounds actually left the rail (0
+      // for no lock, no target in the salvo list, and so on). A tube is only
+      // spent when one of them reports a round away.
       const fired = PLAYER_SPW.kind === "bomb"
         ? dropBomb()
         : PLAYER_SPW.multi > 1
           ? launchSpSalvo()
           : launchSpSingle();
-      if (fired) {
-        spwLoaded -= 1;
-        scheduleSpwReload();
+      if (fired > 0) {
+        // A salvo empties one tube PER ROUND, not one per trigger pull: four
+        // rounds off a 4AAM is four tubes gone and four reload clocks started.
+        // Charging a single tube for the volley was the accounting bug behind
+        // "it will not fire four" - spawnSpMissile spends a round of magazine
+        // each time, so the magazine drained four times faster than the tubes
+        // came back, and scheduleSpwReload (one tube per call) only ever
+        // queued one of the four refills.
+        spwLoaded = Math.max(0, spwLoaded - fired);
+        for (let i = 0; i < fired; i += 1) scheduleSpwReload();
       }
-      return fired;
+      return fired > 0;
     }
 
     function launchSpSingle() {
-      if (!lock.locked) return false;
+      if (!lock.locked) return 0;
       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
       if (!target) {
         resetLock();
-        return false;
+        return 0;
       }
       spawnSpMissile(target, 0);
       playSfx("missile", 0.5);
       showBanner(`FOX THREE · ${PLAYER_SPW.label} · TARGET ${target.id}`, 1.15);
       resetLock();
-      return true;
+      return 1;
     }
 
     // 8AAM: one round per latched target, all in the same frame. Short stock is
-    // spent nearest-first rather than refusing the shot.
+    // spent nearest-first rather than refusing the shot. Returns the number of
+    // rounds away so the caller can bill the right number of tubes.
     function launchSpSalvo() {
+      // Loaded tubes cap the volley alongside the magazine: with two tubes back
+      // and four targets latched, two rounds go out. Without the tube cap the
+      // volley fired off tubes that were still on the reload clock.
+      const maxRounds = Math.min(spwAmmo, spwLoaded);
       const targets = [];
       for (const id of multiLock.ids) {
-        if (targets.length >= spwAmmo) break;
+        if (targets.length >= maxRounds) break;
         const target = enemies.find((enemy) => enemy.id === id && enemy.alive);
         if (target) targets.push(target);
       }
-      if (targets.length === 0) return false;
+      if (targets.length === 0) return 0;
       targets.forEach((target, index) => spawnSpMissile(target, index));
       playSfx("missile", 0.5);
       showBanner(`FOX THREE · ${PLAYER_SPW.label} · ${targets.length} TARGETS`, 1.3);
       clearMultiLock();
       resetLock();
-      return true;
+      return targets.length;
     }
 
     function spawnSpMissile(target, index) {
@@ -16291,6 +16368,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: PLAYER_SPW.damage,
         lifeLimit: PLAYER_SPW.life,
         spw: PLAYER_SPW.key,
+        popup: Boolean(PLAYER_SPW.popup),
+        diving: false,
         life: 0,
         trailTimer: 0,
         closing: false,
@@ -16403,7 +16482,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!playSfx("missile", 0.4, 0.7)) playTone(180, 0.16, 0.08, "square");
       playTone(140, 0.22, 0.07, "sawtooth", 0.02);
       showBanner(`BOMBS AWAY · ${PLAYER_SPW.label}`, 1.0);
-      return true;
+      // One round away, in the same "how many tubes did that cost" currency the
+      // guided paths report.
+      return 1;
     }
 
     function removeBomb(index) {
@@ -17092,7 +17173,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // first, one more every multiLockTime. Any other weapon empties it.
     function updateMultiLock(dt, candidates) {
       const weapon = selectedWeapon === "spw" ? PLAYER_SPW : null;
-      if (!weapon || weapon.multi <= 1 || candidates.length === 0) {
+      if (!weapon || weapon.multi <= 1) {
         clearMultiLock();
         return;
       }
@@ -17103,9 +17184,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const lockKind = currentLockKind();
       const eligible = candidates.filter((entry) => canLock(entry.enemy, lockKind));
       if (eligible.length === 0) {
-        clearMultiLock();
+        // An empty cone for one frame is a bank angle, not a broken lock. The
+        // latched list and the accumulated timer survive MULTI_LOCK_GRACE of it
+        // and pick up where they left off; past that the launcher really has
+        // lost the picture and starts over. Weapon select and mission start go
+        // through clearMultiLock() directly, so those stay instant.
+        multiLock.grace += dt;
+        if (multiLock.grace >= MULTI_LOCK_GRACE) clearMultiLock();
         return;
       }
+      multiLock.grace = 0;
       multiLock.timer += dt;
       eligible.sort((a, b) => a.distance - b.distance);
       const step = weapon.multiLockTime || 0.45;
@@ -17121,6 +17209,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function clearMultiLock() {
       multiLock.ids.length = 0;
       multiLock.timer = 0;
+      multiLock.grace = 0;
     }
 
     // Weapon select. Only the missile trigger is affected: gun and flares stay
