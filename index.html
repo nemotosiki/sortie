@@ -11837,6 +11837,54 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Same relay, for the wave's `hunt` field: null on every wave that is
     // flying at the player, which is every wave outside the two guard sorties.
     let spawningHunt = null;
+    // Ace Combat's checkpoint. Banked every time a wave goes down, and where a
+    // shot-down sortie comes back from. What it holds is the PROGRESS of the
+    // board and the points already earned - never the state of the aircraft
+    // (hull, stores, position, selected weapon). Coming back at full strength
+    // is what Ace Combat does; restarting from a half-dead jet with four rounds
+    // left would only reproduce the corner the player was shot down in.
+    const checkpoint = {
+      active: false,
+      // Sticky for the rest of the sortie once a restart has been taken, because
+      // the rank cap in computeMissionRank is about how the sortie was flown and
+      // not about where it currently is. Both flags are cleared in startMission.
+      used: false,
+      // The five wave variables, plus the two counters that ride with them.
+      missionWaveIndex: 0,
+      waveIdCursor: 0,
+      waveNumber: 0,
+      spawningTgt: true,
+      spawningHunt: null,
+      waveTargetsSpawned: 0,
+      pendingWaves: [],
+      // Scoring.
+      score: 0,
+      kills: 0,
+      bonusKills: 0,
+      spawnedValue: 0,
+      playerKillValue: 0,
+      baseDamagePenalty: 0,
+      missionElapsed: 0,
+      // Debrief statistics, carried so the numbers do not wind backwards across
+      // a restart - they are what the sortie actually did, checkpoint or not.
+      missileHits: 0,
+      gunKills: 0,
+      missileKills: 0,
+      damageTaken: 0,
+      missilesLaunched: 0,
+      spwLaunched: 0,
+      spwHits: 0,
+      gunShots: 0,
+      bombsDropped: 0,
+      // What the guard objective had already reached. Restored so a transport
+      // lost on the way here keeps costing the rank even though the convoy
+      // itself is stood back up whole.
+      guardLost: 0,
+      guardHits: 0,
+      guardSaved: 0,
+      guardPenalty: 0,
+      guardFailed: false
+    };
     // Where this sortie began, and the point its waves are laid out around.
     // Both are snapshotted ONCE per mission - after the player has been placed
     // and before the first wave spawns - and never move again. That is the
@@ -11952,13 +12000,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         && guardState.lost >= guardState.total;
       if (guardWiped && RANK_ORDER[rank] > RANK_ORDER.B) rank = "B";
 
+      // A sortie that had to be restarted from a checkpoint is not a flawless
+      // sortie: being shot down happened, and an S that reads as "nothing went
+      // wrong" would be claiming otherwise. It is only a cap, though - being
+      // able to try again is not a punishment, it is what makes a twenty-minute
+      // mission flyable at all - so every rank below S is left as earned. The
+      // gate sits after the rank is decided, like the guard caps, because the
+      // rank comes out of a ratio and this is a ceiling on it, not a multiplier.
+      if (checkpoint.used && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
+
       // Points still needed for the next rank up, so the debrief can say what
       // the sortie fell short of. Null at S, and null when a guard cap is what
       // holds the rank down - "+N points" would be a lie when no number of
       // points can lift it.
       const nextThreshold = rank === "C" ? RANK_TUNING.B
         : (rank === "B" ? RANK_TUNING.A : (rank === "A" ? RANK_TUNING.S : null));
-      const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B");
+      const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B")
+        || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
         : Math.max(1, Math.ceil(nextThreshold * max - total));
@@ -12005,7 +12063,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Sticky, like the rank: one clean sortie earns the emblem for the record
       // and a later scrappy one does not take it away. Absent on records
       // written by older builds, which read as "never flown clean".
-      if (damageTaken === 0) entry.noDamage = true;
+      // Gated on the checkpoint as well: the counter is rewound to what the
+      // banked wave had taken, which can be zero even though the sortie ended
+      // with the aircraft destroyed. NO DAMAGE has to mean the whole sortie.
+      if (damageTaken === 0 && !checkpoint.used) entry.noDamage = true;
       // localStorage is whatever an older build - or a hand-seeded test profile -
       // last wrote there, so the arrays cannot be assumed present. Spreading a
       // missing one throws on the completion path, which loses the sortie the
@@ -13834,7 +13895,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const level = Number(value);
           if (!Number.isFinite(level)) return false;
           return setMusicVolume(THREE.MathUtils.clamp(level, 0, 1));
-        }
+        },
+        // What is banked, for the restart probes. Deliberately here and not on
+        // window.__game itself: no part of the game reads a checkpoint, only the
+        // gameover Enter path does, and there is nothing here for the HUD.
+        checkpointProbe: () => ({
+          active: checkpoint.active,
+          used: checkpoint.used,
+          waveIndex: checkpoint.missionWaveIndex,
+          waveNumber: checkpoint.waveNumber,
+          score: checkpoint.score,
+          kills: checkpoint.kills
+        })
       },
       world: { preset: null, label: null, mountains: 0 },
       enemyCatalog: Object.keys(ENEMY_TYPES),
@@ -13926,7 +13998,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     });
     ui.retryBtn.addEventListener("click", () => {
       ensureAudio();
-      startMission();
+      flyAgain();
     });
     ui.changeAircraftBtn.addEventListener("click", () => {
       ensureAudio();
@@ -14073,7 +14145,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return;
         }
         if (gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) {
-          startMission();
+          flyAgain();
           return;
         }
         if (gameState === STATE_PLAYING) fireWeapon();
@@ -14374,7 +14446,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         else if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
         else if (gameState === STATE_BRIEFING) advanceBriefing();
         else if (gameState === STATE_READY) requestLaunch();
-        else startMission();
+        else flyAgain();
       }
       if (cameraPressed && !gamepadInput.previousCamera) {
         // Square/X is "back": one step out of the funnel per press, so the pad
@@ -15388,6 +15460,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // a guard mission starts with no objective rather than the last one's.
       resetGuardState();
       pendingWaves.length = 0;
+      // A sortie launched from the runway has nothing banked and owes nothing
+      // for a restart. The two flags are the whole of it - the banked values
+      // themselves are simply unreachable while `active` is false, and
+      // restartFromCheckpoint (which runs this function) has already taken its
+      // own copy of them by the time it gets here.
+      checkpoint.active = false;
+      checkpoint.used = false;
       bomberFirstKillFired = false;
       playerSpeed = CRUISE_SPEED;
       gunCooldown = 0;
@@ -15462,6 +15541,166 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       captureMissionAnchor(MISSIONS[currentMissionIndex]);
       spawnMissionWave(MISSIONS[currentMissionIndex].waves[0]);
       snapCamera();
+      clock.getDelta();
+    }
+
+    // ---- Checkpoints -------------------------------------------------------
+    // Banked by updateMission in the one instant a wave has been cleared and the
+    // next one has not gone on the board yet, so what is in here always reads as
+    // "everything up to this point is done". The outro and the ACCOMPLISHED hold
+    // can never reach it - updateMission returns above the wave logic in both
+    // cases - and neither can the opening of a sortie, because wave 1 has to
+    // clear before there is anything to bank.
+    function saveCheckpoint() {
+      checkpoint.active = true;
+      checkpoint.missionWaveIndex = missionWaveIndex;
+      checkpoint.waveIdCursor = waveIdCursor;
+      checkpoint.waveNumber = waveNumber;
+      checkpoint.spawningTgt = spawningTgt;
+      checkpoint.spawningHunt = spawningHunt;
+      checkpoint.waveTargetsSpawned = waveTargetsSpawned;
+      // Copied entry by entry rather than kept by reference. The live array is
+      // emptied in place by deployWave and its entries have their timers counted
+      // down by updatePendingWaves, so holding either would leave the bank
+      // pointing at something that keeps moving. The `wave` inside an entry is a
+      // mission definition and is meant to stay shared.
+      checkpoint.pendingWaves = pendingWaves.map((entry) => ({ timer: entry.timer, wave: entry.wave }));
+      checkpoint.score = score;
+      checkpoint.kills = kills;
+      checkpoint.bonusKills = bonusKills;
+      checkpoint.spawnedValue = rankStats.spawnedValue;
+      checkpoint.playerKillValue = rankStats.playerKillValue;
+      checkpoint.baseDamagePenalty = baseDamagePenalty;
+      checkpoint.missionElapsed = missionElapsed;
+      checkpoint.missileHits = missileHits;
+      checkpoint.gunKills = gunKills;
+      checkpoint.missileKills = missileKills;
+      checkpoint.damageTaken = damageTaken;
+      checkpoint.missilesLaunched = missilesLaunched;
+      checkpoint.spwLaunched = spwLaunched;
+      checkpoint.spwHits = spwHits;
+      checkpoint.gunShots = gunShots;
+      checkpoint.bombsDropped = bombsDropped;
+      checkpoint.guardLost = guardState.lost;
+      checkpoint.guardHits = guardState.hits;
+      checkpoint.guardSaved = guardState.saved;
+      checkpoint.guardPenalty = guardState.penalty;
+      checkpoint.guardFailed = guardState.failed;
+    }
+
+    // Every "go again" in the game funnels through here, so the keyboard, the
+    // RETRY button and the gamepad cannot disagree about what retrying means.
+    // A cleared sortie always starts over from the runway - it is finished,
+    // there is nothing to resume. A failed one picks up at the last wave the
+    // player got through, when there is one.
+    function flyAgain() {
+      if (gameState === STATE_GAMEOVER && checkpoint.active) restartFromCheckpoint();
+      else startMission();
+    }
+
+    // Ace Combat's "retry from checkpoint": the sortie begins again at the wave
+    // the player had already fought through, not on the runway. startMission is
+    // run untouched - the aircraft comes back whole and fully loaded, the board
+    // comes back empty, the friendlies and wave 1 are stood up - and the banked
+    // progress is then written over the top of it.
+    function restartFromCheckpoint() {
+      // Taken before startMission, which is entitled to move any of this.
+      const at = {
+        ...checkpoint,
+        pendingWaves: checkpoint.pendingWaves.map((entry) => ({ timer: entry.timer, wave: entry.wave }))
+      };
+      startMission();
+      // startMission refuses to launch a jet the player does not own, and there
+      // is then nothing to restore onto.
+      if (gameState !== STATE_PLAYING) return;
+
+      // Progress. All of it written before the wave respawn at the bottom,
+      // because spawnMissionWave advances every one of these.
+      missionWaveIndex = at.missionWaveIndex;
+      waveIdCursor = at.waveIdCursor;
+      waveNumber = at.waveNumber;
+      spawningTgt = at.spawningTgt;
+      spawningHunt = at.spawningHunt;
+      waveTargetsSpawned = at.waveTargetsSpawned;
+      // The queue goes back before the respawn, not after. The wave about to
+      // deploy is one the player must clear, and deployWave empties the queue for
+      // exactly that reason; putting the old queue back afterwards would both
+      // resurrect reinforcements that engagement had already cancelled and wipe
+      // the followers the new wave just queued for itself.
+      pendingWaves.length = 0;
+      for (const entry of at.pendingWaves) pendingWaves.push({ timer: entry.timer, wave: entry.wave });
+
+      // Scoring. spawnedValue is the field this sortie had faced BEFORE the
+      // banked wave, and the respawn below adds that wave's value back on top -
+      // which lands on exactly the total the first attempt was being ranked
+      // against when it reached here.
+      score = at.score;
+      kills = at.kills;
+      bonusKills = at.bonusKills;
+      rankStats.spawnedValue = at.spawnedValue;
+      rankStats.playerKillValue = at.playerKillValue;
+      baseDamagePenalty = at.baseDamagePenalty;
+      missionElapsed = at.missionElapsed;
+      missileHits = at.missileHits;
+      gunKills = at.gunKills;
+      missileKills = at.missileKills;
+      damageTaken = at.damageTaken;
+      missilesLaunched = at.missilesLaunched;
+      spwLaunched = at.spwLaunched;
+      spwHits = at.spwHits;
+      gunShots = at.gunShots;
+      bombsDropped = at.bombsDropped;
+
+      // Guard. spawnMissionFriendlies has already put the whole convoy back in
+      // the air and armGuardObjective has zeroed its counters, and that is the
+      // intended half of it: in Ace Combat the thing you were escorting is alive
+      // again when you come back to the checkpoint. What survives is the RECORD,
+      // so the rank cap still knows a transport was lost getting this far.
+      if (guardState.active) {
+        guardState.lost = at.guardLost;
+        guardState.hits = at.guardHits;
+        guardState.saved = at.guardSaved;
+        guardState.penalty = at.guardPenalty;
+        guardState.failed = at.guardFailed;
+        guardState.integrity = guardIntegrity();
+      }
+
+      // Take startMission's wave 1 back off the board. Ground units and
+      // installations stay exactly where spawnMissionGround put them - they are
+      // the map, not a wave - and friendlies are not touched at all. `ground` is
+      // the one flag that separates the two: a wave only ever deploys aircraft
+      // and hulls, and only spawnGroundUnit sets it.
+      for (let i = enemies.length - 1; i >= 0; i -= 1) {
+        const enemy = enemies[i];
+        if (enemy.ground) continue;
+        scene.remove(enemy.group);
+        // Mounts share their ship's materials, exactly as in clearMissionObjects.
+        if (enemy.model) disposeAircraftMaterials(enemy.model);
+        enemies.splice(i, 1);
+      }
+      for (const marker of enemyMarkerElements.values()) marker.remove();
+      enemyMarkerElements.clear();
+      enemyMarkerScreenState.length = 0;
+      clearTargetDirectionArrow();
+      resetLock();
+      preferredTargetId = null;
+
+      // The band says where the sortie is picking up rather than MISSION START.
+      // Hidden first so an act opener's queued MISSION START cannot wipe in
+      // behind this, and raised before the wave spawns so the wave's own small
+      // banner queues underneath it the way it does on a normal launch.
+      hideBigBanner();
+      showBigBanner("CHECKPOINT RESTART", MISSIONS[currentMissionIndex].title, 2.4);
+      // And the banked wave goes back on. spawnMissionWave walks the five
+      // variables forward the same way the first attempt did, chained concurrent
+      // followers and all, so the board comes back the shape it was.
+      spawnMissionWave(MISSIONS[currentMissionIndex].waves[missionWaveIndex]);
+      // Still standing, so a second death in this wave comes back here again.
+      checkpoint.active = true;
+      // Set after startMission, which clears it.
+      checkpoint.used = true;
+      // The clear-and-respawn above is real work; swallowing it here keeps it out
+      // of the first frame's dt, the same reason startMission ends this way.
       clock.getDelta();
     }
 
@@ -15679,8 +15918,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ui.breakdownNextRankRow.style.display =
           result && result.nextRankDelta !== null ? "" : "none";
         // Damage is off the rank axis, so a spotless sortie is honoured here.
-        // Only ever on a mission that was actually completed.
-        const noDamage = success && damageTaken === 0;
+        // Only ever on a mission that was actually completed, and never on one
+        // that came back off a checkpoint - see recordMissionResult.
+        const noDamage = success && damageTaken === 0 && !checkpoint.used;
         ui.noDamageEmblem.classList.add("hidden");
         // Forced reflow between the two toggles, for the same reason the rank
         // stamp needs one: back-to-back clean sorties would otherwise show the
@@ -22074,6 +22314,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (waveClearTimer < 0) {
         waveClearTimer = tgtRemaining ? 2.15 : 1.35;
         showBanner(tgtRemaining ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
+        // A wave still to come means a checkpoint is about to be banked below.
+        // Queued rather than shown, so it FOLLOWS the clear banner on the same
+        // strip instead of replacing it, and timed to hand over to the new
+        // wave's own banner rather than be cut off mid-word by it.
+        if (tgtRemaining) {
+          pendingBanner = { text: "CHECKPOINT", duration: 0.7, tone: "success" };
+          pendingBannerTimer = 1.4;
+        }
       }
 
       waveClearTimer -= dt;
@@ -22086,6 +22334,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         while (missionWaveIndex < mission.waves.length && mission.waves[missionWaveIndex].concurrent) {
           missionWaveIndex += 1;
         }
+        // Banked with the cursor already walked past the concurrent entries and
+        // the next wave not yet spawned, which is the one moment that describes
+        // "the wave that just cleared is done". A sortie shot down in what comes
+        // next resumes from precisely here.
+        saveCheckpoint();
         spawnMissionWave(mission.waves[missionWaveIndex]);
       } else if (kills >= mission.totalTargets) {
         if (mission.hasOutro) startOutro();
@@ -23333,9 +23586,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ui.guardVal.textContent = `${percent}%`;
         critical = percent <= 25;
       } else {
-        const left = Math.max(0, guardState.total - guardState.lost);
+        // Counted off what is actually on the board, not off total - lost. A
+        // checkpoint restart stands the charges back up while keeping the loss
+        // record for the rank, so the two numbers legitimately disagree, and
+        // the readout has to be the one the player can see out of the canopy.
+        const alive = guardedFriendlies().filter((f) => f.alive).length;
+        const left = Math.max(0, Math.min(alive, guardState.total));
         ui.guardVal.textContent = `${left}/${guardState.total}`;
-        critical = left <= 1 && guardState.lost > 0;
+        critical = left <= 1;
       }
       ui.guardRow.classList.toggle("critical", critical);
     }
