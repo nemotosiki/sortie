@@ -536,6 +536,13 @@
       pointer-events: none;
     }
 
+    /* The aircraft symbol. Positioned from JS onto where the nose actually
+       points, so left/top are overwritten every frame - the transform only has
+       to centre the glyph on that point. It used to be pinned to the middle of
+       the screen, which was a lie: the chase camera looks 5.16 degrees below
+       the nose by construction, so the symbol that means "the nose points
+       here" was pointing somewhere else, by more than the gun's own 4.5
+       degree gimbal gate. */
     #boresight {
       position: absolute;
       left: 50%;
@@ -543,6 +550,10 @@
       transform: translate(-50%, -50%);
       color: var(--hud);
       filter: drop-shadow(0 0 3px rgba(40, 255, 90, 0.5));
+    }
+
+    #boresight.hidden {
+      display: none;
     }
 
     /* The aiming solution. Positioned from JS onto the target's future
@@ -13287,6 +13298,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       lockMeterFill: document.getElementById("lockMeterFill"),
       targetDirectionArrow: document.getElementById("targetDirectionArrow"),
       gunsight: document.getElementById("gunsight"),
+      boresight: document.getElementById("boresight"),
       targetDirectionGlyph: document.getElementById("targetDirectionGlyph"),
       targetDirectionLabel: document.getElementById("targetDirectionLabel"),
       pitchLadder: document.getElementById("pitchLadder"),
@@ -14270,6 +14282,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // "It leads" is a claim about metres, and a screenshot cannot be asked
         // how many it drew.
         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+        // Where the nose points, in screen pixels - the answer the boresight
+        // symbol is supposed to be drawing. `offPx` is how far that is from
+        // the middle of the screen, which is where the symbol used to be
+        // pinned: a chase camera looks below and behind its aircraft, so the
+        // two are never the same place and the gap grows while manoeuvring.
+        noseScreenProbe: () => {
+          forwardOf(player, tmpV1);
+          gunMuzzleOrigin(tmpV2).addScaledVector(tmpV1, BORESIGHT_DISTANCE);
+          tmpV3.copy(tmpV2).project(camera);
+          const x = (tmpV3.x * 0.5 + 0.5) * window.innerWidth;
+          const y = (-tmpV3.y * 0.5 + 0.5) * window.innerHeight;
+          // Angle between where the camera looks and where the nose points -
+          // the frame-rate-independent version of the same error.
+          camera.getWorldDirection(tmpV4);
+          return {
+            x, y,
+            offX: x - window.innerWidth * 0.5,
+            offY: y - window.innerHeight * 0.5,
+            offPx: Math.hypot(x - window.innerWidth * 0.5, y - window.innerHeight * 0.5),
+            offDeg: THREE.MathUtils.radToDeg(tmpV4.angleTo(tmpV1))
+          };
+        },
+        // Where the symbol actually got drawn. Asked separately from
+        // noseScreenProbe so a test can confirm the drawing follows the
+        // aiming rather than assuming it does.
+        boresightProbe: () => ({
+          x: parseFloat(ui.boresight.style.left) || 0,
+          y: parseFloat(ui.boresight.style.top) || 0,
+          visible: !ui.boresight.classList.contains("hidden")
+        }),
         // How much wider the hit test is at a given range. "Closing makes the
         // gun work" is a claim about this curve, and the curve can be asked
         // rather than inferred from where bursts happen to land.
@@ -24154,6 +24196,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       camera.updateMatrixWorld();
+      // Outside updateEnemyHudMarkers, which bails out the moment the sortie
+      // is over: the aircraft symbol has to track the nose for as long as it
+      // is drawn, and parking it inside that function left it frozen at its
+      // last position while the aircraft flew on - 94 px adrift by the time
+      // the debrief came up.
+      updateBoresight();
       updateEnemyHudMarkers(simDt);
       updateTargetBox();
       updateCcip();
@@ -24423,6 +24471,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         projected.z > -1 && projected.z < 1 &&
         Math.abs(projected.x) < limit &&
         Math.abs(projected.y) < limit;
+    }
+
+    // The aircraft symbol, drawn where the nose is actually pointing.
+    //
+    // It used to be pinned to the middle of the screen in CSS, which only
+    // tells the truth if the camera looks exactly where the aircraft does.
+    // The chase camera does not: sitting 13.5 m above the aircraft and
+    // looking at a point only 3.2 m above the nose line, its sightline runs
+    // 5.16 degrees BELOW the nose - by construction, before any smoothing.
+    // Measured, the symbol was 5.0 degrees off the nose flying straight and
+    // 7.4 degrees off in a hard turn, where the follow lag adds to the
+    // offset. The gun's gimbal gate is 4.5 degrees, so a player who put that
+    // symbol on a contact was outside the gate the sight was promising.
+    //
+    // Projecting it instead is what a real HUD does - the aircraft symbol is
+    // fixed to the airframe reference line and collimated to infinity, not to
+    // the middle of anyone's field of view. The camera keeps its lag, which is
+    // now what it was always meant to be: a camera that trails its aircraft,
+    // rather than an aiming error.
+    //
+    // Far enough out that the parallax between the muzzle and the camera has
+    // gone (0.25 degrees at this range), so the symbol reads as a direction.
+    const BORESIGHT_DISTANCE = 3000;
+    function updateBoresight() {
+      // tmpV6-tmpV9 are shared with updateGunsight and the marker pass; this
+      // runs before both and is finished with them by the time they start.
+      forwardOf(player, tmpV9);
+      gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
+      tmpV7.copy(tmpV8).project(camera);
+      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+      // Hidden rather than clamped to the edge: a symbol stuck against the
+      // frame claims the nose is over there, which is the same lie in a new
+      // place. Measured worst case is 73 px from centre, so this only fires
+      // in the extreme attitudes where the nose really has left the view.
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.04)) {
+        ui.boresight.classList.add("hidden");
+        return;
+      }
+      ui.boresight.classList.remove("hidden");
+      ui.boresight.style.left = `${(tmpV7.x * 0.5 + 0.5) * window.innerWidth}px`;
+      ui.boresight.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
     }
 
     // The gun ring, placed on where the nearest contact inside gun range will
