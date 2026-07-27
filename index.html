@@ -2569,6 +2569,47 @@
     // Vector3.angleTo from a test instead picks up every other caller in the
     // frame and cannot tell which reading was this one.
     const lastGimbal = { applied: false, angleDeg: null, rangeM: null };
+    // How fast a round is treated as travelling. The gun resolves by ray, so
+    // nothing physically flies - this number exists so that a burst arrives
+    // LATER than it is fired, which is what makes leading a crossing target
+    // mean anything. Used by the sight to decide where to draw the ring and by
+    // the gun to decide what it hit; those two must share it or the ring stops
+    // being an aiming instrument and becomes decoration.
+    const GUN_MUZZLE_SPEED = 900;
+
+    // Where a contact will be when a burst fired now would reach it. The one
+    // place this is worked out: the ring is drawn here and the hit is tested
+    // here, so "put the ring on the target and you will hit it" is true by
+    // construction rather than by two pieces of arithmetic agreeing.
+    //
+    // Straight-line extrapolation, so a target that breaks hard mid-flight is
+    // led to where it was going rather than where it went. That is a real miss
+    // and the same one a lead-computing sight makes.
+    function gunLeadPoint(from, enemy, out) {
+      out.copy(enemy.group.position);
+      const range = out.distanceTo(from);
+      // Installations and ships do not go anywhere in the tenth of a second a
+      // burst is in the air.
+      if (enemy.ground || enemy.surface) return range;
+      forwardOf(enemy.group, tmpLead);
+      out.addScaledVector(tmpLead, (enemy.speed || 0) * (range / GUN_MUZZLE_SPEED));
+      return range;
+    }
+    const tmpLead = new THREE.Vector3();
+
+    // How much the hit radius is inflated at a given range. Knife-fight range
+    // is where a gun kill is supposed to be available, and at 100 m a fighter
+    // subtends enough of the screen that a shot which looks like a hit ought to
+    // be one; out at 700 m the same angular error is tens of metres of miss and
+    // the gun should be the wrong tool. Linear from 2.2x at point blank to 1.0x
+    // at maximum range, so closing the distance is the thing that makes the
+    // gun work rather than any single threshold the player has to learn.
+    const GUN_CLOSE_FORGIVENESS = 2.2;
+    function gunAimForgiveness(range) {
+      const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+      return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+    }
+
     // The gimbal decision on its own, given an angle and a range. Pulled out of
     // fireGun so the threshold can be asked about directly instead of being
     // inferred from where rounds land: the angle a burst actually flies at is a
@@ -13374,7 +13415,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       y: 0,
       rangeM: 0,
       leadM: 0,
-      hot: false
+      hot: false,
+      forgiveness: 1
     };
 
     const targetArrowState = {
@@ -14152,6 +14194,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // "It leads" is a claim about metres, and a screenshot cannot be asked
         // how many it drew.
         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+        // How much wider the hit test is at a given range. "Closing makes the
+        // gun work" is a claim about this curve, and the curve can be asked
+        // rather than inferred from where bursts happen to land.
+        gunForgivenessAt: (range) => gunAimForgiveness(range),
+        // Where the ring goes for a given contact, and where the gun tests.
+        // One call, so a test can confirm they are the same point rather than
+        // two numbers that happen to agree today.
+        gunLeadProbe: (id) => {
+          const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+          if (!enemy) return null;
+          const p = new THREE.Vector3();
+          const range = gunLeadPoint(player.position, enemy, p);
+          return {
+            id,
+            range: Number(range.toFixed(2)),
+            leadM: Number(p.distanceTo(enemy.group.position).toFixed(2)),
+            point: { x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)), z: Number(p.z.toFixed(2)) },
+            muzzleSpeed: GUN_MUZZLE_SPEED
+          };
+        },
         forceSpwAmmo: (rounds) => {
           if (gameState !== STATE_PLAYING) return false;
           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
@@ -17126,11 +17188,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         .addScaledVector(tmpV2, -0.15)
         .addScaledVector(tmpV3, 2.8 * muzzleSide);
 
-      // Gun gimbal (AC7-style): a "slight gimbal effect, not so much an
-      // auto-aim" - the nose still has to be roughly on the target, but a
-      // small miss is pulled toward it. The reticle never sees this; it
-      // stays drawn on the raw nose vector, so the correction only shows
-      // up as the tracer bending toward the target it hits.
+      // Gun gimbal: a slight pull towards the aiming solution, not an auto-aim
+      // - the nose still has to be roughly on it. What it pulls towards is the
+      // LEAD POINT rather than where the target is standing, because that is
+      // where the burst is going to arrive and where the ring is drawn. Aiming
+      // it at the target itself would have the correction fighting the sight.
       const gimbalTargetId = preferredTargetId ?? lock.targetId;
       lastGimbal.applied = false;
       lastGimbal.angleDeg = null;
@@ -17138,10 +17200,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gimbalTargetId) {
         const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
         if (gimbalTarget) {
-          tmpV4.subVectors(gimbalTarget.group.position, start);
-          const gimbalDist = tmpV4.length();
-          if (gimbalDist > 0) {
-            tmpV4.multiplyScalar(1 / gimbalDist);
+          const gimbalDist = gunLeadPoint(start, gimbalTarget, tmpV4);
+          tmpV4.sub(start);
+          const leadDist = tmpV4.length();
+          if (leadDist > 0) {
+            tmpV4.multiplyScalar(1 / leadDist);
             const gimbalAngle = tmpV1.angleTo(tmpV4);
             // Recorded whether or not the correction fires, because the claim
             // being checked from outside is "past the limit it does NOT bend" -
@@ -17156,9 +17219,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
 
-      raycaster.set(start, tmpV1);
-      const targets = enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.hitbox);
-      const hits = raycaster.intersectObjects(targets, false);
+      // Rounds are tested against where each contact WILL be, not where it is.
+      // Raycasting the hitboxes where they sit would score the shot aimed at
+      // the target and miss the one that was led - the exact opposite of what
+      // the sight tells the player to do. So the test is analytic: how close
+      // does the ray pass to each lead point, against a radius taken from the
+      // same hitbox the old raycast used. Cheaper than the raycast it replaces.
+      const hits = [];
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const range = gunLeadPoint(start, enemy, tmpV5);
+        if (range > GUN_RANGE) continue;
+        tmpV5.sub(start);
+        const along = tmpV5.dot(tmpV1);
+        if (along <= 0) continue;                    // behind the muzzle
+        // Perpendicular distance from the ray to the lead point.
+        const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+        // A sphere standing in for the hitbox, because a ray-point test cannot
+        // use a cuboid. Not everything on the board carries a `hitBox` - ship
+        // mounts describe themselves with `hitRadius` instead - so both are
+        // read, and anything with neither is skipped rather than throwing.
+        const box = enemy.spec.hitBox;
+        const baseRadius = box
+          ? Math.max(box.x, box.y, box.z) * 0.5
+          : (enemy.spec.hitRadius || 0);
+        if (baseRadius <= 0) continue;
+        const radius = baseRadius * gunAimForgiveness(range);
+        if (missDistance > radius) continue;
+        hits.push({ enemy, distance: along, missDistance });
+      }
+      hits.sort((a, b) => a.distance - b.distance);
       let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, GUN_RANGE);
 
       if (hits.length > 0) {
@@ -17168,27 +17258,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // mount, and with anything else selected mounts are transparent and
         // the hull takes every round. Neither can absorb the other's fire.
         const focusId = preferredTargetId ?? lock.targetId;
-        let victim = null;
-        let point = null;
-        for (const hit of hits) {
-          const candidate = enemies.find((entity) => entity.id === hit.object.userData.enemyId);
-          if (!candidate || !candidate.alive || !candidate.subsystem) continue;
-          if (candidate.id !== focusId) continue;
-          victim = candidate;
-          point = hit.point;
-          break;
-        }
-        if (!victim) {
-          for (const hit of hits) {
-            const candidate = enemies.find((entity) => entity.id === hit.object.userData.enemyId);
-            if (!candidate || !candidate.alive || candidate.subsystem) continue;
-            victim = candidate;
-            point = hit.point;
-            break;
-          }
-        }
-        if (victim) {
-          end = point.clone();
+        let hit = hits.find((entry) => entry.enemy.subsystem && entry.enemy.id === focusId);
+        if (!hit) hit = hits.find((entry) => !entry.enemy.subsystem);
+        if (hit) {
+          const victim = hit.enemy;
+          end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, hit.distance);
           // The anti-armour multiplier is applied here, at the one place that
           // knows WHAT was hit - `surface` is set on ships, their mounts and
           // ground installations, and on nothing that flies. Putting it in the
@@ -24276,13 +24350,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // crosshair - which is also how the series draws it, and why the centre
     // of the screen carries only the flight path marker the rest of the time.
     //
-    // It leads the target even though the gun is hitscan and therefore needs
-    // no lead at all. GUN_MUZZLE_SPEED is a number that exists only here: it
-    // buys the ring somewhere to sit that is visibly ahead of a crossing
-    // target, so putting the ring on an aircraft means something different
-    // from pointing the nose at it. Without it the ring would sit exactly on
-    // the target and duplicate the target box.
-    const GUN_MUZZLE_SPEED = 900;
+    // It sits on the lead point, computed by the same gunLeadPoint() the gun
+    // itself tests against. That shared call is the whole contract: put the
+    // ring on an aircraft and the rounds go there too.
     function updateGunsight() {
       let best = null;
       let bestRange = Infinity;
@@ -24301,14 +24371,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
-      // Where it will be when the rounds arrive. Ground installations and
-      // ships do not move, so their lead is zero and the ring sits on them.
-      const flight = bestRange / GUN_MUZZLE_SPEED;
-      tmpV8.copy(best.group.position);
-      if (!best.ground && !best.surface) {
-        forwardOf(best.group, tmpV9);
-        tmpV8.addScaledVector(tmpV9, (best.speed || 0) * flight);
-      }
+      // Where it will be when the rounds arrive - the same answer the gun uses.
+      gunLeadPoint(player.position, best, tmpV8);
 
       tmpV7.copy(tmpV8).project(camera);
       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
@@ -24337,8 +24401,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gunsightState.x = x;
       gunsightState.y = y;
       gunsightState.rangeM = bestRange;
-      gunsightState.leadM = best.ground || best.surface ? 0 : (best.speed || 0) * flight;
+      // How far ahead of the contact the ring ended up - the distance between
+      // where it is and where the burst is being sent.
+      gunsightState.leadM = tmpV8.distanceTo(best.group.position);
       gunsightState.hot = hot;
+      gunsightState.forgiveness = gunAimForgiveness(bestRange);
     }
 
     function clearTargetDirectionArrow() {
