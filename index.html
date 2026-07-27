@@ -548,8 +548,12 @@
       box-shadow: none;
     }
 
+    /* Shorter than they were. The cross used to be the aiming mark, so it had
+       to be big enough to see; now the pipper is, and a long cross drawn
+       through it just swallows it. These are a centre reference for the ring,
+       not the sight. */
     #reticle::before {
-      width: 24px;
+      width: 15px;
       height: 1px;
       left: 50%;
       top: 50%;
@@ -558,10 +562,57 @@
 
     #reticle::after {
       width: 1px;
-      height: 24px;
+      height: 15px;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
+    }
+
+    /* Graduations inside the ring. `#reticle` is inset 33px in a 180px box, so
+       its radius is 57px; each mark is pushed out to 50px and drawn 7px long,
+       which puts its far end on the rim and its near end inside. Rotating
+       about the mark's own far end (`transform-origin: 50% 100%`) is what
+       makes it point inwards - about its near end it swings outside the ring,
+       which is the first thing I got wrong here. */
+    .reticleGrad {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 1px;
+      height: 7px;
+      margin-left: -0.5px;
+      margin-top: -57px;
+      background: var(--hud-soft);
+      transform-origin: 50% 57px;
+    }
+
+    .reticleGrad.g0  { transform: rotate(0deg); }
+    .reticleGrad.g1  { transform: rotate(30deg); }
+    .reticleGrad.g2  { transform: rotate(60deg); }
+    .reticleGrad.g3  { transform: rotate(90deg); }
+    .reticleGrad.g4  { transform: rotate(120deg); }
+    .reticleGrad.g5  { transform: rotate(150deg); }
+    .reticleGrad.g6  { transform: rotate(180deg); }
+    .reticleGrad.g7  { transform: rotate(210deg); }
+    .reticleGrad.g8  { transform: rotate(240deg); }
+    .reticleGrad.g9  { transform: rotate(270deg); }
+    .reticleGrad.g10 { transform: rotate(300deg); }
+    .reticleGrad.g11 { transform: rotate(330deg); }
+
+    /* The aiming point. Brighter than everything around it because it is the
+       one part of the reticle the player actually puts on a target. */
+    #reticlePipper {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 5px;
+      height: 5px;
+      margin: -2.5px 0 0 -2.5px;
+      border-radius: 50%;
+      background: var(--hud);
+      box-shadow: 0 0 5px rgba(83, 255, 92, 0.95);
+      /* Above the cross, so the two never read as one blurred blob. */
+      z-index: 1;
     }
 
     .reticleTick {
@@ -2213,7 +2264,28 @@
     <div id="reticleWrap">
       <span class="reticleTick t"></span><span class="reticleTick b"></span>
       <span class="reticleTick l"></span><span class="reticleTick r"></span>
-      <div id="reticle"></div>
+      <div id="reticle">
+        <!--
+          Twelve marks inside the ring, at the hour positions. A gunsight ring
+          is a ranging instrument before it is a crosshair: the pilot reads
+          distance off how much of it a target's wingspan fills, which is why
+          real sights carry graduations rather than a bare circle. This one
+          does not need to do that job - the range is printed underneath in
+          metres - so the marks are fixed rather than driven, and they are here
+          because a ring without them reads as a shape rather than as an
+          instrument. Twelve rather than four so the ring is legibly graduated;
+          the four longer marks outside it stay, which is the two-layer look
+          the series takes from the same real sights.
+        -->
+        <span class="reticleGrad g0"></span><span class="reticleGrad g1"></span>
+        <span class="reticleGrad g2"></span><span class="reticleGrad g3"></span>
+        <span class="reticleGrad g4"></span><span class="reticleGrad g5"></span>
+        <span class="reticleGrad g6"></span><span class="reticleGrad g7"></span>
+        <span class="reticleGrad g8"></span><span class="reticleGrad g9"></span>
+        <span class="reticleGrad g10"></span><span class="reticleGrad g11"></span>
+        <!-- The pipper: where the rounds are aimed. This one is functional. -->
+        <span id="reticlePipper"></span>
+      </div>
       <div id="gunRange">GUN · 750M</div>
     </div>
 
