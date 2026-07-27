@@ -2577,25 +2577,59 @@
     // being an aiming instrument and becomes decoration.
     const GUN_MUZZLE_SPEED = 900;
 
-    // Where a contact will be when a burst fired now would reach it. The one
-    // place this is worked out: the ring is drawn here and the hit is tested
-    // here, so "put the ring on the target and you will hit it" is true by
-    // construction rather than by two pieces of arithmetic agreeing.
+    // Where a burst fired now would meet the target. The one place this is
+    // worked out: the ring is drawn here and the hit is tested here, so "put
+    // the ring on the target and you will hit it" is true by construction
+    // rather than by two pieces of arithmetic happening to agree.
     //
-    // Straight-line extrapolation, so a target that breaks hard mid-flight is
-    // led to where it was going rather than where it went. That is a real miss
-    // and the same one a lead-computing sight makes.
+    // A lead-computing sight offsets from the muzzle boresight by an angle
+    // proportional to the line-of-sight rate times the projectile time of
+    // flight. The part that matters for how it behaves is the RELATIVE motion,
+    // not the target's own: a contact coming straight at the nose needs no
+    // lead however fast it is going, because the sightline is not rotating.
+    // Extrapolating the target's own velocity instead - which is what this
+    // did first - put the ring metres off to one side at knife-fight range on
+    // a head-on pass, where the true lead is nearly zero.
+    //
+    // Straight-line extrapolation over the flight time, so a target that
+    // breaks hard mid-flight is led to where it was going rather than where it
+    // went. That is a real miss, and the same one a real sight makes.
+    // Where rounds leave the aircraft. The sight and the gun both measure from
+    // here: computing the solution from the aircraft origin instead put the
+    // ring about a metre off what the rounds were actually doing, because the
+    // muzzles are eight and a half metres up the nose.
+    function gunMuzzleOrigin(out) {
+      forwardOf(player, tmpMuzzle);
+      return out.copy(player.position).addScaledVector(tmpMuzzle, 8.5);
+    }
+    const tmpMuzzle = new THREE.Vector3();
+
     function gunLeadPoint(from, enemy, out) {
       out.copy(enemy.group.position);
       const range = out.distanceTo(from);
-      // Installations and ships do not go anywhere in the tenth of a second a
-      // burst is in the air.
       if (enemy.ground || enemy.surface) return range;
+      // Relative velocity: the target's, less the shooter's own. What is left
+      // is how the sightline is actually moving.
       forwardOf(enemy.group, tmpLead);
-      out.addScaledVector(tmpLead, (enemy.speed || 0) * (range / GUN_MUZZLE_SPEED));
+      tmpLead.multiplyScalar(enemy.speed || 0);
+      forwardOf(player, tmpLeadC);
+      tmpLead.addScaledVector(tmpLeadC, -playerSpeed);
+      tmpLead.multiplyScalar(range / GUN_MUZZLE_SPEED);
+      // Only the part ACROSS the sightline moves the ring; closing speed just
+      // changes when the rounds arrive, not where they have to be sent. Left
+      // in, a fast overtake threw the solution up the target's own flight path
+      // and the ring slid off the side of the screen at knife range, where the
+      // true lead is nearly nothing.
+      if (range > 0.001) {
+        tmpLeadB.copy(out).sub(from).multiplyScalar(1 / range);
+        tmpLead.addScaledVector(tmpLeadB, -tmpLead.dot(tmpLeadB));
+      }
+      out.add(tmpLead);
       return range;
     }
     const tmpLead = new THREE.Vector3();
+    const tmpLeadB = new THREE.Vector3();
+    const tmpLeadC = new THREE.Vector3();
 
     // How much the hit radius is inflated at a given range. Knife-fight range
     // is where a gun kill is supposed to be available, and at 100 m a fighter
@@ -14205,7 +14239,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
           if (!enemy) return null;
           const p = new THREE.Vector3();
-          const range = gunLeadPoint(player.position, enemy, p);
+          const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
           return {
             id,
             range: Number(range.toFixed(2)),
@@ -24356,11 +24390,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateGunsight() {
       let best = null;
       let bestRange = Infinity;
+      forwardOf(player, tmpV9);
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         tmpV8.copy(enemy.group.position).sub(player.position);
         const range = tmpV8.length();
         if (range > GUN_RANGE || range >= bestRange) continue;
+        // Ahead of the nose only. A contact that has slid past is not something
+        // the gun can be aimed at, and a solution computed for one lands wildly
+        // off to the side - at a few dozen metres abeam it threw the ring
+        // hundreds of pixels across the screen.
+        if (tmpV8.dot(tmpV9) <= 0) continue;
         best = enemy;
         bestRange = range;
       }
@@ -24372,7 +24412,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       // Where it will be when the rounds arrive - the same answer the gun uses.
-      gunLeadPoint(player.position, best, tmpV8);
+      gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
 
       tmpV7.copy(tmpV8).project(camera);
       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
