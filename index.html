@@ -9,10 +9,10 @@
     :root {
       color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --hud: #53ff5c;
-      --hud-line: rgba(83, 255, 92, 0.78);
-      --hud-soft: rgba(83, 255, 92, 0.5);
-      --hud-dim: rgba(150, 255, 158, 0.6);
+      --hud: #56f0c8;
+      --hud-line: rgba(86, 240, 200, 0.78);
+      --hud-soft: rgba(86, 240, 200, 0.5);
+      --hud-dim: rgba(168, 250, 224, 0.6);
       --danger: #ff5f69;
       --warning: #ffd45a;
       --panel: rgba(3, 18, 8, 0.55);
@@ -55,7 +55,7 @@
       text-shadow:
         0 0 3px rgba(0, 0, 0, 0.95),
         0 1px 3px rgba(0, 0, 0, 0.85),
-        0 0 9px rgba(20, 255, 70, 0.25);
+        0 0 9px rgba(40, 240, 180, 0.25);
       font-variant-numeric: tabular-nums;
     }
 
@@ -179,15 +179,21 @@
       50% { opacity: 0.45; }
     }
 
+    /* Speed and altitude, the way the series lays them out: boxed label over
+       the value, and a tall BRACKET on the inboard side - a vertical rail
+       with end caps and a bright rung at the current value - rather than a
+       busy strip of numbers parked at the screen edge. The value's caret
+       points at the rail; the readout sits about a quarter of the way in so
+       the pair frames the reticle instead of hugging the bezel. */
     #flightData {
-      left: max(24px, 20vw);
+      left: 24%;
       top: 50%;
       transform: translateY(-50%);
       text-align: left;
     }
 
     #altData {
-      right: max(24px, 20vw);
+      right: 24%;
       top: 50%;
       transform: translateY(-50%);
       text-align: right;
@@ -208,16 +214,57 @@
     .tape {
       position: absolute;
       top: 50%;
-      width: 62px;
-      height: 190px;
-      margin-top: -95px;
+      width: 46px;
+      height: 230px;
+      margin-top: -115px;
       overflow: hidden;
-      -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
-      mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+      -webkit-mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
+      mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
     }
 
     #speedTape { left: 100%; margin-left: 14px; }
     #altTape { right: 100%; margin-right: 14px; }
+
+    /* The bracket itself lives on an unmasked twin of the tape box: the rail
+       and its caps must not fade out with the scrolling rows behind them. */
+    .tapeFrame {
+      position: absolute;
+      top: 50%;
+      width: 46px;
+      height: 230px;
+      margin-top: -115px;
+      pointer-events: none;
+    }
+
+    #speedFrame { left: 100%; margin-left: 14px; border-right: 1px solid var(--hud-line); }
+    #altFrame { right: 100%; margin-right: 14px; border-left: 1px solid var(--hud-line); }
+
+    .tapeFrame::before,
+    .tapeFrame::after {
+      content: "";
+      position: absolute;
+      width: 12px;
+      height: 1px;
+      background: var(--hud-line);
+    }
+
+    .tapeFrame::before { top: -1px; }
+    .tapeFrame::after { bottom: -1px; }
+    #speedFrame::before, #speedFrame::after { right: -1px; }
+    #altFrame::before, #altFrame::after { left: -1px; }
+
+    /* The rung the caret points at: the one fixed mark on the rail, brighter
+       than the scrolling ticks, sitting at the current value. */
+    .tapeMid {
+      position: absolute;
+      top: 50%;
+      width: 17px;
+      height: 1px;
+      background: var(--hud);
+    }
+
+    #speedFrame .tapeMid { right: -1px; }
+    #altFrame .tapeMid { left: -1px; }
 
     .tapeRow {
       position: absolute;
@@ -228,23 +275,27 @@
       align-items: center;
       gap: 6px;
       height: 0;
-      font-size: 9px;
+      font-size: 11px;
       letter-spacing: 0.08em;
       color: var(--hud-dim);
       will-change: transform;
     }
 
-    #altTape .tapeRow { flex-direction: row-reverse; }
+    /* Ticks grow from the rail, numbers sit outboard of them - so the rail
+       edge of each row carries the tick, whichever side of the screen the
+       tape is on. */
+    #speedTape .tapeRow { flex-direction: row-reverse; }
+    #altTape .tapeRow { flex-direction: row; }
 
     .tapeRow::before {
       content: "";
-      width: 12px;
+      width: 3px;
       height: 1px;
       background: var(--hud-soft);
       flex: none;
     }
 
-    .tapeRow.major::before { width: 20px; background: var(--hud); }
+    .tapeRow.major::before { width: 10px; background: var(--hud); }
     .tapeRow.major { color: var(--hud); }
 
     /* Heading strip */
@@ -336,7 +387,7 @@
     }
 
     #silhouetteBody {
-      fill: rgba(83, 255, 92, 0.16);
+      fill: rgba(86, 240, 200, 0.16);
       stroke: var(--hud-line);
       stroke-width: 1.2;
       stroke-linejoin: round;
@@ -469,7 +520,7 @@
     }
 
     .rackMissile path {
-      fill: rgba(83, 255, 92, 0.16);
+      fill: rgba(86, 240, 200, 0.16);
       stroke: var(--hud-line);
       stroke-width: 1.1;
       stroke-linejoin: round;
@@ -523,28 +574,23 @@
       color: var(--hud-dim);
     }
 
-    /* The aircraft symbol. Positioned from JS in SCREEN pixels onto where the
-       nose actually points, so left/top are overwritten every frame and the
-       transform only has to centre the glyph on that point.
+    /* The aircraft symbol, pinned to the middle of the frame - the centre of
+       an Ace Combat HUD does not wander, and the camera aiming parallel to
+       the nose (see updateCamera) is what makes the pin honest. JS only ever
+       toggles its visibility: hidden while the gun ring has a contact to
+       point at, and while the target view or the kill cam has the camera.
 
-       It has to be a direct child of the HUD for those pixels to mean screen
-       pixels. It used to live in a 180x180 wrapper centred on the screen,
-       which silently offset everything written here by that box's corner.
-
-       Pinned to 50%/50% in CSS before that, which was a different lie: the
-       chase camera looked 5.16 degrees below the nose by construction, so the
-       symbol that means "the nose points here" pointed somewhere else - by
-       more than the gun's own 4.5 degree gimbal gate. The camera now aims
-       parallel to the nose, so this lands dead centre while the player is
-       flying, and follows the aircraft when the target view or the kill cam
-       takes the camera somewhere else. */
+       Kept a direct child of the HUD deliberately - it once lived in a
+       180x180 wrapper centred on the screen, and screen-pixel positioning
+       written against that box's corner drew it near the right-hand edge
+       while every probe of style.left said 640. */
     #boresight {
       position: absolute;
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
       color: var(--hud);
-      filter: drop-shadow(0 0 3px rgba(40, 255, 90, 0.5));
+      filter: drop-shadow(0 0 3px rgba(60, 240, 190, 0.5));
       pointer-events: none;
     }
 
@@ -563,7 +609,7 @@
       margin: -27px 0 0 -27px;
       border: 1px solid var(--hud-line);
       border-radius: 50%;
-      filter: drop-shadow(0 0 4px rgba(40, 255, 90, 0.45));
+      filter: drop-shadow(0 0 4px rgba(60, 240, 190, 0.45));
       pointer-events: none;
       z-index: 6;
     }
@@ -616,7 +662,7 @@
       margin: -2.5px 0 0 -2.5px;
       border-radius: 50%;
       background: var(--hud);
-      box-shadow: 0 0 5px rgba(83, 255, 92, 0.95);
+      box-shadow: 0 0 5px rgba(86, 240, 200, 0.95);
       /* Above the cross, so the two never read as one blurred blob. */
       z-index: 1;
     }
@@ -658,7 +704,7 @@
       right: 20%;
       top: 50%;
       height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.75) 14%, rgba(83, 255, 92, 0.75) 43%, transparent 43%, transparent 57%, rgba(83, 255, 92, 0.75) 57%, rgba(83, 255, 92, 0.75) 86%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(86, 240, 200, 0.75) 14%, rgba(86, 240, 200, 0.75) 43%, transparent 43%, transparent 57%, rgba(86, 240, 200, 0.75) 57%, rgba(86, 240, 200, 0.75) 86%, transparent);
     }
 
     .pitchMark {
@@ -667,7 +713,7 @@
       width: 120px;
       height: 1px;
       transform: translateX(-50%);
-      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(86, 240, 200, 0.64) 20%, rgba(86, 240, 200, 0.64) 44%, transparent 44%, transparent 56%, rgba(86, 240, 200, 0.64) 56%, rgba(86, 240, 200, 0.64) 80%, transparent);
     }
 
     .pitchMark::before,
@@ -2204,12 +2250,14 @@
       <span class="hudBox">SPEED</span>
       <div class="hudVal big" id="speedValue">0</div>
       <div class="tape" id="speedTape"></div>
+      <div class="tapeFrame" id="speedFrame"><div class="tapeMid"></div></div>
     </section>
 
     <section id="altData" class="panel">
       <span class="hudBox">ALT</span>
       <div class="hudVal big" id="altitudeValue">0</div>
       <div class="tape" id="altTape"></div>
+      <div class="tapeFrame" id="altFrame"><div class="tapeMid"></div></div>
     </section>
 
     <div id="shootCue" class="hudBox">SHOOT</div>
@@ -14932,7 +14980,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const COMPASS_PX_PER_DEG = 3.4;
     const COMPASS_LABELS = { 0: "N", 90: "E", 180: "S", 270: "W" };
     const TAPE_ROW_COUNT = 9;
-    const TAPE_PX_PER_ROW = 26;
+    // Sparse, like the series draws it: a number every second row and plenty
+    // of air between them, so the bracket reads as an instrument rather than
+    // as a column of figures.
+    const TAPE_PX_PER_ROW = 34;
     const compassTickNodes = [];
     const speedTapeNodes = [];
     const altTapeNodes = [];
@@ -25618,67 +25669,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         Math.abs(projected.y) < limit;
     }
 
-    // The aircraft symbol, drawn where the nose is actually pointing.
+    // The aircraft symbol, fixed to the middle of the frame - which is how
+    // the series draws it: the centre of an Ace Combat HUD does not wander.
     //
-    // It used to be pinned to the middle of the screen in CSS, which only
-    // tells the truth if the camera looks exactly where the aircraft does.
-    // The chase camera does not: sitting 13.5 m above the aircraft and
-    // looking at a point only 3.2 m above the nose line, its sightline runs
-    // 5.16 degrees BELOW the nose - by construction, before any smoothing.
-    // Measured, the symbol was 5.0 degrees off the nose flying straight and
-    // 7.4 degrees off in a hard turn, where the follow lag adds to the
-    // offset. The gun's gimbal gate is 4.5 degrees, so a player who put that
-    // symbol on a contact was outside the gate the sight was promising.
+    // The pin is honest because the camera earns it. Its aim settles parallel
+    // to the nose (see updateCamera), so in steady flight the middle of the
+    // screen IS the gun line to 0.0 degrees - unlike the original layout,
+    // whose sightline ran 5.16 degrees below the nose while the symbol
+    // claimed otherwise. During the catch-up after a hard manoeuvre the
+    // centre and the true gun line part briefly; the instrument that stays
+    // exact through that transient is the RING, which is projected from the
+    // world and never stops telling the truth. One world-projected attempt at
+    // this symbol made it trail the muzzle line around the screen, and the
+    // whole HUD read as unmoored - the series pins the symbol and lets the
+    // ring do the pointing, and it is right to.
     //
-    // Projecting it instead is what a real HUD does - the aircraft symbol is
-    // fixed to the airframe reference line and collimated to infinity, not to
-    // the middle of anyone's field of view. The camera keeps its lag, which is
-    // now what it was always meant to be: a camera that trails its aircraft,
-    // rather than an aiming error.
-    //
-    // Measured FROM THE MUZZLE, down the barrel line, to the range the gun is
-    // good for. That makes it the same KIND of statement the ring makes -
-    // "rounds fired now arrive here" - and the two differ only in the two ways
-    // they should: the ring appears when a contact is in range, and the ring
-    // leads a target while this does not.
-    //
-    // It is why the symbol drifts a few pixels while manoeuvring instead of
-    // sitting nailed to the middle of the frame. The camera aims parallel to
-    // the nose but still TRAILS the aircraft in position, so the muzzle moves
-    // relative to the camera and the barrel line projects a little off centre.
-    // That drift is the parallax of a gun mounted 8.5 m up the nose of an
-    // aeroplane the camera is chasing - not decoration, and not a lie.
-    //
-    // Taken from the camera instead (which it was, briefly) the distance
-    // cancels out entirely and the symbol is pinned dead centre at all times,
-    // which says the gun is always pointed exactly where the camera looks.
-    //
-    // Projected rather than pinned in CSS for the same reason: when the camera
-    // is handed to the target view or the kill cam it stops pointing down the
-    // barrel, and the symbol has to follow the gun rather than the frame.
-    //
-    // GUN_RANGE, so that a contact crossing into range finds the ring already
-    // where the cross was - both are then the same point whenever the assist
-    // has not started to lead yet.
+    // Probe rays still measure down the barrel to this range, so tests can
+    // ask how far the pinned centre is from the true gun line at any moment.
     const BORESIGHT_DISTANCE = GUN_RANGE;
     function updateBoresight() {
-      // tmpV6-tmpV9 are shared with updateGunsight and the marker pass; this
-      // runs before both and is finished with them by the time they start.
-      forwardOf(player, tmpV9);
-      gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
-      tmpV7.copy(tmpV8).project(camera);
-      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
-      // Hidden rather than clamped to the edge: a symbol stuck against the
-      // frame claims the nose is over there, which is the same lie in a new
-      // place. Measured worst case is 73 px from centre, so this only fires
-      // in the extreme attitudes where the nose really has left the view.
-      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.04)) {
-        ui.boresight.classList.add("hidden");
-        return;
-      }
-      ui.boresight.classList.remove("hidden");
-      ui.boresight.style.left = `${(tmpV7.x * 0.5 + 0.5) * window.innerWidth}px`;
-      ui.boresight.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
+      // Hidden when the camera is handed elsewhere: the target view and the
+      // kill cam look away from the nose, and a centre-pinned nose symbol
+      // would be a plain lie there. The gunsight swap (ring while a contact
+      // is in range) hides it the rest of the time.
+      ui.boresight.classList.toggle("hidden", cameraFocusActive || killCam.active);
     }
 
     // The gun ring, placed on where the nearest contact inside gun range will
@@ -26148,10 +26162,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Higher values sit above centre; offset by the live value so it scrolls.
         const offset = (value - rowValue) / step * TAPE_PX_PER_ROW;
         row.style.transform = `translateY(${offset.toFixed(1)}px)`;
+        // Only every second row carries its number; the rest are bare ticks.
         const visible = rowValue >= 0;
-        const text = visible ? String(rowValue) : "";
+        const labelled = visible && rowValue % (step * 2) === 0;
+        const text = labelled ? String(rowValue) : "";
         if (row.firstChild.textContent !== text) row.firstChild.textContent = text;
-        row.classList.toggle("major", visible && rowValue % (step * 2) === 0);
+        row.classList.toggle("major", labelled);
       }
     }
 
@@ -26685,7 +26701,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.fillStyle = "rgba(6, 30, 12, 0.4)";
       ctx.fillRect(inset, inset, span, span);
 
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.34)";
+      ctx.strokeStyle = "rgba(86, 240, 200, 0.34)";
       ctx.lineWidth = 1;
       ctx.strokeRect(inset, inset, span, span);
       ctx.beginPath();
@@ -26695,7 +26711,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.lineTo(center, inset + span);
       ctx.stroke();
 
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.18)";
+      ctx.strokeStyle = "rgba(86, 240, 200, 0.18)";
       ctx.beginPath();
       ctx.arc(center, center, radius * 0.5, 0, Math.PI * 2);
       ctx.moveTo(center + radius, center);
@@ -26704,7 +26720,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // Forward view cone (matches the on-screen HUD's lock cone half-angle).
       const coneHalf = Math.acos(THREE.MathUtils.clamp(LOCK_DOT, -1, 1));
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.42)";
+      ctx.strokeStyle = "rgba(86, 240, 200, 0.42)";
       ctx.beginPath();
       ctx.moveTo(center, center);
       ctx.lineTo(center + Math.sin(-coneHalf) * span, center - Math.cos(-coneHalf) * span);
@@ -26716,7 +26732,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // strip uses, so the two instruments always agree.
       const headingRad = Math.atan2(lastRadarForward.x, -lastRadarForward.z);
       const letterRadius = span * 0.42;
-      ctx.fillStyle = "rgba(150, 255, 158, 0.75)";
+      ctx.fillStyle = "rgba(168, 250, 224, 0.75)";
       ctx.font = "700 9px ui-monospace, Consolas, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
