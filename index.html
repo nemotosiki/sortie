@@ -354,29 +354,6 @@
       animation: shootBlink 0.7s steps(2, end) infinite;
     }
 
-    #stateStrip {
-      left: 50%;
-      top: 64px;
-      transform: translateX(-50%);
-      min-width: 0;
-      padding: 0;
-      text-align: center;
-      letter-spacing: 0.18em;
-      font-size: 10px;
-      color: var(--hud-dim);
-    }
-
-    #state {
-      color: var(--hud);
-      font-weight: 800;
-      letter-spacing: 0.08em;
-    }
-
-    #waveReadout {
-      margin-left: 10px;
-      color: var(--hud-dim);
-    }
-
     #scorePanel {
       left: clamp(12px, 2vw, 28px);
       top: clamp(12px, 2vw, 26px);
@@ -2073,29 +2050,6 @@
     }
     #debriefIntelLines li::before { content: ">> "; color: #ffd35f; }
 
-    #controlModeStatus {
-      position: absolute;
-      left: 50%;
-      top: 94px;
-      transform: translateX(-50%);
-      min-width: 250px;
-      padding: 6px 12px;
-      border: 1px solid transparent;
-      background: none;
-      color: var(--hud-dim);
-      text-align: center;
-      font-size: 9px;
-      letter-spacing: 0.14em;
-      white-space: nowrap;
-      transition: color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
-    }
-
-    #controlModeStatus.expert {
-      color: #ffd45a;
-      border-color: rgba(255, 212, 90, 0.58);
-      box-shadow: inset 0 0 14px rgba(255, 196, 65, 0.08), 0 0 10px rgba(255, 196, 65, 0.1);
-    }
-
     #gamepadStatus {
       position: absolute;
       left: clamp(12px, 2vw, 28px);
@@ -2165,8 +2119,6 @@
       #scorePanel { transform: scale(0.86); transform-origin: left top; }
       #flightData { left: 12px; transform: translateY(-50%) scale(0.86); transform-origin: left center; }
       #altData { right: 12px; transform: translateY(-50%) scale(0.86); transform-origin: right center; }
-      #stateStrip { top: 108px; }
-      #controlModeStatus { top: 132px; }
       #statusPanel { transform: scale(0.88); transform-origin: right bottom; }
       #radarWrap { width: 150px; }
     }
@@ -2225,10 +2177,6 @@
       <svg id="rackRight" class="rackMissile" viewBox="0 0 12 34" width="12" height="34">
         <path d="M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z" />
       </svg>
-    </section>
-
-    <section id="stateStrip" class="panel">
-      STATE <strong id="state">ready</strong><span id="waveReadout">WAVE 0 / 2</span>
     </section>
 
     <section id="scorePanel" class="panel">
@@ -2295,7 +2243,6 @@
     <div id="missileWarning">MISSILE ALERT</div>
     <div id="battleAreaWarning">RETURN TO THE BATTLE AREA</div>
     <div id="cameraFocusStatus">TARGET VIEW</div>
-    <div id="controlModeStatus">FLIGHT CONTROL · NORMAL · M / SHARE TOGGLE</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
   </div>
 
@@ -12291,7 +12238,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hangarMissionTag: document.getElementById("hangarMissionTag"),
       hangarWallet: document.getElementById("hangarWallet"),
       hangarPurchaseLine: document.getElementById("hangarPurchaseLine"),
-      state: document.getElementById("state"),
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
       health: document.getElementById("health"),
@@ -12307,7 +12253,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rackRight: document.getElementById("rackRight"),
       speed: document.getElementById("speedValue"),
       altitude: document.getElementById("altitudeValue"),
-      wave: document.getElementById("waveReadout"),
       enemyMarkers: document.getElementById("enemyMarkers"),
       baseMarker: document.getElementById("baseMarker"),
       baseMarkerLabel: document.getElementById("baseMarkerLabel"),
@@ -12334,7 +12279,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       cameraFocusStatus: document.getElementById("cameraFocusStatus"),
       gamepadStatus: document.getElementById("gamepadStatus"),
       audioHint: document.getElementById("audioHint"),
-      controlModeStatus: document.getElementById("controlModeStatus"),
       damageFlash: document.getElementById("damageFlash"),
       cloudVeil: document.getElementById("cloudVeil"),
       gVignette: document.getElementById("gVignette"),
@@ -15834,7 +15778,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Single source of truth for the CSS that hides the flight HUD in menu
       // states (see the body[data-game-state] rules next to #hud).
       document.body.dataset.gameState = nextState;
-      ui.state.textContent = nextState;
       ui.campaignScreen.classList.toggle("hidden", nextState !== STATE_CAMPAIGN_SELECT);
       ui.missionScreen.classList.toggle("hidden", nextState !== STATE_MISSION_SELECT);
       ui.briefingScreen.classList.toggle("hidden", nextState !== STATE_BRIEFING);
@@ -23614,7 +23557,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
 
     function updateHud() {
-      ui.state.textContent = gameState;
       ui.score.textContent = String(Math.round(score));
       ui.highscore.textContent = String(Math.round(highscore));
       ui.health.textContent = `${Math.round((1 - health / PLAYER_MAX_HEALTH) * 100)}%`;
@@ -23628,7 +23570,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
       ui.altitude.textContent = String(altitudeM);
-      ui.wave.textContent = `WAVE ${waveNumber} / ${MISSIONS[currentMissionIndex].waveCount}`;
 
       updateCompass(getPlayerHeadingDeg());
       updateTape(speedTapeNodes, speedKph, 100);
@@ -23639,12 +23580,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const healthRatio = health / PLAYER_MAX_HEALTH;
       ui.damageSilhouette.classList.toggle("warn", healthRatio <= 0.55 && healthRatio > 0.3);
       ui.damageSilhouette.classList.toggle("critical", healthRatio <= 0.3);
-      const expertMode = controlMode === CONTROL_EXPERT;
-      ui.controlModeStatus.textContent = expertMode
-        ? "FLIGHT CONTROL · EXPERT · Q/E + L1/R1 YAW · M/SHARE TOGGLE"
-        : "FLIGHT CONTROL · NORMAL · COORDINATED TURN + L1/R1 YAW · M/SHARE TOGGLE";
-      ui.controlModeStatus.classList.toggle("expert", expertMode);
-
+      // The control mode used to sit in a permanent banner under the nose.
+      // It never changed on its own and it read as chrome, so it is gone -
+      // switching modes already throws its own banner (see setControlMode),
+      // which is the only moment the answer is actually in question.
       ui.statusPanel.classList.toggle("healthLow", health <= PLAYER_MAX_HEALTH * 0.3);
 
       const lowSpeed = gameState === STATE_PLAYING && playerSpeed < STALL_WARNING_SPEED;
