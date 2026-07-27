@@ -2741,6 +2741,29 @@
     const GUNSIGHT_CONE_DEG = 20;
     const GUNSIGHT_CONE_COS = Math.cos(THREE.MathUtils.degToRad(GUNSIGHT_CONE_DEG));
 
+    // The collider every enemy AIRCRAFT is built from: one shared sphere,
+    // scaled per profile by `hitboxScale`. Both the mesh in
+    // createSharedGeometry and the gun's arithmetic read this.
+    const ENEMY_HITBOX_RADIUS = 10.5;
+
+    // The radius the gun tests against, for anything that can be shot at.
+    //
+    // Three kinds of contact describe their size three different ways, and the
+    // gun has to know all three. Ships and ground installations carry an
+    // explicit `hitBox` or `hitRadius`. AIRCRAFT CARRY NEITHER: their collider
+    // is the shared ENEMY_HITBOX_RADIUS sphere scaled by the profile's
+    // `hitboxScale`, which is set from wingspan (see the note above the
+    // `gripen` profile). Reading only hitBox/hitRadius therefore skipped every
+    // aeroplane in the game - the analytic hit test replaced a raycast that had
+    // been hitting the scaled sphere mesh, and the sphere was the one size the
+    // rewrite forgot to carry over.
+    function enemyHitSphereRadius(enemy) {
+      const box = enemy.spec.hitBox;
+      if (box) return Math.max(box.x, box.y, box.z) * 0.5;
+      if (enemy.spec.hitRadius) return enemy.spec.hitRadius;
+      return ENEMY_HITBOX_RADIUS * (enemy.spec.hitboxScale || 1);
+    }
+
     const GUN_CLOSE_FORGIVENESS = 2.2;
     function gunAimForgiveness(range) {
       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
@@ -15559,6 +15582,79 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // "Aircraft A is less stable than aircraft B" is a claim about how
         // long the rate takes to bleed off after the stick centres, which
         // only a per-frame sampling of these numbers can settle.
+        // Where the arena is and where the player sits in it. "The player has
+        // to leave the area to reach the objective" is a claim about two
+        // numbers - the arena radius and the range to the furthest target -
+        // and neither is visible from a screenshot.
+        // The radius the gun tests against, per live contact. A contact whose
+        // radius is zero is one the gun cannot hit at all - which is exactly
+        // what happened to every aeroplane when the hit test only knew how to
+        // read hitBox and hitRadius.
+        hitRadiusProbe: () => enemies.filter((enemy) => enemy.alive).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          radius: Number(enemyHitSphereRadius(enemy).toFixed(2)),
+          source: enemy.spec.hitBox ? "hitBox" : (enemy.spec.hitRadius ? "hitRadius" : "sphere")
+        })),
+        // Fire one burst straight down the barrel at a named contact and
+        // report whether the hit test found it. Asked directly because the
+        // alternative - flying onto a contact's tail and holding the trigger
+        // - measures the harness's ability to fly, and it was that indirection
+        // that let "the gun does not hit aircraft" ship in the first place.
+        gunHitTest: (id) => {
+          const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+          if (!enemy) return null;
+          const start = gunMuzzleOrigin(tmpV4);
+          const range = gunLeadPoint(start, enemy, tmpV5);
+          tmpV5.sub(start);
+          const distance = tmpV5.length();
+          if (distance < 0.001) return null;
+          // Point the shot exactly at the lead solution, which is what the
+          // sight tells the player to do, then ask the same arithmetic
+          // fireGun uses whether that shot connects.
+          tmpV6.copy(tmpV5).multiplyScalar(1 / distance);
+          const along = tmpV5.dot(tmpV6);
+          const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+          const radius = enemyHitSphereRadius(enemy) * gunAimForgiveness(range);
+          return {
+            id, type: enemy.type, range: Number(range.toFixed(1)),
+            radius: Number(radius.toFixed(2)),
+            missDistance: Number(missDistance.toFixed(3)),
+            inRange: range <= GUN_RANGE,
+            wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
+          };
+        },
+        battleAreaProbe: () => {
+          // Every live contact measured against the arena, in one call. The
+          // distances have to be worked out here: airframeProbe deliberately
+          // does not report positions, so a test cannot do this arithmetic
+          // from outside.
+          const contacts = enemies.filter((enemy) => enemy.alive).map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            tgt: enemy.tgt !== false,
+            ground: Boolean(enemy.ground || enemy.surface),
+            range: Math.hypot(
+              enemy.group.position.x - battleArea.centerX,
+              enemy.group.position.z - battleArea.centerZ
+            )
+          }));
+          return {
+            centerX: battleArea.centerX,
+            centerZ: battleArea.centerZ,
+            radius: battleArea.radius,
+            distance: battleArea.distance,
+            warning: battleArea.warning,
+            outside: battleArea.outside,
+            playerX: player.position.x,
+            playerZ: player.position.z,
+            playerRange: Math.hypot(
+              player.position.x - battleArea.centerX,
+              player.position.z - battleArea.centerZ
+            ),
+            contacts
+          };
+        },
         stabilityProbe: () => ({
           pitchRate: THREE.MathUtils.radToDeg(playerPitchRate),
           yawRate: THREE.MathUtils.radToDeg(playerYawRate),
@@ -18669,10 +18765,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // use a cuboid. Not everything on the board carries a `hitBox` - ship
         // mounts describe themselves with `hitRadius` instead - so both are
         // read, and anything with neither is skipped rather than throwing.
-        const box = enemy.spec.hitBox;
-        const baseRadius = box
-          ? Math.max(box.x, box.y, box.z) * 0.5
-          : (enemy.spec.hitRadius || 0);
+        const baseRadius = enemyHitSphereRadius(enemy);
         if (baseRadius <= 0) continue;
         const radius = baseRadius * gunAimForgiveness(range);
         if (missDistance > radius) continue;
@@ -28065,7 +28158,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const shipCylinder = new THREE.CylinderGeometry(1, 1, 1, 10);
       const shipOctPlate = new THREE.CylinderGeometry(1, 1, 1, 8);
       const shipDeck = new THREE.PlaneGeometry(1, 1);
-      const enemyHitbox = new THREE.SphereGeometry(10.5, 10, 8);
+      // ENEMY_HITBOX_RADIUS, not a literal: the gun's analytic hit test works
+      // out the same sphere in numbers, and the two must not be able to drift.
+      const enemyHitbox = new THREE.SphereGeometry(ENEMY_HITBOX_RADIUS, 10, 8);
       const flash = new THREE.IcosahedronGeometry(1, 1);
       const smoke = new THREE.SphereGeometry(1, 8, 6);
       const spark = new THREE.TetrahedronGeometry(1, 0);
