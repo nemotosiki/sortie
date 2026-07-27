@@ -9,10 +9,10 @@
     :root {
       color-scheme: dark;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --hud: #56f0c8;
-      --hud-line: rgba(86, 240, 200, 0.78);
-      --hud-soft: rgba(86, 240, 200, 0.5);
-      --hud-dim: rgba(168, 250, 224, 0.6);
+      --hud: #53ff5c;
+      --hud-line: rgba(83, 255, 92, 0.78);
+      --hud-soft: rgba(83, 255, 92, 0.5);
+      --hud-dim: rgba(150, 255, 158, 0.6);
       --danger: #ff5f69;
       --warning: #ffd45a;
       --panel: rgba(3, 18, 8, 0.55);
@@ -55,7 +55,7 @@
       text-shadow:
         0 0 3px rgba(0, 0, 0, 0.95),
         0 1px 3px rgba(0, 0, 0, 0.85),
-        0 0 9px rgba(40, 240, 180, 0.25);
+        0 0 9px rgba(20, 255, 70, 0.25);
       font-variant-numeric: tabular-nums;
     }
 
@@ -387,7 +387,7 @@
     }
 
     #silhouetteBody {
-      fill: rgba(86, 240, 200, 0.16);
+      fill: rgba(83, 255, 92, 0.16);
       stroke: var(--hud-line);
       stroke-width: 1.2;
       stroke-linejoin: round;
@@ -520,7 +520,7 @@
     }
 
     .rackMissile path {
-      fill: rgba(86, 240, 200, 0.16);
+      fill: rgba(83, 255, 92, 0.16);
       stroke: var(--hud-line);
       stroke-width: 1.1;
       stroke-linejoin: round;
@@ -592,7 +592,7 @@
       top: 50%;
       transform: translate(-50%, -50%);
       color: var(--hud);
-      filter: drop-shadow(0 0 3px rgba(60, 240, 190, 0.5));
+      filter: drop-shadow(0 0 3px rgba(40, 255, 90, 0.5));
       pointer-events: none;
     }
 
@@ -611,7 +611,7 @@
       margin: -27px 0 0 -27px;
       border: 1px solid var(--hud-line);
       border-radius: 50%;
-      filter: drop-shadow(0 0 4px rgba(60, 240, 190, 0.45));
+      filter: drop-shadow(0 0 4px rgba(40, 255, 90, 0.45));
       pointer-events: none;
       z-index: 6;
     }
@@ -664,7 +664,7 @@
       margin: -2.5px 0 0 -2.5px;
       border-radius: 50%;
       background: var(--hud);
-      box-shadow: 0 0 5px rgba(86, 240, 200, 0.95);
+      box-shadow: 0 0 5px rgba(83, 255, 92, 0.95);
       /* Above the cross, so the two never read as one blurred blob. */
       z-index: 1;
     }
@@ -706,7 +706,7 @@
       right: 20%;
       top: 50%;
       height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(86, 240, 200, 0.75) 14%, rgba(86, 240, 200, 0.75) 43%, transparent 43%, transparent 57%, rgba(86, 240, 200, 0.75) 57%, rgba(86, 240, 200, 0.75) 86%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.75) 14%, rgba(83, 255, 92, 0.75) 43%, transparent 43%, transparent 57%, rgba(83, 255, 92, 0.75) 57%, rgba(83, 255, 92, 0.75) 86%, transparent);
     }
 
     .pitchMark {
@@ -715,7 +715,7 @@
       width: 120px;
       height: 1px;
       transform: translateX(-50%);
-      background: linear-gradient(90deg, transparent, rgba(86, 240, 200, 0.64) 20%, rgba(86, 240, 200, 0.64) 44%, transparent 44%, transparent 56%, rgba(86, 240, 200, 0.64) 56%, rgba(86, 240, 200, 0.64) 80%, transparent);
+      background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
     }
 
     .pitchMark::before,
@@ -13893,6 +13893,49 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "story_events_2"
     ); // @payload:story_events_2
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES } = ctx.tables;
+        const patrol = AIRCRAFT_TYPES.maritimePatrol;
+        if (!patrol) {
+          throw new Error("[r07] maritimePatrol aircraft is not registered");
+        }
+
+        ctx.deployFriendlies("r07", {
+          // 嵐の中を北西へ抜ける偵察航路。r07 の敵は band 1（同高度）から上がって
+          // くるので、偵察機はその下——雲底620mのすぐ下を這わせる。プレイヤーは
+          // 「上の迎撃機を潰しながら、下の1機を生かす」という二層の盤面になる。
+          transports: {
+            callsign: "PATROL",
+            aircraft: "maritimePatrol",
+            count: 1,
+            vulnerable: true,
+            // 機体側の maxHealth をそのまま護衛対象のHPに使う。98の倍数という
+            // 既存規約はこの機体の登録時に検証済み。
+            hp: patrol.maxHealth,
+            // 大型哨戒機なので輸送隊より遅い。嵐の中を這うので急がない。
+            speed: 78,
+            altitude: 540,
+            start: { x: -900, z: 2100 },
+            exit: { x: 1400, z: -9800 }
+          },
+          guard: {
+            readout: "count",
+            label: "PATROL",
+            // 1機しかいないので、失えば作戦そのものが消える。輸送隊1機ぶんより
+            // 重く取る（LIFELINE は3機で1500）。
+            lossPenalty: 2200,
+            hitPenalty: 0,
+            lossBanner: "PATROL DOWN",
+            failBanner: "RECON LOST",
+            lossRadio: "",
+            failRadio: "PATROL被撃墜——偵察機を失った。……この嵐を抜けた意味が無くなったぞ。撤収だ。",
+            safeRadio: "PATROL、雲を抜けた。写真は持ち帰る。よくやった、IRONBACK。"
+          }
+        });
+      },
+      "r07_patrol_escort"
+    ); // @payload:r07_patrol_escort
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -21751,6 +21794,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const count = Math.max(1, config.count || 3);
       const altitude = config.altitude || 820;
       const spacing = config.spacing || FRIENDLY_TRANSPORT_SPEC.spacing;
+      // Which airframe the flight is made of. The convoy is C-17s by default
+      // and always was, but a deployment can name any registered aircraft -
+      // an escorted patrol aircraft is the same job with a different
+      // silhouette, and nothing below this line cares which it is. Only the
+      // MODEL changes: speed, spacing, HP and the guard contract stay the
+      // deployment's to set, because those are properties of the sortie
+      // rather than of the airframe.
+      const airframe = config.aircraft ? AIRCRAFT_TYPES[config.aircraft] : null;
+      if (config.aircraft && !airframe) {
+        throw new Error(`[friendly] unknown aircraft "${config.aircraft}"`);
+      }
+      // Allied livery even when the airframe is one the enemy also flies:
+      // the exhaust and canopy tints are how the player tells sides apart
+      // from astern, so a friendly wearing enemy colours would be a trap.
+      const theme = airframe
+        ? Object.freeze({
+            ...airframe.theme,
+            primary: FRIENDLY_TRANSPORT_SPEC.theme.primary,
+            secondary: FRIENDLY_TRANSPORT_SPEC.theme.secondary,
+            accent: FRIENDLY_TRANSPORT_SPEC.theme.accent,
+            canopy: FRIENDLY_TRANSPORT_SPEC.theme.canopy,
+            exhaust: FRIENDLY_TRANSPORT_SPEC.theme.exhaust
+          })
+        : FRIENDLY_TRANSPORT_SPEC.theme;
       const spawned = [];
       for (let i = 0; i < count; i += 1) {
         const lateral = (i - (count - 1) / 2) * spacing;
@@ -21758,7 +21825,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // they sit - a shallow vee rather than a rank.
         const trail = Math.abs(i - (count - 1) / 2) * FRIENDLY_TRANSPORT_SPEC.trail;
         const group = new THREE.Group();
-        const model = createAircraftModel(FRIENDLY_TRANSPORT_SPEC.theme);
+        const model = createAircraftModel(theme);
         group.add(model.group);
         // No hitbox, exactly like the wingman: nothing the PLAYER shoots can
         // ever find a friendly. Being killable by the enemy is a property of
@@ -26757,7 +26824,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.fillStyle = "rgba(6, 30, 12, 0.4)";
       ctx.fillRect(inset, inset, span, span);
 
-      ctx.strokeStyle = "rgba(86, 240, 200, 0.34)";
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.34)";
       ctx.lineWidth = 1;
       ctx.strokeRect(inset, inset, span, span);
       ctx.beginPath();
@@ -26767,7 +26834,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.lineTo(center, inset + span);
       ctx.stroke();
 
-      ctx.strokeStyle = "rgba(86, 240, 200, 0.18)";
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.18)";
       ctx.beginPath();
       ctx.arc(center, center, radius * 0.5, 0, Math.PI * 2);
       ctx.moveTo(center + radius, center);
@@ -26776,7 +26843,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // Forward view cone (matches the on-screen HUD's lock cone half-angle).
       const coneHalf = Math.acos(THREE.MathUtils.clamp(LOCK_DOT, -1, 1));
-      ctx.strokeStyle = "rgba(86, 240, 200, 0.42)";
+      ctx.strokeStyle = "rgba(83, 255, 92, 0.42)";
       ctx.beginPath();
       ctx.moveTo(center, center);
       ctx.lineTo(center + Math.sin(-coneHalf) * span, center - Math.cos(-coneHalf) * span);
@@ -26788,7 +26855,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // strip uses, so the two instruments always agree.
       const headingRad = Math.atan2(lastRadarForward.x, -lastRadarForward.z);
       const letterRadius = span * 0.42;
-      ctx.fillStyle = "rgba(168, 250, 224, 0.75)";
+      ctx.fillStyle = "rgba(150, 255, 158, 0.75)";
       ctx.font = "700 9px ui-monospace, Consolas, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
