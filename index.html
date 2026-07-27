@@ -3125,6 +3125,11 @@
     // three back, the next trigger pull is a three-round volley.
     const SPW_TYPES = Object.freeze({
       // F-16: dogfight round. Turns hard enough to follow a break.
+      // `reattack` exempts it from the seeker lock-loss clock, so a break that
+      // shakes an ordinary missile only buys an overshoot here: the round keeps
+      // steering, comes round and makes a second pass, exactly the way an enemy
+      // round does. The price of that is paid in the magazine - every airframe
+      // that carries the QAAM carries a third of the rounds it used to.
       qaam: Object.freeze({
         key: "qaam",
         label: "QAAM",
@@ -3133,6 +3138,7 @@
         turnRateDeg: 300,
         maxSpeed: 520,
         life: 9.5,
+        reattack: true,
         multi: 1,
         tubes: 2,
         reload: 6,
@@ -3313,7 +3319,7 @@
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
         missileCapacity: 10, maxHealth: 100,
-        spw: Object.freeze({ key: "qaam", capacity: 12 }),
+        spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.3, tipZ: 3.3,
         theme: Object.freeze({
 primary: 0xe6fbff, secondary: 0x16b9de, accent: 0x22354b,
@@ -3396,7 +3402,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.52, brakeResponse: 0.5, cruiseResponse: 0.58,
         missileCapacity: 12, maxHealth: 135,
-        spw: Object.freeze({ key: "qaam", capacity: 12 }),
+        spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.9, tipZ: 2.9,
         theme: Object.freeze({
 primary: 0xb9c2ca, secondary: 0x707a85, accent: 0x2f4f75,
@@ -3602,7 +3608,7 @@ canopy: 0x8fe0ff, exhaust: 0xbfe4ff, scale: 1.03, variant: "typhoon"
         gunDamage: 23, missileDamage: 98,
         boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.54,
         missileCapacity: 12, maxHealth: 150,
-        spw: Object.freeze({ key: "qaam", capacity: 14 }),
+        spw: Object.freeze({ key: "qaam", capacity: 5 }),
         tipSpan: 8.9, tipZ: 2.6,
         theme: Object.freeze({
 primary: 0x8d9aa6, secondary: 0x4a5a67, accent: 0xd8b23a,
@@ -3817,7 +3823,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         // (the UAV is the other). This is what "weak early enemy" means here,
         // and it is a full step below the F-4's 125.
         missileCapacity: 6, maxHealth: 98,
-        spw: Object.freeze({ key: "qaam", capacity: 10 }),
+        spw: Object.freeze({ key: "qaam", capacity: 3 }),
         tipSpan: 6.2, tipZ: 2.6,
         theme: Object.freeze({
 primary: 0x9fa8a2, secondary: 0x69726c, accent: 0xb5423c,
@@ -3839,7 +3845,7 @@ canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
         // Every number sits between the F-16 and the F/A-18F: the enemy's
         // ordinary jet, with no weakness worth exploiting and no edge either.
         missileCapacity: 10, maxHealth: 135,
-        spw: Object.freeze({ key: "qaam", capacity: 12 }),
+        spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.7, tipZ: 2.8,
         theme: Object.freeze({
 primary: 0x8e97a0, secondary: 0x555f68, accent: 0xb5423c,
@@ -12491,9 +12497,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // 11 m, which is the whole reason to carry one.
     // How long a seeker may be asked to out-turn its own rate before it gives
     // up and the round flies on ballistically. In seconds rather than frames so
-    // it means the same thing inside and outside the terminal sub-step. Player
-    // rounds only - applying the same rule to enemy missiles would move every
-    // mission's difficulty at once, so that stays a separate decision.
+    // it means the same thing inside and outside the terminal sub-step. It was
+    // player rounds only until 2026-07-27, when the deferred decision was made:
+    // enemy missiles fly under the same clock now, so a break shakes them
+    // instead of merely postponing them. Their profile turn rates were left
+    // alone, so the difficulty that moved is the second pass, not the first.
     const SEEKER_LOSS_TIME = 0.08;
     const MISSILE_FUSE = 16;
     // Terminal sub-stepping. At 520 m/s a round covers ~8.7 m per frame, so the
@@ -13399,6 +13407,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             speed: missile.speed,
             closing: Boolean(missile.closing),
             lost: Boolean(missile.lost),
+            // Whether this round is exempt from seeker loss. The QAAM's whole
+            // claim is that it keeps turning after it has been broken away
+            // from, and that is only checkable against the flag itself.
+            reattack: Boolean(missile.reattack),
             lostTime: Number((missile.lostTime || 0).toFixed(4)),
             range: target ? missile.mesh.position.distanceTo(target.group.position) : null
           };
@@ -16057,25 +16069,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // from any finite turn rate. A seeker being asked for more than it
             // has is not tracking any more - it is pointing where the target used
             // to be - so once it has been behind for long enough it stops
-            // pretending and flies on ballistically. This is what makes a break
-            // turn work, and it is why the QAAM is worth carrying: the rate it
-            // has to exceed is its own, so 300 deg/s stays locked where 190 lets
-            // go. Only resolvable because the terminal phase is sub-stepped - at
-            // frame resolution the line never rotates for more than one step.
+            // pretending and flies on ballistically. That is what makes a break
+            // turn work against an ordinary round: the loss is permanent, so one
+            // good break is the whole answer and the round is spent. Only
+            // resolvable because the terminal phase is sub-stepped - at frame
+            // resolution the line never rotates for more than one step.
+            //
+            // A `reattack` round (the QAAM) is exempt from the clock entirely and
+            // keeps steering for its whole life, the same discipline enemy rounds
+            // used to have. A break still beats it in the moment - 300 deg/s is
+            // finite and it overshoots - but it comes back round for a second
+            // pass, so breaking buys time rather than survival. What it costs is
+            // the magazine: see the capacity on each airframe that carries it.
             const seekerRate = missile.turnRate ?? MISSILE_TURN_RATE;
             if (!missile.lost) {
-              if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
-                missile.lostTime += slice;
-                if (missile.lostTime >= SEEKER_LOSS_TIME) {
-                  missile.lost = true;
-                  // A puff as the motor keeps burning on a dead seeker.
-                  for (let puff = 0; puff < 3; puff += 1) {
-                    tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
-                    smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+              if (!missile.reattack) {
+                if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+                  missile.lostTime += slice;
+                  if (missile.lostTime >= SEEKER_LOSS_TIME) {
+                    missile.lost = true;
+                    // A puff as the motor keeps burning on a dead seeker.
+                    for (let puff = 0; puff < 3; puff += 1) {
+                      tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+                      smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+                    }
                   }
+                } else {
+                  missile.lostTime = 0;
                 }
-              } else {
-                missile.lostTime = 0;
               }
               missile.los.copy(tmpV1);
               missile.losValid = true;
@@ -16369,6 +16390,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         lifeLimit: PLAYER_SPW.life,
         spw: PLAYER_SPW.key,
         popup: Boolean(PLAYER_SPW.popup),
+        reattack: Boolean(PLAYER_SPW.reattack),
         diving: false,
         life: 0,
         trailTimer: 0,
@@ -16804,6 +16826,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         lifeLimit: profile.life,
         life: 0,
         trailTimer: 0,
+        // Seeker state, on the same terms as an ordinary player round: the last
+        // line of sight, how long the seeker has been asked for more than it
+        // has, and whether it has given up. Only the player-chasing branch of
+        // updateEnemyMissiles reads them.
+        los: new THREE.Vector3(),
+        losValid: false,
+        lostTime: 0,
+        lost: false,
         // The friendly this round is chasing, or null for every round in the
         // game that is chasing the player. Read by updateEnemyMissiles for
         // guidance and impact, by the flare path (a player's flare cannot
@@ -16985,9 +17015,44 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         if ((!decoyed || decoyAlive) && distance > 0.001) {
           tmpV1.multiplyScalar(1 / distance);
-          tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
-          missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
-          missile.mesh.quaternion.normalize();
+          // Seeker lock-loss, the same rule the player's ordinary rounds have
+          // always flown under. Without it these rounds turned for their whole
+          // life, so a break only delayed them: they came round and re-attacked
+          // until the timer ran out, which is the behaviour the QAAM is now the
+          // one thing in the game that has. The profile turn rates are
+          // untouched, so how hard a given enemy is to break the first time does
+          // not move - what goes away is the free second and third pass.
+          //
+          // Frame resolution is enough here, unlike the player's terminal
+          // sub-step: an enemy seeker turns at 44-78 deg/s, and a sustained
+          // break holds the line of sight above that for hundreds of
+          // milliseconds, so the 0.08 s clock fills without needing finer
+          // slices. Skipped for a decoyed round, which has already lost.
+          if (!decoyed) {
+            if (missile.losValid && dt > 0 && missile.los.angleTo(tmpV1) / dt > missile.turnRate) {
+              missile.lostTime += dt;
+              if (missile.lostTime >= SEEKER_LOSS_TIME) {
+                missile.lost = true;
+                // A puff as the motor keeps burning on a dead seeker.
+                for (let puff = 0; puff < 3; puff += 1) {
+                  tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+                  smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+                }
+              }
+            } else {
+              missile.lostTime = 0;
+            }
+            missile.los.copy(tmpV1);
+            missile.losValid = true;
+          }
+          // A dead seeker stops steering and flies on ballistically. The fuse
+          // above stays live, so a round that happens to be pointed at the
+          // player still kills them - it just cannot chase any more.
+          if (!missile.lost) {
+            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+            missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+            missile.mesh.quaternion.normalize();
+          }
         }
 
         missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed, damping(0.022, dt));
@@ -17040,6 +17105,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Not the player's problem: an anti-ship round crossing the nose must
         // not set off MISSILE ALERT and the threat tone.
         if (missile.targetFriendly) continue;
+        // A round that has been broken is no longer a threat, and the alert
+        // going quiet is how the player learns the break worked.
+        if (missile.lost) continue;
         tmpV10.copy(missile.mesh.position).sub(player.position);
         const distance = tmpV10.length();
         if (distance < bestDistance) {
@@ -23723,6 +23791,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           z: missile.mesh.position.z
         },
         distance: missile.mesh.position.distanceTo(player.position),
+        lost: Boolean(missile.lost),
         // Null for every round in the campaign outside the guard sorties. A
         // round with a name here is not chasing the player and is excluded
         // from the missile warning by getNearestEnemyMissileThreat().
