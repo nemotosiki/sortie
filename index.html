@@ -9652,7 +9652,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             // 飛行場から真っ先に上がってくる一組。これを落とすまでが仕事。
             {
-              types: ["f16", "f16"], band: 1, label: "SCRAMBLE", idBase: 0,
+              types: ["f16", "f16"], band: 1, label: "SCRAMBLE", idBase: 0, role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。飛行場からF-16が2機——爆撃隊に取り付かせるな。", id: "r01-scramble" }
               ]
@@ -9707,7 +9707,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // 露編で最初に「相手が二段階で強くなる」ミッションで、F-4 -> F/A-18 の
           // 段差がそれを担う。F/A-18 は2発機で、trash の F-4 とは殴り合いの質が違う。
           sequence: [
-            { types: ["f16", "f16"], band: 1, idBase: 0, label: "FIRST INTERCEPT" },
+            { types: ["f16", "f16"], band: 1, idBase: 0, label: "FIRST INTERCEPT", role: "trash" },
             {
               types: ["f4", "f4", "f4"], tgt: false, band: 1, label: "WEST SCREEN",
               concurrent: true, role: "trash", skill: "rookie"
@@ -9715,7 +9715,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // 第2の槍に上がってきた迎撃。ホーネットは2発機なので、ここで初めて
             // 「まともな相手」が出る。role は line = 機体の公称値そのまま。
             {
-              types: ["fa18", "fa18"], band: 2, label: "SECOND INTERCEPT",
+              types: ["fa18", "fa18"], band: 2, label: "SECOND INTERCEPT", role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。第2槍にF/A-18が2機。さっきまでとは腕が違う——丁寧に行け。", id: "r02-second" }
               ]
@@ -9848,7 +9848,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             // 艦隊に取り付いた最初の一組。夕日を背負って低く入ってくる。
             {
-              types: ["fa18", "fa18"], band: 1, label: "STRIKE", idBase: 0,
+              types: ["fa18", "fa18"], band: 1, label: "STRIKE", idBase: 0, role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。F/A-18が2機、艦隊へ突入コース——最優先で排除しろ。", id: "r04-strike-1" }
               ]
@@ -9862,7 +9862,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             },
             // 第2撃。トムキャットは長い腕を持つ機体で、外側から入ってくる。
             {
-              types: ["f14", "f14"], band: 2, label: "SECOND STRIKE",
+              types: ["f14", "f14"], band: 2, label: "SECOND STRIKE", role: "trash",
               radio: [
                 { speaker: "command", text: "第2波、F-14が2機。外から回り込んでくる——追え、届く前にだ。", id: "r04-strike-2" }
               ]
@@ -9873,7 +9873,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             },
             // 最後の一機。ここまで来ると、艦隊はもう舵を切っている。
             {
-              types: ["f16"], band: 1, label: "LAST RUN",
+              types: ["f16"], band: 1, label: "LAST RUN", role: "trash",
               radio: [
                 { speaker: "wingman", text: "まだ1機残ってます！ ……もう艦隊は針路を変えてる。それでも落としましょう、隊長。", id: "r04-last" }
               ]
@@ -10337,7 +10337,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             },
             // 本命の重爆。線路の長さぶんを焼きに来る。
             {
-              types: ["bomber", "bomber"], band: 2, label: "HEAVY",
+              types: ["bomber", "bomber"], band: 2, label: "HEAVY", role: "trash",
               radio: [
                 { speaker: "command", text: "こちらNORTHSTAR。B-52が2機、線路の東端から入ってくる。……SICKLE 2、急げ。", id: "r10-heavy-inbound" }
               ]
@@ -10430,7 +10430,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // published airframe.
             {
               types: ["f15", "f15"], band: 1, idBase: 0, label: "STRIKE",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。西から攻撃隊——F-15が2機、基地へ直進中だ。上げろ、SICKLE。", id: "r11-strike-1" }
               ]
@@ -10450,7 +10450,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // that usually arrives while the escort from wave 1 is still alive.
             {
               types: ["fa18", "fa18"], band: 2, idBase: 2, label: "STRIKE",
-              role: "line", delay: 0,
+              role: "trash", delay: 0,
               radio: [
                 { speaker: "command", text: "第2梯団、F/A-18が2機。低い——SAMの射線より下を這ってきている。", id: "r11-strike-2" }
               ]
@@ -10465,7 +10465,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // Su-33 relief flight did to the player in m-desert.
             {
               types: ["typhoon", "typhoon"], tgt: false, band: 1, label: "TOP COVER",
-              concurrent: true, role: "elite", delay: 95, idBase: 15,
+              concurrent: true, role: "trash", delay: 95, idBase: 15,
               radio: [
                 { speaker: "wingman", text: "上に新手だ、タイフーン2機! こいつらは本気で来る——高度を捨てるな!", id: "r11-topcover" }
               ]
@@ -10475,7 +10475,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // arrives with them.
             {
               types: ["f15", "f15"], band: 1, idBase: 4, label: "STRIKE",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "command", text: "最終梯団だ。あと2機——ここを抜かれたら滑走路が焼ける。", id: "r11-strike-3" }
               ]
@@ -10562,7 +10562,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // that arrives to kill unmanned machines.
             {
               types: ["f22", "f22"], band: 1, idBase: 0, label: "INTERCEPTOR",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。迎撃機が上がった——F-22が2。無人機群に向かっている。", id: "r12-hunter-1" }
               ]
@@ -10581,7 +10581,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // kill, and they arrive while the first screen is still alive.
             {
               types: ["f15", "f15"], band: 2, idBase: 2, label: "INTERCEPTOR",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "command", text: "第2波、F-15が2機。……無人機の損失、これで6機目。数えるのをやめていいか、と聞かれている。", id: "r12-hunter-2" }
               ]
@@ -10594,7 +10594,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // middle of the fight the way m-city's top cover does.
             {
               types: ["rafale", "rafale"], tgt: false, band: 1, label: "TOP COVER",
-              concurrent: true, role: "elite", delay: 70, idBase: 15,
+              concurrent: true, role: "trash", delay: 70, idBase: 15,
               radio: [
                 { speaker: "wingman", text: "上にラファール2機! 無人機は放っておいても文句を言わない——先にこっちを片付けます!", id: "r12-topcover" }
               ]
@@ -10603,7 +10603,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // the whole sortie is built around.
             {
               types: ["fa18", "fa18"], band: 2, idBase: 4, label: "INTERCEPTOR",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "wingman", text: "最終波、2機! ……NORTHSTAR、無人機はまだ何機残ってます? ……了解、聞かなかったことにします。", id: "r12-hunter-3" }
               ]
@@ -10712,7 +10712,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // when breaking off costs the objective.
             {
               types: ["f22", "typhoon"], tgt: false, band: 1, label: "COMBAT AIR PATROL",
-              concurrent: true, role: "elite", delay: 60, idBase: 15,
+              concurrent: true, role: "line", delay: 60, idBase: 15,
               radio: [
                 { speaker: "command", text: "警告——F-22が1機、上位掩護に入った。深追いするな、目標は輸送機だ。", id: "r13-cap" }
               ]
@@ -10813,7 +10813,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // serious in ACT 3.
             {
               types: ["fa18", "fa18"], band: 1, idBase: 0, label: "STRIKE",
-              role: "line", hunt: "ship",
+              role: "trash", hunt: "ship",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。対艦攻撃機を探知——F/A-18が2、揚陸艦団に向かっている。落とせ。", id: "r14-strike-1" }
               ]
@@ -10832,7 +10832,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // made to choose which run-in to break up.
             {
               types: ["f14", "f14"], band: 2, idBase: 2, label: "STRIKE",
-              role: "line", hunt: "ship",
+              role: "trash", hunt: "ship",
               radio: [
                 { speaker: "command", text: "第2波、F-14が2機。遠距離から撃ってくる——射点に入られる前に潰せ。", id: "r14-strike-2" }
               ]
@@ -10846,7 +10846,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // i.e. when leaving the ships costs the most.
             {
               types: ["f15", "f15"], tgt: false, band: 1, label: "TOP COVER",
-              concurrent: true, role: "elite", delay: 100, idBase: 14,
+              concurrent: true, role: "line", delay: 100, idBase: 14,
               radio: [
                 { speaker: "wingman", text: "上位掩護、F-15が2機! こいつらは雑魚じゃない——艦から離れすぎないで!", id: "r14-topcover" }
               ]
@@ -10856,7 +10856,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // already coming down.
             {
               types: ["fa18", "fa18"], band: 2, idBase: 4, label: "STRIKE",
-              role: "line", hunt: "ship",
+              role: "trash", hunt: "ship",
               radio: [
                 { speaker: "command", text: "最終波だ。1隻でも沈められたら、あの砂浜は取れない——止めろ、IRONBACK。", id: "r14-strike-3" }
               ]
@@ -10969,7 +10969,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // player has learned to respect by now.
             {
               types: ["f22", "f22"], band: 1, idBase: 0, label: "INTERCEPTOR",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより全機。作戦命令を復唱する——「セント・ヴェルダ市街、産業区および港湾区。爆撃隊3波。護衛は全機、投弾完了まで離脱を許可しない」。以上、グレフ大佐名義。", id: "r15-order" }
               ]
@@ -11011,7 +11011,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // Second interception. Eagles.
             {
               types: ["f15", "f15"], band: 2, idBase: 2, label: "INTERCEPTOR",
-              role: "line",
+              role: "trash",
               radio: [
                 { speaker: "wingman", text: "第2波の迎撃です、F-15が2機! ……NORTHSTAR、下の街、まだ人がいるんですよね。", id: "r15-hunter-2" }
               ]
@@ -11021,7 +11021,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // taken through a screen.
             {
               types: ["typhoon", "typhoon"], tgt: false, band: 1, label: "TOP COVER",
-              concurrent: true, role: "elite", delay: 80, idBase: 22,
+              concurrent: true, role: "trash", delay: 80, idBase: 22,
               radio: [
                 { speaker: "command", text: "上位掩護にタイフーン2機。……離脱は許可されていない。続けろ。", id: "r15-top-cover" }
               ]
@@ -11295,7 +11295,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // airframe the player meets flown at its published numbers.
             {
               types: ["fa18", "fa18"], band: 1, idBase: 0, label: "CVW CAP",
-              skill: "expert",
+              skill: "expert", role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。空母打撃群の艦載機が上がった——F/A-18が2。攻撃隊が入る前に排除しろ。", id: "r16-cap-1" }
               ]
@@ -11320,7 +11320,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // Second element: Lightnings. Deck-launched into a fight already running.
             {
               types: ["f35c", "f35c"], band: 2, idBase: 2, label: "DECK LAUNCH",
-              skill: "expert",
+              skill: "expert", role: "trash",
               radio: [
                 { speaker: "command", text: "第2波、甲板から2機発艦——F-35C。艦隊防空の本命だ。", id: "r16-cap-2" }
               ]
@@ -11680,7 +11680,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // sortie, which is the inversion.
             {
               types: ["f22", "f15"], band: 1, idBase: 0, label: "PURSUIT LEAD",
-              skill: "expert",
+              skill: "expert", role: "trash",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。追撃部隊、接触——先頭にF-22。撤退部隊に追いつかせるな。", id: "r20-lead" }
               ]
@@ -11695,7 +11695,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // Second element: the multiroles, coming in low along the column's track.
             {
               types: ["typhoon", "rafale"], band: 2, idBase: 2, label: "PURSUIT",
-              skill: "expert",
+              skill: "expert", role: "trash",
               radio: [
                 { speaker: "command", text: "第2波、タイフーンとラファール。撤退針路に沿って低く入ってきている。", id: "r20-second" }
               ]
@@ -11715,7 +11715,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // not sink in r16. The mission remembers.
             {
               types: ["fa18", "f35c"], band: 1, idBase: 4, label: "CVW PURSUIT",
-              skill: "expert",
+              skill: "expert", role: "trash",
               radio: [
                 { speaker: "command", text: "第3波は艦載機——F/A-18とF-35C。INDEPENDENCEからよ。……あの船、まだ浮いている。", id: "r20-cvw" }
               ]
