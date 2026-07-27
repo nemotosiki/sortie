@@ -523,6 +523,9 @@
       color: var(--hud-dim);
     }
 
+    /* Only the flight path marker and the range caption live here now. The
+       ring moved out to #gunsight, which is positioned in screen space rather
+       than pinned to the centre. */
     #reticleWrap {
       position: absolute;
       left: 50%;
@@ -530,60 +533,64 @@
       width: 180px;
       height: 180px;
       transform: translate(-50%, -50%);
+      pointer-events: none;
     }
 
-    #reticle {
+    #boresight {
       position: absolute;
-      inset: 33px;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--hud);
+      filter: drop-shadow(0 0 3px rgba(40, 255, 90, 0.5));
+    }
+
+    /* The aiming solution. Positioned from JS onto the target's future
+       position, so left/top are overwritten every frame; the transform only
+       has to centre it on that point. Half the diameter the old permanent ring
+       had - it has to sit ON an aircraft without hiding it. */
+    #gunsight {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      margin: -27px 0 0 -27px;
       border: 1px solid var(--hud-line);
       border-radius: 50%;
       filter: drop-shadow(0 0 4px rgba(40, 255, 90, 0.45));
+      pointer-events: none;
+      z-index: 6;
     }
 
-    #reticle::before,
-    #reticle::after {
-      content: "";
-      position: absolute;
-      background: var(--hud);
-      box-shadow: none;
+    #gunsight.hidden { display: none; }
+
+    /* Red once the rounds would connect, which is the same language the
+       target boxes use for a completed lock. */
+    #gunsight.hot {
+      border-color: var(--danger);
+      filter: drop-shadow(0 0 5px rgba(255, 95, 105, 0.55));
     }
 
-    /* Shorter than they were. The cross used to be the aiming mark, so it had
-       to be big enough to see; now the pipper is, and a long cross drawn
-       through it just swallows it. These are a centre reference for the ring,
-       not the sight. */
-    #reticle::before {
-      width: 15px;
-      height: 1px;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
+    #gunsight.hot .reticleGrad { background: var(--danger); }
+    #gunsight.hot #reticlePipper {
+      background: var(--danger);
+      box-shadow: 0 0 5px rgba(255, 95, 105, 0.95);
     }
 
-    #reticle::after {
-      width: 1px;
-      height: 15px;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    /* Graduations inside the ring. `#reticle` is inset 33px in a 180px box, so
-       its radius is 57px; each mark is pushed out to 50px and drawn 7px long,
-       which puts its far end on the rim and its near end inside. Rotating
-       about the mark's own far end (`transform-origin: 50% 100%`) is what
-       makes it point inwards - about its near end it swings outside the ring,
-       which is the first thing I got wrong here. */
+    /* Graduations inside the ring. The ring is 54px across, so its radius is
+       27px; each mark is drawn 4px long ending on the rim, which puts its
+       other end inside. The rotation happens about the mark's far end
+       (origin at 27px down) - about its near end it would swing outside the
+       ring instead, which is the first thing I got wrong here. */
     .reticleGrad {
       position: absolute;
       left: 50%;
       top: 50%;
       width: 1px;
-      height: 7px;
+      height: 4px;
       margin-left: -0.5px;
-      margin-top: -57px;
+      margin-top: -27px;
       background: var(--hud-soft);
-      transform-origin: 50% 57px;
+      transform-origin: 50% 27px;
     }
 
     .reticleGrad.g0  { transform: rotate(0deg); }
@@ -613,26 +620,6 @@
       box-shadow: 0 0 5px rgba(83, 255, 92, 0.95);
       /* Above the cross, so the two never read as one blurred blob. */
       z-index: 1;
-    }
-
-    .reticleTick {
-      position: absolute;
-      background: var(--hud-soft);
-    }
-
-    .reticleTick.t { left: 89px; top: 14px; width: 1px; height: 25px; }
-    .reticleTick.b { left: 89px; bottom: 14px; width: 1px; height: 25px; }
-    .reticleTick.l { left: 14px; top: 89px; width: 25px; height: 1px; }
-    .reticleTick.r { right: 14px; top: 89px; width: 25px; height: 1px; }
-
-    #gunRange {
-      position: absolute;
-      left: 50%;
-      top: 128px;
-      transform: translateX(-50%);
-      font-size: 9px;
-      letter-spacing: 0.16em;
-      color: var(--hud-dim);
     }
 
     #pitchViewport {
@@ -2262,31 +2249,42 @@
     </div>
 
     <div id="reticleWrap">
-      <span class="reticleTick t"></span><span class="reticleTick b"></span>
-      <span class="reticleTick l"></span><span class="reticleTick r"></span>
-      <div id="reticle">
-        <!--
-          Twelve marks inside the ring, at the hour positions. A gunsight ring
-          is a ranging instrument before it is a crosshair: the pilot reads
-          distance off how much of it a target's wingspan fills, which is why
-          real sights carry graduations rather than a bare circle. This one
-          does not need to do that job - the range is printed underneath in
-          metres - so the marks are fixed rather than driven, and they are here
-          because a ring without them reads as a shape rather than as an
-          instrument. Twelve rather than four so the ring is legibly graduated;
-          the four longer marks outside it stay, which is the two-layer look
-          the series takes from the same real sights.
-        -->
-        <span class="reticleGrad g0"></span><span class="reticleGrad g1"></span>
-        <span class="reticleGrad g2"></span><span class="reticleGrad g3"></span>
-        <span class="reticleGrad g4"></span><span class="reticleGrad g5"></span>
-        <span class="reticleGrad g6"></span><span class="reticleGrad g7"></span>
-        <span class="reticleGrad g8"></span><span class="reticleGrad g9"></span>
-        <span class="reticleGrad g10"></span><span class="reticleGrad g11"></span>
-        <!-- The pipper: where the rounds are aimed. This one is functional. -->
-        <span id="reticlePipper"></span>
-      </div>
-      <div id="gunRange">GUN · 750M</div>
+      <!--
+        The flight path marker: a little aeroplane seen from behind, fixed at
+        the centre, saying where the nose is pointed. This is all that is here
+        when nothing is in gun range - the ring is not a permanent fixture of
+        the HUD, it is an instrument that appears when there is something to
+        aim at.
+      -->
+      <!-- Wings out to either side of a small centre circle, with a fin above:
+           an aeroplane seen from behind, which is what the series draws. The
+           first attempt joined all the strokes at one point and read as a
+           star rather than as an aircraft. -->
+      <svg id="boresight" viewBox="0 0 44 22" width="44" height="22" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <circle cx="22" cy="13" r="3.2" />
+          <path d="M4 13 L18.8 13 M25.2 13 L40 13" />
+          <path d="M22 9.8 L22 3.5" />
+        </g>
+      </svg>
+    </div>
+
+    <div id="gunsight" class="hidden">
+      <!--
+        Graduations inside the ring. A real gunsight ring is a ranging
+        instrument before it is a crosshair - the pilot reads distance off how
+        much of it a target's wingspan fills - which is why they carry a scale
+        rather than being bare, and why a bare circle reads as a shape instead
+        of an instrument. Fixed rather than driven here, because the range is
+        already printed in metres.
+      -->
+      <span class="reticleGrad g0"></span><span class="reticleGrad g1"></span>
+      <span class="reticleGrad g2"></span><span class="reticleGrad g3"></span>
+      <span class="reticleGrad g4"></span><span class="reticleGrad g5"></span>
+      <span class="reticleGrad g6"></span><span class="reticleGrad g7"></span>
+      <span class="reticleGrad g8"></span><span class="reticleGrad g9"></span>
+      <span class="reticleGrad g10"></span><span class="reticleGrad g11"></span>
+      <span id="reticlePipper"></span>
     </div>
 
     <div id="enemyMarkers"></div>
@@ -13183,6 +13181,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       lockLabel: document.getElementById("lockLabel"),
       lockMeterFill: document.getElementById("lockMeterFill"),
       targetDirectionArrow: document.getElementById("targetDirectionArrow"),
+      gunsight: document.getElementById("gunsight"),
       targetDirectionGlyph: document.getElementById("targetDirectionGlyph"),
       targetDirectionLabel: document.getElementById("targetDirectionLabel"),
       pitchLadder: document.getElementById("pitchLadder"),
@@ -13365,6 +13364,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // a friendly has no enemy id, by design.
     const friendlyMarkerElements = new Map();
     const friendlyMarkerScreenState = [];
+    // Where the gun ring is and what it is solving for. Readable from a probe
+    // because "the ring leads the target" is a claim about a distance, and a
+    // screenshot cannot be asked how many metres ahead it drew.
+    const gunsightState = {
+      active: false,
+      targetId: null,
+      x: 0,
+      y: 0,
+      rangeM: 0,
+      leadM: 0,
+      hot: false
+    };
+
     const targetArrowState = {
       active: false,
       targetId: null,
@@ -14136,6 +14148,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // production function, not a copy of it, so the two cannot disagree.
         gimbalEval: (angleDeg, distance = 400) =>
           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+        // Where the gun ring is and how far ahead of its target it is sitting.
+        // "It leads" is a claim about metres, and a screenshot cannot be asked
+        // how many it drew.
+        gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
         forceSpwAmmo: (rounds) => {
           if (gameState !== STATE_PLAYING) return false;
           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
@@ -24248,6 +24264,79 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         Math.abs(projected.y) < limit;
     }
 
+    // The gun ring, placed on where the nearest contact inside gun range will
+    // be by the time rounds get there. Two things about it are deliberate.
+    //
+    // It is absent unless something is in range. The ring is an instrument
+    // that appears when there is an aiming problem to solve, not a permanent
+    // crosshair - which is also how the series draws it, and why the centre
+    // of the screen carries only the flight path marker the rest of the time.
+    //
+    // It leads the target even though the gun is hitscan and therefore needs
+    // no lead at all. GUN_MUZZLE_SPEED is a number that exists only here: it
+    // buys the ring somewhere to sit that is visibly ahead of a crossing
+    // target, so putting the ring on an aircraft means something different
+    // from pointing the nose at it. Without it the ring would sit exactly on
+    // the target and duplicate the target box.
+    const GUN_MUZZLE_SPEED = 900;
+    function updateGunsight() {
+      let best = null;
+      let bestRange = Infinity;
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        tmpV8.copy(enemy.group.position).sub(player.position);
+        const range = tmpV8.length();
+        if (range > GUN_RANGE || range >= bestRange) continue;
+        best = enemy;
+        bestRange = range;
+      }
+      if (!best) {
+        ui.gunsight.classList.add("hidden");
+        gunsightState.active = false;
+        gunsightState.targetId = null;
+        return;
+      }
+
+      // Where it will be when the rounds arrive. Ground installations and
+      // ships do not move, so their lead is zero and the ring sits on them.
+      const flight = bestRange / GUN_MUZZLE_SPEED;
+      tmpV8.copy(best.group.position);
+      if (!best.ground && !best.surface) {
+        forwardOf(best.group, tmpV9);
+        tmpV8.addScaledVector(tmpV9, (best.speed || 0) * flight);
+      }
+
+      tmpV7.copy(tmpV8).project(camera);
+      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 0.98)) {
+        ui.gunsight.classList.add("hidden");
+        gunsightState.active = false;
+        gunsightState.targetId = null;
+        return;
+      }
+
+      const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
+      ui.gunsight.style.left = `${x}px`;
+      ui.gunsight.style.top = `${y}px`;
+      ui.gunsight.classList.remove("hidden");
+      // Hot when the burst would actually connect - the same question
+      // fireGun's gimbal asks, so the ring turning red and the rounds bending
+      // onto the target are one event rather than two rules that can drift.
+      forwardOf(player, tmpV9);
+      tmpV5.copy(tmpV8).sub(player.position).normalize();
+      const hot = gimbalDecision(tmpV9.angleTo(tmpV5), bestRange).applied;
+      ui.gunsight.classList.toggle("hot", hot);
+
+      gunsightState.active = true;
+      gunsightState.targetId = best.id;
+      gunsightState.x = x;
+      gunsightState.y = y;
+      gunsightState.rangeM = bestRange;
+      gunsightState.leadM = best.ground || best.surface ? 0 : (best.speed || 0) * flight;
+      gunsightState.hot = hot;
+    }
+
     function clearTargetDirectionArrow() {
       ui.targetDirectionArrow.classList.remove("active", "locked");
       targetArrowState.active = false;
@@ -24513,6 +24602,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       updateTargetDirectionArrow();
+      updateGunsight();
     }
 
     function updateTargetBox() {
