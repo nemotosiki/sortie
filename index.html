@@ -18506,8 +18506,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // has to touch the other's lines. A mission absent from the table simply
     // fields no friendlies, which is why every value here is additive.
     //
-    // `wingman: true` is on every entry - HAMMER 2 flies every sortie in the
-    // campaign. `carrier` and `airbase` carry the placement the mission wants.
+    // `wingman: true` is on every entry, in both campaigns and in all forty
+    // sorties - the wingman flies every one of them. Which airframe and which
+    // callsign that is belongs to the campaign, not to this table: see
+    // WINGMAN_BY_CAMPAIGN. `carrier` and `airbase` carry the placement the
+    // mission wants.
     const FRIENDLY_DEPLOYMENTS = Object.freeze({
       // Airfield missions. m01 already spawns BASE ALPHA itself through
       // mission.friendlyBase, so the table only asks for the wingman there -
@@ -18549,6 +18552,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // The three sorties that shipped after this table was written and were
       // left out of it, plus RED CIRCUS. Per spec_campaign_story §2 the wingman
       // flies EVERY mission, so a missing key here was a hole, not a decision.
+      // Four more American holes of exactly the same kind are filled further
+      // down (m-heli / m-boats / m-train / m-landing), and the whole Russian
+      // campaign after them.
       // Wingman only: the carrier is authored for the three naval sorties
       // (m03 / m-convoy / m05) and nothing here is one - storm and squadron are
       // over open water and ice with no task force, city is inland at night.
@@ -18689,20 +18695,132 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           safeRadio: "全艦、着岸。ランプが下りたぞ。……あとは砂浜の仕事だ、SICKLE 1。",
           asmRadio: "対艦ミサイル発射を探知！ 艦団に向かっている——発射母機を落とせ！"
         })
-      })
+      }),
+
+      // ---- The last four American sorties ---------------------------------
+      // The remaining holes, and holes for the same reason the four above were:
+      // they shipped after the table and nobody came back to it. Wingman only,
+      // because the carrier belongs to the three naval sorties and none of
+      // these is one - the helicopter hunt and the train run are inland, the
+      // boat sweep is a coastal strike with no task force behind it, and the
+      // only landing group in BEACHHEAD is the enemy's.
+      "m-heli": Object.freeze({ wingman: true }),
+      "m-boats": Object.freeze({ wingman: true }),
+      "m-train": Object.freeze({ wingman: true }),
+      "m-landing": Object.freeze({ wingman: true }),
+
+      // ---- The Russian campaign -------------------------------------------
+      // Nineteen entries that say one thing each, because there is one thing to
+      // say: the wingman flies these too. r14 is listed with the guard sorties
+      // above rather than here - it is the ONLY Russian sortie with something
+      // to protect, so it is the only one carrying anything besides `wingman`.
+      r01: Object.freeze({ wingman: true }),
+      r02: Object.freeze({ wingman: true }),
+      r03: Object.freeze({ wingman: true }),
+      r04: Object.freeze({ wingman: true }),
+      r05: Object.freeze({ wingman: true }),
+      r06: Object.freeze({ wingman: true }),
+      r07: Object.freeze({ wingman: true }),
+      r08: Object.freeze({ wingman: true }),
+      r09: Object.freeze({ wingman: true }),
+      r10: Object.freeze({ wingman: true }),
+      r11: Object.freeze({ wingman: true }),
+      r12: Object.freeze({ wingman: true }),
+      r13: Object.freeze({ wingman: true }),
+      r15: Object.freeze({ wingman: true }),
+      r16: Object.freeze({ wingman: true }),
+      r17: Object.freeze({ wingman: true }),
+      r18: Object.freeze({ wingman: true }),
+      r19: Object.freeze({ wingman: true }),
+      r20: Object.freeze({ wingman: true })
     });
 
-    const WINGMAN_CALLSIGN = "HAMMER 2";
+    // 僚機は陣営の機体で飛ぶ。米編は F-16、露編は MiG-29 - どちらもその陣営の
+    // 「癖のない主力機」で、プレイヤーが何に乗っていても僚機と見分けがつく。
+    // starter (MiG-21) では僚機が弱く見え、上位機では僚機が主役に見える。
+    // コールサインは無線側 RADIO_SPEAKER_LABELS と同じ二つ。
+    const WINGMAN_BY_CAMPAIGN = Object.freeze({
+      usa: Object.freeze({ type: "f16", callsign: "HAMMER 2" }),
+      rus: Object.freeze({ type: "mig29", callsign: "SICKLE 2" })
+    });
+
     // Behind the player's right shoulder, the standard wing position: far
     // enough back that it never fills the chase camera, far enough out that
-    // it is not hidden behind the player's own tail.
+    // it is not hidden behind the player's own tail. Read as the STATION the
+    // wingman flies toward, not as a place it is put.
     const WINGMAN_OFFSET = Object.freeze({ back: 60, side: 40, up: -6 });
-    // A soft follow, not a rigid weld. The wingman lags the player through
-    // hard manoeuvres and catches up on the straights, which is what makes it
-    // read as a second aircraft being flown rather than a mesh parented to
-    // the camera rig.
-    const WINGMAN_FOLLOW_K = 0.06;
-    const WINGMAN_TURN_K = 0.09;
+
+    // ---- Wingman flight model --------------------------------------------
+    // The wingman is flown rather than dragged: it has a nose it can only
+    // swing at a rate, a throttle that lags, and it moves along that nose and
+    // nowhere else. Falling behind through a break, overshooting the rejoin
+    // and banking into a turn all fall out of those three facts, so none of
+    // them is animated.
+    //
+    // 42 deg/s is a little under 1.5x the F-16's published sustained turn
+    // (turnRateDeg 29; the MiG-29's is 32). It has to sit ABOVE the airframe's
+    // number or the wingman could never close on a station the player is
+    // dragging through a hard turn, and it has to stay near it or the nose
+    // snaps around and the thing stops reading as an aircraft.
+    const WINGMAN_MAX_TURN = THREE.MathUtils.degToRad(42);
+    // Throttle band around whatever the player is doing: +-30%. The band is
+    // centred on 25m of station error - the slop a real formation holds - and
+    // saturates 120m past it, so inside the slot the wingman simply flies the
+    // player's speed and settles instead of surging.
+    const WINGMAN_SPEED_BAND = 0.3;
+    const WINGMAN_STATION_SLOP = 25;
+    const WINGMAN_STATION_GAIN = 120;
+    // Throttle response, slower than the turn - as an engine is.
+    const WINGMAN_SPEED_K = 0.08;
+    // Bank is computed from the turn, not authored: 1.45 rad of bank per rad/s
+    // of yaw puts the wingman at exactly the 60 deg limit when it is pulling
+    // its full 42 deg/s and at wings-level when it is going straight. 60 is the
+    // ceiling because a wingman on its side reads as a wingman out of control.
+    const WINGMAN_BANK_PER_RATE = 1.45;
+    const WINGMAN_MAX_BANK = THREE.MathUtils.degToRad(60);
+    const WINGMAN_BANK_K = 0.02;
+    // Keep-out. The wingman is invulnerable, so a collision is not a crash - it
+    // is two aircraft occupying the same cubic metre, which reads as a bug.
+    const WINGMAN_SEPARATION = 45;
+
+    // ---- Wingman engagement ----------------------------------------------
+    // How far the wingman will look for something to shoot at, and how far it
+    // will follow it before giving up. Both are inside radar range and well
+    // inside the arena: a wingman that vanishes over the horizon is not a
+    // wingman.
+    const WINGMAN_ACQUIRE_RANGE = 2200;
+    const WINGMAN_BREAK_RANGE = 3000;
+    // ...and the leash on the wingman itself. Whatever it is chasing, it stops
+    // chasing once it is this far from the player.
+    const WINGMAN_LEASH = 2400;
+    // The no-poaching radius. GUN_RANGE is 750, so anything inside 800m of the
+    // player is something the player can already shoot THIS SECOND - taking it
+    // would be stealing a kill out of the reticle. Outside it the contact is
+    // still the player's if the player wants it; the wingman only gets what the
+    // player has not closed on.
+    const WINGMAN_POACH_GUARD = 800;
+    // Longest single engagement, and the pause before the next one. The clock
+    // is what guarantees the wingman comes home: without it, one target found
+    // early enough would take it out of frame for the rest of the sortie.
+    const WINGMAN_ENGAGE_TIME = 30;
+    const WINGMAN_REJOIN_TIME = 6;
+    // Where it flies to when engaged: the target's six, at the range its gun
+    // works from.
+    const WINGMAN_ASTERN = 120;
+    // The gun, and every number in it is chosen to be WEAK. 40% of the
+    // wingman's own airframe damage, inside a ~10 deg cone (dot 0.985), under
+    // two shots a second, hitting less than half the time: about 5 points a
+    // second against a target it is tracking perfectly, i.e. the better part of
+    // twenty seconds to wear down a 98-HP Fishbed and no chance at all against
+    // anything heavier. The wingman is there to shave a trash contact down.
+    // Killing things is the player's job, and these numbers keep it that way.
+    const WINGMAN_GUN_RANGE = 600;
+    const WINGMAN_GUN_DOT = 0.985;
+    const WINGMAN_GUN_HIT_CHANCE = 0.45;
+    const WINGMAN_GUN_INTERVAL = 0.6;
+    const WINGMAN_GUN_DAMAGE_SCALE = 0.4;
+    // A kill of its own is worth one line, not a running commentary.
+    const WINGMAN_KILL_RADIO_COOLDOWN = 25;
 
     // The friendly carrier is the enemy hull repainted, not a second model:
     // one silhouette, two liveries, so the player reads "that is a carrier"
@@ -18811,10 +18929,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function spawnFriendlyWingman() {
-      // Fixed F-16, per spec: the wingman is set dressing and a radio voice,
-      // and pinning the airframe keeps it recognisable no matter what the
-      // player chose in the hangar.
-      const spec = AIRCRAFT_TYPES.f16;
+      // The campaign's airframe and the campaign's callsign - see
+      // WINGMAN_BY_CAMPAIGN. An unset or unknown campaign falls back to the
+      // American entry, which is the fixed F-16 every mission flew before the
+      // Russian side existed.
+      const entry = WINGMAN_BY_CAMPAIGN[selectedCampaignId] || WINGMAN_BY_CAMPAIGN.usa;
+      const spec = AIRCRAFT_TYPES[entry.type];
       const group = new THREE.Group();
       const model = createAircraftModel(spec.theme);
       group.add(model.group);
@@ -18834,15 +18954,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       const friendly = {
         kind: "wingman",
-        type: "f16",
-        label: WINGMAN_CALLSIGN,
+        type: entry.type,
+        label: entry.callsign,
         // Invulnerable by construction: nothing damages a friendly, because
         // no weapon path can see this array. `alive` exists so the radar and
         // marker loops read the same way they do for enemies.
         alive: true,
         group,
         model,
-        radarSymbol: "air"
+        radarSymbol: "air",
+        // ---- Its own aircraft, from here down -----------------------------
+        // Speed along its own nose, the bank it is holding, which of the two
+        // modes it is flying and the one contact that mode is about. Read by
+        // updateFriendlyWingman and by nothing else - the other friendly kinds
+        // never carry any of it.
+        wingSpeed: playerSpeed,
+        wingBank: 0,
+        wingMode: "form",
+        wingTargetId: null,
+        wingModeTimer: WINGMAN_REJOIN_TIME,
+        wingFireCooldown: 0,
+        wingKillRadioTimer: 0,
+        // The airframe's own gun, at the fraction of it a wingman is allowed.
+        // Cached because the airframe cannot change mid-sortie.
+        wingCruise: spec.cruiseSpeed,
+        wingGunDamage: spec.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
       };
       friendlies.push(friendly);
       return friendly;
@@ -19462,23 +19598,208 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
     }
 
+    // What the wingman is allowed to shoot at, and it is a deliberately short
+    // list: airborne, trash-role, not an ace, NOT a designated target, and far
+    // enough from the player that it cannot be the thing the player is killing
+    // right now. TGT is the mission - the kill count, the wave clock and the
+    // rank are all built on it - so the wingman never touches one at any range,
+    // and line/elite/ace are left alone because a fight the player was meant to
+    // have is not the wingman's to take.
+    function wingmanPreyFor(friendly) {
+      let best = null;
+      let bestDistance = Infinity;
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        if (enemy.ground || enemy.surface || enemy.subsystem) continue;
+        if (enemy.isAce) continue;
+        if (enemy.spec.roleId !== "trash") continue;
+        if (isTgtEntry(enemy)) continue;
+        if (player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD) continue;
+        const distance = friendly.group.position.distanceTo(enemy.group.position);
+        if (distance > WINGMAN_ACQUIRE_RANGE || distance >= bestDistance) continue;
+        bestDistance = distance;
+        best = enemy;
+      }
+      return best;
+    }
+
+    // Two modes and no more. `form` is the sortie's default and the state the
+    // wingman always returns to; `engage` is a bounded excursion after exactly
+    // one piece of trash, on a clock.
+    function updateWingmanMode(friendly, dt) {
+      friendly.wingModeTimer = Math.max(0, friendly.wingModeTimer - dt);
+      if (friendly.wingMode === "engage") {
+        const target = enemies.find((enemy) => enemy.id === friendly.wingTargetId && enemy.alive);
+        // Dead, lost, dragged too far from the player, out of time, or the
+        // player has closed on it after all - in which case it stops being the
+        // wingman's and goes back to being the player's.
+        if (
+          !target ||
+          friendly.wingModeTimer <= 0 ||
+          friendly.group.position.distanceTo(target.group.position) > WINGMAN_BREAK_RANGE ||
+          player.position.distanceTo(friendly.group.position) > WINGMAN_LEASH ||
+          player.position.distanceTo(target.group.position) < WINGMAN_POACH_GUARD
+        ) {
+          friendly.wingMode = "form";
+          friendly.wingTargetId = null;
+          friendly.wingModeTimer = WINGMAN_REJOIN_TIME;
+        }
+        return;
+      }
+      // In formation the timer is the pause before the next engagement, so the
+      // wingman actually rejoins between fights instead of chaining them.
+      if (friendly.wingModeTimer > 0) return;
+      const prey = wingmanPreyFor(friendly);
+      if (!prey) return;
+      friendly.wingMode = "engage";
+      friendly.wingTargetId = prey.id;
+      friendly.wingModeTimer = WINGMAN_ENGAGE_TIME;
+    }
+
     function updateFriendlyWingman(friendly, dt) {
-      forwardOf(player, tmpV1);
-      rightOf(player, tmpV3);
-      // Station: back along the player's nose, out along the player's beam.
-      // Taken from the player's own axes rather than from world space so the
-      // slot rolls with the flight, which is what a wingman actually holds.
-      tmpV4.copy(player.position)
-        .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
-        .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
-      tmpV4.y += WINGMAN_OFFSET.up;
-      // Exponential approach, frame-rate independent through damping().
-      friendly.group.position.lerp(tmpV4, damping(WINGMAN_FOLLOW_K, dt));
-      friendly.group.quaternion.slerp(player.quaternion, damping(WINGMAN_TURN_K, dt));
+      if (dt <= 0) return;
+      updateWingmanMode(friendly, dt);
+      friendly.wingFireCooldown = Math.max(0, friendly.wingFireCooldown - dt);
+      friendly.wingKillRadioTimer = Math.max(0, friendly.wingKillRadioTimer - dt);
+      const target = friendly.wingTargetId === null
+        ? null
+        : enemies.find((enemy) => enemy.id === friendly.wingTargetId && enemy.alive);
+
+      // Where it wants to be. Engaged that is the target's six, which is the
+      // only place its gun is allowed to work from; otherwise it is the station
+      // off the player's beam - back along the player's nose, out along the
+      // player's own axes, so the slot rolls with the flight.
+      if (target) {
+        forwardOf(target.group, tmpV1);
+        tmpV4.copy(target.group.position).addScaledVector(tmpV1, -WINGMAN_ASTERN);
+      } else {
+        forwardOf(player, tmpV1);
+        rightOf(player, tmpV3);
+        tmpV4.copy(player.position)
+          .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
+          .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
+        tmpV4.y += WINGMAN_OFFSET.up;
+      }
+
+      const position = friendly.group.position;
+      forwardOf(friendly.group, tmpV7);
+      // Direction to the wanted point, which is the ONLY thing the station is
+      // used for: nothing here ever writes a position toward it.
+      tmpV5.subVectors(tmpV4, position);
+      const error = tmpV5.length();
+      if (error > 0.001) tmpV5.multiplyScalar(1 / error);
+      else tmpV5.copy(tmpV7);
+
+      // Keep-out. Inside WINGMAN_SEPARATION the wanted direction is blended
+      // toward straight-away-from-the-player, hard enough at contact to win
+      // outright, so a crowded rejoin reads as the wingman easing off rather
+      // than as two meshes intersecting.
+      tmpV6.subVectors(position, player.position);
+      const gap = tmpV6.length();
+      if (gap < WINGMAN_SEPARATION && gap > 0.001) {
+        tmpV6.multiplyScalar(1 / gap);
+        tmpV5.addScaledVector(tmpV6, 2 * (1 - gap / WINGMAN_SEPARATION)).normalize();
+      }
+
+      // The turn, and this is the whole flight model: swing the NOSE toward
+      // the wanted direction, no faster than the airframe's rate. Everything
+      // else follows from where the nose ends up.
+      tmpV8.crossVectors(tmpV7, tmpV5);
+      let swing = Math.atan2(tmpV8.length(), tmpV7.dot(tmpV5));
+      if (tmpV8.lengthSq() < 1e-10) {
+        // Parallel (nothing to do) or exactly reversed (turn either way; the
+        // wingman's own up is as good an axis as any).
+        if (swing < Math.PI * 0.5) swing = 0;
+        else upOf(friendly.group, tmpV8);
+      }
+      if (swing > 0) {
+        tmpQ1.setFromAxisAngle(tmpV8.normalize(), Math.min(swing, WINGMAN_MAX_TURN * dt));
+        tmpV5.copy(tmpV7).applyQuaternion(tmpQ1).normalize();
+      } else {
+        tmpV5.copy(tmpV7);
+      }
+
+      // Bank out of the turn: how much of this frame's swing was YAW, held
+      // against WINGMAN_BANK_PER_RATE. Positive yaw about world up is a turn to
+      // the left, and a left turn banks left, hence the sign.
+      const yawDelta = Math.atan2(
+        tmpV7.z * tmpV5.x - tmpV7.x * tmpV5.z,
+        tmpV7.x * tmpV5.x + tmpV7.z * tmpV5.z
+      );
+      const bankWanted = THREE.MathUtils.clamp(
+        -(yawDelta / dt) * WINGMAN_BANK_PER_RATE,
+        -WINGMAN_MAX_BANK,
+        WINGMAN_MAX_BANK
+      );
+      friendly.wingBank = THREE.MathUtils.lerp(
+        friendly.wingBank, bankWanted, damping(WINGMAN_BANK_K, dt)
+      );
+      tmpV6.set(0, 0, 0);
+      tmpM1.lookAt(tmpV6, tmpV5, WORLD_UP);
+      friendly.group.quaternion.setFromRotationMatrix(tmpM1);
+      tmpQ1.setFromAxisAngle(LOCAL_FORWARD, friendly.wingBank);
+      friendly.group.quaternion.multiply(tmpQ1).normalize();
+
+      // Throttle. Chasing needs its own airframe's cruise as a floor, because
+      // a player who has slowed to a crawl must not slow the pursuit with them.
+      const reference = friendly.wingMode === "engage"
+        ? Math.max(playerSpeed, friendly.wingCruise)
+        : playerSpeed;
+      const speedWanted = reference * (1 + THREE.MathUtils.clamp(
+        (error - WINGMAN_STATION_SLOP) / WINGMAN_STATION_GAIN,
+        -WINGMAN_SPEED_BAND,
+        WINGMAN_SPEED_BAND
+      ));
+      friendly.wingSpeed = THREE.MathUtils.lerp(
+        friendly.wingSpeed, speedWanted, damping(WINGMAN_SPEED_K, dt)
+      );
+      // ...and it only ever moves along its own nose.
+      position.addScaledVector(tmpV5, friendly.wingSpeed * dt);
+
       // Never let the wingman fly through the sea floor, whatever the player
-      // does. It is scenery, and scenery embedded in terrain reads as a bug.
-      const floor = surfaceHeightAt(friendly.group.position.x, friendly.group.position.z) + 25;
-      if (friendly.group.position.y < floor) friendly.group.position.y = floor;
+      // does. It is invulnerable, and something invulnerable embedded in
+      // terrain reads as a bug.
+      const floor = surfaceHeightAt(position.x, position.z) + 25;
+      if (position.y < floor) position.y = floor;
+
+      if (target) updateWingmanGun(friendly, target);
+    }
+
+    // The gun. Astern, in a narrow cone, on a cooldown, and it misses more
+    // often than it hits - see the WINGMAN_GUN_* block for why every one of
+    // those is deliberate. The wingman shaves a trash contact down; putting it
+    // away is the player's job.
+    function updateWingmanGun(friendly, target) {
+      if (friendly.wingFireCooldown > 0) return;
+      tmpV1.subVectors(target.group.position, friendly.group.position);
+      const distance = tmpV1.length();
+      if (distance > WINGMAN_GUN_RANGE || distance < 1) return;
+      tmpV1.multiplyScalar(1 / distance);
+      forwardOf(friendly.group, tmpV2);
+      if (tmpV2.dot(tmpV1) < WINGMAN_GUN_DOT) return;
+      friendly.wingFireCooldown = WINGMAN_GUN_INTERVAL;
+
+      tmpV3.copy(friendly.group.position).addScaledVector(tmpV2, 8.5);
+      const hit = Math.random() < WINGMAN_GUN_HIT_CHANCE;
+      if (hit) tmpV4.copy(target.group.position);
+      else tmpV4.copy(tmpV3).addScaledVector(tmpV2, WINGMAN_GUN_RANGE);
+      createTracer(tmpV3, tmpV4, 0xa8f0c8, 0.11, 0.75);
+      if (!hit) return;
+      createImpactBurst(tmpV4, 0xa8f0c8, 0.55);
+      // The fourth argument IS the attribution rule: this round is not the
+      // player's, so nothing it kills is counted, scored, ranked or announced
+      // as one. See damageEnemy.
+      damageEnemy(target, friendly.wingGunDamage, false, true);
+      if (target.alive || friendly.wingKillRadioTimer > 0) return;
+      friendly.wingKillRadioTimer = WINGMAN_KILL_RADIO_COOLDOWN;
+      // One line, and worded to sit right in either cockpit - the speaker label
+      // itself is already per-campaign (RADIO_SPEAKER_LABELS).
+      triggerRadioLine(
+        "wingman",
+        "こっちで1機落とした。数は減らしておく——本命は任せる。",
+        RADIO_PRIORITY.NORMAL,
+        `wingman-kill-${target.id}`
+      );
     }
 
     function updateFriendlyCarrier(friendly, dt, time) {
@@ -21286,11 +21607,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     let hitConfirmTimer = 0;
-    function damageEnemy(enemy, amount, missileHit) {
+    // `byWingman` is the one thing this function needs to know about WHO fired.
+    // Everything the WORLD does when an aircraft dies - the explosion, the
+    // wreck, the mounts going down with the hull, the lock coming off - runs
+    // whoever pulled the trigger. Everything that is the PLAYER'S SCORECARD, or
+    // the feedback that reads it back, is skipped for a round the wingman fired.
+    // Omitted at every existing call site, so those are unchanged byte for byte.
+    function damageEnemy(enemy, amount, missileHit, byWingman = false) {
       if (!enemy.alive) return;
       enemy.hp -= amount;
       enemy.hitFlash = 0.12;
-      hitConfirmTimer = 0.42;
+      // The player's hit-confirm cue, and only the player's: a round the
+      // wingman fired must not light up the reticle the player is aiming with.
+      if (!byWingman) hitConfirmTimer = 0.42;
       if (enemy.hp > 0) {
         if (enemy.isAce && !enemy.aceHalfLineFired && enemy.hp <= enemy.maxHp * 0.5) {
           enemy.aceHalfLineFired = true;
@@ -21384,36 +21713,48 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // non-TGT contacts from handing out ranks the player did not fly for.
       // A mount is worth a flat 150: enough to be worth the round, far too
       // little to rank a sortie on, so stripping a fleet cannot buy an S.
-      const isTgtKill = isTgtEntry(enemy);
-      const killScore = contactScoreValue(enemy);
-      if (isTgtKill) kills += 1;
-      else bonusKills += 1;
-      if (missileHit) missileKills += 1;
-      else gunKills += 1;
-      score += killScore;
-      // The rank's numerator. Separate from `score`, which also carries the
-      // guard penalties - a transport lost must not quietly shrink the field
-      // the player is being measured against.
-      rankStats.playerKillValue += killScore;
-      if (score > highscore) {
-        highscore = score;
-        saveHighscore();
+      //
+      // None of it applies to a wingman's kill. The rank in particular is
+      // rankStats.playerKillValue measured against what the sortie spawned, so
+      // crediting the wingman here would grade the player on someone else's
+      // shooting - which is exactly what the whole `byWingman` flag exists to
+      // prevent.
+      if (!byWingman) {
+        const isTgtKill = isTgtEntry(enemy);
+        const killScore = contactScoreValue(enemy);
+        if (isTgtKill) kills += 1;
+        else bonusKills += 1;
+        if (missileHit) missileKills += 1;
+        else gunKills += 1;
+        score += killScore;
+        // The rank's numerator. Separate from `score`, which also carries the
+        // guard penalties - a transport lost must not quietly shrink the field
+        // the player is being measured against.
+        rankStats.playerKillValue += killScore;
+        if (score > highscore) {
+          highscore = score;
+          saveHighscore();
+        }
+        // Display name, not the raw airframe label: a named pilot's kill is
+        // worth reading as "Su-37 VULTURE", which is what the HUD tag says too.
+        createDestroyedPopup(enemy.group.position, enemyDisplayName(enemy), killScore);
       }
-      // Display name, not the raw airframe label: a named pilot's kill is
-      // worth reading as "Su-37 VULTURE", which is what the HUD tag says too.
-      createDestroyedPopup(enemy.group.position, enemyDisplayName(enemy), killScore);
       playSfx("explosion", 0.75, 0.9 + Math.random() * 0.2);
       playTone(150, 0.18, 0.1, "sawtooth");
       playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
-      showBanner(
-        enemy.subsystem
-          ? `${enemyDisplayName(enemy)} DESTROYED`
-          : `TARGET ${enemy.id} · ${enemyDisplayName(enemy)} DESTROYED`,
-        1.1,
-        "success"
-      );
+      // "TARGET n DESTROYED" is a report to the player about the player's own
+      // shot. The wingman gets one radio line for its kills and nothing else.
+      if (!byWingman) {
+        showBanner(
+          enemy.subsystem
+            ? `${enemyDisplayName(enemy)} DESTROYED`
+            : `TARGET ${enemy.id} · ${enemyDisplayName(enemy)} DESTROYED`,
+          1.1,
+          "success"
+        );
+      }
       if (enemy.type === "carrier") startAceKillCam(enemy);
       if (STRIKE_AIR_TYPES.has(enemy.type) && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
@@ -21436,7 +21777,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           );
         }
       }
-      onKillRadio(kills);
+      // Keyed off the player's running tally, which a wingman kill did not
+      // move - calling it here would replay the last callout on a stale count.
+      if (!byWingman) onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
     }
 
@@ -23138,7 +23481,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         x: Number(friendly.group.position.x.toFixed(2)),
         y: Number(friendly.group.position.y.toFixed(2)),
         z: Number(friendly.group.position.z.toFixed(2)),
-        distance: Number(player.position.distanceTo(friendly.group.position).toFixed(1))
+        distance: Number(player.position.distanceTo(friendly.group.position).toFixed(1)),
+        // Wingman only, and null on every other kind: what the second aircraft
+        // is doing and which contact it is doing it to. This is how a probe
+        // proves the wingman is flying itself rather than being dragged - the
+        // mode has to CHANGE over a sortie.
+        wingMode: friendly.kind === "wingman" ? friendly.wingMode : null,
+        wingTargetId: friendly.kind === "wingman" ? friendly.wingTargetId : null
       }));
       hook.guard = guardState.active
         ? {
