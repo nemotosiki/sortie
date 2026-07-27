@@ -2700,20 +2700,49 @@
         // ...but almost never gets round to it.
         missileCooldownScale: 1.15,
         breakChance: 0,
-        breakReaction: 99
+        breakReaction: 99,
+        // Overshoot. Chases used to be flown against playerSpeed itself, so a
+        // pursuer's target speed dropped in the same frame the player pulled
+        // the airbrake - it slowed down with them and never slid out in front,
+        // which took the oldest defensive move in air combat out of the game.
+        //
+        // Two numbers, because there are two failures a pursuer can make.
+        // `speedReadK` is how long it takes to NOTICE the throttle came off,
+        // `speedDecelK` is how long it then takes to actually wash the speed
+        // off. Both are the pilot's, not the airframe's - a trash pilot in a
+        // good jet still flies like a trash pilot, which is the whole point of
+        // role and skill being separate axes.
+        //
+        // Only `regular` has been measured in-engine (m02, four seconds of full
+        // brake from cruise): the pursuer shed 16 m/s while the player shed 48.
+        // Before the change it shed the same 48 and stayed glued on. The other
+        // tiers run the identical code path with the constants spread out, so
+        // read their spacing as intent, not as measurement.
+        //
+        // This tier: about a second to notice, and slow to act once it has.
+        // Meant to be shakeable by chopping the throttle and nothing else.
+        speedReadK: 0.85,
+        speedDecelK: 0.80
       }),
       regular: Object.freeze({
         verticalScale: 1.00, evadeScale: 1.00, engageScale: 1.00, disengageScale: 1.00,
         gunAccuracyScale: 1.00, aimScatterScale: 1.00,
         launchDotScale: 1.00, missileEnvelopeScale: 1.00, missileCooldownScale: 1.00,
         // Reacts late and not every time.
-        breakChance: 0.80, breakReaction: 0.30
+        breakChance: 0.80, breakReaction: 0.30,
+        // The measured tier. Notices in roughly two thirds of a second, which
+        // puts it far enough ahead to shoot at - but only briefly, and it gets
+        // back behind if the player merely extends instead of turning in.
+        speedReadK: 0.70, speedDecelK: 0.62
       }),
       veteran: Object.freeze({
         verticalScale: 1.10, evadeScale: 1.05, engageScale: 1.05, disengageScale: 1.00,
         gunAccuracyScale: 1.10, aimScatterScale: 0.80,
         launchDotScale: 1.10, missileEnvelopeScale: 0.90, missileCooldownScale: 0.95,
-        breakChance: 0.95, breakReaction: 0.15
+        breakChance: 0.95, breakReaction: 0.15,
+        // Wrong-footed, but the window shuts fast enough that the player has
+        // to already be ready for it. Never a free kill.
+        speedReadK: 0.50, speedDecelK: 0.42
       }),
       expert: Object.freeze({
         verticalScale: 1.00, evadeScale: 1.00, engageScale: 1.00, disengageScale: 1.00,
@@ -2721,7 +2750,11 @@
         // Will not take a shot that cannot guide, and does not waste one at the
         // edge of the seeker's range either.
         launchDotScale: 1.15, missileEnvelopeScale: 0.82, missileCooldownScale: 1.00,
-        breakChance: 1.00, breakReaction: 0
+        breakChance: 1.00, breakReaction: 0,
+        // Barely wrong-footed at all, and back on the tail almost at once. An
+        // ace can still be made to slide past, but one keypress must never be
+        // enough - beating an ace stays a matter of flying.
+        speedReadK: 0.30, speedDecelK: 0.22
       })
     };
     // Ladder order for DIFFICULTY_TUNING's skillShift to walk - weakest to
@@ -13366,6 +13399,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           spawnMissionWave(normalizeWaveEntry({ types, band: 2, ace, tgt: false }));
           return enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
         },
+        // Where each pursuer sits along the player's nose, and what it thinks
+        // the player's speed is. Overshoot is a claim about a sign change -
+        // `along` going from negative (astern) to positive (out in front) -
+        // and there is no other way to read it from outside.
+        pursuitProbe: () => {
+          if (gameState !== STATE_PLAYING) return [];
+          forwardOf(player, tmpV1);
+          return enemies.filter((enemy) => enemy.alive && !enemy.ground && !enemy.surface)
+            .map((enemy) => {
+              tmpV2.copy(enemy.group.position).sub(player.position);
+              return {
+                id: enemy.id,
+                skillId: enemy.spec.skillId || null,
+                roleId: enemy.spec.roleId || null,
+                along: Number(tmpV2.dot(tmpV1).toFixed(1)),
+                range: Number(tmpV2.length().toFixed(1)),
+                speed: Number(enemy.speed.toFixed(1)),
+                perceived: Number((enemy.perceivedPlayerSpeed ?? 0).toFixed(1))
+              };
+            });
+        },
         // The enemy speed model has no throttle input, so a gate that wants to
         // see a variable-geometry wing at a chosen sweep has to set the speed
         // the sweep is derived from.
@@ -17939,6 +17993,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hitChanceScale: merged.hitChanceScale * role.gunAccuracyScale * skill.gunAccuracyScale,
         maxHitChance: merged.maxHitChance * role.gunAccuracyScale * skill.gunAccuracyScale,
         aimScatter: skill.aimScatterScale,
+        // Purely the tier's: how quickly a chase notices the player's throttle,
+        // and how quickly it can act on what it noticed. Role does not touch
+        // either - a trash pilot in a good jet still has a trash pilot's eyes,
+        // which is the whole point of the two axes.
+        speedReadK: skill.speedReadK,
+        speedDecelK: skill.speedDecelK,
         // --- Missiles: role sets how often, skill sets how well --------------
         missileCooldownScale: role.missileCooldownScale * skill.missileCooldownScale,
         missileLaunchDotScale: skill.launchDotScale,
@@ -18029,6 +18089,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hp: spec.hp,
         speed: spec.patrolSpeed * 0.92,
         targetSpeed: spec.patrolSpeed,
+        // What this pilot currently believes the player is doing. Seeded at
+        // cruise so a fighter that spawns while the player is already braking
+        // still has to notice it, rather than being born knowing.
+        perceivedPlayerSpeed: CRUISE_SPEED,
         mode: "patrol",
         // Missile break state. `breakAxis` is the horizontal direction the break
         // is flown along; `breakSide` fixes which way, once per break.
@@ -20854,7 +20918,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             enemy.formationActive = true;
           }
 
-          enemy.targetSpeed = Math.min(spec.maxSpeed + (enemy.wave - 1) * 4, playerSpeed + spec.pursuitBonus);
+          // Chased off what the attacker has SEEN, not off playerSpeed itself.
+          // Reading the live value made every pursuer clairvoyant: the instant
+          // the player pulled the airbrake the enemy's target speed dropped in
+          // the same frame, so it slowed down with them and no one ever
+          // overshot. Braking to make a pursuer slide out in front is the
+          // oldest move in air combat and it did not exist here.
+          //
+          // The lag is the skill tier's, so an expert reacts in about a third
+          // of a second and a rookie takes over a second - which is the
+          // difference between an ace you have to out-fly and a wingman you can
+          // shake off by chopping the throttle.
+          enemy.perceivedPlayerSpeed = THREE.MathUtils.lerp(
+            enemy.perceivedPlayerSpeed,
+            playerSpeed,
+            damping(spec.speedReadK, dt)
+          );
+          enemy.targetSpeed = Math.min(
+            spec.maxSpeed + (enemy.wave - 1) * 4,
+            enemy.perceivedPlayerSpeed + spec.pursuitBonus
+          );
         } else if (spec.behavior === "formation" && leader) {
           forwardOf(leader.group, tmpV8);
           rightOf(leader.group, tmpV3);
@@ -20906,7 +20989,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.group.quaternion.normalize();
         }
 
-        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
+        // Speeding up and slowing down are not the same problem. Opening the
+        // throttle is the airframe's business and stays on `speedResponse`;
+        // washing speed off takes airbrake and a pilot who has decided to use
+        // it, so it runs on the tier's `speedDecelK`. That asymmetry is what
+        // carries a pursuer past a braking player instead of parking it on
+        // their tail - and it is why a rookie sails 250m out in front while an
+        // ace is only briefly wrong-footed.
+        const closing = enemy.targetSpeed < enemy.speed;
+        const speedK = closing ? (spec.speedDecelK ?? spec.speedResponse) : spec.speedResponse;
+        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(speedK, dt));
         forwardOf(enemy.group, tmpV4);
         enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
 
