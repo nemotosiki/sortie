@@ -574,11 +574,13 @@
       color: var(--hud-dim);
     }
 
-    /* The aircraft symbol, pinned to the middle of the frame - the centre of
-       an Ace Combat HUD does not wander, and the camera aiming parallel to
-       the nose (see updateCamera) is what makes the pin honest. JS only ever
-       toggles its visibility: hidden while the gun ring has a contact to
-       point at, and while the target view or the kill cam has the camera.
+    /* The aircraft symbol. Positioned from JS in SCREEN pixels onto the gun
+       line, so left/top are overwritten every frame; the CSS 50%/50% is only
+       the pre-game resting place. In the cockpit the camera is bolted to the
+       airframe and the projection lands dead centre every frame - the
+       precision view holds still. From the chase views it breathes a little
+       with the camera's catch-up, which is the point: the gun fires along
+       the nose, not along the camera.
 
        Kept a direct child of the HUD deliberately - it once lived in a
        180x180 wrapper centred on the screen, and screen-pixel positioning
@@ -16286,6 +16288,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const playerFlightFrame = new THREE.Quaternion();
 
     const cameraLook = new THREE.Vector3();
+    // How bolted-down the cockpit view currently is, 0 (chasing) to 1
+    // (rigid on the mount). Eases up while the cockpit owns the camera,
+    // drops to 0 the moment anything else takes it.
+    let cockpitRigidBlend = 0;
     const cameraUp = new THREE.Vector3(0, 1, 0);
 
     resetPlayerTransform();
@@ -25016,7 +25022,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // manoeuvre stops. That transient is honest: the aiming symbols are
       // projected from the world, so they keep pointing where the rounds go
       // whether or not the camera has caught up.
-      camera.position.lerp(desiredPosition, damping(0.0017, dt));
+      //
+      // The COCKPIT is the exception, because it is not a camera chasing an
+      // aeroplane - it is the aeroplane. Bolted to the airframe, no spring on
+      // position or aim, so the HUD view holds the gun line at dead centre at
+      // every attitude - the precision-gunnery view must not breathe.
+      //
+      // Bolted by BLEND, not by branch: the rigidity weight eases 0 to 1 on
+      // its own time constant, raising every smoothing gain towards a plain
+      // copy. The cut into the mode and the way back from the target view
+      // glide onto the mount and stiffen; a boolean switch here would replay
+      // the one-frame flick the smoothing exists to prevent. (A convergence
+      // detector was tried first and never fired: the position filter tracks
+      // a target moving at flight speed, so it carries a permanent v*tau
+      // offset of tens of metres and no closeness test ever passes.)
+      // Dropping the weight straight to 0 on leaving the mount is safe -
+      // gains can fall without moving the camera.
+      const wantRigid = cameraMode === "cockpit" && !focusTarget && !killCam.active;
+      cockpitRigidBlend = wantRigid
+        ? cockpitRigidBlend + (1 - cockpitRigidBlend) * damping(0.002, dt)
+        : 0;
+      const rigidW = cockpitRigidBlend;
+
+      camera.position.lerp(desiredPosition,
+        THREE.MathUtils.lerp(damping(0.0017, dt), 1, rigidW));
 
       const desiredLook = tmpV5.copy(camera.position).addScaledVector(tmpV1, profile.look);
       if (focusTarget) {
@@ -25029,15 +25058,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         desiredLook.z += (Math.random() - 0.5) * cameraShake * 2.8;
       }
 
-      // One rate for every mode. Handing the camera to a target or to the kill
-      // cam only moves the point it is easing TOWARDS - it must not change
-      // whether it eases at all, or letting go of the target view snaps the
-      // view back to the nose in a single frame.
-      cameraLook.lerp(desiredLook, damping(0.0005, dt));
-      cameraUp.lerp(tmpV3, damping(0.003, dt)).normalize();
+      // One rate for every chasing mode. Handing the camera to a target or to
+      // the kill cam only moves the point it is easing TOWARDS - it must not
+      // change whether it eases at all, or letting go of the target view
+      // snaps the view back to the nose in a single frame.
+      cameraLook.lerp(desiredLook,
+        THREE.MathUtils.lerp(damping(0.0005, dt), 1, rigidW));
+      cameraUp.lerp(tmpV3,
+        THREE.MathUtils.lerp(damping(0.003, dt), 1, rigidW)).normalize();
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       tmpQ1.setFromRotationMatrix(tmpM1);
-      camera.quaternion.slerp(tmpQ1, damping(0.0007, dt));
+      camera.quaternion.slerp(tmpQ1,
+        THREE.MathUtils.lerp(damping(0.0007, dt), 1, rigidW));
       camera.quaternion.normalize();
 
       if (boostActive && gameState === STATE_PLAYING) {
@@ -25669,30 +25701,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         Math.abs(projected.y) < limit;
     }
 
-    // The aircraft symbol, fixed to the middle of the frame - which is how
-    // the series draws it: the centre of an Ace Combat HUD does not wander.
+    // The aircraft symbol, drawn on the gun line: from the muzzle, down the
+    // barrel, out to the gun's own range, projected to the screen.
     //
-    // The pin is honest because the camera earns it. Its aim settles parallel
-    // to the nose (see updateCamera), so in steady flight the middle of the
-    // screen IS the gun line to 0.0 degrees - unlike the original layout,
-    // whose sightline ran 5.16 degrees below the nose while the symbol
-    // claimed otherwise. During the catch-up after a hard manoeuvre the
-    // centre and the true gun line part briefly; the instrument that stays
-    // exact through that transient is the RING, which is projected from the
-    // world and never stops telling the truth. One world-projected attempt at
-    // this symbol made it trail the muzzle line around the screen, and the
-    // whole HUD read as unmoored - the series pins the symbol and lets the
-    // ring do the pointing, and it is right to.
+    // Where that lands depends on the view, and the difference is the point.
+    // The cockpit camera is bolted to the airframe, so the projection IS the
+    // centre of the frame, every frame, at every attitude - a HUD view's
+    // reticle does not budge. The chase camera trails the aircraft, so the
+    // symbol sits a whisker below centre in steady flight and eases a few
+    // degrees off while the camera catches up through a manoeuvre, settling
+    // back as the turn stops. Both come out of the same projection; neither
+    // is special-cased.
     //
-    // Probe rays still measure down the barrel to this range, so tests can
-    // ask how far the pinned centre is from the true gun line at any moment.
+    // This replaced a CSS pin at 50%/50%. The pin held the centre perfectly
+    // but could not tell the truth from the chase view during exactly the
+    // manoeuvres where the truth matters - the gun fires along the nose, not
+    // along the camera.
     const BORESIGHT_DISTANCE = GUN_RANGE;
     function updateBoresight() {
       // Hidden when the camera is handed elsewhere: the target view and the
-      // kill cam look away from the nose, and a centre-pinned nose symbol
-      // would be a plain lie there. The gunsight swap (ring while a contact
-      // is in range) hides it the rest of the time.
-      ui.boresight.classList.toggle("hidden", cameraFocusActive || killCam.active);
+      // kill cam look away from the nose, and the nose symbol has no business
+      // on a frame that is looking at something else. The gunsight swap
+      // (ring while a contact is in range) hides it the rest of the time.
+      if (cameraFocusActive || killCam.active) {
+        ui.boresight.classList.add("hidden");
+        return;
+      }
+      forwardOf(player, tmpV9);
+      gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
+      tmpV7.copy(tmpV8).project(camera);
+      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+      // Hidden rather than clamped to the edge: a symbol stuck against the
+      // frame claims the nose is over there, which is the same lie in a new
+      // place. This only fires in attitudes where the nose has genuinely
+      // left the view.
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.04)) {
+        ui.boresight.classList.add("hidden");
+        return;
+      }
+      ui.boresight.classList.remove("hidden");
+      ui.boresight.style.left = `${(tmpV7.x * 0.5 + 0.5) * window.innerWidth}px`;
+      ui.boresight.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
     }
 
     // The gun ring, placed on where the nearest contact inside gun range will
@@ -26302,8 +26351,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Rolls against the frame, because from inside the canopy that is what
         // keeps the horizon line lying along the real horizon.
         const bank = Math.atan2(tmpV2.y, tmpV3.y);
+        // Rotate ABOUT THE CENTRE first, then slide the rungs along the
+        // ladder's own banked axis. This is the order a real ladder works in:
+        // whatever the attitude, the rung under the boresight is the current
+        // pitch, and the whole group stays wrapped around the centre. The
+        // other order - slide vertically, then rotate about the displaced
+        // point - sent the group wandering up and off to one side in a
+        // descending turn, which is exactly where a HUD must not wander.
         ui.pitchLadder.style.transform =
-          `translate(-50%, calc(-50% + ${pitch * 178}px)) rotate(${-bank * 0.7}rad)`;
+          `translate(-50%, -50%) rotate(${-bank * 0.7}rad) translateY(${pitch * 178}px)`;
       }
     }
 
