@@ -4291,6 +4291,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // ring's radius, so a radius above the ceiling would put every wave of that
     // band permanently out of the window no matter how it was slid around.
     const WAVE_RING_RADIUS = Object.freeze({ 1: 1150, 2: 1250 });
+    // 護衛対象を狙う波は、その対象を撃てる距離の外から入ってくる。ASM の射程
+    // (ANTI_SHIP_MISSILE_PROFILE.range = 1800) の内側に湧かせると、プレイヤーが
+    // どれだけ急いでも到達前に発射が終わっていて、守りようのない損害が確定する。
+    // 2100 は射程 +300m: 発射までに必ず「詰める時間」が生まれ、かつ RADAR_RANGE
+    // (1400) の外なので、最初は無線とレーダー端で気づく形になる。
+    //
+    // 上の band 半径と違いこれは WAVE_SPAWN_MAX_RANGE (2100) の下ではなく丁度
+    // 同値だが、窓は閉端なので依然として満たせる: 湧き点はリングを離れないので
+    // プレイヤーがアンカーに重なっている最悪ケースでも距離は 2100 = 天井ちょうど
+    // で、下の clamp は諦めずに済む。
+    const HUNT_WAVE_RING_RADIUS = 2100;
+    // 対艦攻撃は「向かって、狙って、撃つ」。空対空の 1.4 秒で初弾が出ると、
+    // 湧いた瞬間に射点へ入っている攻撃機に対してプレイヤーは物理的に間に合わず、
+    // 守りようのない損害が確定する（実測: r14 で開始10秒に1隻喪失）。
+    // ただし遅らせられる幅には天井がある。ASM が撃てるのは range 1800 の内側かつ
+    // minRange 320 の外側だけで、2100m から ~160 m/s で詰める進入脚の上では
+    // これは t≈1.9〜11.1s の 9.2 秒間しかない（merge は t≈13.1s）。11 秒を超える
+    // run-in はこの窓が閉じたあとに解禁されることになり、その頃には機体は艦の
+    // 周囲を旋回中で launchDot を満たせない ＝ 初弾は遅れるのではなく消える。
+    // 実測: 22 を入れたとき m-carrier の空母は 81 秒通して無傷、友軍向けミサイル
+    // 発射数は 0 だった。
+    // 6 はプレイヤーが 1600m を全力(375 m/s)で詰める ~4.3 秒を上回り、なお発射窓
+    // の後半 5 秒以上を残す。攻撃機は手順を踏むが、撃つ機会そのものは失わない。
+    //
+    // 距離では解けなかったことの裏返しでもある: リングを 1800 の外へ出しても
+    // 接近 160 m/s では 1.9 秒しか稼げず、そこから先は湧き半径の天井
+    // (WAVE_SPAWN_MAX_RANGE = 2100) に阻まれる。稼ぐべきは距離ではなく時間。
+    const HUNT_RUN_IN_TIME = 6;
     // Discoverability window: how far from the player a wave may be allowed to
     // land. Below the floor it is on top of them before they can react.
     //
@@ -10744,12 +10772,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // same clock: the group is going to touch the sand at the same moment on
         // both sides of the mirror, and on this side that is the good outcome.
         //
-        // The landing ships themselves are NOT on this board. They cannot be - the
-        // only friendly hulls the engine knows about come from FRIENDLY_DEPLOYMENTS,
-        // which a payload cannot reach, and putting them in `sequence` would make
-        // them enemies the player is asked to escort by not shooting. So the group
-        // is in the fiction (briefing, radio, epilogue) and the board is the air
-        // battle over it, which is what a cover flight actually is.
+        // The landing ships ARE on this board. Five of them, in the same line
+        // abreast, on the same course, at the same 9 m/s, reaching the same sand
+        // at the same 191 seconds - the identical hull, unrepainted, because it
+        // is the identical ship. See FRIENDLY_DEPLOYMENTS.r14, which fields them
+        // and makes them the sortie's guard objective: five vulnerable hulls at
+        // 832 HP, two anti-ship rounds each, and a sortie that is lost outright
+        // if the group is.
+        //
+        // They are friendlies, not contacts. Nothing in `sequence` refers to
+        // them and normalizeMission never sees the deployment table, so the
+        // 6 TGT / 17 contacts below are the air battle and only the air battle.
+        // What the ships change is what the air battle is FOR: the three STRIKE
+        // waves carry `hunt: "ship"`, so they fly at the group and ignore the
+        // player entirely until it is dead or ashore.
         //
         // 6 TGT against 11 non-TGT is 1:1.83, the same shape m-landing's mirror uses
         // for the same reason: the interference IS the difficulty. What makes this
@@ -10777,7 +10813,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // serious in ACT 3.
             {
               types: ["fa18", "fa18"], band: 1, idBase: 0, label: "STRIKE",
-              role: "line",
+              role: "line", hunt: "ship",
               radio: [
                 { speaker: "command", text: "NORTHSTARより。対艦攻撃機を探知——F/A-18が2、揚陸艦団に向かっている。落とせ。", id: "r14-strike-1" }
               ]
@@ -10796,7 +10832,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // made to choose which run-in to break up.
             {
               types: ["f14", "f14"], band: 2, idBase: 2, label: "STRIKE",
-              role: "line",
+              role: "line", hunt: "ship",
               radio: [
                 { speaker: "command", text: "第2波、F-14が2機。遠距離から撃ってくる——射点に入られる前に潰せ。", id: "r14-strike-2" }
               ]
@@ -10820,7 +10856,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // already coming down.
             {
               types: ["fa18", "fa18"], band: 2, idBase: 4, label: "STRIKE",
-              role: "line",
+              role: "line", hunt: "ship",
               radio: [
                 { speaker: "command", text: "最終波だ。1隻でも沈められたら、あの砂浜は取れない——止めろ、IRONBACK。", id: "r14-strike-3" }
               ]
@@ -13023,12 +13059,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             failed: guardState.failed
           };
         },
-        // Put the convoy on its exit point, i.e. fast-forward the crossing, so
-        // the "escort succeeded" path is reachable inside a probe's patience.
+        // 護衛任務の検証は「プレイヤーが迎撃する」前提でしか意味を成さない。放置プローブ
+        // では ASM が必ず全弾着弾するので、守れるかどうかを測れない。これは飛来中の
+        // 対友軍ミサイルを撃ち落とす＝プレイヤーが完璧に迎撃した場合の上限を作るための
+        // テスト専用フック。ゲーム側からは呼ばれない。
+        interceptGuardMissiles: () => {
+          let removed = 0;
+          for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) {
+            if (!enemyMissiles[i].targetFriendly) continue;
+            removeEnemyMissile(i);
+            removed += 1;
+          }
+          return removed;
+        },
+        // Put every charge that is going somewhere on its exit point, i.e.
+        // fast-forward the crossing, so the "escort succeeded" path is
+        // reachable inside a probe's patience. Selected on HAVING an exit
+        // rather than on being a transport: the landing group is the second
+        // thing with a crossing to skip, and the carrier - which holds station
+        // and has no exit at all - is still passed over.
         forceRetireGuarded: () => {
           const flying = guardedFriendlies().filter((f) => f.alive && !f.retired);
           for (const friendly of flying) {
-            if (friendly.kind !== "transport") continue;
+            if (!friendly.exit) continue;
             friendly.group.position.copy(friendly.exit);
           }
           return { retiring: flying.length, saved: guardState.saved };
@@ -16530,7 +16583,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // air-to-air entry at all and a Frogfoot's is a short dogfight round, yet
     // both are flying with a cruise missile under the wing in HOME PLATE.
     function enemyMissileProfileFor(enemy, charge) {
-      if (charge && charge.kind === "carrier") return ANTI_SHIP_MISSILE_PROFILE;
+      if (charge && isFriendlyShip(charge)) return ANTI_SHIP_MISSILE_PROFILE;
       return ENEMY_MISSILE_PROFILES[enemy.type] || null;
     }
 
@@ -16632,13 +16685,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // The launch call the guard missions live on. The player cannot see a
         // missile leave a wing three kilometres away, so the radio is the cue
         // that the thing they are protecting is under fire right now.
+        //
+        // The two lines below name the thing being shot at, which only works
+        // while there are two of them. A deployment that guards something else
+        // supplies its own `asmRadio`; the fallbacks are left in place rather
+        // than moved into the two configs that already read correctly, so
+        // m-carrier and m-escort keep saying exactly what they always said.
+        const shipCharge = isFriendlyShip(charge);
+        const guardConfig = guardState.config || {};
         triggerRadioLine(
           "command",
-          charge.kind === "carrier"
-            ? "対艦ミサイル発射を探知！ INDEPENDENCEに向かっている——発射母機を落とせ！"
-            : "敵機がLIFELINEにミサイルを撃った！ 輸送機は回避できない、母機を止めろ！",
+          (shipCharge && guardConfig.asmRadio)
+            || (shipCharge
+              ? "対艦ミサイル発射を探知！ INDEPENDENCEに向かっている——発射母機を落とせ！"
+              : "敵機がLIFELINEにミサイルを撃った！ 輸送機は回避できない、母機を止めろ！"),
           RADIO_PRIORITY.URGENT,
-          charge.kind === "carrier" ? "guard-asm-launch" : "guard-aam-launch"
+          shipCharge ? "guard-asm-launch" : "guard-aam-launch"
         );
       } else if (enemy.ground) {
         triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
@@ -16778,12 +16840,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           } else {
             tmpV1.copy(guarded.group.position).sub(missile.mesh.position);
             const guardedDistance = tmpV1.length();
-            const hitRadius = guarded.kind === "carrier" ? 60 : 22;
+            // Proximity by target size: a hull is tens of metres of steel, an
+            // airframe is not. The landing ship is a 165m hull inside a
+            // formation, so it takes the ship radius on the same terms the
+            // carrier does - a round that reaches it has hit it.
+            const shipCharge = isFriendlyShip(guarded);
+            const hitRadius = shipCharge ? 60 : 22;
             if (guardedDistance < hitRadius) {
               createExplosion(
                 missile.mesh.position,
                 0xff4d45,
-                guarded.kind === "carrier" ? 1.9 : 1.0
+                shipCharge ? 1.9 : 1.0
               );
               damageFriendly(guarded, missile.damage);
               removeEnemyMissile(i);
@@ -17149,7 +17216,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // placed around exactly the friendly its aircraft will fly at.
         for (const friendly of friendlies) {
           if (!friendly.alive || !friendly.vulnerable || friendly.retired) continue;
-          const isShip = friendly.kind === "carrier";
+          const isShip = isFriendlyShip(friendly);
           if (wave.hunt === "ship" ? !isShip : isShip) continue;
           out.copy(friendly.group.position).setY(0);
           resolved = true;
@@ -17249,7 +17316,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // spawn point's own heading, using the same spacing.
     function spawnWave(wave, band, idBase, waveIndex = missionWaveIndex) {
       const ringBand = Math.min(band, 2) === 2 ? 2 : 1;
-      const radius = WAVE_RING_RADIUS[ringBand];
+      // hunt 波だけ band を無視してスタンドオフ半径に乗る。band は「何波目か」の
+      // 難度つまみでしかなく、ここで問題なのは護衛対象からの距離なので。
+      const radius = wave && wave.hunt ? HUNT_WAVE_RING_RADIUS : WAVE_RING_RADIUS[ringBand];
       const anchor = waveAnchorFor(wave, new THREE.Vector3());
       const origin = resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
       // The formation faces its anchor, so a strike flight is already pointed
@@ -17645,7 +17714,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         strikeTarget: null,
         bombRunFired: false,
         fireCooldown: spec.fireMin + Math.random() * spec.fireSpread,
-        missileCooldown: 1.4 + slot * 0.9 + Math.random() * 0.4,
+        // 狩りに来た機体だけ初弾を進入時間ぶん遅らせる（HUNT_RUN_IN_TIME）。
+        // slot のばらつきは残す: 同時発射で一斉に飛ぶより、順に来るほうが読める。
+        // hunt を持たない機体は 1.4 秒のまま — 対空戦ではこれが正しい。
+        missileCooldown: (spawningHunt ? HUNT_RUN_IN_TIME : 1.4) + slot * 0.9 + Math.random() * 0.4,
         deadTimer: 0,
         hitFlash: 0,
         smokeTimer: 0,
@@ -18468,6 +18540,66 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           failRadio: "INDEPENDENCE被弾多数——傾いています。総員退艦。……作戦失敗だ、HAMMER 1。",
           safeRadio: ""
         })
+      }),
+      // THE RAMP, and the third guard sortie: the first one whose charges are a
+      // FORMATION GOING SOMEWHERE rather than a hull holding station or a
+      // convoy leaving. Every number below is m-landing's own, because this is
+      // m-landing's landing group seen from the escort's side:
+      //
+      //   start x -500  -> exit x +1650, both at z -1000, i.e. the 2.15km the
+      //   enemy LSTs steam in BEACHHEAD, minus the 430m at which a 165m bow
+      //   touches the sand: 1720m at 9 m/s = 191s to the beach. m-landing's
+      //   par is 240 for exactly that clock; this one's 300 covers it with the
+      //   six airframes on top.
+      //
+      // The exit is a coordinate, not a mesh. BEACHHEAD's sand shelf belongs to
+      // that mission's `friendlyBase` and is drawn ON the water plane (see
+      // spawnFriendlyBase's `beach` branch) rather than standing on terrain, so
+      // there is nothing here to stand a hull on and nothing needed: the ships
+      // ground themselves where the ships in the mirror ground themselves.
+      r14: Object.freeze({
+        wingman: true,
+        ships: Object.freeze({
+          callsign: "RUSALKA",
+          hull: "landingShip",
+          count: 5,
+          vulnerable: true,
+          // ANTI_SHIP_MISSILE_PROFILE.damage is 520. 1560 = 520 x 3, i.e. it
+          // takes THREE rounds to sink one of these. That number is set by
+          // HUNT_TARGET_CROWD_LIMIT, which is 2: two hunters may work the same
+          // hull at once, so the opening salvo is 1040 and has to leave the
+          // ship afloat with 520 - one more round - still on it. Anything at
+          // or below 1040 means the first salvo sinks a ship outright, before
+          // the player can reach it, and the escort is decided by the enemy's
+          // dice rather than by the player. At 1560 the ship survives the
+          // salvo and dies to the NEXT wave if it is not defended, which is
+          // the condition an escort mission needs to exist at all.
+          //
+          // Deliberately unlike BEACHHEAD's enemy LST (196 HP = exactly two of
+          // the player's 98-point missiles). That hull is a target the player
+          // goes out to sink, so sinking it fast is the right feel; this hull
+          // is a charge the player has to keep alive. The roles are mirrored,
+          // so the durability is too.
+          hp: 1560,
+          start: Object.freeze({ x: -500, z: -1000 }),
+          exit: Object.freeze({ x: 1650, z: -1000 }),
+          spacing: 260
+        }),
+        guard: Object.freeze({
+          readout: "count",
+          label: "FLEET",
+          // m-escort's number, for m-escort's reason: the thing being escorted
+          // has to cost more than the aircraft that killed it, or the debrief
+          // reads as though the escort was optional.
+          lossPenalty: 1500,
+          hitPenalty: 0,
+          lossBanner: "LANDING SHIP LOST",
+          failBanner: "FLEET DESTROYED",
+          lossRadio: "RUSALKA被弾、沈みます！ ……SICKLE 1、残りの艦を守れ！",
+          failRadio: "艦団全滅……上陸は失敗だ。作戦中止——帰投せよ。",
+          safeRadio: "全艦、着岸。ランプが下りたぞ。……あとは砂浜の仕事だ、SICKLE 1。",
+          asmRadio: "対艦ミサイル発射を探知！ 艦団に向かっている——発射母機を落とせ！"
+        })
       })
     });
 
@@ -18518,9 +18650,52 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     });
 
+    // The escorted landing group: THE RAMP's five hulls, and the same 165m
+    // amphibious ship BEACHHEAD asks the player to sink. Nothing is repainted
+    // and nothing is re-modelled - r14 is m-landing seen from the deck those
+    // hulls were steaming toward, so it is the identical silhouette and the
+    // identical grey. Whose it is comes from the marker and the radar colour,
+    // which the friendly draw paths already own.
+    //
+    // Everything about how it steams, sinks and throws a wake is READ OFF the
+    // enemy spec rather than retyped, because a copied 78 that later drifted
+    // from the enemy's 78 would hang this hull's wake where the hull is not.
+    const FRIENDLY_SHIP_SPEC = Object.freeze({
+      cruiseSpeed: SHIP_TYPES.landingShip.cruiseSpeed,
+      turnRate: SHIP_TYPES.landingShip.turnRate,
+      sternOffset: SHIP_TYPES.landingShip.sternOffset,
+      bowOffset: SHIP_TYPES.landingShip.bowOffset,
+      sinkDepth: SHIP_TYPES.landingShip.sinkDepth,
+      smokeHeight: SHIP_TYPES.landingShip.smokeHeight,
+      crash: SHIP_TYPES.landingShip.crash,
+      // Line abreast per rank, matching spawnNavalWave's anchored spacing (250)
+      // to within a hull's width: this is the same formation m-landing lays the
+      // same five ships out in, because it is the same landing group.
+      spacing: 260,
+      // How close to the exit counts as ASHORE. 430 is m-landing's failRadius
+      // verbatim - the distance at which a 165m LST's BOW touches the sand
+      // rather than its centre - so a hull grounds on this side of the mirror
+      // at exactly the point it grounds on the other one.
+      arriveRadius: 430,
+      // Same 11s the enemy hulls take to go under, so a sinking ship reads the
+      // same whichever side of the war it belongs to.
+      sinkTime: SHIP_SINK_DURATION
+    });
+
     // How long a killed friendly stays on screen going down. Long enough to
     // read as an aircraft falling rather than a marker being deleted.
     const FRIENDLY_WRECK_TIME = 5.5;
+
+    // Is this friendly a hull on the water? "carrier" and "ship" are kept as
+    // separate kinds on purpose - one is a 330m capital ship that four sorties
+    // field as scenery, the other is a 165m landing ship out of a group of
+    // five, and they want different meshes, different draught and different
+    // deaths - but every branch that only asks "is the thing being shot at a
+    // SHIP" wants both. Those branches ask here instead of naming a kind, so
+    // "carrier" keeps meaning the carrier.
+    function isFriendlyShip(friendly) {
+      return friendly.kind === "carrier" || friendly.kind === "ship";
+    }
 
     function resetGuardState() {
       guardState.active = false;
@@ -18673,6 +18848,97 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return spawned;
     }
 
+    // The escorted landing group. One call spawns the whole formation, for the
+    // same reason the convoy does: line abreast with a shallow fore/aft
+    // stagger is a property of the GROUP and not of any hull in it.
+    //
+    // Every hull's formation offset is applied to its start AND to its exit, so
+    // all five steam the same distance down parallel courses and touch the sand
+    // together. Offsetting only the start would funnel five 165m hulls onto one
+    // arrival point and park them inside each other.
+    function spawnFriendlyShips(config) {
+      const count = Math.max(1, config.count || 5);
+      const spacing = config.spacing || FRIENDLY_SHIP_SPEC.spacing;
+      const hull = config.hull || "landingShip";
+      const hp = config.hp || 832;
+      // The run-in course, and the beam it is measured across.
+      const course = new THREE.Vector3(
+        config.exit.x - config.start.x, 0, config.exit.z - config.start.z
+      );
+      if (course.lengthSq() < 0.001) course.set(0, 0, -1);
+      course.normalize();
+      const across = new THREE.Vector3(-course.z, 0, course.x);
+      // atan2(-x, -z): pointing a -Z-nosed hull at a direction. Same convention
+      // as placeOnRoute and spawnNavalWave's anchored branch.
+      const heading = Math.atan2(-course.x, -course.z);
+      const spawned = [];
+      for (let i = 0; i < count; i += 1) {
+        // spawnNavalWave's anchored layout, beat for beat, so the group the
+        // player covers here is the same shape as the group they sink in
+        // BEACHHEAD: alternating beams, one rank further out per pair, with a
+        // little fore/aft stagger so it is a formation and not a rank.
+        const side = i === 0 ? 0 : (i % 2 === 1 ? -1 : 1);
+        const rank = Math.ceil(i / 2);
+        const beam = side * spacing * rank;
+        const stagger = i === 0 ? 0 : (side < 0 ? 150 : -170) * rank * 0.45;
+
+        const group = new THREE.Group();
+        // Not repainted - see FRIENDLY_SHIP_SPEC. The enemy livery IS this
+        // ship's livery, because it is this ship.
+        const model = createShipModel(hull, false);
+        group.add(model.group);
+        // No hitbox, exactly like the wingman and the convoy: nothing the
+        // PLAYER shoots can ever find a friendly.
+        scene.add(group);
+
+        group.position.set(
+          config.start.x + across.x * beam + course.x * stagger,
+          0,
+          config.start.z + across.z * beam + course.z * stagger
+        );
+        group.rotation.y = heading;
+        const exit = new THREE.Vector3(
+          config.exit.x + across.x * beam + course.x * stagger,
+          0,
+          config.exit.z + across.z * beam + course.z * stagger
+        );
+
+        const friendly = {
+          kind: "ship",
+          type: hull,
+          label: `${config.callsign || "RUSALKA"} ${i + 1}`,
+          alive: true,
+          group,
+          model,
+          radarSymbol: "ship",
+          vulnerable: config.vulnerable !== false,
+          maxHp: hp,
+          hp,
+          heading,
+          exit,
+          speed: FRIENDLY_SHIP_SPEC.cruiseSpeed,
+          seed: Math.random() * Math.PI * 2,
+          wakeTimer: Math.random() * 0.1,
+          hitFlash: 0,
+          damageSmokeTimer: 0,
+          // Set when the bow touches the sand. Still alive - that is the whole
+          // point of the flag - and, unlike every other thing that retires,
+          // still DRAWN: a beached ship is aground, not gone.
+          retired: false,
+          // Sinking state, mirroring the enemy hulls'. Unused until the day one
+          // of these is killed.
+          wreckTimer: 0,
+          sinkRoll: 0,
+          sinkPitch: 0,
+          sinkBoomTimer: 0,
+          smokeTimer: 0
+        };
+        friendlies.push(friendly);
+        spawned.push(friendly);
+      }
+      return spawned;
+    }
+
     // Called from spawnMissionGround, i.e. before the first wave, so the m03
     // player start is already moved by the time spawnNavalWave() reads the
     // player's position to lay the enemy fleet out.
@@ -18683,6 +18949,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // one up itself.
       if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
+      if (deployment.ships) spawnFriendlyShips(deployment.ships);
       if (deployment.transports) spawnFriendlyTransports(deployment.transports);
       if (deployment.wingman) spawnFriendlyWingman();
       // After the spawns, so the objective is counted off what is actually on
@@ -18759,22 +19026,38 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!friendly.alive) return;
       friendly.alive = false;
       friendly.hp = 0;
-      friendly.wreckTimer = friendly.kind === "transport" ? FRIENDLY_WRECK_TIME : 0;
-      const scale = friendly.kind === "carrier" ? 4.2 : 2.4;
+      // Three deaths, one per kind of hull. The transport flies down burning
+      // for 5.5s; a landing ship settles into the water over the same 11s the
+      // enemy hulls take; the carrier has none, because losing it ends the
+      // sortie on this frame and there is nothing left to watch.
+      friendly.wreckTimer = friendly.kind === "transport"
+        ? FRIENDLY_WRECK_TIME
+        : (friendly.kind === "ship" ? FRIENDLY_SHIP_SPEC.sinkTime : 0);
+      if (friendly.kind === "ship") {
+        friendly.sinkRoll = (Math.random() < 0.5 ? -1 : 1) * (0.3 + Math.random() * 0.22);
+        friendly.sinkPitch = (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.1);
+        friendly.sinkBoomTimer = 0;
+        friendly.smokeTimer = 0;
+      }
+      // Blast size by hull length: 330m carrier, 165m landing ship, 53m
+      // airlifter.
+      const scale = friendly.kind === "carrier" ? 4.2 : (friendly.kind === "ship" ? 3.2 : 2.4);
+      const spread = friendly.kind === "carrier" ? 220 : (friendly.kind === "ship" ? 150 : 40);
       createExplosion(friendly.group.position, 0xffb648, scale);
       for (let i = 0; i < 4; i += 1) {
         tmpV9.copy(friendly.group.position);
-        tmpV9.x += (Math.random() - 0.5) * (friendly.kind === "carrier" ? 220 : 40);
-        tmpV9.z += (Math.random() - 0.5) * (friendly.kind === "carrier" ? 220 : 40);
+        tmpV9.x += (Math.random() - 0.5) * spread;
+        tmpV9.z += (Math.random() - 0.5) * spread;
         tmpV9.y += (Math.random() - 0.5) * 20;
         createExplosion(tmpV9, 0xff8a3d, scale * 0.6);
       }
       playSfx("explosion", 1.0, 0.62);
       cameraShake = Math.min(1.9, cameraShake + 0.8);
-      // A wreck is not drawn: the hull is hidden immediately for a ship (the
-      // sortie ends on the same frame) and flown down as a burning airframe
-      // for a transport, which updateFriendlyWreck does.
-      if (friendly.kind !== "transport") friendly.group.visible = false;
+      // Anything with a wreck to play keeps its model; everything else stops
+      // being drawn on the frame it died. Same test as before for the carrier
+      // (no wreck, hidden) and the transport (a wreck, kept) - the landing
+      // ship is simply the second kind that has one.
+      if (friendly.wreckTimer <= 0) friendly.group.visible = false;
 
       if (!guardState.active) return;
       guardState.lost += 1;
@@ -18815,13 +19098,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       completeMission(false);
     }
 
-    // A transport that made it. Still alive - that is the whole point of the
-    // flag - but out of the area, so nothing can shoot at it and nothing draws
-    // it any more.
+    // A charge that made it. Still alive - that is the whole point of the flag
+    // - and out of the fight: nothing shoots at it, no hunting wave counts it,
+    // no round in the air keeps chasing it.
+    //
+    // A transport made it by leaving the area, so it stops being drawn. A
+    // landing ship made it by ARRIVING, and it has to still be there: the whole
+    // sortie was about putting those hulls on that sand, and sand with nothing
+    // on it is the picture of having failed.
     function retireFriendly(friendly) {
       if (friendly.retired) return;
       friendly.retired = true;
-      friendly.group.visible = false;
+      if (!isFriendlyShip(friendly)) friendly.group.visible = false;
       guardState.saved += 1;
       const config = guardState.config || {};
       const outstanding = guardedFriendlies().some(
@@ -18862,10 +19150,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (friendlies.length === 0) return;
       const time = performance.now() * 0.001;
       for (const friendly of friendlies) {
-        // A killed transport still has a few seconds of falling to do; every
-        // other dead or retired friendly is simply gone.
+        // A killed transport still has a few seconds of falling to do and a
+        // killed landing ship has eleven seconds of going under; every other
+        // dead friendly is simply gone. A retired one has stopped - the
+        // transport because it left, the ship because it is aground - so
+        // neither is steered any further.
         if (!friendly.alive) {
-          if (friendly.wreckTimer > 0) updateFriendlyWreck(friendly, dt);
+          if (friendly.wreckTimer > 0) {
+            if (friendly.kind === "ship") updateFriendlyShipWreck(friendly, dt);
+            else updateFriendlyWreck(friendly, dt);
+          }
           continue;
         }
         if (friendly.retired) continue;
@@ -18877,6 +19171,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
         if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
+        else if (friendly.kind === "ship") updateFriendlyShip(friendly, dt, time);
         else if (friendly.kind === "transport") updateFriendlyTransport(friendly, dt, time);
         if (friendly.vulnerable) updateFriendlyDamageState(friendly, dt);
       }
@@ -18891,7 +19186,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       friendly.damageSmokeTimer -= dt;
       if (friendly.damageSmokeTimer > 0) return;
       const burning = ratio < 0.25;
-      const ship = friendly.kind === "carrier";
+      const ship = isFriendlyShip(friendly);
       forwardOf(friendly.group, tmpV8);
       tmpV8.multiplyScalar(ship ? -40 : -14).add(friendly.group.position);
       if (ship) tmpV8.y += 26;
@@ -18931,6 +19226,126 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         createExplosion(friendly.group.position, 0xffb648, 2.0);
         friendly.group.visible = false;
       }
+    }
+
+    // A landing ship going down. The enemy hulls' sinking, function for
+    // function: it settles by the bow or the stern with a list on it, carries
+    // its own way off, burns and cooks off until the deck is under, and is
+    // gone at eleven seconds. Presentation only - the loss was booked the
+    // moment destroyFriendly ran.
+    function updateFriendlyShipWreck(friendly, dt) {
+      friendly.wreckTimer -= dt;
+      const t = THREE.MathUtils.clamp(1 - friendly.wreckTimer / FRIENDLY_SHIP_SPEC.sinkTime, 0, 1);
+      const settle = t * t;
+      friendly.speed = THREE.MathUtils.lerp(friendly.speed, 0, damping(0.2, dt));
+      friendly.group.rotation.set(
+        friendly.sinkPitch * settle,
+        friendly.heading,
+        friendly.sinkRoll * settle
+      );
+      forwardOf(friendly.group, tmpV4);
+      friendly.group.position.x += tmpV4.x * friendly.speed * dt;
+      friendly.group.position.z += tmpV4.z * friendly.speed * dt;
+      friendly.group.position.y = -settle * FRIENDLY_SHIP_SPEC.sinkDepth;
+
+      // Burn, pop and churn foam until the hull slips under.
+      if (friendly.group.position.y > -FRIENDLY_SHIP_SPEC.sinkDepth * 0.6) {
+        friendly.smokeTimer -= dt;
+        if (friendly.smokeTimer <= 0) {
+          tmpV8.copy(friendly.group.position)
+            .addScaledVector(tmpV4, (Math.random() - 0.5) * FRIENDLY_SHIP_SPEC.crash.halfLen * 1.3);
+          tmpV8.y = Math.max(2, friendly.group.position.y + FRIENDLY_SHIP_SPEC.smokeHeight);
+          tmpV2.set((Math.random() - 0.5) * 6, 7 + Math.random() * 6, (Math.random() - 0.5) * 6);
+          smokeParticlePool.spawn(tmpV8, tmpV2, 2.8 + Math.random() * 1.4, 0x15161a, -0.75, 1.9);
+          tmpV2.set((Math.random() - 0.5) * 10, 3 + Math.random() * 8, (Math.random() - 0.5) * 10);
+          sparkParticlePool.spawn(tmpV8, tmpV2, 0.3 + Math.random() * 0.25, 0xffa54e, 3, 0.36);
+          friendly.smokeTimer += 0.05;
+        }
+        friendly.sinkBoomTimer -= dt;
+        if (friendly.sinkBoomTimer <= 0) {
+          tmpV8.copy(friendly.group.position)
+            .addScaledVector(tmpV4, (Math.random() - 0.5) * FRIENDLY_SHIP_SPEC.crash.halfLen * 1.4);
+          tmpV8.y = friendly.group.position.y + FRIENDLY_SHIP_SPEC.smokeHeight * (0.4 + Math.random() * 0.8);
+          createImpactBurst(tmpV8, 0xffa54e, 1.1);
+          playSfx("explosion", 0.26, 1.2 + Math.random() * 0.35);
+          friendly.sinkBoomTimer += 1.2 + Math.random() * 1.5;
+        }
+      }
+      if (friendly.wreckTimer <= 0) {
+        friendly.wreckTimer = 0;
+        friendly.group.visible = false;
+      }
+    }
+
+    // The run-in. Nine metres a second at the sand, in formation, with no
+    // evasion and no way to be told to wait - the same hull, on the same
+    // course, at the same speed the player is asked to sink in BEACHHEAD. That
+    // it cannot save itself is the mission: every bit of the outcome belongs to
+    // the player.
+    function updateFriendlyShip(friendly, dt, time) {
+      tmpV4.copy(friendly.exit).sub(friendly.group.position);
+      tmpV4.y = 0;
+      const remaining = tmpV4.length();
+      if (remaining < FRIENDLY_SHIP_SPEC.arriveRadius) {
+        beachFriendlyShip(friendly);
+        return;
+      }
+      // atan2(-x, -z): pointing a -Z-nosed hull at a direction. The course is
+      // straight and was set at spawn, so this only ever trims out the drift
+      // the weave below puts on it.
+      tmpV4.multiplyScalar(1 / remaining);
+      const desiredHeading = Math.atan2(-tmpV4.x, -tmpV4.z);
+      let headingDelta = desiredHeading - friendly.heading;
+      while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
+      while (headingDelta < -Math.PI) headingDelta += Math.PI * 2;
+      friendly.heading += THREE.MathUtils.clamp(
+        headingDelta,
+        -FRIENDLY_SHIP_SPEC.turnRate * dt,
+        FRIENDLY_SHIP_SPEC.turnRate * dt
+      );
+      friendly.group.rotation.set(
+        Math.sin(time * 0.41 + friendly.seed) * 0.006,
+        friendly.heading + Math.sin(time * 0.23 + friendly.seed) * 0.015,
+        Math.sin(time * 0.57 + friendly.seed) * 0.01
+      );
+      forwardOf(friendly.group, tmpV4);
+      friendly.group.position.x += tmpV4.x * friendly.speed * dt;
+      friendly.group.position.z += tmpV4.z * friendly.speed * dt;
+      // Draught: the waterline, with the same half-metre breath on it the enemy
+      // hulls have. Copied from updateShip rather than approximated, because
+      // the player has watched these exact hulls sit in this exact water.
+      friendly.group.position.y = Math.sin(time * 0.5 + friendly.seed) * 0.35;
+
+      // Wake: stern foam plus a little bow spray, the same read every other
+      // hull afloat gives.
+      friendly.wakeTimer -= dt;
+      if (friendly.wakeTimer <= 0) {
+        tmpV6.copy(friendly.group.position).addScaledVector(tmpV4, -FRIENDLY_SHIP_SPEC.sternOffset);
+        tmpV6.y = 0.7;
+        tmpV6.x += (Math.random() - 0.5) * 7;
+        tmpV6.z += (Math.random() - 0.5) * 7;
+        tmpV5.copy(tmpV4).multiplyScalar(-4).setY(0.4);
+        smokeParticlePool.spawn(tmpV6, tmpV5, 2.1 + Math.random() * 0.8, 0xe4edf1, -0.03, 1.05);
+        tmpV6.copy(friendly.group.position).addScaledVector(tmpV4, FRIENDLY_SHIP_SPEC.bowOffset);
+        tmpV6.y = 0.7;
+        tmpV5.set((Math.random() - 0.5) * 5, 1.4, (Math.random() - 0.5) * 5);
+        smokeParticlePool.spawn(tmpV6, tmpV5, 0.75, 0xeef5f8, 0.15, 0.55);
+        friendly.wakeTimer += 0.1;
+      }
+    }
+
+    // Touchdown. The mirror of updateLandingThreat's `beached`, and the same
+    // picture from the other side: the hull grounds itself, drops its ramp and
+    // stops. retireFriendly books it as saved and takes it out of the fight -
+    // hunting waves stop counting it, rounds already chasing it fall out of the
+    // sky - and leaves the model exactly where it stopped.
+    function beachFriendlyShip(friendly) {
+      friendly.speed = 0;
+      // Square on the sand with the sea-bob taken out of it. A grounded hull
+      // does not roll, and it keeps pointing at the beach it drove at.
+      friendly.group.rotation.set(0, friendly.heading, 0);
+      friendly.group.position.y = 0;
+      retireFriendly(friendly);
     }
 
     // Straight line, fixed altitude, no reaction to anything. The transport
@@ -19519,21 +19934,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // entries and only the guard sorties field a hunting aircraft at all, so
     // this is a handful of distance checks on two missions and nothing
     // whatsoever on the other thirteen.
+    // 同じ標的に何機まで群がってよいか。nearest-first だけだと第1波の2機が
+    // 揃って手近な1隻に向かい、ASM 520 × 2 = 1040 が艦の 832hp を確実に抜く。
+    // 3 機目からは、他に生きた標的があるならそちらへ回す。
+    const HUNT_TARGET_CROWD_LIMIT = 2;
+    // その友軍を今狙っている hunt 機の数（自分は数えない）。huntRef はこのフレーム
+    // の更新途中なので、前フレームぶんが混ざる — 数の目安としてはそれで足り、
+    // 揺り戻しが起きないぶんむしろ安定する。
+    function huntersOn(friendly, self) {
+      let count = 0;
+      for (const other of enemies) {
+        if (other === self || !other.alive || !other.hunt) continue;
+        if (other.huntRef === friendly) count += 1;
+      }
+      return count;
+    }
     function huntTargetFor(enemy) {
       if (!enemy.hunt) return null;
       let best = null;
       let bestDistance = Infinity;
+      // 定員に達した標的しか残っていない場合の逃げ場。これがあるので「標的が
+      // 決まらない hunt 機」は生まれず、最後の1隻に全機が向かう形は保たれる。
+      let fallback = null;
+      let fallbackDistance = Infinity;
       for (const friendly of friendlies) {
         if (!friendly.alive || !friendly.vulnerable || friendly.retired) continue;
-        const isShip = friendly.kind === "carrier";
+        const isShip = isFriendlyShip(friendly);
         if (enemy.hunt === "ship" ? !isShip : isShip) continue;
         const distance = enemy.group.position.distanceToSquared(friendly.group.position);
+        if (distance < fallbackDistance) {
+          fallbackDistance = distance;
+          fallback = friendly;
+        }
+        if (huntersOn(friendly, enemy) >= HUNT_TARGET_CROWD_LIMIT) continue;
         if (distance < bestDistance) {
           bestDistance = distance;
           best = friendly;
         }
       }
-      return best;
+      return best || fallback;
     }
 
     function updateEnemies(dt) {
@@ -19718,7 +20157,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // it just goes back to the convoy afterwards.
           const chargePosition = enemy.huntRef.group.position;
           targetPoint = enemy.targetPoint.copy(chargePosition);
-          if (enemy.huntRef.kind === "carrier") {
+          if (isFriendlyShip(enemy.huntRef)) {
             // A ship is a point on the sea. Run in at it from launch altitude
             // rather than diving at the deck, so the attacker is where its own
             // missile wants to be released from and stays visible against the
@@ -22164,7 +22603,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // 330m carrier anchored at the waterline would hang its diamond in
         // the sea alongside the deck.
         tmpV8.copy(friendly.group.position);
-        if (friendly.kind === "carrier") tmpV8.y += 40;
+        if (isFriendlyShip(friendly)) tmpV8.y += 40;
         tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
         tmpV7.copy(tmpV8).project(camera);
         const onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.0);
@@ -22601,6 +23040,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // "the wingman is still invulnerable" is readable rather than argued.
         vulnerable: Boolean(friendly.vulnerable),
         retired: Boolean(friendly.retired),
+        // Whether the hull is still DRAWN, which for a landing ship is not the
+        // same question as whether it is still in the fight: a beached one is
+        // retired and visible, a sunk one is dead and visible until it is under.
+        visible: friendly.group.visible,
         hp: friendly.vulnerable ? Math.max(0, Math.round(friendly.hp)) : null,
         maxHp: friendly.vulnerable ? friendly.maxHp : null,
         x: Number(friendly.group.position.x.toFixed(2)),
@@ -23016,8 +23459,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ctx.fillStyle = FRIENDLY_RADAR_COLOR;
         ctx.shadowColor = FRIENDLY_RADAR_COLOR;
         ctx.shadowBlur = 6;
-        if (friendly.kind === "carrier") {
-          // Same hull bar the enemy carrier gets, so the two read as the same
+        if (isFriendlyShip(friendly)) {
+          // Same hull bar the enemy ships get, so the two read as the same
           // class of thing at the same size - only the colour differs.
           ctx.fillRect(-2.1 * 1.35, -4.6 * 1.35, 4.2 * 1.35, 9.2 * 1.35);
         } else {
