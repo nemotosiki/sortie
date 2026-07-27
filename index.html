@@ -523,26 +523,21 @@
       color: var(--hud-dim);
     }
 
-    /* Only the flight path marker and the range caption live here now. The
-       ring moved out to #gunsight, which is positioned in screen space rather
-       than pinned to the centre. */
-    #reticleWrap {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 180px;
-      height: 180px;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-    }
+    /* The aircraft symbol. Positioned from JS in SCREEN pixels onto where the
+       nose actually points, so left/top are overwritten every frame and the
+       transform only has to centre the glyph on that point.
 
-    /* The aircraft symbol. Positioned from JS onto where the nose actually
-       points, so left/top are overwritten every frame - the transform only has
-       to centre the glyph on that point. It used to be pinned to the middle of
-       the screen, which was a lie: the chase camera looks 5.16 degrees below
-       the nose by construction, so the symbol that means "the nose points
-       here" was pointing somewhere else, by more than the gun's own 4.5
-       degree gimbal gate. */
+       It has to be a direct child of the HUD for those pixels to mean screen
+       pixels. It used to live in a 180x180 wrapper centred on the screen,
+       which silently offset everything written here by that box's corner.
+
+       Pinned to 50%/50% in CSS before that, which was a different lie: the
+       chase camera looked 5.16 degrees below the nose by construction, so the
+       symbol that means "the nose points here" pointed somewhere else - by
+       more than the gun's own 4.5 degree gimbal gate. The camera now aims
+       parallel to the nose, so this lands dead centre while the player is
+       flying, and follows the aircraft when the target view or the kill cam
+       takes the camera somewhere else. */
     #boresight {
       position: absolute;
       left: 50%;
@@ -550,6 +545,7 @@
       transform: translate(-50%, -50%);
       color: var(--hud);
       filter: drop-shadow(0 0 3px rgba(40, 255, 90, 0.5));
+      pointer-events: none;
     }
 
     #boresight.hidden {
@@ -2259,26 +2255,29 @@
       </div>
     </div>
 
-    <div id="reticleWrap">
-      <!--
-        The flight path marker: a little aeroplane seen from behind, fixed at
-        the centre, saying where the nose is pointed. This is all that is here
-        when nothing is in gun range - the ring is not a permanent fixture of
-        the HUD, it is an instrument that appears when there is something to
-        aim at.
-      -->
-      <!-- Wings out to either side of a small centre circle, with a fin above:
-           an aeroplane seen from behind, which is what the series draws. The
-           first attempt joined all the strokes at one point and read as a
-           star rather than as an aircraft. -->
-      <svg id="boresight" viewBox="0 0 44 22" width="44" height="22" aria-hidden="true">
-        <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-          <circle cx="22" cy="13" r="3.2" />
-          <path d="M4 13 L18.8 13 M25.2 13 L40 13" />
-          <path d="M22 9.8 L22 3.5" />
-        </g>
-      </svg>
-    </div>
+    <!--
+      The aircraft symbol: a little aeroplane seen from behind, saying where
+      the nose is pointed. This is all that is at the centre when nothing is in
+      gun range - the ring is not a permanent fixture of the HUD, it is an
+      instrument that appears when there is something to aim at.
+
+      It sits at the HUD's top level, NOT inside #reticleWrap. That wrapper is
+      a 180x180 box centred on the screen, so the screen-space pixels JS writes
+      here would have been measured from ITS corner - which put the symbol off
+      near the right-hand edge while every probe reading style.left agreed it
+      said 640. Same reason #gunsight lives out here.
+    -->
+    <!-- Wings out to either side of a small centre circle, with a fin above:
+         an aeroplane seen from behind, which is what the series draws. The
+         first attempt joined all the strokes at one point and read as a
+         star rather than as an aircraft. -->
+    <svg id="boresight" viewBox="0 0 44 22" width="44" height="22" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="22" cy="13" r="3.2" />
+        <path d="M4 13 L18.8 13 M25.2 13 L40 13" />
+        <path d="M22 9.8 L22 3.5" />
+      </g>
+    </svg>
 
     <div id="gunsight" class="hidden">
       <!--
@@ -2656,6 +2655,14 @@
     // the gun should be the wrong tool. Linear from 2.2x at point blank to 1.0x
     // at maximum range, so closing the distance is the thing that makes the
     // gun work rather than any single threshold the player has to learn.
+    // How far off the nose a contact may sit and still raise a gun ring. Wider
+    // than the 4.5 degree gimbal gate on purpose: the ring has to be visible
+    // while the player is still pulling the nose onto the target, or it only
+    // ever appears once the shot is already made. Roughly a third of the way
+    // out from the middle of the screen at the default field of view.
+    const GUNSIGHT_CONE_DEG = 20;
+    const GUNSIGHT_CONE_COS = Math.cos(THREE.MathUtils.degToRad(GUNSIGHT_CONE_DEG));
+
     const GUN_CLOSE_FORGIVENESS = 2.2;
     function gunAimForgiveness(range) {
       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
@@ -14289,7 +14296,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // two are never the same place and the gap grows while manoeuvring.
         noseScreenProbe: () => {
           forwardOf(player, tmpV1);
-          gunMuzzleOrigin(tmpV2).addScaledVector(tmpV1, BORESIGHT_DISTANCE);
+          // Same origin updateBoresight uses. Measured from the muzzle instead
+          // this carried the muzzle's parallax and disagreed with the drawn
+          // symbol by a few pixels, which reads as the symbol being wrong.
+          tmpV2.copy(camera.position).addScaledVector(tmpV1, BORESIGHT_DISTANCE);
           tmpV3.copy(tmpV2).project(camera);
           const x = (tmpV3.x * 0.5 + 0.5) * window.innerWidth;
           const y = (-tmpV3.y * 0.5 + 0.5) * window.innerHeight;
@@ -14307,11 +14317,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Where the symbol actually got drawn. Asked separately from
         // noseScreenProbe so a test can confirm the drawing follows the
         // aiming rather than assuming it does.
-        boresightProbe: () => ({
-          x: parseFloat(ui.boresight.style.left) || 0,
-          y: parseFloat(ui.boresight.style.top) || 0,
-          visible: !ui.boresight.classList.contains("hidden")
-        }),
+        // Read off the LAID-OUT box, not off style.left. The two differ the
+        // moment an ancestor introduces a coordinate system of its own, and
+        // when that happened the symbol was drawn near the right-hand edge
+        // while every reading of style.left said 640 - a probe agreeing with
+        // the code that wrote it, and with nothing on screen.
+        boresightProbe: () => {
+          const box = ui.boresight.getBoundingClientRect();
+          return {
+            x: box.left + box.width * 0.5,
+            y: box.top + box.height * 0.5,
+            visible: !ui.boresight.classList.contains("hidden"),
+            // Reported so a test can tell a real aiming error from the camera
+            // shake of taking a hit, which deliberately moves the sightline.
+            shake: cameraShake
+          };
+        },
         // How much wider the hit test is at a given range. "Closing makes the
         // gun work" is a claim about this curve, and the curve can be asked
         // rather than inferred from where bursts happen to land.
@@ -23818,9 +23839,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         desiredPosition.z += (Math.random() - 0.5) * cameraShake * 5.2;
       }
 
-      const desiredLook = tmpV5.copy(player.position)
-        .addScaledVector(tmpV1, profile.look)
-        .addScaledVector(tmpV3, profile.lookHeight);
+      // The camera trails the aircraft in POSITION - that lag is where the
+      // sense of speed comes from - but it must not trail it in AIM. Where it
+      // looks is taken from where it actually ended up, parallel to the nose,
+      // so the nose projects to the middle of the screen at every attitude.
+      //
+      // This used to look at a point 3.2 m above the nose line from 13.5 m
+      // above the aircraft, which tilted the sightline 5.16 degrees BELOW the
+      // nose before any smoothing, and the follow lag added another 1-2 in a
+      // turn. Measured, the nose sat 5.0 degrees off centre flying straight
+      // and 7.4 in a hard turn - wider than the gun's own 4.5 degree gimbal
+      // gate, so putting the middle of the screen on a contact was not the
+      // same as pointing the aircraft at it.
+      camera.position.lerp(desiredPosition, damping(0.0017, dt));
+
+      const freeLook = focusTarget || killCam.active;
+      const desiredLook = tmpV5.copy(camera.position).addScaledVector(tmpV1, profile.look);
       if (focusTarget) {
         desiredLook.copy(focusTarget.group.position).addScaledVector(WORLD_UP, 1.8);
       }
@@ -23831,18 +23865,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         desiredLook.z += (Math.random() - 0.5) * cameraShake * 2.8;
       }
 
-      camera.position.lerp(desiredPosition, damping(0.0017, dt));
-      cameraLook.lerp(
-        desiredLook,
-        damping((focusTarget || killCam.active) ? 0.00008 : 0.0005, dt)
-      );
+      // Smoothed only when the camera has been handed to something else to
+      // watch. Under the player's own control the aim is rigid: any easing
+      // here is an aiming error, because the gun fires along the nose while
+      // the HUD is drawn through the camera.
+      if (freeLook) cameraLook.lerp(desiredLook, damping(0.00008, dt));
+      else cameraLook.copy(desiredLook);
+      // The roll follow keeps its lag. It rotates the view about the
+      // sightline, so it changes how level the horizon looks without moving
+      // where the nose lands on screen.
       cameraUp.lerp(tmpV3, damping(0.003, dt)).normalize();
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       tmpQ1.setFromRotationMatrix(tmpM1);
-      camera.quaternion.slerp(
-        tmpQ1,
-        damping((focusTarget || killCam.active) ? 0.00012 : 0.0007, dt)
-      );
+      if (freeLook) camera.quaternion.slerp(tmpQ1, damping(0.00012, dt));
+      else camera.quaternion.copy(tmpQ1);
       camera.quaternion.normalize();
 
       if (boostActive && gameState === STATE_PLAYING) {
@@ -23869,9 +23905,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       camera.position.copy(player.position)
         .addScaledVector(tmpV1, -profile.back)
         .addScaledVector(cameraUp, profile.height);
-      cameraLook.copy(player.position)
-        .addScaledVector(tmpV1, profile.look)
-        .addScaledVector(cameraUp, profile.lookHeight);
+      // Parallel to the nose, exactly as updateCamera does it - a snap that
+      // used the old tilted sightline would put the aircraft symbol 5 degrees
+      // off for the frame after every teleport and mission start.
+      cameraLook.copy(camera.position).addScaledVector(tmpV1, profile.look);
       tmpM1.lookAt(camera.position, cameraLook, cameraUp);
       camera.quaternion.setFromRotationMatrix(tmpM1);
       world.skyGroup.position.copy(camera.position);
@@ -24491,14 +24528,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // now what it was always meant to be: a camera that trails its aircraft,
     // rather than an aiming error.
     //
-    // Far enough out that the parallax between the muzzle and the camera has
-    // gone (0.25 degrees at this range), so the symbol reads as a direction.
-    const BORESIGHT_DISTANCE = 3000;
+    // Measured FROM THE CAMERA rather than from the muzzle, because this
+    // symbol means a DIRECTION - "the nose points this way" - not a place in
+    // the world. Taken from the muzzle it carried the muzzle's parallax and
+    // sat a pixel or two below centre, and it had to be pushed out past the
+    // far plane to shrink that, at which point it clipped and vanished
+    // entirely. From the camera the distance stops mattering at all.
+    //
+    // Projected rather than pinned to the middle in CSS: the camera aims
+    // parallel to the nose while the player is flying, so this IS the middle,
+    // but when the camera is handed to the target view or the kill cam it
+    // stops pointing at the nose and the symbol has to follow the aircraft
+    // rather than the frame.
+    const BORESIGHT_DISTANCE = 1000;
     function updateBoresight() {
       // tmpV6-tmpV9 are shared with updateGunsight and the marker pass; this
       // runs before both and is finished with them by the time they start.
       forwardOf(player, tmpV9);
-      gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
+      tmpV8.copy(camera.position).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
       tmpV7.copy(tmpV8).project(camera);
       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
       // Hidden rather than clamped to the edge: a symbol stuck against the
@@ -24534,11 +24581,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tmpV8.copy(enemy.group.position).sub(player.position);
         const range = tmpV8.length();
         if (range > GUN_RANGE || range >= bestRange) continue;
-        // Ahead of the nose only. A contact that has slid past is not something
-        // the gun can be aimed at, and a solution computed for one lands wildly
-        // off to the side - at a few dozen metres abeam it threw the ring
-        // hundreds of pixels across the screen.
-        if (tmpV8.dot(tmpV9) <= 0) continue;
+        // Being in range is not enough - the gun fires along the nose, so a
+        // contact well off the boresight cannot be hit however close it is.
+        // Anything outside the cone gets no ring, which is the honest answer:
+        // there is no shot to aim. Merely testing "ahead of the nose" let a
+        // contact almost abeam raise a ring the gun could never reach, and
+        // the solution for one landed hundreds of pixels off to the side.
+        if (tmpV8.dot(tmpV9) <= range * GUNSIGHT_CONE_COS) continue;
         best = enemy;
         bestRange = range;
       }
