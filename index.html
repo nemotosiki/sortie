@@ -3237,7 +3237,10 @@
         maxSpeed: 520,
         life: 9.5,
         multi: 6,
-        multiLockTime: 0.45,
+        // 0.22 は 4AAM/8AAM/4AGM と同じ刻み。ここだけ 0.45 のままだと 6 目標に
+        // 2.7 秒かかり、その間ずっと 6 機をコーン内に保持し続けねばならない -
+        // 揃わないまま撃つ launcher は multi の意味が無い。
+        multiLockTime: 0.22,
         tubes: 6,
         reload: 10,
         lockRange: null,
