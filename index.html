@@ -6483,7 +6483,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // away and cannot be out-turned into, that lives below the altitude a jet
     // is comfortable at, and whose threat is a cone in front of its nose. The
     // answer is a slow gun pass, not a turning fight.
-    const HELI_TYPES = Object.freeze({
+    // Not frozen here, unlike every other roster table's first draft: this one
+    // is sealed by finalizeRegistries() along with the rest, so a payload can
+    // register a gunship the same way it registers a ground unit. Freezing at
+    // the declaration is what kept ctx.addHeliType from being writable at all.
+    const HELI_TYPES = {
       hind: Object.freeze({
         key: "hind",
         heli: true,
@@ -6536,7 +6540,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tracerColor: 0xffb04a,
         explosionColor: 0xffa348
       })
-    });
+    };
 
     // Terrain under a helicopter is sampled on a clock, not per frame:
     // surfaceHeightAt raycasts every mountain in range and calls
@@ -9469,6 +9473,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ENEMY_MISSILE_PROFILES: requiredKeysOf(ENEMY_MISSILE_PROFILES),
       SHIP_TYPES: requiredKeysOf(SHIP_TYPES),
       GROUND_TYPES: requiredKeysOf(GROUND_TYPES),
+      // Derived from a table of one, so every field hind carries is mandatory.
+      // That is the correct strictness here rather than an accident of the
+      // sample size: a gunship that omits hoverBand or clearance flies through
+      // the ground, and there is no sensible default to fall back on.
+      HELI_TYPES: requiredKeysOf(HELI_TYPES),
       WORLD_PRESETS: requiredKeysOf(WORLD_PRESETS)
     };
     // A mission is an array element, not a keyed entry, so its required set is
@@ -9535,6 +9544,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       addGroundType(id, def) {
         return registryAdd(GROUND_TYPES, "GROUND_TYPES", id, def, PAYLOAD_REQUIRED.GROUND_TYPES);
       },
+      // Gunships are looked up by key straight out of HELI_TYPES at spawn time
+      // (spawnMissionWave routes a wave entry to the helicopter path when the
+      // key is in this table), so registering one is all it takes to be able
+      // to field it from a mission's sequence.
+      addHeliType(id, def) {
+        return registryAdd(HELI_TYPES, "HELI_TYPES", id, def, PAYLOAD_REQUIRED.HELI_TYPES);
+      },
       addWorldPreset(key, def) {
         return registryAdd(WORLD_PRESETS, "WORLD_PRESETS", key, def, PAYLOAD_REQUIRED.WORLD_PRESETS);
       },
@@ -9542,8 +9558,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // its starting point rather than restate 40 fields.
       tables: {
         ACE_PROFILES, AIRCRAFT_TYPES, AIRCRAFT_ORDER, ENEMY_AI_PROFILES,
-        ENEMY_MISSILE_PROFILES, SHIP_TYPES, GROUND_TYPES, WORLD_PRESETS, MISSIONS,
-        ENEMY_ROLES, SKILL_TIERS
+        ENEMY_MISSILE_PROFILES, SHIP_TYPES, GROUND_TYPES, HELI_TYPES, WORLD_PRESETS,
+        MISSIONS, ENEMY_ROLES, SKILL_TIERS
       }
     };
 
@@ -9585,6 +9601,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(ENEMY_MISSILE_PROFILES);
       Object.freeze(SHIP_TYPES);
       Object.freeze(GROUND_TYPES);
+      Object.freeze(HELI_TYPES);
       Object.freeze(WORLD_PRESETS);
       Object.freeze(MISSIONS);
       Object.freeze(payloadContext);
@@ -9618,6 +9635,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ENEMY_TYPES: shapeOf(ENEMY_TYPES),
         SHIP_TYPES: shapeOf(SHIP_TYPES),
         GROUND_TYPES: shapeOf(GROUND_TYPES),
+        HELI_TYPES: shapeOf(HELI_TYPES),
         WORLD_PRESETS: shapeOf(WORLD_PRESETS),
         AIRCRAFT_ORDER: [...AIRCRAFT_ORDER],
         MISSIONS: Object.fromEntries(MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)]))
@@ -13387,6 +13405,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           verticalAmplitude: Number(enemy.spec.verticalAmplitude.toFixed(2)),
           mode: enemy.mode,
           breaking: enemy.mode === "break"
+        })),
+        // Gunships, which roleProbe and airframeProbe both exclude on purpose -
+        // every field those two report is an ENEMY_AI_PROFILES number and a
+        // helicopter's spec has none of them. That left no way at all to assert
+        // on a helicopter from outside, which is why registering a new one
+        // could not be verified beyond "the table has the key now".
+        heliProbe: () => enemies.filter((enemy) => enemy.alive && enemy.heli).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          label: enemy.label,
+          hp: enemy.hp,
+          maxHp: enemy.maxHp,
+          tableHp: HELI_TYPES[enemy.type] ? HELI_TYPES[enemy.type].hp : null,
+          speed: Number(enemy.speed.toFixed(1)),
+          // Altitude over the terrain under it, not over sea level: the whole
+          // helicopter model is a claim about holding a band above the ground.
+          y: Number(enemy.group.position.y.toFixed(1)),
+          agl: Number((enemy.group.position.y - surfaceHeightAt(enemy.group.position.x, enemy.group.position.z)).toFixed(1)),
+          mode: enemy.mode
         })),
         // Spawns an arbitrary air wave mid-sortie. The roster is much larger
         // than any one mission fields, so a gate that has to see a specific
