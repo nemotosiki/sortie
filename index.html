@@ -9810,6 +9810,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // write into has been initialised. See ctx.deployFriendlies.
     const pendingFriendlyDeployments = [];
 
+    // World decorators: extra scenery a payload builds ON TOP of an existing
+    // map, in registration order. `addWorldPreset` can only add a WHOLE new map,
+    // which is the wrong shape for "put roads and hangars on the desert we
+    // already have" - so this is the second entry point, and the only one that
+    // reaches inside createWorld(). See ctx.addWorldDecorator.
+    const WORLD_DECORATORS = [];
+
     // Handed to every payload's default export. Deliberately the only surface a
     // payload gets - it cannot reach the tables directly, so every addition goes
     // through the duplicate and schema checks above.
@@ -9878,6 +9885,50 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       addWorldPreset(key, def) {
         return registryAdd(WORLD_PRESETS, "WORLD_PRESETS", key, def, PAYLOAD_REQUIRED.WORLD_PRESETS);
+      },
+      // Scenery added to maps that already exist - roads, runways, bridges,
+      // building clusters, dock cranes. `build(env)` runs at the tail of
+      // createWorld() for every listed world, and everything it makes has to go
+      // through env's keep*/addRoot helpers.
+      //
+      // Deliberately NOT given `scene` or the resource arrays themselves. A
+      // decorator that could scene.add() directly would leak a whole world's
+      // worth of meshes on the next map swap, because disposeWorld only frees
+      // what is in those arrays - and it would leak silently. Routing every
+      // allocation through the same helpers createWorld uses on itself means a
+      // decorator cannot own a dispose() to forget to write. That is why there
+      // is no per-decorator teardown hook: there is nothing for it to do.
+      //
+      // Nor is there any way in to `world.mountains`. That list IS the terrain
+      // collision model - surfaceHeightAt/surfaceTopAt raycast it, and ground
+      // units, helicopter altitude and bomb impacts all read those. Decorations
+      // are visual only, by construction, so none of those contracts can move.
+      addWorldDecorator(id, def) {
+        if (typeof id !== "string" || !id) {
+          throw new Error("[payload] addWorldDecorator: id must be a non-empty string");
+        }
+        if (WORLD_DECORATORS.some((entry) => entry.id === id)) {
+          throw new Error(`[payload] addWorldDecorator: duplicate id "${id}" - registration is add-only`);
+        }
+        if (!def || typeof def !== "object") {
+          throw new Error(`[payload] addWorldDecorator("${id}"): definition must be an object`);
+        }
+        if (typeof def.build !== "function") {
+          throw new Error(`[payload] addWorldDecorator("${id}"): build must be a function`);
+        }
+        if (!Array.isArray(def.worlds) || !def.worlds.length) {
+          throw new Error(`[payload] addWorldDecorator("${id}"): worlds must be a non-empty array of preset keys`);
+        }
+        // Checked at registration rather than at build time, because a typo in a
+        // preset key would otherwise just mean the decoration never appears on a
+        // map nobody looked at yet.
+        const unknown = def.worlds.filter((key) => !WORLD_PRESETS[key]);
+        if (unknown.length) {
+          throw new Error(`[payload] addWorldDecorator("${id}"): unknown world preset key(s) ${unknown.join(", ")}`);
+        }
+        const entry = Object.freeze({ id, worlds: Object.freeze([...def.worlds]), build: def.build });
+        WORLD_DECORATORS.push(entry);
+        return entry;
       },
       // Friendlies a mission fields: a wingman, an airbase, a carrier, ships to
       // guard. Queued rather than written, because FRIENDLY_DEPLOYMENTS is
@@ -9958,6 +10009,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(GROUND_TYPES);
       Object.freeze(HELI_TYPES);
       Object.freeze(WORLD_PRESETS);
+      Object.freeze(WORLD_DECORATORS);
       Object.freeze(MISSIONS);
       Object.freeze(payloadContext);
     }
@@ -9993,6 +10045,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         HELI_TYPES: shapeOf(HELI_TYPES),
         WORLD_PRESETS: shapeOf(WORLD_PRESETS),
         AIRCRAFT_ORDER: [...AIRCRAFT_ORDER],
+        // Not a keyed table: an ordered list, whose interesting content is which
+        // maps each decorator claims. Recorded as id -> ["world:<key>", ...] so
+        // the gate's key-path diff reports a decorator that stopped being
+        // applied to a map exactly the way it reports a lost field.
+        WORLD_DECORATORS: Object.fromEntries(
+          WORLD_DECORATORS.map((entry) => [entry.id, [...entry.worlds].sort().map((key) => `world:${key}`)])
+        ),
         MISSIONS: Object.fromEntries(MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)]))
       };
     }
@@ -15801,6 +15860,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
           };
         },
+        __strikeProbe: () => enemies.filter((e) => e.alive && e.strikeTarget).map((e) => ({
+          id: e.id, type: e.type, tgt: e.tgt !== false, fired: Boolean(e.bombRunFired),
+          arenaRange: Math.hypot(e.group.position.x - battleArea.centerX, e.group.position.z - battleArea.centerZ),
+          stX: e.strikeTarget.x, stZ: e.strikeTarget.z,
+          stArena: Math.hypot(e.strikeTarget.x - battleArea.centerX, e.strikeTarget.z - battleArea.centerZ)
+        })),
+        __forceBombRelease: () => {
+          if (!friendlyBase) return 'base無し';
+          const hit = [];
+          for (const e of enemies) {
+            if (!e.alive || !e.strikeTarget || e.bombRunFired) continue;
+            e.group.position.set(friendlyBase.x, friendlyBase.y + 400, friendlyBase.z + 100);
+            hit.push(e.id);
+          }
+          return hit;
+        },
+        __routeExtentProbe: () => {
+          const R = battleArea.radius, cx = battleArea.centerX, cz = battleArea.centerZ;
+          const out = [];
+          for (const e of enemies) {
+            if (!e.alive) continue;
+            let maxOver = Math.hypot(e.group.position.x - cx, e.group.position.z - cz) - R;
+            if (e.route) {
+              for (const p of e.route) {
+                maxOver = Math.max(maxOver, Math.hypot(p.x - cx, p.z - cz) - R);
+              }
+            }
+            out.push({
+              id: e.id, type: e.type, tgt: e.tgt !== false,
+              kind: e.route ? 'route' : (e.surface ? 'ship' : (e.ground ? 'ground' : (e.heli ? 'heli' : 'air'))),
+              over: maxOver
+            });
+          }
+          return { R, cx, cz, list: out };
+        },
+        __spawnPointProbe: (px, pz, waveIndex, radius) => {
+          const keep = player.position.clone();
+          player.position.x = px; player.position.z = pz;
+          const anchor = waveAnchorFor({}, new THREE.Vector3());
+          const out = resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
+          player.position.copy(keep);
+          return {
+            anchorX: anchor.x, anchorZ: anchor.z,
+            x: out.x, z: out.z,
+            arenaRange: Math.hypot(out.x - battleArea.centerX, out.z - battleArea.centerZ),
+            radius: battleArea.radius,
+            centerX: battleArea.centerX, centerZ: battleArea.centerZ
+          };
+        },
         battleAreaProbe: () => {
           // Every live contact measured against the arena, in one call. The
           // distances have to be worked out here: airframeProbe deliberately
@@ -16245,6 +16353,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return true;
         },
         worldPresets: () => Object.keys(WORLD_PRESETS),
+        // Registered decorators, and how much of the live world record each one
+        // is currently accounted for in. `roots`/`geometries` are the world's
+        // totals, not the decorator's share - what they are for is the leak
+        // check: swap maps and they must come back to the undecorated numbers.
+        worldDecorators: () => ({
+          registered: WORLD_DECORATORS.map((entry) => ({ id: entry.id, worlds: [...entry.worlds] })),
+          activeOn: world.preset,
+          applies: WORLD_DECORATORS.filter((entry) => entry.worlds.includes(world.preset)).map((entry) => entry.id),
+          roots: world.roots.length,
+          geometries: world.geometries.length,
+          materials: world.materials.length,
+          textures: world.textures.length
+        }),
         worldMountains: () => world.mountains.map((mountain) => ({
           x: mountain.x, z: mountain.z, r: mountain.r, h: mountain.h
         })),
@@ -16615,6 +16736,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const geometry = createSharedGeometry();
     const shared = createSharedMaterials();
     let world = createWorld(DEFAULT_WORLD_PRESET);
+    // The boot map gets decorated too, and only on the line AFTER the
+    // declaration: `world` is a `let`, so calling this from the initializer
+    // expression would hit its temporal dead zone the moment a decorator
+    // sampled the ground. Same order as applyWorldPreset - build, assign,
+    // decorate.
+    applyWorldDecorators(world);
     // Debug override (debug.forceWorld) wins over the mission's own map.
     let worldOverride = null;
     const sparkParticlePool = createParticlePool(MAX_SPARK_PARTICLES, {
@@ -33054,6 +33181,56 @@ varying vec2 vOceanUv;`
       };
     }
 
+    // Runs every registered decorator against a freshly built world.
+    //
+    // NOT called from inside createWorld, and the ordering is the whole reason
+    // this is a separate function. `surfaceHeightAt` reads the module-level
+    // `world`, which during createWorld still points at the map being replaced -
+    // the same trap the night-city block documents at its plateau lookup. So the
+    // contract is: assign `world` first, decorate second.
+    //
+    //   disposeWorld(world);
+    //   world = createWorld(key);
+    //   applyWorldDecorators(world);
+    //
+    // Every call site that builds a world does exactly that. A decorator gets
+    // the tracking helpers and nothing else, so its meshes are owned by the
+    // world record and go away with it on the next swap.
+    function applyWorldDecorators(target) {
+      if (!target || !WORLD_DECORATORS.length) return 0;
+      const env = {
+        THREE,
+        worldKey: target.preset,
+        preset: WORLD_PRESETS[target.preset],
+        addRoot: (node) => { scene.add(node); target.roots.push(node); return node; },
+        keepGeometry: (item) => { target.geometries.push(item); return item; },
+        keepMaterial: (item) => { target.materials.push(item); return item; },
+        keepTexture: (item, label = "decorator", bytes = 0) => {
+          target.textures.push(item);
+          if (target.textureStats) target.textureStats.push({ label, bytes });
+          target.textureBytes = (target.textureBytes || 0) + bytes;
+          return item;
+        },
+        // Safe here in a way it is not inside createWorld: `world` is already
+        // the map being decorated by the time this runs.
+        surfaceHeightAt: (x, z) => surfaceHeightAt(x, z)
+      };
+      let applied = 0;
+      for (const entry of WORLD_DECORATORS) {
+        if (!entry.worlds.includes(target.preset)) continue;
+        // One bad decorator must not cost the player the map. Its partial
+        // output is still tracked in the world record, so it is still released
+        // on the next swap - failing loudly and carrying on is safe.
+        try {
+          entry.build(env);
+          applied += 1;
+        } catch (error) {
+          console.error(`[payload] world decorator "${entry.id}" failed on "${target.preset}":`, error);
+        }
+      }
+      return applied;
+    }
+
     // Detaches a world from the scene and releases every GPU resource it owns.
     // renderer.info.memory must return to its baseline after this.
     function disposeWorld(target) {
@@ -33079,6 +33256,9 @@ varying vec2 vOceanUv;`
       if (world && world.preset === key) return false;
       disposeWorld(world);
       world = createWorld(key);
+      // After the assignment, never before: decorators sample the ground, and
+      // the sampler reads this global.
+      applyWorldDecorators(world);
       // The new preset brings a fresh texture at offset 0; carrying the old
       // drift over would jump the wave pattern on the swap frame.
       oceanDriftU = 0;

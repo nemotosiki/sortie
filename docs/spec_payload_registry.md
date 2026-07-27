@@ -176,6 +176,130 @@ Phase 0+1 で Opus 1セッション（実装 + registry_gate の初回スナッ�
    数値になり、実際に出撃して ACCOMPLISHED 判定が成立することを確認してから、ダミーを除去
 4. `registry_gate.mjs` が既存スナップショットに対して緑
 
+## 7. `ctx.addWorldDecorator` — 既存マップへの人工物追加（2026-07-28 追加）
+
+### 7.1 なぜ別APIなのか
+
+`ctx.addWorldPreset(key, def)` は**マップを丸ごと1枚新規追加する**口しかない。
+「いまある `desertBasin` の上に道路・滑走路・橋・建物群・港湾クレーンを置いて密度を出す」は
+新規プリセットではないので、この口では到達できない。
+
+かつ `createWorld()` は資源追跡関数 `keepGeometry` / `keepMaterial` / `keepTexture` / `addRoot` を
+**すべて関数内のローカル変数**として持っており、外からは届かない。
+ペイロードが勝手に `scene.add()` すると `disposeWorld()` の解放対象
+（`world.roots / geometries / materials / textures`）に入らないので、
+**マップ切替のたびに丸ごとリークする。しかも無言で。**
+
+→ **既存ワールドの生成後に処理を差し込む2本目の入口**が `addWorldDecorator`。
+
+### 7.2 使い方
+
+```js
+ctx.addWorldDecorator("map-density", {
+  worlds: ["desertBasin", "nightCity", "coastalPlain", "glacierCanyon"],
+  build(env) {
+    // ここで InstancedMesh / 結合BufferGeometry を組む
+  }
+});
+```
+
+| フィールド | 必須 | 内容 |
+|---|---|---|
+| 第1引数 `id` | ✔ | デコレータID。空文字不可・重複不可 |
+| `worlds` | ✔ | 適用先プリセットキーの配列。空配列不可。**存在しないキーは登録時に即例外** |
+| `build(env)` | ✔ | 関数であること。対象ワールドの生成直後に呼ばれる |
+
+`build` は**登録順**に、`worlds` に自分が入っているワールドが作られるたびに呼ばれる。
+
+### 7.3 `env` の中身（これが全部。`scene` と資源配列そのものは渡らない）
+
+```js
+{
+  THREE,            // Three.js 名前空間
+  worldKey,         // 生成中のワールドのキー（"desertBasin" 等）
+  preset,           // そのワールドの WORLD_PRESETS 定義（読み取り用）
+  addRoot,          // (node) => node   scene へ追加し world.roots にも登録
+  keepGeometry,     // (geo) => geo     world.geometries へ登録
+  keepMaterial,     // (mat) => mat     world.materials へ登録
+  keepTexture,      // (tex, label = "decorator", bytes = 0) => tex
+  surfaceHeightAt   // (x, z) => 地表高さ
+}
+```
+
+`keepTexture` の `label` / `bytes` は `debug.worldTextureReport()` の内訳に出る。
+省略してもよいが、その場合はテクスチャ使用量の集計に載らない。
+
+### 7.4 破棄の契約 — デコレータ側に `dispose()` は無い
+
+**作った資源を必ず上の4つのヘルパへ通すこと。** それだけでよい。
+
+通した資源はワールドレコードの所有物になり、マップ切替時に既存の `disposeWorld()` が
+そのまま回収する。**デコレータ独自の破棄処理は存在しないし、書いてはいけない。**
+これは「個別ペイロードが破棄を書き忘れる」失敗を構造的に起こせなくするための設計。
+
+ヘルパを通さずに作ったもの（直接 `scene.add()` した / `keepGeometry` に渡し忘れた
+`BufferGeometry`）は**誰にも解放されない**。ここだけが唯一のリーク経路。
+
+### 7.5 呼び出しタイミング — 順序が本質
+
+```js
+disposeWorld(world);
+world = createWorld(key);
+applyWorldDecorators(world);   // ← 必ず world への代入の「後」
+```
+
+**`createWorld` の内部からは呼べない。** `surfaceHeightAt()` はモジュールスコープの
+グローバル `world` を読むので、`createWorld` 実行中はまだ**旧マップ**を指している。
+そこで呼ぶと地表高さを旧マップから読み、人工物が宙に浮くか地面に埋まる。
+（`createWorld` 内の nightCity のブロックが、まさに同じ理由で
+`surfaceTopAt()` を使わずローカルの `mountains` を引いている。）
+
+ワールドを作る経路は2つで、**両方**この順序になっている:
+- `applyWorldPreset(presetKey)` — ミッション開始時・`debug.forceWorld()` 時のマップ切替
+- 初期化時の `let world = createWorld(DEFAULT_WORLD_PRESET);` の直後
+  （`world` は `let` なので、初期化式の中から呼ぶと TDZ に当たる。必ず次の行）
+
+### 7.6 禁止事項
+
+- **`world.mountains` を変更する入口は公開していない。** このリストが地形の当たり判定そのもので、
+  `surfaceHeightAt` / `surfaceTopAt` がレイキャストする対象。地上ユニットの接地・ヘリ高度・
+  爆弾の着弾判定が全部ここを読む。
+  → **人工物は視覚装飾専用。** これらの契約は動かせない＝動かない
+- したがって「置いた建物の上に地上ユニットを立たせる」「橋の上を走らせる」は**このAPIではできない**。
+  必要なら地形側（`WORLD_PRESETS` の `mountains`）の話になる
+- `scene` は渡らない。`addRoot` を使うこと
+- `build` 内の例外は握り潰されず `console.error` に出るが、**ページは落とさない**
+  （1本の失敗でマップごと失うほうが損害が大きいため）。部分的に作られた資源も
+  追跡済みなので次の切替で解放される
+
+### 7.7 検査（登録時に即例外＝ロード時に落ちる）
+
+- `id` が空文字/非文字列
+- `id` の重複
+- `def` がオブジェクトでない
+- `build` が関数でない
+- `worlds` が配列でない/空配列
+- `worlds` に存在しないプリセットキーが含まれる
+
+`WORLD_DECORATORS` は `finalizeRegistries()` で freeze されるので、以降の登録は不可能。
+
+### 7.8 ゲート
+
+`registrySnapshot()` は `WORLD_DECORATORS` を
+`{ "<id>": ["world:<key>", ...] }` の形で出す（テーブル数は13→14）。
+`tools/registry_gate.mjs` の「消失は無条件FAIL」ルールがそのまま効くので、
+**デコレータが消える/適用先ワールドが1つ減る**とゲートが落ちる。
+
+### 7.9 デバッグフック
+
+```js
+window.__game.debug.worldDecorators()
+// => { registered: [{id, worlds}], activeOn, applies: [id],
+//      roots, geometries, materials, textures }
+```
+`roots`/`geometries` 等は**ワールド全体の合計**（デコレータの取り分ではない）。
+用途はリーク検査＝マップを往復させて、デコレータ無しの数値に戻ることの確認。
+
 ### 変更前の基準値（378814a 実測・上の条件2で使う）
 | # | key | TGT | contacts | # | key | TGT | contacts |
 |---|---|---|---|---|---|---|---|
