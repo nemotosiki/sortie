@@ -2486,6 +2486,31 @@
     let PLAYER_MAX_HEALTH = 100;
     const TARGET_FOCUS_HOLD_MS = 360;
     const GUN_RANGE = 750;
+    // 機銃のガンバル。AC7 の機銃は「弱いガンバル効果」で、
+    // 機首を敵に向ける必要は残るが多少のズレは吸収される。
+    // レティクルは補正に追従しない（見た目は機首方向のまま）のも AC7 と同じ。
+    // 4.5度ちょうどは「補正する」側（<= で判定）。境界をどちらに倒すかは
+    // 体感に影響しないが、テストが問える契約なので決めておく。
+    const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正しない
+    const GUN_GIMBAL_STRENGTH = 0.75; // ズレのうち何割を埋めるか（1.0 なら完全命中）
+    // What the last round's gimbal check decided. The interesting assertion is
+    // the negative one - past the limit the burst must NOT bend - and that is
+    // invisible from outside unless the check reports itself. Patching
+    // Vector3.angleTo from a test instead picks up every other caller in the
+    // frame and cannot tell which reading was this one.
+    const lastGimbal = { applied: false, angleDeg: null, rangeM: null };
+    // The gimbal decision on its own, given an angle and a range. Pulled out of
+    // fireGun so the threshold can be asked about directly instead of being
+    // inferred from where rounds land: the angle a burst actually flies at is a
+    // function of two moving aircraft and cannot be dialled in from outside, so
+    // trying to place a target at 4.4 and then at 4.6 degrees is solving a
+    // problem the test does not have. fireGun calls this, so what a test asks
+    // and what a round does cannot drift apart.
+    function gimbalDecision(angleRad, distance) {
+      if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+      if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+      return { applied: true, reason: "ok" };
+    }
     const GUN_RATE = 12;
     const LOCK_RANGE = 1200;
     const LOCK_TIME = 0.85;
@@ -3794,8 +3819,10 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         tag: "ENEMY",
         blurb: "敵の旧世代軽戦闘機。小柄で軽快だが火力も装甲も乏しく、数を頼みに向かってくる。",
         cruiseSpeed: 170, boostSpeed: 330, brakeSpeed: 146,
-        pitchRateDeg: 34, rollRateDeg: 128, yawRateDeg: 9, maxBankAngleDeg: 46,
-        normalRollSpring: 32, rollRateLimitDeg: 122, turnRateDeg: 26,
+        // 軽快さが数値に出ていなかったので旋回まわりだけ少し上げた。
+        // 速度・装甲・火力は据え置きで、旧世代の軽戦闘機という位置づけは変えていない。
+        pitchRateDeg: 37, rollRateDeg: 138, yawRateDeg: 9, maxBankAngleDeg: 46,
+        normalRollSpring: 34, rollRateLimitDeg: 132, turnRateDeg: 28,
         rollDamping: 8.4, stallWarnSpeed: 98, stallEntrySpeed: 86, stallAuthorityLoss: 0.78, structuralG: 2.8,
         gunDamage: 13, missileDamage: 98,
         boostResponse: 0.62, brakeResponse: 0.58, cruiseResponse: 0.66,
@@ -13566,6 +13593,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return selectedWeapon === next;
         },
         forceFireWeapon: () => fireWeapon(),
+        // The gimbal decision on the last round fired: the angle it measured,
+        // and whether it corrected. Reports the over-limit case too, which is
+        // the half that proves this is not an auto-aim.
+        gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+        // The same decision fireGun makes, asked directly. The angle a burst
+        // flies at is a function of two moving aircraft, so it cannot be dialled
+        // in from a test - and a test that tries ends up measuring its own
+        // ability to park an aeroplane rather than the threshold. This is the
+        // production function, not a copy of it, so the two cannot disagree.
+        gimbalEval: (angleDeg, distance = 400) =>
+          ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
         forceSpwAmmo: (rounds) => {
           if (gameState !== STATE_PLAYING) return false;
           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
@@ -16535,6 +16573,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         .addScaledVector(tmpV1, 8.5)
         .addScaledVector(tmpV2, -0.15)
         .addScaledVector(tmpV3, 2.8 * muzzleSide);
+
+      // Gun gimbal (AC7-style): a "slight gimbal effect, not so much an
+      // auto-aim" - the nose still has to be roughly on the target, but a
+      // small miss is pulled toward it. The reticle never sees this; it
+      // stays drawn on the raw nose vector, so the correction only shows
+      // up as the tracer bending toward the target it hits.
+      const gimbalTargetId = preferredTargetId ?? lock.targetId;
+      lastGimbal.applied = false;
+      lastGimbal.angleDeg = null;
+      lastGimbal.rangeM = null;
+      if (gimbalTargetId) {
+        const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
+        if (gimbalTarget) {
+          tmpV4.subVectors(gimbalTarget.group.position, start);
+          const gimbalDist = tmpV4.length();
+          if (gimbalDist > 0) {
+            tmpV4.multiplyScalar(1 / gimbalDist);
+            const gimbalAngle = tmpV1.angleTo(tmpV4);
+            // Recorded whether or not the correction fires, because the claim
+            // being checked from outside is "past the limit it does NOT bend" -
+            // and a probe that only reports the corrected shots cannot show it.
+            lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+            lastGimbal.rangeM = gimbalDist;
+            if (gimbalDecision(gimbalAngle, gimbalDist).applied) {
+              tmpV1.lerp(tmpV4, GUN_GIMBAL_STRENGTH).normalize();
+              lastGimbal.applied = true;
+            }
+          }
+        }
+      }
 
       raycaster.set(start, tmpV1);
       const targets = enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.hitbox);
@@ -20574,7 +20642,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 speed: unit.speed || spec.mobile.speed
               }
             : null;
-          spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id, isTgtEntry(unit), drive);
+          spawnGroundUnit(unit.type, unit.x, unit.z, unit.heading, unit.id, isTgtEntry(unit), drive, unit.mark || null);
         }
       }
       if (mission.floodlights) {
@@ -20593,7 +20661,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // Ids are chosen by the caller (mission definitions own the numbering), so
     // a base always reads the same way in the HUD from one sortie to the next.
-    function spawnGroundUnit(typeKey, x, z, headingRad, id, tgt = true, drive = null) {
+    function spawnGroundUnit(typeKey, x, z, headingRad, id, tgt = true, drive = null, mark = null) {
       const spec = GROUND_TYPES[typeKey];
       if (!spec) return null;
       enemySerial += 1;
@@ -20628,6 +20696,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: "static",
         tgt,
+        // The optional-objective tag, carried from the mission's groundUnits
+        // entry to the live contact so damageEnemy can record it when this is
+        // destroyed. Null on everything that is not one of a mission's own
+        // named choices.
+        mark,
         surface: true,
         ground: true,
         isAce: false,
