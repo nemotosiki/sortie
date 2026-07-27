@@ -570,18 +570,10 @@
 
     #gunsight.hidden { display: none; }
 
-    /* Red once the rounds would connect, which is the same language the
-       target boxes use for a completed lock. */
-    #gunsight.hot {
-      border-color: var(--danger);
-      filter: drop-shadow(0 0 5px rgba(255, 95, 105, 0.55));
-    }
-
-    #gunsight.hot .reticleGrad { background: var(--danger); }
-    #gunsight.hot #reticlePipper {
-      background: var(--danger);
-      box-shadow: 0 0 5px rgba(255, 95, 105, 0.95);
-    }
+    /* The ring stays green whatever the missile lock is doing. Red on this HUD
+       means "a lock has completed" - it belongs to the target boxes, and
+       putting it on the gun ring made a gun instrument answer a missile
+       question. The gun says what it has to say by being present at all. */
 
     /* Graduations inside the ring. The ring is 54px across, so its radius is
        27px; each mark is drawn 4px long ending on the rim, which puts its
@@ -24639,11 +24631,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.gunsight.style.left = `${x}px`;
       ui.gunsight.style.top = `${y}px`;
       ui.gunsight.classList.remove("hidden");
-      // Hot when the burst would actually connect - the same question
-      // fireGun's gimbal asks, so the ring turning red and the rounds bending
-      // onto the target are one event rather than two rules that can drift.
+      // The ring replaces the cross rather than joining it. Both are the gun's
+      // aiming mark, so having them up together offered two answers to one
+      // question - and the cross, being fixed to the nose, is the wrong one
+      // the moment a lead solution exists.
+      ui.boresight.classList.add("hidden");
+      // Still recorded, because the gun's gimbal turns on exactly this and a
+      // test needs to be able to ask. It no longer colours anything: red on
+      // this HUD belongs to a completed missile lock.
       const hot = gimbalDecision(offAngle, bestRange).applied;
-      ui.gunsight.classList.toggle("hot", hot);
 
       gunsightState.active = true;
       gunsightState.targetId = best.id;
