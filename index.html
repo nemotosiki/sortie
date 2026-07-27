@@ -2586,6 +2586,32 @@
     let MISSILE_DAMAGE = 130;
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
+    // The other two axes, driven off the same per-airframe stability figure
+    // (spec.rollDamping, 8.2 on the heavy interceptor to 12.6 on the canard
+    // fighter). Roll always had inertia; these two did not, so every aircraft
+    // used to stop dead the moment the stick centred regardless of what it
+    // was. Set in applyAircraftLoadout.
+    // Response constants for damping(k, dt) = 1 - k^dt, so SMALLER is faster.
+    // Set per airframe in applyAircraftLoadout. Written as k rather than as a
+    // spring/damper pair because damping() is unconditionally stable at any
+    // frame time: the first attempt integrated an explicit spring, whose gain
+    // times dt came out at 1.14, and the rate flipped sign every frame and
+    // sat pinned to its clamp.
+    let PITCH_RESPONSE_K = 0.02;
+    let YAW_RESPONSE_K = 0.06;
+    // The loose end and the tight end of each axis. The loose figures go to
+    // the heavy interceptor, the tight ones to the canard fighters.
+    // Time constant is 1/ln(1/k): pitch runs 0.40s down to 0.18s, yaw 0.55s
+    // down to 0.25s. Yaw is the loosest axis on every airframe because weak
+    // directional damping is exactly what dutch roll is.
+    const PITCH_K_LOOSE = 0.082;
+    const PITCH_K_TIGHT = 0.004;
+    const YAW_K_LOOSE = 0.162;
+    const YAW_K_TIGHT = 0.018;
+    // spec.rollDamping spans 8.2 (MiG-31) to 12.6 (Rafale) across the roster
+    // and is the only per-airframe stability figure that already exists.
+    const STABILITY_MIN = 8.0;
+    const STABILITY_SPAN = 4.6;
     let STRUCTURAL_G = 3;              // max load factor; sets the corner speed
     let TIP_OFFSET_X = 7.3;            // wingtip offset for contrail emitters
     let TIP_OFFSET_Z = 3.3;
@@ -14871,6 +14897,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let playerBank = 0;
     let rollRate = 0;
     let expertRollRate = 0;
+    // Pitch and yaw angular rate, carried between frames so the nose has
+    // momentum on those axes too. Roll has had this since the beginning;
+    // these two were input-to-angle, which made every airframe stop dead on
+    // stick centre no matter how heavy it was.
+    let playerPitchRate = 0;
+    let playerYawRate = 0;
     let stallTimer = 0;
     let stallSeverity = 0;
     let stalling = false;
@@ -15523,6 +15555,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             mode: cameraMode
           };
         },
+        // The three angular rates and the stability figures driving them.
+        // "Aircraft A is less stable than aircraft B" is a claim about how
+        // long the rate takes to bleed off after the stick centres, which
+        // only a per-frame sampling of these numbers can settle.
+        stabilityProbe: () => ({
+          pitchRate: THREE.MathUtils.radToDeg(playerPitchRate),
+          yawRate: THREE.MathUtils.radToDeg(playerYawRate),
+          rollRate: THREE.MathUtils.radToDeg(rollRate),
+          bankDeg: THREE.MathUtils.radToDeg(playerBank),
+          // Smaller k = tighter airframe. Reported with the equivalent time
+          // constant, which is the number a test can compare against a
+          // measured stop time.
+          responseK: { pitch: PITCH_RESPONSE_K, yaw: YAW_RESPONSE_K },
+          tau: {
+            pitch: 1 / Math.log(1 / PITCH_RESPONSE_K),
+            yaw: 1 / Math.log(1 / YAW_RESPONSE_K),
+            roll: ROLL_SETTLE
+          },
+          aircraft: selectedAircraftId,
+          mode: controlMode
+        }),
         boresightProbe: () => {
           const box = ui.boresight.getBoundingClientRect();
           return {
@@ -17869,6 +17922,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       preferredTargetId = null;
       rollRate = 0;
       expertRollRate = 0;
+      playerPitchRate = 0;
+      playerYawRate = 0;
       stallTimer = 0;
       stallSeverity = 0;
       stalling = false;
@@ -18325,6 +18380,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playerBank = 0;
       rollRate = 0;
       expertRollRate = 0;
+      playerPitchRate = 0;
+      playerYawRate = 0;
       stallTimer = 0;
       stallSeverity = 0;
       stalling = false;
@@ -18395,6 +18452,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         1.25
       );
 
+      // Pitch and yaw now carry angular RATE as state, the way roll always
+      // has: the stick asks for a rate, the airframe accelerates towards it
+      // against its own damping, and when the stick centres the rate bleeds
+      // off instead of vanishing. That bleed-off is the whole feature - a
+      // heavy interceptor keeps swinging its nose past where the player
+      // stopped asking, a canard fighter checks itself almost at once, and
+      // the difference between them is one number per airframe.
+      //
+      // Same first-order-on-rate shape the EXPERT roll axis already used, so
+      // all three axes read as one aircraft. The angle is still second order
+      // overall - rate has memory, so the nose coasts past where the player
+      // stopped asking and settles there, which is the "wasted movement" of
+      // a loose airframe. Steady-state is untouched: hold the stick and the
+      // rate converges on exactly the number it used to snap to, so maximum
+      // turn performance, the stall model and the enemy balance are all
+      // unchanged.
+      const pitchTargetRate = pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority;
+      playerPitchRate = THREE.MathUtils.lerp(
+        playerPitchRate, pitchTargetRate, damping(PITCH_RESPONSE_K, dt)
+      );
+
+      const yawTargetRate = yawInput * YAW_RATE * playerTurnFactor *
+        (controlMode === CONTROL_NORMAL ? 1 : playerControlAuthority);
+      playerYawRate = THREE.MathUtils.lerp(
+        playerYawRate, yawTargetRate, damping(YAW_RESPONSE_K, dt)
+      );
+
       if (controlMode === CONTROL_NORMAL) {
         const targetBank = rollInput * MAX_BANK_ANGLE;
         const bankError = targetBank - playerBank;
@@ -18415,16 +18499,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           playerFlightFrame.premultiply(tmpQ1).normalize();
         }
 
-        if (Math.abs(yawInput) > 0.00001) {
-          tmpQ1.setFromAxisAngle(WORLD_UP, yawInput * YAW_RATE * playerTurnFactor * dt);
+        // Driven by the RATE, not the input, so the nose keeps going for a
+        // moment after the stick centres.
+        if (Math.abs(playerYawRate) > 0.00001) {
+          tmpQ1.setFromAxisAngle(WORLD_UP, playerYawRate * dt);
           playerFlightFrame.premultiply(tmpQ1).normalize();
         }
 
-        if (Math.abs(pitchInput) > 0.00001) {
-          tmpQ1.setFromAxisAngle(
-            LOCAL_RIGHT,
-            pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority * dt
-          );
+        if (Math.abs(playerPitchRate) > 0.00001) {
+          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, playerPitchRate * dt);
           playerFlightFrame.multiply(tmpQ1).normalize();
         }
 
@@ -18442,12 +18525,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         );
         rollRate = expertRollRate;
 
-        if (Math.abs(pitchInput) > 0.00001) {
-          player.rotateX(pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority * dt);
-        }
-        if (Math.abs(yawInput) > 0.00001) {
-          player.rotateY(yawInput * YAW_RATE * playerTurnFactor * playerControlAuthority * dt);
-        }
+        if (Math.abs(playerPitchRate) > 0.00001) player.rotateX(playerPitchRate * dt);
+        if (Math.abs(playerYawRate) > 0.00001) player.rotateY(playerYawRate * dt);
         if (Math.abs(expertRollRate) > 0.00001) player.rotateZ(expertRollRate * dt);
         if (stallSeverity > 0.005) player.rotateX(-STALL_NOSE_DROP_RATE * stallSeverity * dt);
         player.quaternion.normalize();
@@ -29922,6 +30001,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       clearMultiLock();
       // STABILITY: how little the aircraft wanders when banked or slow.
       ROLL_SETTLE = spec.rollDamping;
+      // The same number drives pitch and yaw. Roll already had inertia and a
+      // per-airframe damping figure; pitch and yaw were input-to-angle with no
+      // state at all, so every aircraft stopped dead the instant the stick
+      // centred. One stability figure now governs all three axes, so a heavy
+      // interceptor wallows on every axis and a canard fighter is crisp on
+      // every axis - which is what having a stability rating means.
+      const stability = THREE.MathUtils.clamp(
+        (spec.rollDamping - STABILITY_MIN) / STABILITY_SPAN, 0, 1
+      );
+      PITCH_RESPONSE_K = THREE.MathUtils.lerp(PITCH_K_LOOSE, PITCH_K_TIGHT, stability);
+      YAW_RESPONSE_K = THREE.MathUtils.lerp(YAW_K_LOOSE, YAW_K_TIGHT, stability);
       STALL_WARNING_SPEED = spec.stallWarnSpeed;
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
