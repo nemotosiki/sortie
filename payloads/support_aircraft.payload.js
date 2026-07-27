@@ -363,6 +363,26 @@ export default function register(ctx) {
     const guard = JSON.parse(JSON.stringify(template));
     const start = { x: -900, y: 520, z: 1900 };
     const exit = { x: 900, y: 520, z: -6900 };
+    const hasAny = (...keys) => keys.some((key) => Object.prototype.hasOwnProperty.call(guard, key));
+
+    // Refuse a template that is not an aircraft guard. Silently retaining the
+    // C-17 type, three-aircraft count or old route would make the payload look
+    // loaded while fielding the wrong mission. These are alternative names for
+    // existing host contracts, not new schema invented here.
+    if (!hasAny("type", "aircraft", "aircraftType")) {
+      throw new Error("[support-aircraft] m-escort guard template has no aircraft-type field");
+    }
+    if (!hasAny("count")) {
+      throw new Error("[support-aircraft] m-escort guard template has no count field");
+    }
+    if (!hasAny("hp", "maxHp")) {
+      throw new Error("[support-aircraft] m-escort guard template has no HP field");
+    }
+    const hasStart = hasAny("start", "spawn", "entry", "from") || Array.isArray(guard.path);
+    const hasExit = hasAny("exit", "end", "destination", "to") || Array.isArray(guard.path);
+    if (!hasStart || !hasExit) {
+      throw new Error("[support-aircraft] m-escort guard template has no complete route contract");
+    }
 
     // The current guard schema uses these names. The aliases make the payload
     // tolerant of a host-side rename without inventing a new schema: only keys
