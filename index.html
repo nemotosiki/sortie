@@ -9512,6 +9512,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // unconditionally.
     const MISSION_REQUIRED = ["key", "title", "sequence", "map"];
 
+    // Friendly deployments requested by payloads, held until the table they
+    // write into has been initialised. See ctx.deployFriendlies.
+    const pendingFriendlyDeployments = [];
+
     // Handed to every payload's default export. Deliberately the only surface a
     // payload gets - it cannot reach the tables directly, so every addition goes
     // through the duplicate and schema checks above.
@@ -9580,6 +9584,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       addWorldPreset(key, def) {
         return registryAdd(WORLD_PRESETS, "WORLD_PRESETS", key, def, PAYLOAD_REQUIRED.WORLD_PRESETS);
+      },
+      // Friendlies a mission fields: a wingman, an airbase, a carrier, ships to
+      // guard. Queued rather than written, because FRIENDLY_DEPLOYMENTS is
+      // declared thousands of lines below this object and is still in its
+      // temporal dead zone while payloads run; the queue is drained by
+      // applyFriendlyDeployments() once the table exists.
+      //
+      // Merged into whatever the mission already deploys rather than replacing
+      // it, so adding something to escort does not silently remove the wingman.
+      // A key already present in the mission's own entry is an error rather
+      // than an overwrite - the same add-only rule the registries follow.
+      deployFriendlies(missionKey, def) {
+        if (!missionKey || !def || typeof def !== "object") {
+          throw new Error("[payload] deployFriendlies: expected (missionKey, definition)");
+        }
+        pendingFriendlyDeployments.push({ missionKey, def });
+        return def;
       },
       // Read-only views, for a payload that needs to copy an existing entry as
       // its starting point rather than restate 40 fields.
@@ -19276,7 +19297,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // callsign that is belongs to the campaign, not to this table: see
     // WINGMAN_BY_CAMPAIGN. `carrier` and `airbase` carry the placement the
     // mission wants.
-    const FRIENDLY_DEPLOYMENTS = Object.freeze({
+    // Not frozen at the declaration, so a payload can deploy friendlies the way
+    // it can register a mission. Sealed by finalizeRegistries() with the rest.
+    // The old shape made this table unreachable from outside, which meant a
+    // batch that wanted to add something to escort had only one move available:
+    // put it in `sequence` with tgt:false, where it spawns as a hostile the
+    // player is merely not required to kill. That is not an escort - it is a
+    // contact that scores points when shot - so the honest answer was to refuse
+    // the work, which is what happened.
+    const FRIENDLY_DEPLOYMENTS = {
       // Airfield missions. m01 already spawns BASE ALPHA itself through
       // mission.friendlyBase, so the table only asks for the wingman there -
       // asking twice would stand two airfields on the same island.
@@ -19498,7 +19527,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       r18: Object.freeze({ wingman: true }),
       r19: Object.freeze({ wingman: true }),
       r20: Object.freeze({ wingman: true })
-    });
+    };
+
+    // Drains what ctx.deployFriendlies queued while the table above was still
+    // in its temporal dead zone. Runs once, here, immediately after the table
+    // exists and before anything reads it.
+    function applyFriendlyDeployments() {
+      for (const { missionKey, def } of pendingFriendlyDeployments) {
+        const existing = FRIENDLY_DEPLOYMENTS[missionKey];
+        const clash = existing ? Object.keys(def).filter((field) => field in existing) : [];
+        if (clash.length) {
+          throw new Error(
+            `[payload] deployFriendlies("${missionKey}"): ${clash.join(", ")} already deployed - registration is add-only`
+          );
+        }
+        FRIENDLY_DEPLOYMENTS[missionKey] = Object.freeze({ ...(existing || {}), ...def });
+      }
+      pendingFriendlyDeployments.length = 0;
+      Object.freeze(FRIENDLY_DEPLOYMENTS);
+    }
+    applyFriendlyDeployments();
 
     // 僚機は陣営の機体で飛ぶ。米編は F-16、露編は MiG-29 - どちらもその陣営の
     // 「癖のない主力機」で、プレイヤーが何に乗っていても僚機と見分けがつく。
