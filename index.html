@@ -621,6 +621,14 @@
       z-index: 1;
     }
 
+    /* The attitude ladder belongs to a HUD seen through a canopy, where the
+       glass is bolted to the aeroplane and the horizon line has to roll
+       against the frame to keep pointing at the real horizon. Chasing the
+       aircraft from outside, the camera already rolls with it and the real
+       horizon is right there in the window, so the ladder is redundant - and
+       rolling it turns the whole middle of the screen with every turn. The
+       series draws nothing in the centre of a third-person view but the gun
+       reticle; this follows that. Shown in the cockpit view only. */
     #pitchViewport {
       position: absolute;
       left: 50%;
@@ -631,6 +639,8 @@
       overflow: hidden;
       opacity: 0.5;
     }
+
+    #pitchViewport.hidden { display: none; }
 
     #pitchLadder {
       position: absolute;
@@ -14364,6 +14374,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       targetDirectionGlyph: document.getElementById("targetDirectionGlyph"),
       targetDirectionLabel: document.getElementById("targetDirectionLabel"),
       pitchLadder: document.getElementById("pitchLadder"),
+      pitchViewport: document.getElementById("pitchViewport"),
       missionBanner: document.getElementById("missionBanner"),
       radioPanel: document.getElementById("radioPanel"),
       radioSpeaker: document.getElementById("radioSpeaker"),
@@ -26262,12 +26273,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
       ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
 
-      forwardOf(player, tmpV1);
-      rightOf(player, tmpV2);
-      upOf(player, tmpV3);
-      const pitch = Math.asin(THREE.MathUtils.clamp(tmpV1.y, -1, 1));
-      const bank = Math.atan2(tmpV2.y, tmpV3.y);
-      ui.pitchLadder.style.transform = `translate(-50%, calc(-50% + ${pitch * 178}px)) rotate(${-bank * 0.7}rad)`;
+      // Cockpit only. From outside the aircraft the middle of the screen
+      // carries the gun reticle and nothing else, and the ladder's roll was
+      // tipping the entire centre of the HUD through every turn.
+      const ladderShown = cameraMode === "cockpit";
+      ui.pitchViewport.classList.toggle("hidden", !ladderShown);
+      if (ladderShown) {
+        forwardOf(player, tmpV1);
+        rightOf(player, tmpV2);
+        upOf(player, tmpV3);
+        const pitch = Math.asin(THREE.MathUtils.clamp(tmpV1.y, -1, 1));
+        // Rolls against the frame, because from inside the canopy that is what
+        // keeps the horizon line lying along the real horizon.
+        const bank = Math.atan2(tmpV2.y, tmpV3.y);
+        ui.pitchLadder.style.transform =
+          `translate(-50%, calc(-50% + ${pitch * 178}px)) rotate(${-bank * 0.7}rad)`;
+      }
     }
 
     function syncGameHook() {
