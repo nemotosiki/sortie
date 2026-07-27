@@ -2558,17 +2558,24 @@
     const GUN_RANGE = 750;
     // 機銃のガンバル。AC7 の機銃は「弱いガンバル効果」で、
     // 機首を敵に向ける必要は残るが多少のズレは吸収される。
-    // レティクルは補正に追従しない（見た目は機首方向のまま）のも AC7 と同じ。
+    // 補正は即時ではなく時間で「合っていく」: 同じ相手を追っている間だけ
+    // 補正率 k が 0 から上限へ育ち、リングも弾道も同じ k で敵のリード点へ
+    // 寄っていく。出会い頭の一瞬で吸い付かないのはこの立ち上がりのため。
+    // 上限は距離で決まり、近いほど強い（至近 0.75 / 最大射程 0.3）。
     // 4.5度ちょうどは「補正する」側（<= で判定）。境界をどちらに倒すかは
     // 体感に影響しないが、テストが問える契約なので決めておく。
-    const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正しない
-    const GUN_GIMBAL_STRENGTH = 0.75; // ズレのうち何割を埋めるか（1.0 なら完全命中）
+    const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
+    const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+    const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+    const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+    const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+    const gunAssist = { k: 0, targetId: null };
     // What the last round's gimbal check decided. The interesting assertion is
     // the negative one - past the limit the burst must NOT bend - and that is
     // invisible from outside unless the check reports itself. Patching
     // Vector3.angleTo from a test instead picks up every other caller in the
     // frame and cannot tell which reading was this one.
-    const lastGimbal = { applied: false, angleDeg: null, rangeM: null };
+    const lastGimbal = { applied: false, angleDeg: null, rangeM: null, k: null };
     // How fast a round is treated as travelling. The gun resolves by ray, so
     // nothing physically flies - this number exists so that a burst arrives
     // LATER than it is fired, which is what makes leading a crossing target
@@ -2655,6 +2662,29 @@
       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
       return { applied: true, reason: "ok" };
+    }
+
+    // The assist's ceiling at a given range: strongest at knife-fight range,
+    // weakest at the edge of the envelope, so closing in is what buys the
+    // stronger pull - the same bargain gunAimForgiveness offers.
+    function gunAssistCap(range) {
+      const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+      return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+    }
+    // One frame of the assist settling. A plain state-in, state-out step for
+    // the same reason gimbalDecision is separate: convergence, the reset on a
+    // target change and the release outside the cone are claims about a curve
+    // over time, and a test can drive this directly instead of trying to fly
+    // two aircraft into a shape that happens to exhibit them.
+    function gunAssistStep(state, targetId, angleRad, range, dt) {
+      // A new contact starts from zero - the ring walks out from the nose
+      // instead of appearing already parked on the target.
+      if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+      if (targetId == null) { state.k = 0; return 0; }
+      const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+      const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+      if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+      return state.k;
     }
     const GUN_RATE = 12;
     const LOCK_RANGE = 1200;
@@ -13449,6 +13479,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       y: 0,
       rangeM: 0,
       leadM: 0,
+      assistK: 0,
       hot: false,
       forgiveness: 1
     };
@@ -14217,6 +14248,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // and whether it corrected. Reports the over-limit case too, which is
         // the half that proves this is not an auto-aim.
         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+        gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+        gunAssistCapAt: (range) => gunAssistCap(range),
+        // The assist driven through a synthetic history. Convergence, the
+        // reset on a target switch and the release outside the cone cannot be
+        // flown into existence on demand, so the step function takes the
+        // events directly - the production step, not a copy of it.
+        gunAssistSim: (events) => {
+          const s = { k: 0, targetId: null };
+          return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+            THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+        },
         // The same decision fireGun makes, asked directly. The angle a burst
         // flies at is a function of two moving aircraft, so it cannot be dialled
         // in from a test - and a test that tries ends up measuring its own
@@ -15349,7 +15391,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       else updateCamera(rawDt);
       updateWorld(rawDt);
       updateFlightEffects(rawDt);
-      updateVisualStatus(rawDt);
+      // The second argument is SIM time: the gunsight assist settles with the
+      // battle, so a kill-cam slowdown slows it too, while the fades in
+      // updateVisualStatus itself stay on the wall clock.
+      updateVisualStatus(rawDt, dt);
       updateRadio(rawDt);
       updateHud();
       drawRadar();
@@ -17225,12 +17270,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Gun gimbal: a slight pull towards the aiming solution, not an auto-aim
       // - the nose still has to be roughly on it. What it pulls towards is the
       // LEAD POINT rather than where the target is standing, because that is
-      // where the burst is going to arrive and where the ring is drawn. Aiming
-      // it at the target itself would have the correction fighting the sight.
-      const gimbalTargetId = preferredTargetId ?? lock.targetId;
+      // where the burst is going to arrive and where the ring is drawn. The
+      // strength is gunAssist.k - the same settling value the ring is drawn
+      // with, and the target is the ring's target, so what the sight shows and
+      // what the rounds do are one mechanism rather than two rules that agree.
+      const gimbalTargetId = gunAssist.targetId;
       lastGimbal.applied = false;
       lastGimbal.angleDeg = null;
       lastGimbal.rangeM = null;
+      lastGimbal.k = null;
       if (gimbalTargetId) {
         const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
         if (gimbalTarget) {
@@ -17245,8 +17293,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // and a probe that only reports the corrected shots cannot show it.
             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
             lastGimbal.rangeM = gimbalDist;
-            if (gimbalDecision(gimbalAngle, gimbalDist).applied) {
-              tmpV1.lerp(tmpV4, GUN_GIMBAL_STRENGTH).normalize();
+            lastGimbal.k = gunAssist.k;
+            if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+              tmpV1.lerp(tmpV4, gunAssist.k).normalize();
               lastGimbal.applied = true;
             }
           }
@@ -24055,7 +24104,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.cloudVeil.style.opacity = cloudVeilLevel < 0.01 ? "0" : cloudVeilLevel.toFixed(3);
     }
 
-    function updateVisualStatus(dt) {
+    function updateVisualStatus(dt, simDt = 0) {
       hitConfirmTimer = Math.max(0, hitConfirmTimer - dt);
       const hitOpacity = hitConfirmTimer > 0 ? Math.min(1, hitConfirmTimer / 0.26) : 0;
       ui.hitConfirm.style.opacity = hitOpacity < 0.01 ? "0" : hitOpacity.toFixed(3);
@@ -24105,7 +24154,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       camera.updateMatrixWorld();
-      updateEnemyHudMarkers();
+      updateEnemyHudMarkers(simDt);
       updateTargetBox();
       updateCcip();
       updateCombatPopups(dt);
@@ -24387,7 +24436,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // It sits on the lead point, computed by the same gunLeadPoint() the gun
     // itself tests against. That shared call is the whole contract: put the
     // ring on an aircraft and the rounds go there too.
-    function updateGunsight() {
+    function updateGunsight(dt = 0) {
       let best = null;
       let bestRange = Infinity;
       forwardOf(player, tmpV9);
@@ -24405,6 +24454,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         bestRange = range;
       }
       if (!best) {
+        gunAssistStep(gunAssist, null, 0, 0, dt);
         ui.gunsight.classList.add("hidden");
         gunsightState.active = false;
         gunsightState.targetId = null;
@@ -24413,10 +24463,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // Where it will be when the rounds arrive - the same answer the gun uses.
       gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
+      // How far ahead of the contact the burst is being sent. Taken before the
+      // blend below, so it reports the full solution rather than however much
+      // of it the assist has walked out to.
+      const leadM = tmpV8.distanceTo(best.group.position);
+
+      // How far off the nose the full solution sits, and one settling step of
+      // the assist towards it.
+      tmpV5.copy(tmpV8).sub(tmpV4);
+      const solDist = tmpV5.length();
+      const offAngle = solDist > 0.001
+        ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
+        : 0;
+      const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
+
+      // The ring is drawn where the rounds are actually going: the blend of
+      // the uncorrected boresight impact and the full solution by the assist's
+      // current k. At k=0 that is the nose itself, so the ring starts at the
+      // centre of the screen and slides onto the target as the assist settles
+      // - never the other way round.
+      tmpV5.copy(tmpV4).addScaledVector(tmpV9, solDist).lerp(tmpV8, k);
+      tmpV8.copy(tmpV5);
 
       tmpV7.copy(tmpV8).project(camera);
       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
       if (!isHudProjectionVisible(tmpV7, tmpV6, 0.98)) {
+        // Hidden but not reset: the angle gate in the step is what decides
+        // whether the assist survives an excursion off screen.
         ui.gunsight.classList.add("hidden");
         gunsightState.active = false;
         gunsightState.targetId = null;
@@ -24431,9 +24504,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Hot when the burst would actually connect - the same question
       // fireGun's gimbal asks, so the ring turning red and the rounds bending
       // onto the target are one event rather than two rules that can drift.
-      forwardOf(player, tmpV9);
-      tmpV5.copy(tmpV8).sub(player.position).normalize();
-      const hot = gimbalDecision(tmpV9.angleTo(tmpV5), bestRange).applied;
+      const hot = gimbalDecision(offAngle, bestRange).applied;
       ui.gunsight.classList.toggle("hot", hot);
 
       gunsightState.active = true;
@@ -24441,9 +24512,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gunsightState.x = x;
       gunsightState.y = y;
       gunsightState.rangeM = bestRange;
-      // How far ahead of the contact the ring ended up - the distance between
-      // where it is and where the burst is being sent.
-      gunsightState.leadM = tmpV8.distanceTo(best.group.position);
+      gunsightState.leadM = leadM;
+      gunsightState.assistK = k;
       gunsightState.hot = hot;
       gunsightState.forgiveness = gunAimForgiveness(bestRange);
     }
@@ -24636,7 +24706,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    function updateEnemyHudMarkers() {
+    function updateEnemyHudMarkers(dt = 0) {
       updateBaseMarker();
       updateFriendlyHudMarkers();
       enemyMarkerScreenState.length = 0;
@@ -24713,7 +24783,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       updateTargetDirectionArrow();
-      updateGunsight();
+      updateGunsight(dt);
     }
 
     function updateTargetBox() {
