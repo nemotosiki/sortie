@@ -15376,7 +15376,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       gamepadInput.pitch = THREE.MathUtils.clamp(axisY + dpadPitch, -1, 1);
       gamepadInput.roll = THREE.MathUtils.clamp(-axisX + dpadRoll, -1, 1);
-      gamepadInput.yaw = yawRight - yawLeft;
+      // Yaw is applied about WORLD_UP, and a positive rotation about +Y is
+      // anticlockwise - i.e. to the LEFT. So the left shoulder is the positive
+      // one, which is what the keyboard path has always done (Q minus E).
+      // Written the other way round here, R1 yawed left and L1 yawed right.
+      gamepadInput.yaw = yawLeft - yawRight;
       gamepadInput.boost = gamepadButtonValue(selected, 6) > 0.22;
       gamepadInput.brake = gamepadButtonValue(selected, 7) > 0.22;
 
