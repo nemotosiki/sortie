@@ -1,0 +1,53 @@
+#radioPanel {
+  position: absolute;
+  left: 50%;
+  top: clamp(96px, 12vh, 132px);
+  z-index: 35;
+  transform: translate(-50%, -6px);
+  width: min(760px, 90vw);
+  padding: 4px 20px;
+  text-align: center;
+  background: none;
+  border: 0;
+  opacity: 0;
+  transition: opacity 140ms ease, transform 140ms ease;
+  font-size: clamp(13px, 1.35vw, 17px);
+  pointer-events: none;
+  font-family: "Courier New", "Lucida Console", monospace;
+  font-weight: 700;
+}
+
+#radioPanel.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* AC5 shows every radio callsign underlined. Friendly traffic (command /
+   wingman) reads in the blue already used across the friendly HUD; hostile
+   traffic keeps the red. One variable so the callsign and the 《 》 brackets
+   can never drift apart. */
+#radioPanel { --radio-accent: #ff4a52; }
+#radioPanel.command,
+#radioPanel.wingman { --radio-accent: #78beff; }
+#radioPanel.enemy { --radio-accent: #ff4a52; }
+
+#radioPanel #radioSpeaker { color: var(--radio-accent); }
+
+#radioSpeaker {
+  display: block;
+  margin: 0 0 2px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+#radioText {
+  color: #f4f8ff;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+#radioText::before { content: "\300A\0020"; color: var(--radio-accent); }
+#radioText::after { content: "\0020\300B"; color: var(--radio-accent); }

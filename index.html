@@ -1289,60 +1289,6 @@
     #bigBanner.danger { border-color: rgba(255, 96, 96, 0.72); }
     #bigBanner.danger #bigBannerText { color: #ff8f8f; text-shadow: 0 0 30px rgba(255, 60, 60, 0.45); }
 
-    #radioPanel {
-      position: absolute;
-      left: 50%;
-      top: clamp(96px, 12vh, 132px);
-      z-index: 35;
-      transform: translate(-50%, -6px);
-      width: min(760px, 90vw);
-      padding: 4px 20px;
-      text-align: center;
-      background: none;
-      border: 0;
-      opacity: 0;
-      transition: opacity 140ms ease, transform 140ms ease;
-      font-size: clamp(13px, 1.35vw, 17px);
-      pointer-events: none;
-      font-family: "Courier New", "Lucida Console", monospace;
-      font-weight: 700;
-    }
-
-    #radioPanel.visible {
-      opacity: 1;
-      transform: translate(-50%, 0);
-    }
-
-    /* AC5 shows every radio callsign underlined. Friendly traffic (command /
-       wingman) reads in the blue already used across the friendly HUD; hostile
-       traffic keeps the red. One variable so the callsign and the 《 》 brackets
-       can never drift apart. */
-    #radioPanel { --radio-accent: #ff4a52; }
-    #radioPanel.command,
-    #radioPanel.wingman { --radio-accent: #78beff; }
-    #radioPanel.enemy { --radio-accent: #ff4a52; }
-
-    #radioPanel #radioSpeaker { color: var(--radio-accent); }
-
-    #radioSpeaker {
-      display: block;
-      margin: 0 0 2px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-decoration: underline;
-      text-underline-offset: 3px;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    }
-
-    #radioText {
-      color: #f4f8ff;
-      letter-spacing: 0.02em;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-    }
-
-    #radioText::before { content: "\300A\0020"; color: var(--radio-accent); }
-    #radioText::after { content: "\0020\300B"; color: var(--radio-accent); }
-
     #boostIndicator {
       position: absolute;
       left: 50%;
@@ -2230,6 +2176,7 @@
       .subtitle { margin: 8px auto 12px; }
     }
   </style>
+  <link rel="stylesheet" href="./styles/radio.css">
 
   <script type="importmap">
   {
@@ -2553,6 +2500,12 @@
     import * as THREE from "three";
     import { loadPayloadModules } from "./src/registry/payload-loader.js";
     import { createRegistrySnapshot } from "./src/registry/registry-snapshot.js";
+    import {
+      KILL_CALLOUTS,
+      RADIO_FEAR_STAGES,
+      RADIO_PRIORITY,
+      createRadioController
+    } from "./src/ui/radio.js";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -14848,119 +14801,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // two sides of this war, so the label is resolved per campaign at display
     // time - writing NORTHSTAR's lines and captioning them SKYEYE would put the
     // other side's callsign on them.
-    const RADIO_SPEAKERS = {
-      command: { label: "SKYEYE", toneFreq: 620, toneType: "square" },
-      wingman: { label: "HAMMER 2", toneFreq: 460, toneType: "sine" },
-      enemy: { label: "HOSTILE", toneFreq: 340, toneType: "sawtooth" }
-    };
-
-    // Per-campaign overrides. `enemy` is deliberately absent: "HOSTILE" is what
-    // the other side is called from either cockpit.
-    const RADIO_SPEAKER_LABELS = {
-      usa: { command: "SKYEYE", wingman: "HAMMER 2" },
-      rus: { command: "NORTHSTAR", wingman: "SICKLE 2" }
-    };
-
-    function radioSpeakerLabel(speakerId) {
-      const perCampaign = RADIO_SPEAKER_LABELS[selectedCampaignId];
-      const override = perCampaign && perCampaign[speakerId];
-      if (override) return override;
-      const speaker = RADIO_SPEAKERS[speakerId];
-      return speaker ? speaker.label : "";
-    }
-
-    const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
-
-    const KILL_CALLOUTS = [
-      "撃墜確認！ ナイスショット！",
-      "命中！ いい腕だ！",
-      "落ちるぞ！",
-      "また1機減らしたな！",
-      "撃墜だ！ その調子で行け！"
-    ];
-
-    const RADIO_FEAR_STAGES = [
-      {
-        minKills: 1,
-        entry: {
-          speaker: "enemy",
-          priority: RADIO_PRIORITY.NORMAL,
-          text: "2番機が撃墜された。隊形を維持しろ——敵は1機だけだ。"
-        },
-        support: null,
-        pool: [
-          "作戦通りに行け。まぐれだ。",
-          "全機、隊形を締めろ。後方を確認しろ。",
-          "1機やられた程度で何も変わらん。攻撃を続けろ。"
-        ]
-      },
-      {
-        minKills: 2,
-        entry: {
-          speaker: "enemy",
-          priority: RADIO_PRIORITY.NORMAL,
-          text: "2機目だと！？ 何なんだこいつは！"
-        },
-        support: null,
-        pool: [
-          "隊長、スコープに映らない…どこにいる！？",
-          "こっちは各個撃破されてるぞ！",
-          "単機で仕掛けるな！ 今すぐ2機1組になれ！"
-        ]
-      },
-      {
-        minKills: 4,
-        entry: {
-          speaker: "enemy",
-          priority: RADIO_PRIORITY.URGENT,
-          text: "こっちが切り刻まれてる！ ブレイク！ ブレイク！"
-        },
-        support: {
-          speaker: "wingman",
-          priority: RADIO_PRIORITY.NORMAL,
-          text: "敵が浮足立ってるぞ。そのまま押し続けろ！"
-        },
-        pool: [
-          "振り切れない！ 振り切れないんだ！",
-          "メーデー！ メーデー！ 2番機、墜ちる！",
-          "あれは{nickname}だ…あんな飛び方をする奴が他にいるものか！",
-          "増援はどうした！？ 今すぐ増援を回せ！"
-        ]
-      },
-      {
-        minKills: 6,
-        entry: {
-          speaker: "enemy",
-          priority: RADIO_PRIORITY.URGENT,
-          text: "全機、戦闘を中止しろ！ この空は{nickname}のものだ！"
-        },
-        support: {
-          speaker: "command",
-          priority: RADIO_PRIORITY.NORMAL,
-          text: "敵の通信が崩壊している。奴らは君をこう呼んでいる——{nickname}、と。"
-        },
-        pool: [
-          "こんな所で死んでたまるか。俺は離脱する！",
-          "来るな…来るなァ！",
-          "{nickname}には勝てない。誰も{nickname}には勝てないんだ。"
-        ]
-      }
-    ];
-
-    const RADIO_QUEUE_MAX = 4;
-    const RADIO_CHAR_INTERVAL = 0.03;
-    const RADIO_HOLD_BASE = 1.8;
-    const RADIO_HOLD_PER_CHAR = 0.024;
-    const RADIO_HOLD_MAX = 6.4;
-    // Lines hold ~2x longer now, so a NORMAL can no longer be allowed to block a
-    // CRITICAL for its whole hold: higher priority pre-empts the active line.
-    // Pre-empted lines are dropped, not requeued - replaying a situation report
-    // seconds after the situation moved on reads worse than losing it.
-    const RADIO_NORMAL_MAX_QUEUE_AGE = 8.0;
-    const RADIO_MIN_GAP = 0.3;
-    const RADIO_SPEAKER_COOLDOWN = 4.5;
-    const RADIO_LINE_COOLDOWN = 25;
-
     const ui = {
       gameRoot: document.getElementById("gameRoot"),
       startScreen: document.getElementById("startScreen"),
@@ -15510,26 +15350,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // done. Written to the mission record on completion; see recordMissionResult.
     let sortieMarks = {};
 
-    const radioQueue = [];
-    const radioSpeakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
-    let radioLineReadyAt = {};
-    let radioGapUntil = 0;
-    // The radio runs on its own clock rather than missionElapsed: the mission
-    // timer stops the moment the sortie is decided (and never runs in menus),
-    // which would otherwise wedge every gap/cooldown gate shut and swallow the
-    // debrief-side lines.
-    let radioClock = 0;
-
-    const radioState = {
-      active: false,
-      speakerId: null,
-      lineId: null,
-      priority: 0,
-      fullText: "",
-      revealedChars: 0,
-      charTimer: 0,
-      holdTimer: 0
-    };
+    const radioController = createRadioController({
+      panel: ui.radioPanel,
+      speakerNode: ui.radioSpeaker,
+      textNode: ui.radioText,
+      getCampaignId: () => selectedCampaignId,
+      playTone,
+      getPlayerNickname
+    });
+    // Stable references preserve the existing debug hooks without giving any
+    // other feature ownership of the queue or state mutations.
+    const radioState = radioController.state;
+    const radioQueue = radioController.queue;
 
     const gamepadInput = {
       connected: false,
@@ -16619,7 +16451,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           fullText: radioState.fullText,
           revealedChars: radioState.revealedChars,
           holdTimer: Number(radioState.holdTimer.toFixed(4)),
-          clock: Number(radioClock.toFixed(4)),
+          clock: Number(radioController.clock.toFixed(4)),
           queue: radioQueue.map((request) => ({
             id: request.id,
             speakerId: request.speakerId,
@@ -26384,149 +26216,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function triggerRadioLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null) {
-      if (!RADIO_SPEAKERS[speakerId] || typeof text !== "string" || text.length === 0) return false;
-      const resolvedPriority = Number.isFinite(priority) ? Math.trunc(priority) : RADIO_PRIORITY.NORMAL;
-      const resolvedId = id ? String(id) : `${speakerId}:${text.slice(0, 24)}`;
-      if ((radioLineReadyAt[resolvedId] || 0) > radioClock) return false;
-      if (radioQueue.some((request) => request.id === resolvedId)) return false;
-
-      if (radioQueue.length >= RADIO_QUEUE_MAX) {
-        let worstIdx = 0;
-        for (let i = 1; i < radioQueue.length; i += 1) {
-          if (radioQueue[i].priority < radioQueue[worstIdx].priority) worstIdx = i;
-        }
-        if (resolvedPriority <= radioQueue[worstIdx].priority) return false;
-        radioQueue.splice(worstIdx, 1);
-      }
-
-      const request = {
-        id: resolvedId,
-        speakerId,
-        text,
-        priority: resolvedPriority,
-        queuedAt: radioClock
-      };
-
-      // A line that outranks what is on screen starts immediately rather than
-      // waiting out the (now much longer) hold. Strictly greater-than, so equal
-      // priorities never pre-empt each other and FIFO order is preserved.
-      if (radioState.active && resolvedPriority > radioState.priority) {
-        clearActiveRadioLine();
-        startRadioLine(request);
-        return true;
-      }
-
-      radioQueue.push(request);
-      radioQueue.sort((a, b) => b.priority - a.priority || a.queuedAt - b.queuedAt);
-      return true;
-    }
-
-    function clearActiveRadioLine() {
-      radioState.active = false;
-      radioState.speakerId = null;
-      radioState.lineId = null;
-      radioState.priority = 0;
-      radioState.fullText = "";
-      radioState.revealedChars = 0;
-      radioState.charTimer = 0;
-      radioState.holdTimer = 0;
-      ui.radioText.textContent = "";
-      ui.radioPanel.classList.remove("visible");
-    }
-
-    function startRadioLine(request) {
-      const speaker = RADIO_SPEAKERS[request.speakerId];
-      radioSpeakerReadyAt[request.speakerId] = radioClock + RADIO_SPEAKER_COOLDOWN;
-      radioLineReadyAt[request.id] = radioClock + RADIO_LINE_COOLDOWN;
-
-      radioState.active = true;
-      radioState.speakerId = request.speakerId;
-      radioState.lineId = request.id;
-      radioState.priority = request.priority;
-      radioState.fullText = request.text;
-      radioState.revealedChars = 0;
-      radioState.charTimer = RADIO_CHAR_INTERVAL;
-      radioState.holdTimer = Math.min(
-        RADIO_HOLD_MAX,
-        RADIO_HOLD_BASE + request.text.length * RADIO_HOLD_PER_CHAR
-      );
-
-      playTone(speaker.toneFreq, 0.1, 0.09, speaker.toneType);
-
-      ui.radioSpeaker.textContent = radioSpeakerLabel(request.speakerId);
-      ui.radioPanel.className = request.speakerId;
-      void ui.radioPanel.offsetWidth;
-      ui.radioPanel.classList.add("visible");
-      ui.radioText.textContent = "";
+      return radioController.triggerLine(speakerId, text, priority, id);
     }
 
     function updateRadio(dt) {
-      radioClock += dt;
-      if (radioState.active) {
-        if (radioState.revealedChars < radioState.fullText.length) {
-          radioState.charTimer -= dt;
-          while (radioState.charTimer <= 0 && radioState.revealedChars < radioState.fullText.length) {
-            radioState.revealedChars += 1;
-            radioState.charTimer += RADIO_CHAR_INTERVAL;
-          }
-          ui.radioText.textContent = radioState.fullText.slice(0, radioState.revealedChars);
-        } else {
-          radioState.holdTimer -= dt;
-          if (radioState.holdTimer <= 0) {
-            radioGapUntil = radioClock + RADIO_MIN_GAP;
-            clearActiveRadioLine();
-          }
-        }
-        return;
-      }
-
-      if (radioClock < radioGapUntil || radioQueue.length === 0) return;
-
-      // Stale NORMALs are dropped at pickup: a situation report that has been
-      // waiting 8s describes a fight that has already moved on. URGENT and
-      // CRITICAL always play, however long they waited.
-      for (let i = radioQueue.length - 1; i >= 0; i -= 1) {
-        const queued = radioQueue[i];
-        if (
-          queued.priority <= RADIO_PRIORITY.NORMAL &&
-          radioClock - queued.queuedAt > RADIO_NORMAL_MAX_QUEUE_AGE
-        ) radioQueue.splice(i, 1);
-      }
-      if (radioQueue.length === 0) return;
-
-      const idx = radioQueue.findIndex(
-        (request) => (radioSpeakerReadyAt[request.speakerId] || 0) <= radioClock
-      );
-      if (idx === -1) return;
-
-      startRadioLine(radioQueue.splice(idx, 1)[0]);
+      radioController.update(dt);
     }
 
     function resetRadio() {
-      radioQueue.length = 0;
-      radioState.active = false;
-      radioState.speakerId = null;
-      radioState.lineId = null;
-      radioState.priority = 0;
-      radioState.fullText = "";
-      radioState.revealedChars = 0;
-      radioState.charTimer = 0;
-      radioState.holdTimer = 0;
-      radioSpeakerReadyAt.command = 0;
-      radioSpeakerReadyAt.wingman = 0;
-      radioSpeakerReadyAt.enemy = 0;
-      radioLineReadyAt = {};
-      radioGapUntil = 0;
-      radioClock = 0;
-      ui.radioSpeaker.textContent = "";
-      ui.radioText.textContent = "";
-      ui.radioPanel.classList.remove("visible");
+      radioController.reset();
     }
 
     function radioSay(speaker, text, priority, id) {
-      if (typeof text !== "string") return false;
-      const resolvedText = text.replace(/\{nickname\}/g, () => getPlayerNickname());
-      return triggerRadioLine(speaker, resolvedText, priority, id);
+      return radioController.say(speaker, text, priority, id);
     }
 
     function fearStageFor(kills) {
@@ -26538,7 +26240,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function radioIsIdle() {
-      return !radioState.active && radioQueue.length === 0;
+      return radioController.isIdle();
     }
 
     function getPlayerNickname() {
