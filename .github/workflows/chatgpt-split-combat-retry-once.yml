@@ -1,0 +1,393 @@
+name: split-combat retry integration
+
+on:
+  push:
+    branches:
+      - chatgpt/split-combat
+    paths:
+      - .github/workflows/chatgpt-split-combat-retry-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/split-combat
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply the structural extraction
+        run: python tools/chatgpt_split_combat_patch.py
+
+      - name: Install the browser and Three.js used by the checks
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright three >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run the existing registry gate
+        shell: bash
+        run: |
+          CHROME="$(node -e "const { chromium } = require('playwright'); process.stdout.write(chromium.executablePath())")"
+          SORTIE_PLAYWRIGHT="$PWD/node_modules/playwright" SORTIE_CHROME="$CHROME" node tools/registry_gate.mjs
+
+      - name: Compare the public gun contract against the base commit
+        shell: bash
+        env:
+          BASE_SHA: 079bde72bb3bf877c06faa879f3ae3fad9b4a5d0
+        run: |
+          git worktree add --detach /tmp/sortie-combat-base "$BASE_SHA" >/dev/null
+          node <<'NODE'
+          const fs = require('node:fs');
+          const http = require('node:http');
+          const path = require('node:path');
+          const { chromium } = require('playwright');
+
+          const MIME = {
+            '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+            '.json': 'application/json', '.css': 'text/css', '.png': 'image/png',
+            '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg'
+          };
+
+          async function serve(root) {
+            const server = http.createServer((req, res) => {
+              const url = decodeURIComponent(req.url.split('?')[0]);
+              const file = path.join(root, url === '/' ? 'index.html' : url);
+              if (!path.resolve(file).startsWith(path.resolve(root))) {
+                res.writeHead(403); res.end(); return;
+              }
+              fs.readFile(file, (error, data) => {
+                if (error) { res.writeHead(404); res.end('not found'); return; }
+                res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+                res.end(data);
+              });
+            });
+            await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+            return { server, port: server.address().port };
+          }
+
+          async function probe(browser, root) {
+            const { server, port } = await serve(root);
+            const context = await browser.newContext();
+            await context.addInitScript(() => {
+              navigator.getGamepads = () => [];
+              let seed = 0x5eed1234;
+              Math.random = () => {
+                seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+                return seed / 0x100000000;
+              };
+            });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(`pageerror: ${error}`));
+            page.on('console', (message) => {
+              if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+            });
+            try {
+              await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'load' });
+              await page.waitForFunction(() => window.__game?.debug?.gimbalEval, null, { timeout: 45000 });
+
+              const pure = await page.evaluate(() => {
+                const d = window.__game.debug;
+                const rounded = (value) => Number(value.toFixed(8));
+                return {
+                  missions: d.missionKeys(),
+                  gimbal: [
+                    d.gimbalEval(0, 400),
+                    d.gimbalEval(4.5, 400),
+                    d.gimbalEval(4.51, 400),
+                    d.gimbalEval(4.5, 750),
+                    d.gimbalEval(4.5, 751)
+                  ],
+                  cap: [0, 125, 375, 750].map((range) => rounded(d.gunAssistCapAt(range))),
+                  forgiveness: [0, 125, 375, 750].map((range) => rounded(d.gunForgivenessAt(range))),
+                  assist: d.gunAssistSim([
+                    { targetId: 1, angleDeg: 2, range: 120, dt: 1 / 60 },
+                    { targetId: 1, angleDeg: 2, range: 120, dt: 1 / 60 },
+                    { targetId: 1, angleDeg: 4.5, range: 750, dt: 0.25 },
+                    { targetId: 1, angleDeg: 4.51, range: 750, dt: 0.25 },
+                    { targetId: 2, angleDeg: 1, range: 300, dt: 0.1 },
+                    { targetId: null, angleDeg: 0, range: 0, dt: 0.1 }
+                  ]),
+                  initialGimbal: d.gimbalProbe(),
+                  initialAssist: d.gunAssistProbe(),
+                  initialSight: d.gunsightProbe(),
+                  missileProbe: d.missileProbe()
+                };
+              });
+
+              const prepared = await page.evaluate(() => {
+                window.__game.debug.clearMissionRecords();
+                if (!window.__game.debug.forceSelectMission('m01')) return false;
+                return window.__game.debug.forceConfirmMission();
+              });
+              if (!prepared) throw new Error('could not prepare m01');
+              await page.keyboard.press('Enter');
+              await page.waitForFunction(() => window.__game?.state === 'playing', null, { timeout: 10000 });
+
+              const live = await page.evaluate(async () => {
+                const d = window.__game.debug;
+                const ids = d.forceSpawnTypes(['mig21']);
+                const id = ids[ids.length - 1];
+                d.forceEnemySpeed(id, 0);
+                d.forceAimAt(id);
+                await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                const lead = d.gunLeadProbe(id);
+                const hit = d.gunHitTest(id);
+                const radius = d.hitRadiusProbe().find((entry) => entry.id === id);
+                return { id, lead, hit, radius };
+              });
+
+              if (errors.length) throw new Error(errors.join('\n'));
+              return { pure, live };
+            } finally {
+              await context.close();
+              server.close();
+            }
+          }
+
+          (async () => {
+            const browser = await chromium.launch({
+              args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+            });
+            try {
+              const before = await probe(browser, '/tmp/sortie-combat-base');
+              const after = await probe(browser, process.cwd());
+              if (JSON.stringify(before) !== JSON.stringify(after)) {
+                console.error('BASE:', JSON.stringify(before, null, 2));
+                console.error('AFTER:', JSON.stringify(after, null, 2));
+                throw new Error('public gun/debug behaviour changed across the split');
+              }
+              if (after.pure.missions.length !== 40) {
+                throw new Error(`expected 40 missions, found ${after.pure.missions.length}`);
+              }
+              if (!after.live.hit?.wouldHit) throw new Error('shared lead/hit solution no longer connects');
+              console.log('split-combat: base/after gun contract is identical');
+            } finally {
+              await browser.close();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Compare the extracted missile kernel with the old equations
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import * as THREE from 'three';
+          import { createMissileGuidance } from './src/combat/missile-guidance.js';
+
+          const LOCAL_FORWARD = new THREE.Vector3(0, 0, -1);
+          const damping = (k, dt) => 1 - Math.pow(k, dt);
+          const forwardOf = (object, out) => out.copy(LOCAL_FORWARD).applyQuaternion(object.quaternion).normalize();
+          const config = {
+            defaultTurnRate: THREE.MathUtils.degToRad(190),
+            defaultMaxSpeed: 520,
+            defaultFuse: 16,
+            terminalRange: 150,
+            terminalSubsteps: 8,
+            seekerLossTime: 0.08
+          };
+          const extracted = createMissileGuidance({
+            THREE,
+            localForward: LOCAL_FORWARD,
+            forwardOf,
+            damping,
+            ...config
+          });
+
+          function cloneMissile(source) {
+            return {
+              ...source,
+              mesh: {
+                position: source.mesh.position.clone(),
+                quaternion: source.mesh.quaternion.clone()
+              },
+              los: source.los.clone()
+            };
+          }
+
+          function oldKernel() {
+            const tmpV1 = new THREE.Vector3();
+            const tmpV2 = new THREE.Vector3();
+            const tmpV5 = new THREE.Vector3();
+            const tmpQ1 = new THREE.Quaternion();
+            const tmpSwept = new THREE.Vector3();
+            const POPUP_DIVE_RATIO = 1.2;
+            const POPUP_MIN_DROP = 60;
+
+            const fuse = (target) => {
+              if (target.subsystem) return target.spec.hitRadius;
+              if (target.surface) return target.spec.hitRadius * 0.35;
+              return config.defaultFuse;
+            };
+            const sweptDistance = (from, dir, length, point) => {
+              tmpSwept.copy(point).sub(from);
+              const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+              return tmpSwept.addScaledVector(dir, -along).length();
+            };
+            return {
+              stepsFor(missile, target) {
+                let steps = 1;
+                if (target) {
+                  if (missile.mesh.position.distanceTo(target.group.position) < config.terminalRange) {
+                    steps = config.terminalSubsteps;
+                  }
+                } else {
+                  missile.closing = false;
+                }
+                return steps;
+              },
+              step(missile, target, slice) {
+                let seekerLostNow = false;
+                if (target) {
+                  tmpV1.copy(target.group.position).sub(missile.mesh.position);
+                  const distance = tmpV1.length();
+                  missile.closing = distance < missile.lastTargetDistance;
+                  missile.lastTargetDistance = distance;
+                  tmpV1.normalize();
+                  const seekerRate = missile.turnRate ?? config.defaultTurnRate;
+                  if (!missile.lost) {
+                    if (!missile.reattack) {
+                      if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+                        missile.lostTime += slice;
+                        if (missile.lostTime >= config.seekerLossTime) {
+                          missile.lost = true;
+                          seekerLostNow = true;
+                        }
+                      } else {
+                        missile.lostTime = 0;
+                      }
+                    }
+                    missile.los.copy(tmpV1);
+                    missile.losValid = true;
+                    let aim = tmpV1;
+                    if (missile.popup && !missile.diving) {
+                      const drop = missile.mesh.position.y - target.group.position.y;
+                      tmpV5.set(
+                        target.group.position.x - missile.mesh.position.x,
+                        0,
+                        target.group.position.z - missile.mesh.position.z
+                      );
+                      const pushover = drop * POPUP_DIVE_RATIO;
+                      if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+                        missile.diving = true;
+                      } else {
+                        aim = tmpV5.normalize();
+                      }
+                    }
+                    tmpQ1.setFromUnitVectors(LOCAL_FORWARD, aim);
+                    missile.mesh.quaternion.rotateTowards(tmpQ1, seekerRate * slice);
+                  }
+                }
+                missile.speed = THREE.MathUtils.lerp(
+                  missile.speed,
+                  missile.maxSpeed ?? config.defaultMaxSpeed,
+                  damping(0.012, slice)
+                );
+                forwardOf(missile.mesh, tmpV2);
+                const travel = missile.speed * slice;
+                const hit = Boolean(target && sweptDistance(
+                  missile.mesh.position, tmpV2, travel, target.group.position
+                ) < fuse(target));
+                return { direction: tmpV2.clone(), travel, hit, seekerLostNow };
+              },
+              fuse,
+              sweptDistance
+            };
+          }
+
+          const reference = oldKernel();
+          const target = {
+            group: { position: new THREE.Vector3(0, 0, -2100) },
+            spec: { hitRadius: 40 },
+            surface: true,
+            subsystem: false
+          };
+          const seedMissile = {
+            mesh: { position: new THREE.Vector3(180, 320, 0), quaternion: new THREE.Quaternion() },
+            speed: 300,
+            maxSpeed: undefined,
+            turnRate: undefined,
+            closing: false,
+            lastTargetDistance: Infinity,
+            los: new THREE.Vector3(),
+            losValid: false,
+            lostTime: 0,
+            lost: false,
+            reattack: false,
+            popup: true,
+            diving: false
+          };
+          const a = cloneMissile(seedMissile);
+          const b = cloneMissile(seedMissile);
+
+          const close = (x, y, label) => {
+            if (Math.abs(x - y) > 1e-11) throw new Error(`${label}: ${x} != ${y}`);
+          };
+          const compareState = (step) => {
+            for (const axis of ['x', 'y', 'z']) close(a.mesh.position[axis], b.mesh.position[axis], `p.${axis}@${step}`);
+            for (const axis of ['x', 'y', 'z', 'w']) close(a.mesh.quaternion[axis], b.mesh.quaternion[axis], `q.${axis}@${step}`);
+            close(a.speed, b.speed, `speed@${step}`);
+            if (a.diving !== b.diving || a.lost !== b.lost || a.closing !== b.closing) {
+              throw new Error(`state mismatch at ${step}`);
+            }
+          };
+
+          for (let frame = 0; frame < 420; frame += 1) {
+            const stepsA = reference.stepsFor(a, target);
+            const stepsB = extracted.stepsFor(b, target);
+            if (stepsA !== stepsB) throw new Error(`substeps mismatch at frame ${frame}`);
+            const slice = (1 / 60) / stepsA;
+            for (let sub = 0; sub < stepsA; sub += 1) {
+              const ra = reference.step(a, target, slice);
+              const rb = extracted.step(b, target, slice);
+              if (ra.hit !== rb.hit || ra.seekerLostNow !== rb.seekerLostNow) {
+                throw new Error(`result mismatch at frame ${frame}/${sub}`);
+              }
+              close(ra.travel, rb.travel, `travel@${frame}/${sub}`);
+              for (const axis of ['x', 'y', 'z']) close(ra.direction[axis], rb.direction[axis], `dir.${axis}@${frame}/${sub}`);
+              if (ra.hit) break;
+              a.mesh.position.addScaledVector(ra.direction, ra.travel);
+              b.mesh.position.addScaledVector(rb.direction, rb.travel);
+              compareState(`${frame}/${sub}`);
+            }
+            if (reference.sweptDistance(a.mesh.position, new THREE.Vector3(0, 0, -1), 20, target.group.position)
+                !== extracted.sweptMissDistance(a.mesh.position, new THREE.Vector3(0, 0, -1), 20, target.group.position)) {
+              throw new Error('swept fuse mismatch');
+            }
+            if (reference.fuse(target) !== extracted.proximityFuseFor(target)) throw new Error('surface fuse mismatch');
+          }
+
+          const subsystem = { subsystem: true, surface: true, spec: { hitRadius: 13 } };
+          if (reference.fuse(subsystem) !== extracted.proximityFuseFor(subsystem)) throw new Error('subsystem fuse mismatch');
+          const aircraft = { subsystem: false, surface: false, spec: {} };
+          if (reference.fuse(aircraft) !== extracted.proximityFuseFor(aircraft)) throw new Error('air fuse mismatch');
+          console.log('split-combat: extracted missile kernel matches the old equations');
+          NODE
+
+      - name: Commit only the production split
+        shell: bash
+        run: |
+          rm -f .github/workflows/chatgpt-split-combat-integrate-once.yml
+          rm -f .github/workflows/chatgpt-split-combat-retry-once.yml
+          rm -f tools/chatgpt_split_combat_patch.py
+          rm -f tmp_combat_inventory.txt tmp_combat_detail.txt
+          rm -f package.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git add -u .github/workflows tools tmp_combat_inventory.txt tmp_combat_detail.txt
+          git commit -m "Wire the combat feature modules"
+          git push origin HEAD:chatgpt/split-combat
