@@ -24,41 +24,58 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Apply the exact combat extraction
-        run: python tools/chatgpt_split_combat_patch.py
-
-      - name: Install the browser and Three.js used by the existing checks
+      - name: Run the complete split and equivalence check
         shell: bash
-        run: |
-          npm init -y >/dev/null 2>&1
-          npm install --no-save playwright three >/dev/null
-          npx playwright install --with-deps chromium >/dev/null
-
-      - name: Run the existing registry gate
-        shell: bash
-        run: |
-          CHROME="$(node -e "const { chromium } = require('playwright'); process.stdout.write(chromium.executablePath())")"
-          SORTIE_PLAYWRIGHT="$PWD/node_modules/playwright" SORTIE_CHROME="$CHROME" node tools/registry_gate.mjs
-
-      - name: Compare gun and missile behaviour with base 079bde7
         env:
           BASE_SHA: 079bde72bb3bf877c06faa879f3ae3fad9b4a5d0
-        run: node tools/chatgpt_split_combat_verify.mjs
+        run: |
+          set +e
+          : > tmp_combat_finalize.log
+          {
+            echo '=== apply extraction ==='
+            python tools/chatgpt_split_combat_patch.py
+            echo '=== install verification dependencies ==='
+            npm init -y >/dev/null 2>&1
+            npm install --no-save playwright three >/dev/null
+            npx playwright install --with-deps chromium >/dev/null
+            echo '=== registry gate ==='
+            CHROME="$(node -e "const { chromium } = require('playwright'); process.stdout.write(chromium.executablePath())")"
+            SORTIE_PLAYWRIGHT="$PWD/node_modules/playwright" SORTIE_CHROME="$CHROME" node tools/registry_gate.mjs
+            echo '=== gun / missile equivalence ==='
+            node tools/chatgpt_split_combat_verify.mjs
+          } >> tmp_combat_finalize.log 2>&1
+          status=$?
+          printf '%s\n' "$status" > .combat-finalize-status
+          cat tmp_combat_finalize.log
+          exit 0
 
-      - name: Commit only the production split
+      - name: Publish success or the exact failure
         shell: bash
         run: |
-          rm -f .github/workflows/chatgpt-split-combat-integrate-once.yml
-          rm -f .github/workflows/chatgpt-split-combat-fix-marker-once.yml
-          rm -f .github/workflows/chatgpt-split-combat-diagnose-once.yml
-          rm -f .github/workflows/chatgpt-split-combat-finalize-once.yml
-          rm -f tools/chatgpt_split_combat_patch.py
-          rm -f tools/chatgpt_split_combat_verify.mjs
-          rm -f tmp_combat_inventory.txt tmp_combat_detail.txt tmp_combat_nav_probe.json
+          status="$(cat .combat-finalize-status)"
+          rm -f .combat-finalize-status
           rm -f package.json package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git add -u .github/workflows tools tmp_combat_inventory.txt tmp_combat_detail.txt tmp_combat_nav_probe.json
-          git commit -m "Wire the combat feature modules"
+
+          if [ "$status" = "0" ]; then
+            rm -f .github/workflows/chatgpt-split-combat-integrate-once.yml
+            rm -f .github/workflows/chatgpt-split-combat-retry-once.yml
+            rm -f .github/workflows/chatgpt-split-combat-fix-marker-once.yml
+            rm -f .github/workflows/chatgpt-split-combat-diagnose-once.yml
+            rm -f .github/workflows/chatgpt-split-combat-finalize-once.yml
+            rm -f tools/chatgpt_split_combat_patch.py
+            rm -f tools/chatgpt_split_combat_verify.mjs
+            rm -f tmp_combat_inventory.txt tmp_combat_detail.txt tmp_combat_nav_probe.json
+            rm -f tmp_combat_finalize.log
+            git add index.html
+            git add -u .github/workflows tools tmp_combat_inventory.txt tmp_combat_detail.txt tmp_combat_nav_probe.json
+            git commit -m "Wire the combat feature modules"
+          else
+            rm -f .github/workflows/chatgpt-split-combat-finalize-once.yml
+            git add tmp_combat_finalize.log
+            git add -u .github/workflows/chatgpt-split-combat-finalize-once.yml
+            git commit -m "Record the combat split verification failure"
+          fi
+
           git push origin HEAD:chatgpt/split-combat
