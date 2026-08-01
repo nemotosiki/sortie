@@ -1,0 +1,51 @@
+name: split-combat fix integration marker once
+
+on:
+  push:
+    branches:
+      - chatgpt/split-combat
+    paths:
+      - .github/workflows/chatgpt-split-combat-fix-marker-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-marker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/split-combat
+          fetch-depth: 0
+
+      - name: Match the missile marker to base 079bde7
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          patch = Path('tools/chatgpt_split_combat_patch.py')
+          text = patch.read_text(encoding='utf-8')
+          old = '        "    // Sea-skimming profile for the surface rounds.\\n",\n'
+          new = '        "    // Sea-skimming profile for the surface rounds. They run level at launch\\n",\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one old marker, found {text.count(old)}')
+          patch.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+
+          workflow = Path('.github/workflows/chatgpt-split-combat-integrate-once.yml')
+          body = workflow.read_text(encoding='utf-8')
+          workflow.write_text(body + '\n# marker retry: base 079bde7\n', encoding='utf-8', newline='\n')
+          PY
+
+      - name: Remove this one-shot launcher and trigger the full integration
+        shell: bash
+        run: |
+          rm .github/workflows/chatgpt-split-combat-fix-marker-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/chatgpt_split_combat_patch.py
+          git add .github/workflows/chatgpt-split-combat-integrate-once.yml
+          git add -u .github/workflows/chatgpt-split-combat-fix-marker-once.yml
+          git commit -m "Retry combat split against the current source"
+          git push origin HEAD:chatgpt/split-combat
