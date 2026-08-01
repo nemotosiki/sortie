@@ -1,0 +1,2653 @@
+
+============================================================================================
+FILE
+============================================================================================
+index.html lines: 33454
+
+============================================================================================
+IMPORT AND EARLY COMBAT CONSTANT REGION
+============================================================================================
+02480:         <div class="scoreRow" id="breakdownNextRankRow"><span>NEXT RANK</span><span id="breakdownNextRank">—</span></div>
+02481:       </div>
+02482:       <div class="noDamageEmblem hidden" id="noDamageEmblem">NO DAMAGE</div>
+02483:       <div class="debriefIntel" id="debriefIntel">
+02484:         <div class="debriefIntelHeader">INTERCEPTED ENEMY COMMS · POST-ACTION</div>
+02485:         <ul id="debriefIntelLines"></ul>
+02486:       </div>
+02487:       <div class="debriefEpilogue hidden" id="debriefEpilogue">
+02488:         <div class="debriefEpilogueHeader">AFTER ACTION · CAMPAIGN LOG</div>
+02489:         <ul id="debriefEpilogueLines"></ul>
+02490:       </div>
+02491:       <button id="retryBtn" class="actionButton" type="button">Retry Mission</button>
+02492:       <button id="changeAircraftBtn" class="actionButton secondary" type="button">◀ CHANGE AIRCRAFT</button>
+02493:       <button id="changeMissionBtn" class="actionButton secondary" type="button">◀ CHANGE MISSION</button>
+02494:     </div>
+02495:   </section>
+02496: 
+02497:   <div id="audioHint">PRESS ANY KEY / CLICK FOR AUDIO</div>
+02498: 
+02499:   <script type="module">
+02500:     import * as THREE from "three";
+02501:     import { loadPayloadModules } from "./src/registry/payload-loader.js";
+02502:     import { createRegistrySnapshot } from "./src/registry/registry-snapshot.js";
+02503:     import {
+02504:       KILL_CALLOUTS,
+02505:       RADIO_FEAR_STAGES,
+02506:       RADIO_PRIORITY,
+02507:       createRadioController
+02508:     } from "./src/ui/radio.js";
+02509: 
+02510:     const STATE_CAMPAIGN_SELECT = "campaignSelect";
+02511:     const STATE_MISSION_SELECT = "missionSelect";
+02512:     const STATE_BRIEFING = "briefing";
+02513:     const STATE_READY = "ready";
+02514:     const STATE_PLAYING = "playing";
+02515:     const STATE_COMPLETE = "missionComplete";
+02516:     const STATE_GAMEOVER = "gameover";
+02517:     const CONTROL_NORMAL = "normal";
+02518:     const CONTROL_EXPERT = "expert";
+02519: 
+02520:     const LOCAL_FORWARD = new THREE.Vector3(0, 0, -1);
+02521:     const LOCAL_UP = new THREE.Vector3(0, 1, 0);
+02522:     const LOCAL_RIGHT = new THREE.Vector3(1, 0, 0);
+02523:     const WORLD_UP = new THREE.Vector3(0, 1, 0);
+02524: 
+02525:     let PLAYER_MISSILE_CAPACITY = 10;
+02526:     let CRUISE_SPEED = 170;
+02527:     let BOOST_SPEED = 340;
+02528:     // Full brake settles in a controllable dogfight band; hard pulling adds induced drag.
+02529:     let BRAKE_SPEED = 128;
+02530:     const BRAKE_HIGH_G_SPEED_DROP = 52;
+02531:     // Damping uses 1 - Math.pow(k, dt): larger k values create slower, weightier response.
+02532:     // Throttle response, per-aircraft. These feed damping(k, dt) = 1 - k^dt, so a
+02533:     // SMALLER k reaches the target speed sooner, i.e. snappier acceleration.
+02534:     let BOOST_SPEED_RESPONSE_K = 0.22;
+02535:     let BRAKE_SPEED_RESPONSE_K = 0.16;
+02536:     let CRUISE_SPEED_RESPONSE_K = 0.32;
+02537:     // Per-aircraft from here (see AIRCRAFT_TYPES / applyAircraftLoadout).
+02538:     let STALL_WARNING_SPEED = 96;
+02539:     let STALL_ENTRY_SPEED = 84;
+02540:     let GUN_DAMAGE = 16;
+02541:     // Multiplies GUN_DAMAGE, but only on a burst that lands on a surface
+02542:     // target. 1 for every airframe that does not set `gunGroundBonus`, so the
+02543:     // gun behaves exactly as it always has unless the aircraft is built around
+02544:     // an anti-armour cannon. See the A-10C entry for why the strength cannot
+02545:     // live in gunDamage itself.
+02546:     let GUN_GROUND_BONUS = 1;
+02547:     let MISSILE_DAMAGE = 130;
+02548:     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
+02549:     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
+02550:     // The other two axes, driven off the same per-airframe stability figure
+02551:     // (spec.rollDamping, 8.2 on the heavy interceptor to 12.6 on the canard
+02552:     // fighter). Roll always had inertia; these two did not, so every aircraft
+02553:     // used to stop dead the moment the stick centred regardless of what it
+02554:     // was. Set in applyAircraftLoadout.
+02555:     // Response constants for damping(k, dt) = 1 - k^dt, so SMALLER is faster.
+02556:     // Set per airframe in applyAircraftLoadout. Written as k rather than as a
+02557:     // spring/damper pair because damping() is unconditionally stable at any
+02558:     // frame time: the first attempt integrated an explicit spring, whose gain
+02559:     // times dt came out at 1.14, and the rate flipped sign every frame and
+02560:     // sat pinned to its clamp.
+02561:     let PITCH_RESPONSE_K = 0.02;
+02562:     let YAW_RESPONSE_K = 0.06;
+02563:     // The loose end and the tight end of each axis. The loose figures go to
+02564:     // the heavy interceptor, the tight ones to the canard fighters.
+02565:     // Time constant is 1/ln(1/k): pitch runs 0.40s down to 0.18s, yaw 0.55s
+02566:     // down to 0.25s. Yaw is the loosest axis on every airframe because weak
+02567:     // directional damping is exactly what dutch roll is.
+02568:     const PITCH_K_LOOSE = 0.082;
+02569:     const PITCH_K_TIGHT = 0.004;
+02570:     const YAW_K_LOOSE = 0.162;
+02571:     const YAW_K_TIGHT = 0.018;
+02572:     // spec.rollDamping spans 8.2 (MiG-31) to 12.6 (Rafale) across the roster
+02573:     // and is the only per-airframe stability figure that already exists.
+02574:     const STABILITY_MIN = 8.0;
+02575:     const STABILITY_SPAN = 4.6;
+02576:     let STRUCTURAL_G = 3;              // max load factor; sets the corner speed
+02577:     let TIP_OFFSET_X = 7.3;            // wingtip offset for contrail emitters
+02578:     let TIP_OFFSET_Z = 3.3;
+02579:     // Slowing down tightens the turn, but only down to the corner speed. Below it
+02580:     // the wing cannot generate the lift for that much G and the turn opens back
+02581:     // up, so there is a sweet spot rather than "slower is always better".
+02582:     const TURN_GAIN_CEILING = 1.45;    // best-case turn multiplier at corner speed
+02583:     const TURN_GAIN_FLOOR = 0.25;      // worst case when far too slow or too fast
+02584:     const STALL_DEEP_SPEED = 62;
+02585:     const STALL_RECOVERY_SPEED = 114;
+02586:     const BASE_CAMERA_FOV = 64;
+02587:     const HIGH_SPEED_FOV_BONUS = 8;
+02588:     const LOW_SPEED_FOV_REDUCTION = 2.5;
+02589:     const CAMERA_FOV_RESPONSE_K = 0.16;
+02590:     const MAX_SPARK_PARTICLES = 300;
+02591:     const MAX_DEBRIS_PARTICLES = 180;
+02592:     const MAX_SMOKE_PARTICLES = 320;
+02593:     const MAX_COMBAT_POPUPS = 12;
+02594:     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
+02595:     const STALL_SINK_RATE = 44;
+02596:     let PITCH_RATE = THREE.MathUtils.degToRad(58);
+02597:     let EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
+02598:     let YAW_RATE = THREE.MathUtils.degToRad(16);
+02599:     const EXPERT_ROLL_RESPONSE_K = 0.055;
+02600:     let MAX_BANK_ANGLE = THREE.MathUtils.degToRad(68);
+02601:     let NORMAL_ROLL_SPRING = 22;
+02602:     const NORMAL_ROLL_DAMPING = 6.2;
+02603:     let NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(125);
+02604:     let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
+02605:     let PLAYER_MAX_HEALTH = 100;
+02606:     const TARGET_FOCUS_HOLD_MS = 360;
+02607:     const GUN_RANGE = 750;
+02608:     // 機銃のガンバル。AC7 の機銃は「弱いガンバル効果」で、
+02609:     // 機首を敵に向ける必要は残るが多少のズレは吸収される。
+02610:     // 補正は即時ではなく時間で「合っていく」: 同じ相手を追っている間だけ
+02611:     // 補正率 k が 0 から上限へ育ち、リングも弾道も同じ k で敵のリード点へ
+02612:     // 寄っていく。出会い頭の一瞬で吸い付かないのはこの立ち上がりのため。
+02613:     // 上限は距離で決まり、近いほど強い（至近 0.75 / 最大射程 0.3）。
+02614:     // 4.5度ちょうどは「補正する」側（<= で判定）。境界をどちらに倒すかは
+02615:     // 体感に影響しないが、テストが問える契約なので決めておく。
+02616:     const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
+02617:     const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+02620:     const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+02621:     const gunAssist = { k: 0, targetId: null };
+02622:     // What the last round's gimbal check decided. The interesting assertion is
+02623:     // the negative one - past the limit the burst must NOT bend - and that is
+02624:     // invisible from outside unless the check reports itself. Patching
+02625:     // Vector3.angleTo from a test instead picks up every other caller in the
+02626:     // frame and cannot tell which reading was this one.
+02627:     const lastGimbal = { applied: false, angleDeg: null, rangeM: null, k: null };
+02628:     // How fast a round is treated as travelling. The gun resolves by ray, so
+02629:     // nothing physically flies - this number exists so that a burst arrives
+02630:     // LATER than it is fired, which is what makes leading a crossing target
+02631:     // mean anything. Used by the sight to decide where to draw the ring and by
+02632:     // the gun to decide what it hit; those two must share it or the ring stops
+02633:     // being an aiming instrument and becomes decoration.
+02634:     const GUN_MUZZLE_SPEED = 900;
+02635: 
+02636:     // Where a burst fired now would meet the target. The one place this is
+02637:     // worked out: the ring is drawn here and the hit is tested here, so "put
+02638:     // the ring on the target and you will hit it" is true by construction
+02639:     // rather than by two pieces of arithmetic happening to agree.
+02640:     //
+02641:     // A lead-computing sight offsets from the muzzle boresight by an angle
+02642:     // proportional to the line-of-sight rate times the projectile time of
+02643:     // flight. The part that matters for how it behaves is the RELATIVE motion,
+02644:     // not the target's own: a contact coming straight at the nose needs no
+02645:     // lead however fast it is going, because the sightline is not rotating.
+02646:     // Extrapolating the target's own velocity instead - which is what this
+02647:     // did first - put the ring metres off to one side at knife-fight range on
+02648:     // a head-on pass, where the true lead is nearly zero.
+02649:     //
+02650:     // Straight-line extrapolation over the flight time, so a target that
+02651:     // breaks hard mid-flight is led to where it was going rather than where it
+02652:     // went. That is a real miss, and the same one a real sight makes.
+02653:     // Where rounds leave the aircraft. The sight and the gun both measure from
+02654:     // here: computing the solution from the aircraft origin instead put the
+02655:     // ring about a metre off what the rounds were actually doing, because the
+02656:     // muzzles are eight and a half metres up the nose.
+02657:     function gunMuzzleOrigin(out) {
+02658:       forwardOf(player, tmpMuzzle);
+02659:       return out.copy(player.position).addScaledVector(tmpMuzzle, 8.5);
+02660:     }
+02661:     const tmpMuzzle = new THREE.Vector3();
+02662: 
+02663:     function gunLeadPoint(from, enemy, out) {
+02664:       out.copy(enemy.group.position);
+02665:       const range = out.distanceTo(from);
+02666:       if (enemy.ground || enemy.surface) return range;
+02667:       // Relative velocity: the target's, less the shooter's own. What is left
+02668:       // is how the sightline is actually moving.
+02669:       forwardOf(enemy.group, tmpLead);
+02670:       tmpLead.multiplyScalar(enemy.speed || 0);
+02671:       forwardOf(player, tmpLeadC);
+02672:       tmpLead.addScaledVector(tmpLeadC, -playerSpeed);
+02673:       tmpLead.multiplyScalar(range / GUN_MUZZLE_SPEED);
+02674:       // Only the part ACROSS the sightline moves the ring; closing speed just
+02675:       // changes when the rounds arrive, not where they have to be sent. Left
+02676:       // in, a fast overtake threw the solution up the target's own flight path
+02677:       // and the ring slid off the side of the screen at knife range, where the
+02678:       // true lead is nearly nothing.
+02679:       if (range > 0.001) {
+02680:         tmpLeadB.copy(out).sub(from).multiplyScalar(1 / range);
+02681:         tmpLead.addScaledVector(tmpLeadB, -tmpLead.dot(tmpLeadB));
+02682:       }
+02683:       out.add(tmpLead);
+02684:       return range;
+02685:     }
+02686:     const tmpLead = new THREE.Vector3();
+02687:     const tmpLeadB = new THREE.Vector3();
+02688:     const tmpLeadC = new THREE.Vector3();
+02689: 
+02690:     // How much the hit radius is inflated at a given range. Knife-fight range
+02691:     // is where a gun kill is supposed to be available, and at 100 m a fighter
+02692:     // subtends enough of the screen that a shot which looks like a hit ought to
+02693:     // be one; out at 700 m the same angular error is tens of metres of miss and
+02694:     // the gun should be the wrong tool. Linear from 2.2x at point blank to 1.0x
+02695:     // at maximum range, so closing the distance is the thing that makes the
+02696:     // gun work rather than any single threshold the player has to learn.
+02697:     // How far off the nose a contact may sit and still raise a gun ring. Wider
+02698:     // than the 4.5 degree gimbal gate on purpose: the ring has to be visible
+02699:     // while the player is still pulling the nose onto the target, or it only
+02700:     // ever appears once the shot is already made. Roughly a third of the way
+02701:     // out from the middle of the screen at the default field of view.
+02702:     const GUNSIGHT_CONE_DEG = 20;
+02703:     const GUNSIGHT_CONE_COS = Math.cos(THREE.MathUtils.degToRad(GUNSIGHT_CONE_DEG));
+02704: 
+02705:     // The collider every enemy AIRCRAFT is built from: one shared sphere,
+02706:     // scaled per profile by `hitboxScale`. Both the mesh in
+02707:     // createSharedGeometry and the gun's arithmetic read this.
+02708:     const ENEMY_HITBOX_RADIUS = 10.5;
+02709: 
+02710:     // The radius the gun tests against, for anything that can be shot at.
+02711:     //
+02712:     // Three kinds of contact describe their size three different ways, and the
+02713:     // gun has to know all three. Ships and ground installations carry an
+02714:     // explicit `hitBox` or `hitRadius`. AIRCRAFT CARRY NEITHER: their collider
+02715:     // is the shared ENEMY_HITBOX_RADIUS sphere scaled by the profile's
+02716:     // `hitboxScale`, which is set from wingspan (see the note above the
+02717:     // `gripen` profile). Reading only hitBox/hitRadius therefore skipped every
+02718:     // aeroplane in the game - the analytic hit test replaced a raycast that had
+02719:     // been hitting the scaled sphere mesh, and the sphere was the one size the
+02720:     // rewrite forgot to carry over.
+02721:     function enemyHitSphereRadius(enemy) {
+02722:       const box = enemy.spec.hitBox;
+02723:       if (box) return Math.max(box.x, box.y, box.z) * 0.5;
+02724:       if (enemy.spec.hitRadius) return enemy.spec.hitRadius;
+02725:       return ENEMY_HITBOX_RADIUS * (enemy.spec.hitboxScale || 1);
+02726:     }
+02727: 
+02728:     const GUN_CLOSE_FORGIVENESS = 2.2;
+02729:     function gunAimForgiveness(range) {
+02730:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02731:       return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+02732:     }
+02733: 
+02734:     // The gimbal decision on its own, given an angle and a range. Pulled out of
+02735:     // fireGun so the threshold can be asked about directly instead of being
+02736:     // inferred from where rounds land: the angle a burst actually flies at is a
+02737:     // function of two moving aircraft and cannot be dialled in from outside, so
+02738:     // trying to place a target at 4.4 and then at 4.6 degrees is solving a
+02739:     // problem the test does not have. fireGun calls this, so what a test asks
+02740:     // and what a round does cannot drift apart.
+02741:     function gimbalDecision(angleRad, distance) {
+02742:       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+02743:       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+02744:       return { applied: true, reason: "ok" };
+02745:     }
+02746: 
+02747:     // The assist's ceiling at a given range: strongest at knife-fight range,
+02748:     // weakest at the edge of the envelope, so closing in is what buys the
+02749:     // stronger pull - the same bargain gunAimForgiveness offers.
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+02753:     }
+02754:     // One frame of the assist settling. A plain state-in, state-out step for
+02755:     // the same reason gimbalDecision is separate: convergence, the reset on a
+02756:     // target change and the release outside the cone are claims about a curve
+02757:     // over time, and a test can drive this directly instead of trying to fly
+02758:     // two aircraft into a shape that happens to exhibit them.
+02759:     function gunAssistStep(state, targetId, angleRad, range, dt) {
+02760:       // A new contact starts from zero - the ring walks out from the nose
+02761:       // instead of appearing already parked on the target.
+02762:       if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+02767:       return state.k;
+02768:     }
+02769:     const GUN_RATE = 6;
+02770:     const LOCK_RANGE = 1200;
+02771:     const LOCK_TIME = 0.85;
+02772:     const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
+02773:     const LOCK_GRACE_TIME = 0.4;
+02774:     const LOCK_HYSTERESIS_BONUS = 0.15;
+02775:     const KILL_SCORE = 1000;
+02776:     // Non-designated contacts pay half. Enough that clearing the sky is worth
+02777:     // doing, not enough that farming escorts beats flying the mission fast.
+02778:     const BONUS_KILL_SCORE_FACTOR = 0.5;
+02779:     // Rank thresholds, Ace Combat style: what ranks a sortie is the score the
+02780:     // player actually took off the field plus a time bonus, measured against
+02781:     // the score that was on the field to begin with. Damage taken is NOT an
+02782:     // axis - flying hurt is the player's problem, not the debrief's - so a
+02783:     // clean sortie is honoured with an emblem instead (see NO DAMAGE below).
+02784:     //
+02785:     //   TIME_BONUS_WEIGHT  the time bonus at par, as a fraction of everything
+02786:     //                      spawned. 0.3 makes a fast clear worth about a third
+02787:     //                      again of the field, so it can carry a sortie that
+02788:     //                      left some bonus contacts alive.
+02789:     //   TIME_ZERO_MULT     the time bonus reaches zero at this multiple of par
+02790:     //                      (1.8x), which is exactly where the old B line sat.
+02791:     //   S / A / B          fraction of the maximum attainable total.
+02792:     // S is 0.88 rather than 0.90 because of where the arithmetic lands: at par
+02793:     // the time bonus is worth 0.3/1.3 of the maximum, so a sortie flown inside
+02794:     // par ranks at (killFraction + 0.3) / 1.3. An S line of 0.90 would demand
+02795:     // 87% of the field destroyed, which only just reaches into the intended
+02796:     // "clear par having killed 85-90%" band; 0.88 needs 84.4% and covers it.
+02797:     const RANK_TUNING = Object.freeze({
+02798:       TIME_BONUS_WEIGHT: 0.3,
+02799:       S: 0.88,
+02800:       A: 0.70,
+02801:       B: 0.45,
+02802:       TIME_ZERO_MULT: 1.8
+02803:     });
+02804: 
+02805:     // ---- Difficulty --------------------------------------------------------
+02806:     // Three multipliers, each with exactly one point of contact downstream:
+02807:     // incomingDamage scales the player's own damage taken (applyPlayerDamage),
+02808:     // skillShift walks the enemy's resolved SKILL_TIERS index (spawnEnemy),
+02809:     // scoreMult scales the recorded total (recordMissionResult) after ranking
+02810:     // has already happened. Enemy HP, RANK_TUNING and the rank ratio itself
+02811:     // are never touched - see the call sites for why.
+02812:     const DIFFICULTY_ORDER = ["easy", "normal", "hard", "ace"];
+02813:     const DIFFICULTY_TUNING = Object.freeze({
+02814:       easy:   { label: "EASY",   incomingDamage: 0.6,  skillShift: -1, scoreMult: 0.8 },
+02815:       normal: { label: "NORMAL", incomingDamage: 1.0,  skillShift:  0, scoreMult: 1.0 },
+02816:       hard:   { label: "HARD",   incomingDamage: 1.35, skillShift: +1, scoreMult: 1.2 },
+02817:       ace:    { label: "ACE",    incomingDamage: 1.75, skillShift: +1, scoreMult: 1.5 }
+02818:     });
+02819:     const DIFFICULTY_STORAGE_KEY = "sortieDifficulty";
+02820: 
+02821:     // ---- Hangar economy ------------------------------------------------------
+02822:     // AC7 spends mission reward points on an aircraft tree; AC5 gates the next
+02823:     // airframe behind accumulated kill points. This is the same idea with no new
+02824:     // counter to keep: the wallet is DERIVED from the records the player already
+02825:     // owns - the sum of every mission's best score for that campaign, minus what
+02826:     // they have bought. Only the purchase list is persisted, so a player who has
+02827:     // been flying since before this existed walks into a hangar already funded by
+02828:     // their own history, and grinding a mission they have already aced pays
+02829:     // nothing because only a NEW best raises the total.
+02830:     //
+02831:     // The two caps below are the ONLY hand-written numbers in the economy. Every
+02832:     // price is derived from the spec bars the hangar already draws, so an
+02833:     // airframe whose stats are retuned re-prices itself and a new one arrives
+02834:     // priced without anyone editing a table.
+02835:     //
+02836:     // Calibrated against measured campaign income (every mission flown at S with
+02837:     // full time bonus): USA 205,020 / RUS 214,240. A cap is roughly the price of
+02838:     // that side's best airframe, chosen so the whole hangar costs about 1/1.2 of
+02839:     // a full S-rank sweep - the last jet lands right at the end of the campaign,
+02840:     // and a player eight missions in at A rank can afford the middle of the list.
+02841:     const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000 });
+02842:     // Weights over the six spec bars, then a convex curve: 1.6 makes the top of
+02843:     // the hangar cost several times the bottom rather than the 1.4x the raw bar
+02844:     // spread would give, which is what makes buying up the list feel like
+02845:     // progress. The 0.10 floor keeps a weak airframe from costing nothing.
+02846:     const PRICE_WEIGHTS = Object.freeze({
+02847:       speed: 0.20, mobility: 0.25, firepower: 0.25, defense: 0.15, stability: 0.15, ground: 0.10
+02848:     });
+02849:     const PRICE_CURVE = 1.6;
+02850:     const PRICE_FLOOR_FRACTION = 0.10;
+02851:     // Free on day one, one per side: the campaign has to start somewhere, and a
+02852:     // player with no record at all must still be able to fly.
+02853:     // Written out rather than referencing DEFAULT_AIRCRAFT_ID, which is declared
+02854:     // further down with the hangar order and would still be in its temporal dead
+02855:     // zone here. Held to that value by a boot-time assertion beside the order.
+02856:     const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21" });
+02857:     const PURCHASES_STORAGE_KEY = "sortieHangarPurchases";
+02858:     const RADAR_RANGE = 1400;
+02859:     // The ocean is a finite plane that rides with the camera, so this only has
+02860:     // to out-reach the fog (far 2600-3350 by preset) with margin for the
+02861:     // horizon at altitude - not cover the playable area.
+02862:     const OCEAN_PLANE_SIZE = 12000;
+02863:     // Battle area, AC style. Measured basis: every objective in the campaign
+02864:     // sits inside r=3000 (waves spawn 820-1160m off the player's nose, the
+02865:     // night base is at (900,-1200), the glacier corridor ends at z=-2600,
+02866:     // scenery rings stop at 3900), and fog far is 3350 at most. 12000 leaves
+02867:     // ~35s of boost (340 m/s) from the centre before the warning, which is far
+02868:     // outside any engagement yet still bounds the sortie.
+02869:     const BATTLE_RADIUS = 12000;
+02870:     const BATTLE_WARN_FRACTION = 0.9;
+
+============================================================================================
+FUNCTION gunAssistCap hits=1
+============================================================================================
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+02753:     }
+-----
+
+============================================================================================
+FUNCTION gunAssistStep hits=1
+============================================================================================
+02759:     function gunAssistStep(state, targetId, angleRad, range, dt) {
+02760:       // A new contact starts from zero - the ring walks out from the nose
+02761:       // instead of appearing already parked on the target.
+02762:       if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+02767:       return state.k;
+02768:     }
+-----
+
+============================================================================================
+FUNCTION gimbalDecision hits=1
+============================================================================================
+02741:     function gimbalDecision(angleRad, distance) {
+02742:       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+02743:       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+02744:       return { applied: true, reason: "ok" };
+02745:     }
+-----
+
+============================================================================================
+FUNCTION gunMuzzleOrigin hits=1
+============================================================================================
+02657:     function gunMuzzleOrigin(out) {
+02658:       forwardOf(player, tmpMuzzle);
+02659:       return out.copy(player.position).addScaledVector(tmpMuzzle, 8.5);
+02660:     }
+-----
+
+============================================================================================
+FUNCTION gunLeadPoint hits=1
+============================================================================================
+02663:     function gunLeadPoint(from, enemy, out) {
+02664:       out.copy(enemy.group.position);
+02665:       const range = out.distanceTo(from);
+02666:       if (enemy.ground || enemy.surface) return range;
+02667:       // Relative velocity: the target's, less the shooter's own. What is left
+02668:       // is how the sightline is actually moving.
+02669:       forwardOf(enemy.group, tmpLead);
+02670:       tmpLead.multiplyScalar(enemy.speed || 0);
+02671:       forwardOf(player, tmpLeadC);
+02672:       tmpLead.addScaledVector(tmpLeadC, -playerSpeed);
+02673:       tmpLead.multiplyScalar(range / GUN_MUZZLE_SPEED);
+02674:       // Only the part ACROSS the sightline moves the ring; closing speed just
+02675:       // changes when the rounds arrive, not where they have to be sent. Left
+02676:       // in, a fast overtake threw the solution up the target's own flight path
+02677:       // and the ring slid off the side of the screen at knife range, where the
+02678:       // true lead is nearly nothing.
+02679:       if (range > 0.001) {
+02680:         tmpLeadB.copy(out).sub(from).multiplyScalar(1 / range);
+02681:         tmpLead.addScaledVector(tmpLeadB, -tmpLead.dot(tmpLeadB));
+02682:       }
+02683:       out.add(tmpLead);
+02684:       return range;
+02685:     }
+-----
+
+============================================================================================
+FUNCTION gunAimForgiveness hits=1
+============================================================================================
+02729:     function gunAimForgiveness(range) {
+02730:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02731:       return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+02732:     }
+-----
+
+============================================================================================
+FUNCTION enemyHitSphereRadius hits=1
+============================================================================================
+02721:     function enemyHitSphereRadius(enemy) {
+02722:       const box = enemy.spec.hitBox;
+02723:       if (box) return Math.max(box.x, box.y, box.z) * 0.5;
+02724:       if (enemy.spec.hitRadius) return enemy.spec.hitRadius;
+02725:       return ENEMY_HITBOX_RADIUS * (enemy.spec.hitboxScale || 1);
+02726:     }
+-----
+
+============================================================================================
+FUNCTION fireGun hits=1
+============================================================================================
+19195:     function fireGun() {
+19196:       gunShots += 1;
+19197:       // Fires GUN_RATE x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
+19198:       playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
+19199:       forwardOf(player, tmpV1);
+19200:       upOf(player, tmpV2);
+19201:       rightOf(player, tmpV3);
+19202: 
+19203:       const muzzleSide = Math.sin(performance.now() * 0.075) >= 0 ? 1 : -1;
+19204:       const start = new THREE.Vector3().copy(player.position)
+19205:         .addScaledVector(tmpV1, 8.5)
+19206:         .addScaledVector(tmpV2, -0.15)
+19207:         .addScaledVector(tmpV3, 2.8 * muzzleSide);
+19208: 
+19209:       // Gun gimbal: a slight pull towards the aiming solution, not an auto-aim
+19210:       // - the nose still has to be roughly on it. What it pulls towards is the
+19211:       // LEAD POINT rather than where the target is standing, because that is
+19212:       // where the burst is going to arrive and where the ring is drawn. The
+19213:       // strength is gunAssist.k - the same settling value the ring is drawn
+19214:       // with, and the target is the ring's target, so what the sight shows and
+19215:       // what the rounds do are one mechanism rather than two rules that agree.
+19216:       const gimbalTargetId = gunAssist.targetId;
+19217:       lastGimbal.applied = false;
+19218:       lastGimbal.angleDeg = null;
+19219:       lastGimbal.rangeM = null;
+19220:       lastGimbal.k = null;
+19221:       if (gimbalTargetId) {
+19222:         const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
+19223:         if (gimbalTarget) {
+19224:           const gimbalDist = gunLeadPoint(start, gimbalTarget, tmpV4);
+19225:           tmpV4.sub(start);
+19226:           const leadDist = tmpV4.length();
+19227:           if (leadDist > 0) {
+19228:             tmpV4.multiplyScalar(1 / leadDist);
+19229:             const gimbalAngle = tmpV1.angleTo(tmpV4);
+19230:             // Recorded whether or not the correction fires, because the claim
+19231:             // being checked from outside is "past the limit it does NOT bend" -
+19232:             // and a probe that only reports the corrected shots cannot show it.
+19233:             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+19238:               lastGimbal.applied = true;
+19239:             }
+19240:           }
+19241:         }
+19242:       }
+19243: 
+19244:       // Rounds are tested against where each contact WILL be, not where it is.
+19245:       // Raycasting the hitboxes where they sit would score the shot aimed at
+19246:       // the target and miss the one that was led - the exact opposite of what
+19247:       // the sight tells the player to do. So the test is analytic: how close
+19248:       // does the ray pass to each lead point, against a radius taken from the
+19249:       // same hitbox the old raycast used. Cheaper than the raycast it replaces.
+19250:       const hits = [];
+19251:       for (const enemy of enemies) {
+19252:         if (!enemy.alive) continue;
+19253:         const range = gunLeadPoint(start, enemy, tmpV5);
+19254:         if (range > GUN_RANGE) continue;
+19255:         tmpV5.sub(start);
+19256:         const along = tmpV5.dot(tmpV1);
+19257:         if (along <= 0) continue;                    // behind the muzzle
+19258:         // Perpendicular distance from the ray to the lead point.
+19259:         const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+19260:         // A sphere standing in for the hitbox, because a ray-point test cannot
+19261:         // use a cuboid. Not everything on the board carries a `hitBox` - ship
+19262:         // mounts describe themselves with `hitRadius` instead - so both are
+19263:         // read, and anything with neither is skipped rather than throwing.
+19264:         const baseRadius = enemyHitSphereRadius(enemy);
+19265:         if (baseRadius <= 0) continue;
+19266:         const radius = baseRadius * gunAimForgiveness(range);
+19267:         if (missDistance > radius) continue;
+19268:         hits.push({ enemy, distance: along, missDistance });
+19269:       }
+19270:       hits.sort((a, b) => a.distance - b.distance);
+19271:       let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, GUN_RANGE);
+19272: 
+19273:       if (hits.length > 0) {
+19274:         // A mount's box sits INSIDE its ship's, so the hull is always the
+19275:         // nearer intersection and "nearest wins" could never reach a mount.
+19276:         // Aim decides instead: with a mount selected the burst goes to the
+19277:         // mount, and with anything else selected mounts are transparent and
+19278:         // the hull takes every round. Neither can absorb the other's fire.
+19279:         const focusId = preferredTargetId ?? lock.targetId;
+19280:         let hit = hits.find((entry) => entry.enemy.subsystem && entry.enemy.id === focusId);
+19281:         if (!hit) hit = hits.find((entry) => !entry.enemy.subsystem);
+19282:         if (hit) {
+19283:           const victim = hit.enemy;
+19284:           end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, hit.distance);
+19285:           // The anti-armour multiplier is applied here, at the one place that
+19286:           // knows WHAT was hit - `surface` is set on ships, their mounts and
+19287:           // ground installations, and on nothing that flies. Putting it in the
+19288:           // aircraft gunDamage would leak it into the AIR-TO-AIR bar.
+19289:           damageEnemy(victim, victim.surface ? GUN_DAMAGE * GUN_GROUND_BONUS : GUN_DAMAGE, false);
+19290:           createImpactBurst(end, 0xffb04a, 0.7);
+19291:         }
+19292:       }
+19293: 
+19294:       createTracer(start, end, 0xffd35f, 0.11, 0.9);
+19295:       createMuzzleFlash(start, 0xffe39a);
+19296:     }
+-----
+
+============================================================================================
+FUNCTION updateGunsight hits=1
+============================================================================================
+26396:     function updateGunsight(dt = 0) {
+26397:       let best = null;
+26398:       let bestRange = Infinity;
+26399:       forwardOf(player, tmpV9);
+26400:       for (const enemy of enemies) {
+26401:         if (!enemy.alive) continue;
+26402:         tmpV8.copy(enemy.group.position).sub(player.position);
+26403:         const range = tmpV8.length();
+26404:         if (range > GUN_RANGE || range >= bestRange) continue;
+26405:         // Being in range is not enough - the gun fires along the nose, so a
+26406:         // contact well off the boresight cannot be hit however close it is.
+26407:         // Anything outside the cone gets no ring, which is the honest answer:
+26408:         // there is no shot to aim. Merely testing "ahead of the nose" let a
+26409:         // contact almost abeam raise a ring the gun could never reach, and
+26410:         // the solution for one landed hundreds of pixels off to the side.
+26411:         if (tmpV8.dot(tmpV9) <= range * GUNSIGHT_CONE_COS) continue;
+26412:         best = enemy;
+26413:         bestRange = range;
+26414:       }
+26415:       if (!best) {
+26416:         gunAssistStep(gunAssist, null, 0, 0, dt);
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+26419:         gunsightState.targetId = null;
+26420:         return;
+26421:       }
+26422: 
+26423:       // Where it will be when the rounds arrive - the same answer the gun uses.
+26424:       gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
+26425:       // How far ahead of the contact the burst is being sent. Taken before the
+26426:       // blend below, so it reports the full solution rather than however much
+26427:       // of it the assist has walked out to.
+26428:       const leadM = tmpV8.distanceTo(best.group.position);
+26429: 
+26430:       // How far off the nose the full solution sits, and one settling step of
+26431:       // the assist towards it.
+26432:       tmpV5.copy(tmpV8).sub(tmpV4);
+26433:       const solDist = tmpV5.length();
+26434:       const offAngle = solDist > 0.001
+26435:         ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
+26436:         : 0;
+26437:       const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
+26438: 
+26439:       // The ring is drawn where the rounds are actually going: the blend of
+26440:       // the uncorrected boresight impact and the full solution by the assist's
+26441:       // current k. At k=0 that is the nose itself, so the ring starts at the
+26442:       // centre of the screen and slides onto the target as the assist settles
+26443:       // - never the other way round.
+26444:       tmpV5.copy(tmpV4).addScaledVector(tmpV9, solDist).lerp(tmpV8, k);
+26445:       tmpV8.copy(tmpV5);
+26446: 
+26447:       tmpV7.copy(tmpV8).project(camera);
+26448:       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+26449:       if (!isHudProjectionVisible(tmpV7, tmpV6, 0.98)) {
+26450:         // Hidden but not reset: the angle gate in the step is what decides
+26451:         // whether the assist survives an excursion off screen.
+26452:         ui.gunsight.classList.add("hidden");
+26453:         gunsightState.active = false;
+26454:         gunsightState.targetId = null;
+26455:         return;
+26456:       }
+26457: 
+26458:       const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
+26459:       const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
+26460:       ui.gunsight.style.left = `${x}px`;
+26461:       ui.gunsight.style.top = `${y}px`;
+26462:       ui.gunsight.classList.remove("hidden");
+26463:       // The ring replaces the cross rather than joining it. Both are the gun's
+26464:       // aiming mark, so having them up together offered two answers to one
+26465:       // question - and the cross, being fixed to the nose, is the wrong one
+26466:       // the moment a lead solution exists.
+26467:       ui.boresight.classList.add("hidden");
+26468:       // Still recorded, because the gun's gimbal turns on exactly this and a
+26469:       // test needs to be able to ask. It no longer colours anything: red on
+26470:       // this HUD belongs to a completed missile lock.
+26471:       const hot = gimbalDecision(offAngle, bestRange).applied;
+26472: 
+26473:       gunsightState.active = true;
+26474:       gunsightState.targetId = best.id;
+26475:       gunsightState.x = x;
+26476:       gunsightState.y = y;
+26477:       gunsightState.rangeM = bestRange;
+26478:       gunsightState.leadM = leadM;
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+26481:       gunsightState.forgiveness = gunAimForgiveness(bestRange);
+26482:     }
+-----
+
+============================================================================================
+FUNCTION updateGunAssist hits=0
+============================================================================================
+
+============================================================================================
+FUNCTION updateBoresight hits=1
+============================================================================================
+26359:     function updateBoresight() {
+26360:       // Hidden when the camera is handed elsewhere: the target view and the
+26361:       // kill cam look away from the nose, and the nose symbol has no business
+26362:       // on a frame that is looking at something else. The gunsight swap
+26363:       // (ring while a contact is in range) hides it the rest of the time.
+26364:       if (cameraFocusActive || killCam.active) {
+26365:         ui.boresight.classList.add("hidden");
+26366:         return;
+26367:       }
+26368:       forwardOf(player, tmpV9);
+26369:       gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
+26370:       tmpV7.copy(tmpV8).project(camera);
+26371:       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+26372:       // Hidden rather than clamped to the edge: a symbol stuck against the
+26373:       // frame claims the nose is over there, which is the same lie in a new
+26374:       // place. This only fires in attitudes where the nose has genuinely
+26375:       // left the view.
+26376:       if (!isHudProjectionVisible(tmpV7, tmpV6, 1.04)) {
+26377:         ui.boresight.classList.add("hidden");
+26378:         return;
+26379:       }
+26380:       ui.boresight.classList.remove("hidden");
+26381:       ui.boresight.style.left = `${(tmpV7.x * 0.5 + 0.5) * window.innerWidth}px`;
+26382:       ui.boresight.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
+26383:     }
+-----
+
+============================================================================================
+FUNCTION launchMissile hits=1
+============================================================================================
+19298:     function launchMissile() {
+19299:       if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return false;
+19300:       if (loadedMissiles <= 0) {
+19301:         playTone(240, 0.07, 0.05, "square");
+19302:         return false;
+19303:       }
+19304:       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
+19305:       if (!target) {
+19306:         resetLock();
+19307:         return false;
+19308:       }
+19309: 
+19310:       playSfx("missile", 0.5);
+19311: 
+19312:       forwardOf(player, tmpV1);
+19313:       rightOf(player, tmpV2);
+19314:       upOf(player, tmpV3);
+19315: 
+19316:       const root = createMissileModel();
+19317:       root.position.copy(player.position)
+19318:         .addScaledVector(tmpV1, 5.5)
+19319:         .addScaledVector(tmpV2, missileSide * 4.2)
+19320:         .addScaledVector(tmpV3, -1.2);
+19321:       root.quaternion.copy(player.quaternion);
+19322:       scene.add(root);
+19323: 
+19324:       missilesInFlight.push({
+19325:         mesh: root,
+19326:         targetId: target.id,
+19327:         speed: Math.max(playerSpeed + 120, 300),
+19328:         life: 0,
+19329:         trailTimer: 0,
+19330:         closing: false,
+19331:         lastTargetDistance: Infinity,
+19332:         los: new THREE.Vector3(),
+19333:         losValid: false,
+19334:         lostTime: 0,
+19335:         lost: false
+19336:       });
+19337: 
+19338:       missileSide *= -1;
+19339:       missileCount -= 1;
+19340:       loadedMissiles -= 1;
+19341:       // Schedule a reload only if unloaded stock remains beyond what the
+19342:       // pending reloads will already deliver.
+19343:       if (missileCount - loadedMissiles - missileReloadTimers.length > 0) {
+19344:         missileReloadTimers.push(MISSILE_RELOAD_TIME);
+19345:       }
+19346:       missilesLaunched += 1;
+19347:       showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
+19348:       resetLock();
+19349:       return true;
+19350:     }
+-----
+
+============================================================================================
+FUNCTION updateMissiles hits=1
+============================================================================================
+19363:     function updateMissiles(dt) {
+19364:       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
+19365:         const missile = missilesInFlight[i];
+19366:         missile.life += dt;
+19367:         missile.trailTimer -= dt;
+19368: 
+19369:         // Point defence gets its roll before the round moves, so a drum that
+19370:         // is about to be flown past still gets the shot it earned.
+19371:         if (ciwsIntercept(missile, dt)) {
+19372:           removeMissile(i);
+19373:           continue;
+19374:         }
+19375: 
+19376:         const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+19377:         // One step out in the cruise, eight through the endgame.
+19378:         let steps = 1;
+19379:         if (target) {
+19380:           if (missile.mesh.position.distanceTo(target.group.position) < MISSILE_TERMINAL_RANGE) {
+19381:             steps = MISSILE_TERMINAL_SUBSTEPS;
+19382:           }
+19383:         } else {
+19384:           missile.closing = false;
+19385:         }
+19386:         const slice = dt / steps;
+19387:         let struck = false;
+19388: 
+19389:         for (let step = 0; step < steps; step += 1) {
+19390:           if (target) {
+19391:             tmpV1.copy(target.group.position).sub(missile.mesh.position);
+19392:             const distance = tmpV1.length();
+19393:             // Break trigger input: a round that has been out-turned and is now
+19394:             // opening is no longer something the target needs to break against.
+19395:             missile.closing = distance < missile.lastTargetDistance;
+19396:             missile.lastTargetDistance = distance;
+19397:             tmpV1.normalize();
+19398: 
+19399:             // Seeker lock-loss. The line of sight to a manoeuvring target rotates
+19400:             // at v/r, which inside the last hundred metres of a break runs away
+19401:             // from any finite turn rate. A seeker being asked for more than it
+19402:             // has is not tracking any more - it is pointing where the target used
+19403:             // to be - so once it has been behind for long enough it stops
+19404:             // pretending and flies on ballistically. That is what makes a break
+19405:             // turn work against an ordinary round: the loss is permanent, so one
+19406:             // good break is the whole answer and the round is spent. Only
+19407:             // resolvable because the terminal phase is sub-stepped - at frame
+19408:             // resolution the line never rotates for more than one step.
+19409:             //
+19410:             // A `reattack` round (the QAAM) is exempt from the clock entirely and
+19411:             // keeps steering for its whole life, the same discipline enemy rounds
+19412:             // used to have. A break still beats it in the moment - 300 deg/s is
+19413:             // finite and it overshoots - but it comes back round for a second
+19414:             // pass, so breaking buys time rather than survival. What it costs is
+19415:             // the magazine: see the capacity on each airframe that carries it.
+19416:             const seekerRate = missile.turnRate ?? MISSILE_TURN_RATE;
+19417:             if (!missile.lost) {
+19418:               if (!missile.reattack) {
+19419:                 if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+19420:                   missile.lostTime += slice;
+19421:                   if (missile.lostTime >= SEEKER_LOSS_TIME) {
+19422:                     missile.lost = true;
+19423:                     // A puff as the motor keeps burning on a dead seeker.
+19424:                     for (let puff = 0; puff < 3; puff += 1) {
+19425:                       tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+19426:                       smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+19427:                     }
+19428:                   }
+19429:                 } else {
+19430:                   missile.lostTime = 0;
+19431:                 }
+19432:               }
+19433:               missile.los.copy(tmpV1);
+19434:               missile.losValid = true;
+19435: 
+19436:               // Cruise leg of the sea-skimming profile: steer at the target's
+19437:               // horizontal position only, which holds the launch altitude
+19438:               // because the round flies where its nose points. Steering only -
+19439:               // the seeker LOS recorded above is the true one, so lock-loss is
+19440:               // untouched. The pushover latches: while diving, height falls as
+19441:               // fast as ground range does, so a live ratio test would flick back
+19442:               // to level halfway down and porpoise the round into the target.
+19443:               let aim = tmpV1;
+19444:               if (missile.popup && !missile.diving) {
+19445:                 const drop = missile.mesh.position.y - target.group.position.y;
+19446:                 tmpV5.set(
+19447:                   target.group.position.x - missile.mesh.position.x,
+19448:                   0,
+19449:                   target.group.position.z - missile.mesh.position.z
+19450:                 );
+19451:                 const pushover = drop * POPUP_DIVE_RATIO;
+19452:                 if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+19453:                   missile.diving = true;
+19454:                 } else {
+19455:                   aim = tmpV5.normalize();
+19456:                 }
+19457:               }
+19458:               tmpQ1.setFromUnitVectors(LOCAL_FORWARD, aim);
+19459:               missile.mesh.quaternion.rotateTowards(tmpQ1, seekerRate * slice);
+19460:             }
+19461:           }
+19462: 
+19463:           missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed ?? MISSILE_MAX_SPEED, damping(0.012, slice));
+19464:           forwardOf(missile.mesh, tmpV2);
+19465:           const travel = missile.speed * slice;
+19466: 
+19467:           // Swept fuse: the round is a segment this step, not a point. Testing
+19468:           // the segment's closest approach removes the tunnelling that let a
+19469:           // clean pass score as a hit - and a real hit score as a pass - purely
+19470:           // on where the sample points happened to land.
+19471:           if (target && sweptMissDistance(missile.mesh.position, tmpV2, travel, target.group.position)
+19472:               < proximityFuseFor(target)) {
+19473:             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+19474:             if (missile.spw) spwHits += 1;
+19475:             else missileHits += 1;
+19476:             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
+19477:             removeMissile(i);
+19478:             struck = true;
+19479:             break;
+19480:           }
+19481: 
+19482:           missile.mesh.position.addScaledVector(tmpV2, travel);
+19483:         }
+19484:         if (struck) continue;
+19485: 
+19486:         if (missile.trailTimer <= 0) {
+19487:           forwardOf(missile.mesh, tmpV2);
+19488:           tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.4);
+19489:           createMissileTrailPuff(tmpV3);
+19490:           missile.trailTimer += 0.03;
+19491:         }
+19492: 
+19493:         if (missile.life > (missile.lifeLimit ?? MISSILE_LIFE) || missile.mesh.position.y < 0) {
+19494:           createImpactBurst(missile.mesh.position, 0xffca70, 0.5);
+19495:           removeMissile(i);
+19496:         }
+19497:       }
+19498:     }
+-----
+
+============================================================================================
+FUNCTION proximityFuseFor hits=1
+============================================================================================
+19511:     function proximityFuseFor(target) {
+19512:       // A mount is a small box bolted to a big ship: it fuses on its own
+19513:       // radius undiluted, so a round aimed at one still arrives, while a round
+19514:       // aimed at the hull still has to satisfy the hull's much larger figure.
+19515:       if (target.subsystem) return target.spec.hitRadius;
+19516:       if (target.surface) return target.spec.hitRadius * 0.35;
+19517:       return MISSILE_FUSE;
+19518:     }
+-----
+
+============================================================================================
+FUNCTION sweptMissDistance hits=1
+============================================================================================
+19501:     function sweptMissDistance(from, dir, length, point) {
+19502:       tmpSwept.copy(point).sub(from);
+19503:       const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+19504:       return tmpSwept.addScaledVector(dir, -along).length();
+19505:     }
+-----
+
+============================================================================================
+FUNCTION ballisticPoint hits=1
+============================================================================================
+19754:     function ballisticPoint(origin, velocity, t, out) {
+19755:       out.copy(origin).addScaledVector(velocity, t);
+19756:       out.y -= 0.5 * BOMB_GRAVITY * t * t;
+19757:       return out;
+19758:     }
+-----
+
+============================================================================================
+FUNCTION missileTargetPoint hits=0
+============================================================================================
+
+============================================================================================
+FUNCTION targetAimPoint hits=0
+============================================================================================
+
+============================================================================================
+FUNCTION targetPosition hits=0
+============================================================================================
+
+============================================================================================
+FUNCTION forwardOf hits=1
+============================================================================================
+27633:     function forwardOf(object, out) {
+27634:       return out.copy(LOCAL_FORWARD).applyQuaternion(object.quaternion).normalize();
+27635:     }
+-----
+
+============================================================================================
+FUNCTION rightOf hits=1
+============================================================================================
+27641:     function rightOf(object, out) {
+27642:       return out.copy(LOCAL_RIGHT).applyQuaternion(object.quaternion).normalize();
+27643:     }
+-----
+
+============================================================================================
+FUNCTION upOf hits=1
+============================================================================================
+27637:     function upOf(object, out) {
+27638:       return out.copy(LOCAL_UP).applyQuaternion(object.quaternion).normalize();
+27639:     }
+-----
+
+============================================================================================
+STATE AND DEBUG OCCURRENCES
+============================================================================================
+GUN_DAMAGE: count=8 lines=[2540, 2541, 15617, 19289, 22258, 22418, 27036, 30516]
+02538:     let STALL_WARNING_SPEED = 96;
+02539:     let STALL_ENTRY_SPEED = 84;
+02540:     let GUN_DAMAGE = 16;
+02541:     // Multiplies GUN_DAMAGE, but only on a burst that lands on a surface
+02542:     // target. 1 for every airframe that does not set `gunGroundBonus`, so the
+-----
+02539:     let STALL_ENTRY_SPEED = 84;
+02540:     let GUN_DAMAGE = 16;
+02541:     // Multiplies GUN_DAMAGE, but only on a burst that lands on a surface
+02542:     // target. 1 for every airframe that does not set `gunGroundBonus`, so the
+02543:     // gun behaves exactly as it always has unless the aircraft is built around
+-----
+15615:         maxHealth: PLAYER_MAX_HEALTH,
+15616:         missileCapacity: PLAYER_MISSILE_CAPACITY,
+15617:         gunDamage: GUN_DAMAGE,
+15618:         gunGroundBonus: GUN_GROUND_BONUS,
+15619:         missileDamage: MISSILE_DAMAGE,
+-----
+19287:           // ground installations, and on nothing that flies. Putting it in the
+19288:           // aircraft gunDamage would leak it into the AIR-TO-AIR bar.
+19289:           damageEnemy(victim, victim.surface ? GUN_DAMAGE * GUN_GROUND_BONUS : GUN_DAMAGE, false);
+19290:           createImpactBurst(end, 0xffb04a, 0.7);
+19291:         }
+-----
+22256:     const WINGMAN_GUN_HIT_CHANCE = 0.45;
+22257:     const WINGMAN_GUN_INTERVAL = 0.6;
+22258:     const WINGMAN_GUN_DAMAGE_SCALE = 0.4;
+22259:     // A kill of its own is worth one line, not a running commentary.
+22260:     const WINGMAN_KILL_RADIO_COOLDOWN = 25;
+-----
+22416:         // Cached because the airframe cannot change mid-sortie.
+22417:         wingCruise: spec.cruiseSpeed,
+22418:         wingGunDamage: spec.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
+22419:       };
+22420:       friendlies.push(friendly);
+-----
+27034:       hook.loadout.maxHealth = PLAYER_MAX_HEALTH;
+27035:       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
+27036:       hook.loadout.gunDamage = GUN_DAMAGE;
+27037:       hook.loadout.gunGroundBonus = GUN_GROUND_BONUS;
+27038:       hook.loadout.spw.key = PLAYER_SPW ? PLAYER_SPW.key : null;
+-----
+30514:       TIP_OFFSET_Z = spec.tipZ * spec.theme.scale;
+30515:       // AIR-TO-AIR: per-aircraft weapon punch.
+30516:       GUN_DAMAGE = spec.gunDamage;
+30517:       GUN_GROUND_BONUS = spec.gunGroundBonus || 1;
+30518:       MISSILE_DAMAGE = spec.missileDamage;
+-----
+GUN_GROUND_BONUS: count=5 lines=[2546, 15618, 19289, 27037, 30517]
+02544:     // an anti-armour cannon. See the A-10C entry for why the strength cannot
+02545:     // live in gunDamage itself.
+02546:     let GUN_GROUND_BONUS = 1;
+02547:     let MISSILE_DAMAGE = 130;
+02548:     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
+-----
+15616:         missileCapacity: PLAYER_MISSILE_CAPACITY,
+15617:         gunDamage: GUN_DAMAGE,
+15618:         gunGroundBonus: GUN_GROUND_BONUS,
+15619:         missileDamage: MISSILE_DAMAGE,
+15620:         spw: {
+-----
+19287:           // ground installations, and on nothing that flies. Putting it in the
+19288:           // aircraft gunDamage would leak it into the AIR-TO-AIR bar.
+19289:           damageEnemy(victim, victim.surface ? GUN_DAMAGE * GUN_GROUND_BONUS : GUN_DAMAGE, false);
+19290:           createImpactBurst(end, 0xffb04a, 0.7);
+19291:         }
+-----
+27035:       hook.loadout.missileCapacity = PLAYER_MISSILE_CAPACITY;
+27036:       hook.loadout.gunDamage = GUN_DAMAGE;
+27037:       hook.loadout.gunGroundBonus = GUN_GROUND_BONUS;
+27038:       hook.loadout.spw.key = PLAYER_SPW ? PLAYER_SPW.key : null;
+27039:       hook.loadout.spw.label = PLAYER_SPW ? PLAYER_SPW.label : null;
+-----
+30515:       // AIR-TO-AIR: per-aircraft weapon punch.
+30516:       GUN_DAMAGE = spec.gunDamage;
+30517:       GUN_GROUND_BONUS = spec.gunGroundBonus || 1;
+30518:       MISSILE_DAMAGE = spec.missileDamage;
+30519:       // Throttle response (smaller k = reaches target speed sooner).
+-----
+GUN_RANGE: count=15 lines=[2607, 2730, 2742, 2751, 14984, 16000, 16001, 19254, 19271, 22233, 22254, 23237, 23246, 26358, 26404]
+02605:     let PLAYER_MAX_HEALTH = 100;
+02606:     const TARGET_FOCUS_HOLD_MS = 360;
+02607:     const GUN_RANGE = 750;
+02608:     // 機銃のガンバル。AC7 の機銃は「弱いガンバル効果」で、
+02609:     // 機首を敵に向ける必要は残るが多少のズレは吸収される。
+-----
+02728:     const GUN_CLOSE_FORGIVENESS = 2.2;
+02729:     function gunAimForgiveness(range) {
+02730:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02731:       return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+02732:     }
+-----
+02740:     // and what a round does cannot drift apart.
+02741:     function gimbalDecision(angleRad, distance) {
+02742:       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+02743:       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+02744:       return { applied: true, reason: "ok" };
+-----
+02749:     // stronger pull - the same bargain gunAimForgiveness offers.
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+02753:     }
+-----
+14982:     const raycaster = new THREE.Raycaster();
+14983:     raycaster.near = 0;
+14984:     raycaster.far = GUN_RANGE;
+14985: 
+14986:     const tmpV1 = new THREE.Vector3();
+-----
+15998:             radius: Number(radius.toFixed(2)),
+15999:             missDistance: Number(missDistance.toFixed(3)),
+16000:             inRange: range <= GUN_RANGE,
+16001:             wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
+16002:           };
+-----
+15999:             missDistance: Number(missDistance.toFixed(3)),
+16000:             inRange: range <= GUN_RANGE,
+16001:             wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
+16002:           };
+16003:         },
+-----
+19252:         if (!enemy.alive) continue;
+19253:         const range = gunLeadPoint(start, enemy, tmpV5);
+19254:         if (range > GUN_RANGE) continue;
+19255:         tmpV5.sub(start);
+19256:         const along = tmpV5.dot(tmpV1);
+-----
+19269:       }
+19270:       hits.sort((a, b) => a.distance - b.distance);
+19271:       let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, GUN_RANGE);
+19272: 
+19273:       if (hits.length > 0) {
+-----
+22231:     // chasing once it is this far from the player.
+22232:     const WINGMAN_LEASH = 2400;
+22233:     // The no-poaching radius. GUN_RANGE is 750, so anything inside 800m of the
+22234:     // player is something the player can already shoot THIS SECOND - taking it
+22235:     // would be stealing a kill out of the reticle. Outside it the contact is
+-----
+22252:     // anything heavier. The wingman is there to shave a trash contact down.
+22253:     // Killing things is the player's job, and these numbers keep it that way.
+22254:     const WINGMAN_GUN_RANGE = 600;
+22255:     const WINGMAN_GUN_DOT = 0.985;
+22256:     const WINGMAN_GUN_HIT_CHANCE = 0.45;
+-----
+23235:       tmpV1.subVectors(target.group.position, friendly.group.position);
+23236:       const distance = tmpV1.length();
+23237:       if (distance > WINGMAN_GUN_RANGE || distance < 1) return;
+23238:       tmpV1.multiplyScalar(1 / distance);
+23239:       forwardOf(friendly.group, tmpV2);
+-----
+23244:       const hit = Math.random() < WINGMAN_GUN_HIT_CHANCE;
+23245:       if (hit) tmpV4.copy(target.group.position);
+23246:       else tmpV4.copy(tmpV3).addScaledVector(tmpV2, WINGMAN_GUN_RANGE);
+23247:       createTracer(tmpV3, tmpV4, 0xa8f0c8, 0.11, 0.75);
+23248:       if (!hit) return;
+-----
+26356:     // manoeuvres where the truth matters - the gun fires along the nose, not
+26357:     // along the camera.
+26358:     const BORESIGHT_DISTANCE = GUN_RANGE;
+26359:     function updateBoresight() {
+26360:       // Hidden when the camera is handed elsewhere: the target view and the
+-----
+26402:         tmpV8.copy(enemy.group.position).sub(player.position);
+26403:         const range = tmpV8.length();
+26404:         if (range > GUN_RANGE || range >= bestRange) continue;
+26405:         // Being in range is not enough - the gun fires along the nose, so a
+26406:         // contact well off the boresight cannot be hit however close it is.
+-----
+GUN_RATE: count=3 lines=[2769, 19171, 19197]
+02767:       return state.k;
+02768:     }
+02769:     const GUN_RATE = 6;
+02770:     const LOCK_RANGE = 1200;
+02771:     const LOCK_TIME = 0.85;
+-----
+19169:       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
+19170:         fireGun();
+19171:         gunCooldown += 1 / GUN_RATE;
+19172:       }
+19173: 
+-----
+19195:     function fireGun() {
+19196:       gunShots += 1;
+19197:       // Fires GUN_RATE x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
+19198:       playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
+19199:       forwardOf(player, tmpV1);
+-----
+GUN_MUZZLE_SPEED: count=3 lines=[2634, 2673, 16129]
+02632:     // the gun to decide what it hit; those two must share it or the ring stops
+02633:     // being an aiming instrument and becomes decoration.
+02634:     const GUN_MUZZLE_SPEED = 900;
+02635: 
+02636:     // Where a burst fired now would meet the target. The one place this is
+-----
+02671:       forwardOf(player, tmpLeadC);
+02672:       tmpLead.addScaledVector(tmpLeadC, -playerSpeed);
+02673:       tmpLead.multiplyScalar(range / GUN_MUZZLE_SPEED);
+02674:       // Only the part ACROSS the sightline moves the ring; closing speed just
+02675:       // changes when the rounds arrive, not where they have to be sent. Left
+-----
+16127:             leadM: Number(p.distanceTo(enemy.group.position).toFixed(2)),
+16128:             point: { x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)), z: Number(p.z.toFixed(2)) },
+16129:             muzzleSpeed: GUN_MUZZLE_SPEED
+16130:           };
+16131:         },
+-----
+GUN_GIMBAL_DEG: count=3 lines=[2616, 2743, 15863]
+02614:     // 4.5度ちょうどは「補正する」側（<= で判定）。境界をどちらに倒すかは
+02615:     // 体感に影響しないが、テストが問える契約なので決めておく。
+02616:     const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
+02617:     const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+-----
+02741:     function gimbalDecision(angleRad, distance) {
+02742:       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+02743:       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+02744:       return { applied: true, reason: "ok" };
+02745:     }
+-----
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+-----
+GUN_GIMBAL_STRENGTH: count=3 lines=[2617, 2752, 15863]
+02615:     // 体感に影響しないが、テストが問える契約なので決めておく。
+02616:     const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
+02617:     const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+-----
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+02753:     }
+02754:     // One frame of the assist settling. A plain state-in, state-out step for
+-----
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+-----
+GUN_ASSIST_FAR: count=2 lines=[2618, 2752]
+02616:     const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
+02617:     const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+02620:     const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+-----
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+02753:     }
+02754:     // One frame of the assist settling. A plain state-in, state-out step for
+-----
+GUN_ASSIST_TAU_RISE: count=2 lines=[2619, 2765]
+02617:     const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+02620:     const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+02621:     const gunAssist = { k: 0, targetId: null };
+-----
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+02767:       return state.k;
+-----
+GUN_ASSIST_TAU_FALL: count=2 lines=[2620, 2765]
+02618:     const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+02620:     const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+02621:     const gunAssist = { k: 0, targetId: null };
+02622:     // What the last round's gimbal check decided. The interesting assertion is
+-----
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+02767:       return state.k;
+-----
+gunAssist: count=15 lines=[2621, 2750, 2759, 2764, 15864, 15865, 15870, 15872, 19213, 19216, 19235, 19236, 19237, 26416, 26437]
+02619:     const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
+02620:     const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
+02621:     const gunAssist = { k: 0, targetId: null };
+02622:     // What the last round's gimbal check decided. The interesting assertion is
+02623:     // the negative one - past the limit the burst must NOT bend - and that is
+-----
+02748:     // weakest at the edge of the envelope, so closing in is what buys the
+02749:     // stronger pull - the same bargain gunAimForgiveness offers.
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02752:       return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+-----
+02757:     // over time, and a test can drive this directly instead of trying to fly
+02758:     // two aircraft into a shape that happens to exhibit them.
+02759:     function gunAssistStep(state, targetId, angleRad, range, dt) {
+02760:       // A new contact starts from zero - the ring walks out from the nose
+02761:       // instead of appearing already parked on the target.
+-----
+02762:       if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+-----
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+15866:         // The assist driven through a synthetic history. Convergence, the
+-----
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+15866:         // The assist driven through a synthetic history. Convergence, the
+15867:         // reset on a target switch and the release outside the cone cannot be
+-----
+15868:         // flown into existence on demand, so the step function takes the
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+-----
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+-----
+19211:       // LEAD POINT rather than where the target is standing, because that is
+19212:       // where the burst is going to arrive and where the ring is drawn. The
+19213:       // strength is gunAssist.k - the same settling value the ring is drawn
+19214:       // with, and the target is the ring's target, so what the sight shows and
+19215:       // what the rounds do are one mechanism rather than two rules that agree.
+-----
+19214:       // with, and the target is the ring's target, so what the sight shows and
+19215:       // what the rounds do are one mechanism rather than two rules that agree.
+19216:       const gimbalTargetId = gunAssist.targetId;
+19217:       lastGimbal.applied = false;
+19218:       lastGimbal.angleDeg = null;
+-----
+19233:             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+-----
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+19238:               lastGimbal.applied = true;
+-----
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+19238:               lastGimbal.applied = true;
+19239:             }
+-----
+26414:       }
+26415:       if (!best) {
+26416:         gunAssistStep(gunAssist, null, 0, 0, dt);
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+-----
+26435:         ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
+26436:         : 0;
+26437:       const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
+26438: 
+26439:       // The ring is drawn where the rounds are actually going: the blend of
+-----
+lastGimbal: count=10 lines=[2627, 15863, 19217, 19218, 19219, 19220, 19233, 19234, 19235, 19238]
+02625:     // Vector3.angleTo from a test instead picks up every other caller in the
+02626:     // frame and cannot tell which reading was this one.
+02627:     const lastGimbal = { applied: false, angleDeg: null, rangeM: null, k: null };
+02628:     // How fast a round is treated as travelling. The gun resolves by ray, so
+02629:     // nothing physically flies - this number exists so that a burst arrives
+-----
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+-----
+19215:       // what the rounds do are one mechanism rather than two rules that agree.
+19216:       const gimbalTargetId = gunAssist.targetId;
+19217:       lastGimbal.applied = false;
+19218:       lastGimbal.angleDeg = null;
+19219:       lastGimbal.rangeM = null;
+-----
+19216:       const gimbalTargetId = gunAssist.targetId;
+19217:       lastGimbal.applied = false;
+19218:       lastGimbal.angleDeg = null;
+19219:       lastGimbal.rangeM = null;
+19220:       lastGimbal.k = null;
+-----
+19217:       lastGimbal.applied = false;
+19218:       lastGimbal.angleDeg = null;
+19219:       lastGimbal.rangeM = null;
+19220:       lastGimbal.k = null;
+19221:       if (gimbalTargetId) {
+-----
+19218:       lastGimbal.angleDeg = null;
+19219:       lastGimbal.rangeM = null;
+19220:       lastGimbal.k = null;
+19221:       if (gimbalTargetId) {
+19222:         const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
+-----
+19231:             // being checked from outside is "past the limit it does NOT bend" -
+19232:             // and a probe that only reports the corrected shots cannot show it.
+19233:             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+-----
+19232:             // and a probe that only reports the corrected shots cannot show it.
+19233:             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+-----
+19233:             lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+-----
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+19238:               lastGimbal.applied = true;
+19239:             }
+19240:           }
+-----
+gunsightState: count=15 lines=[15086, 15885, 26418, 26419, 26453, 26454, 26473, 26474, 26475, 26476, 26477, 26478, 26479, 26480, 26481]
+15084:     // because "the ring leads the target" is a claim about a distance, and a
+15085:     // screenshot cannot be asked how many metres ahead it drew.
+15086:     const gunsightState = {
+15087:       active: false,
+15088:       targetId: null,
+-----
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+-----
+26416:         gunAssistStep(gunAssist, null, 0, 0, dt);
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+26419:         gunsightState.targetId = null;
+26420:         return;
+-----
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+26419:         gunsightState.targetId = null;
+26420:         return;
+26421:       }
+-----
+26451:         // whether the assist survives an excursion off screen.
+26452:         ui.gunsight.classList.add("hidden");
+26453:         gunsightState.active = false;
+26454:         gunsightState.targetId = null;
+26455:         return;
+-----
+26452:         ui.gunsight.classList.add("hidden");
+26453:         gunsightState.active = false;
+26454:         gunsightState.targetId = null;
+26455:         return;
+26456:       }
+-----
+26471:       const hot = gimbalDecision(offAngle, bestRange).applied;
+26472: 
+26473:       gunsightState.active = true;
+26474:       gunsightState.targetId = best.id;
+26475:       gunsightState.x = x;
+-----
+26472: 
+26473:       gunsightState.active = true;
+26474:       gunsightState.targetId = best.id;
+26475:       gunsightState.x = x;
+26476:       gunsightState.y = y;
+-----
+26473:       gunsightState.active = true;
+26474:       gunsightState.targetId = best.id;
+26475:       gunsightState.x = x;
+26476:       gunsightState.y = y;
+26477:       gunsightState.rangeM = bestRange;
+-----
+26474:       gunsightState.targetId = best.id;
+26475:       gunsightState.x = x;
+26476:       gunsightState.y = y;
+26477:       gunsightState.rangeM = bestRange;
+26478:       gunsightState.leadM = leadM;
+-----
+26475:       gunsightState.x = x;
+26476:       gunsightState.y = y;
+26477:       gunsightState.rangeM = bestRange;
+26478:       gunsightState.leadM = leadM;
+26479:       gunsightState.assistK = k;
+-----
+26476:       gunsightState.y = y;
+26477:       gunsightState.rangeM = bestRange;
+26478:       gunsightState.leadM = leadM;
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+-----
+26477:       gunsightState.rangeM = bestRange;
+26478:       gunsightState.leadM = leadM;
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+26481:       gunsightState.forgiveness = gunAimForgiveness(bestRange);
+-----
+26478:       gunsightState.leadM = leadM;
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+26481:       gunsightState.forgiveness = gunAimForgiveness(bestRange);
+26482:     }
+-----
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+26481:       gunsightState.forgiveness = gunAimForgiveness(bestRange);
+26482:     }
+26483: 
+-----
+gunCooldown: count=5 lines=[15245, 18496, 19168, 19169, 19171]
+15243:     let waveNumber = 0;
+15244:     let playerSpeed = CRUISE_SPEED;
+15245:     let gunCooldown = 0;
+15246:     let gunShots = 0;
+15247:     let missilesLaunched = 0;
+-----
+18494:       bomberFirstKillFired = false;
+18495:       playerSpeed = CRUISE_SPEED;
+18496:       gunCooldown = 0;
+18497:       gunShots = 0;
+18498:       missilesLaunched = 0;
+-----
+19166:       }
+19167: 
+19168:       gunCooldown = Math.max(0, gunCooldown - dt);
+19169:       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
+19170:         fireGun();
+-----
+19167: 
+19168:       gunCooldown = Math.max(0, gunCooldown - dt);
+19169:       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
+19170:         fireGun();
+19171:         gunCooldown += 1 / GUN_RATE;
+-----
+19169:       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
+19170:         fireGun();
+19171:         gunCooldown += 1 / GUN_RATE;
+19172:       }
+19173: 
+-----
+gunFireCooldown: count=0 lines=[]
+gunShots: count=8 lines=[14556, 15246, 15628, 18497, 18608, 18677, 19196, 27064]
+14554:       spwLaunched: 0,
+14555:       spwHits: 0,
+14556:       gunShots: 0,
+14557:       bombsDropped: 0,
+14558:       // What the guard objective had already reached. Restored so a transport
+-----
+15244:     let playerSpeed = CRUISE_SPEED;
+15245:     let gunCooldown = 0;
+15246:     let gunShots = 0;
+15247:     let missilesLaunched = 0;
+15248:     let enemyMissilesLaunched = 0;
+-----
+15626:       weapons: {
+15627:         selected: "msl",
+15628:         gunShots: 0,
+15629:         missilesLaunched: 0,
+15630:         missileHits: 0,
+-----
+18495:       playerSpeed = CRUISE_SPEED;
+18496:       gunCooldown = 0;
+18497:       gunShots = 0;
+18498:       missilesLaunched = 0;
+18499:       enemyMissilesLaunched = 0;
+-----
+18606:       checkpoint.spwLaunched = spwLaunched;
+18607:       checkpoint.spwHits = spwHits;
+18608:       checkpoint.gunShots = gunShots;
+18609:       checkpoint.bombsDropped = bombsDropped;
+18610:       checkpoint.guardLost = guardState.lost;
+-----
+18675:       spwLaunched = at.spwLaunched;
+18676:       spwHits = at.spwHits;
+18677:       gunShots = at.gunShots;
+18678:       bombsDropped = at.bombsDropped;
+18679: 
+-----
+19194: 
+19195:     function fireGun() {
+19196:       gunShots += 1;
+19197:       // Fires GUN_RATE x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
+19198:       playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
+-----
+27062:       hook.selectedTargetId = preferredTargetId ?? lock.targetId;
+27063:       hook.weapons.selected = selectedWeapon;
+27064:       hook.weapons.gunShots = gunShots;
+27065:       hook.weapons.missilesLaunched = missilesLaunched;
+27066:       hook.weapons.missileHits = missileHits;
+-----
+gunMuzzleOrigin: count=5 lines=[2657, 15984, 16123, 26369, 26424]
+02655:     // ring about a metre off what the rounds were actually doing, because the
+02656:     // muzzles are eight and a half metres up the nose.
+02657:     function gunMuzzleOrigin(out) {
+02658:       forwardOf(player, tmpMuzzle);
+02659:       return out.copy(player.position).addScaledVector(tmpMuzzle, 8.5);
+-----
+15982:           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+15983:           if (!enemy) return null;
+15984:           const start = gunMuzzleOrigin(tmpV4);
+15985:           const range = gunLeadPoint(start, enemy, tmpV5);
+15986:           tmpV5.sub(start);
+-----
+16121:           if (!enemy) return null;
+16122:           const p = new THREE.Vector3();
+16123:           const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
+16124:           return {
+16125:             id,
+-----
+26367:       }
+26368:       forwardOf(player, tmpV9);
+26369:       gunMuzzleOrigin(tmpV8).addScaledVector(tmpV9, BORESIGHT_DISTANCE);
+26370:       tmpV7.copy(tmpV8).project(camera);
+26371:       tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
+-----
+26422: 
+26423:       // Where it will be when the rounds arrive - the same answer the gun uses.
+26424:       gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
+26425:       // How far ahead of the contact the burst is being sent. Taken before the
+26426:       // blend below, so it reports the full solution rather than however much
+-----
+gunLeadPoint: count=7 lines=[2663, 15985, 16123, 19224, 19253, 26393, 26424]
+02661:     const tmpMuzzle = new THREE.Vector3();
+02662: 
+02663:     function gunLeadPoint(from, enemy, out) {
+02664:       out.copy(enemy.group.position);
+02665:       const range = out.distanceTo(from);
+-----
+15983:           if (!enemy) return null;
+15984:           const start = gunMuzzleOrigin(tmpV4);
+15985:           const range = gunLeadPoint(start, enemy, tmpV5);
+15986:           tmpV5.sub(start);
+15987:           const distance = tmpV5.length();
+-----
+16121:           if (!enemy) return null;
+16122:           const p = new THREE.Vector3();
+16123:           const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
+16124:           return {
+16125:             id,
+-----
+19222:         const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
+19223:         if (gimbalTarget) {
+19224:           const gimbalDist = gunLeadPoint(start, gimbalTarget, tmpV4);
+19225:           tmpV4.sub(start);
+19226:           const leadDist = tmpV4.length();
+-----
+19251:       for (const enemy of enemies) {
+19252:         if (!enemy.alive) continue;
+19253:         const range = gunLeadPoint(start, enemy, tmpV5);
+19254:         if (range > GUN_RANGE) continue;
+19255:         tmpV5.sub(start);
+-----
+26391:     // of the screen carries only the flight path marker the rest of the time.
+26392:     //
+26393:     // It sits on the lead point, computed by the same gunLeadPoint() the gun
+26394:     // itself tests against. That shared call is the whole contract: put the
+26395:     // ring on an aircraft and the rounds go there too.
+-----
+26422: 
+26423:       // Where it will be when the rounds arrive - the same answer the gun uses.
+26424:       gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
+26425:       // How far ahead of the contact the burst is being sent. Taken before the
+26426:       // blend below, so it reports the full solution rather than however much
+-----
+gunAimForgiveness: count=6 lines=[2729, 2749, 15995, 16115, 19266, 26481]
+02727: 
+02728:     const GUN_CLOSE_FORGIVENESS = 2.2;
+02729:     function gunAimForgiveness(range) {
+02730:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+02731:       return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+-----
+02747:     // The assist's ceiling at a given range: strongest at knife-fight range,
+02748:     // weakest at the edge of the envelope, so closing in is what buys the
+02749:     // stronger pull - the same bargain gunAimForgiveness offers.
+02750:     function gunAssistCap(range) {
+02751:       const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
+-----
+15993:           const along = tmpV5.dot(tmpV6);
+15994:           const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+15995:           const radius = enemyHitSphereRadius(enemy) * gunAimForgiveness(range);
+15996:           return {
+15997:             id, type: enemy.type, range: Number(range.toFixed(1)),
+-----
+16113:         // gun work" is a claim about this curve, and the curve can be asked
+16114:         // rather than inferred from where bursts happen to land.
+16115:         gunForgivenessAt: (range) => gunAimForgiveness(range),
+16116:         // Where the ring goes for a given contact, and where the gun tests.
+16117:         // One call, so a test can confirm they are the same point rather than
+-----
+19264:         const baseRadius = enemyHitSphereRadius(enemy);
+19265:         if (baseRadius <= 0) continue;
+19266:         const radius = baseRadius * gunAimForgiveness(range);
+19267:         if (missDistance > radius) continue;
+19268:         hits.push({ enemy, distance: along, missDistance });
+-----
+26479:       gunsightState.assistK = k;
+26480:       gunsightState.hot = hot;
+26481:       gunsightState.forgiveness = gunAimForgiveness(bestRange);
+26482:     }
+26483: 
+-----
+gimbalDecision: count=6 lines=[2741, 2755, 2764, 15881, 19236, 26471]
+02739:     // problem the test does not have. fireGun calls this, so what a test asks
+02740:     // and what a round does cannot drift apart.
+02741:     function gimbalDecision(angleRad, distance) {
+02742:       if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
+02743:       if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
+-----
+02753:     }
+02754:     // One frame of the assist settling. A plain state-in, state-out step for
+02755:     // the same reason gimbalDecision is separate: convergence, the reset on a
+02756:     // target change and the release outside the cone are claims about a curve
+02757:     // over time, and a test can drive this directly instead of trying to fly
+-----
+02762:       if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+02763:       if (targetId == null) { state.k = 0; return 0; }
+02764:       const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
+02765:       const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
+02766:       if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
+-----
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+-----
+19234:             lastGimbal.rangeM = gimbalDist;
+19235:             lastGimbal.k = gunAssist.k;
+19236:             if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
+19237:               tmpV1.lerp(tmpV4, gunAssist.k).normalize();
+19238:               lastGimbal.applied = true;
+-----
+26469:       // test needs to be able to ask. It no longer colours anything: red on
+26470:       // this HUD belongs to a completed missile lock.
+26471:       const hot = gimbalDecision(offAngle, bestRange).applied;
+26472: 
+26473:       gunsightState.active = true;
+-----
+gunAssistStep: count=4 lines=[2759, 15872, 26416, 26437]
+02757:     // over time, and a test can drive this directly instead of trying to fly
+02758:     // two aircraft into a shape that happens to exhibit them.
+02759:     function gunAssistStep(state, targetId, angleRad, range, dt) {
+02760:       // A new contact starts from zero - the ring walks out from the nose
+02761:       // instead of appearing already parked on the target.
+-----
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+-----
+26414:       }
+26415:       if (!best) {
+26416:         gunAssistStep(gunAssist, null, 0, 0, dt);
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+-----
+26435:         ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
+26436:         : 0;
+26437:       const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
+26438: 
+26439:       // The ring is drawn where the rounds are actually going: the blend of
+-----
+POPUP_DIVE_RATIO: count=3 lines=[15172, 15178, 19451]
+15170:     // altitude to the target's ground position and only then tip over, instead
+15171:     // of sinking towards the sea from the rail - the run-in the LASM is
+15172:     // described by. POPUP_DIVE_RATIO is the pushover point in horizontal
+15173:     // distance per metre of height left to lose: at 1.2 the straight line from
+15174:     // there meets the target at atan(1/1.2) = 40 deg, and the chase steepens it
+-----
+15176:     // no height to trade - a round released level with a hull has no dive to
+15177:     // make, and manufacturing one only puts it in the water short of the target.
+15178:     const POPUP_DIVE_RATIO = 1.2;
+15179:     const POPUP_MIN_DROP = 60;
+15180:     let loadedMissiles = MISSILE_TUBE_COUNT;
+-----
+19449:                   target.group.position.z - missile.mesh.position.z
+19450:                 );
+19451:                 const pushover = drop * POPUP_DIVE_RATIO;
+19452:                 if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+19453:                   missile.diving = true;
+-----
+POPUP_MIN_DROP: count=3 lines=[15175, 15179, 19452]
+15173:     // distance per metre of height left to lose: at 1.2 the straight line from
+15174:     // there meets the target at atan(1/1.2) = 40 deg, and the chase steepens it
+15175:     // through 45 on the way in. POPUP_MIN_DROP is the floor below which there is
+15176:     // no height to trade - a round released level with a hull has no dive to
+15177:     // make, and manufacturing one only puts it in the water short of the target.
+-----
+15177:     // make, and manufacturing one only puts it in the water short of the target.
+15178:     const POPUP_DIVE_RATIO = 1.2;
+15179:     const POPUP_MIN_DROP = 60;
+15180:     let loadedMissiles = MISSILE_TUBE_COUNT;
+15181:     const missileReloadTimers = [];
+-----
+19450:                 );
+19451:                 const pushover = drop * POPUP_DIVE_RATIO;
+19452:                 if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+19453:                   missile.diving = true;
+19454:                 } else {
+-----
+proximityFuseFor: count=3 lines=[15136, 19472, 19511]
+15134:     // couple of metres a lazier turn rate would have cost it. Nerfing the rate
+15135:     // would have taxed every ordinary shot in the game to buy that nothing, so
+15136:     // the break is paid for at the fuse instead - see proximityFuseFor().
+15137:     const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(190);
+15138:     const MISSILE_MAX_SPEED = 520;
+-----
+19470:           // on where the sample points happened to land.
+19471:           if (target && sweptMissDistance(missile.mesh.position, tmpV2, travel, target.group.position)
+19472:               < proximityFuseFor(target)) {
+19473:             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+19474:             if (missile.spw) spwHits += 1;
+-----
+19509:     // workaround for the endgame being quantised, and sub-stepping fixed the
+19510:     // cause, so every round faces the same radius it always did.
+19511:     function proximityFuseFor(target) {
+19512:       // A mount is a small box bolted to a big ship: it fuses on its own
+19513:       // radius undiluted, so a round aimed at one still arrives, while a round
+-----
+sweptMissDistance: count=2 lines=[19471, 19501]
+19469:           // clean pass score as a hit - and a real hit score as a pass - purely
+19470:           // on where the sample points happened to land.
+19471:           if (target && sweptMissDistance(missile.mesh.position, tmpV2, travel, target.group.position)
+19472:               < proximityFuseFor(target)) {
+19473:             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+-----
+19499: 
+19500:     // Closest approach between the segment a round travels this step and a point.
+19501:     function sweptMissDistance(from, dir, length, point) {
+19502:       tmpSwept.copy(point).sub(from);
+19503:       const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+-----
+ballisticPoint: count=8 lines=[19754, 19780, 19796, 19804, 19808, 19854, 19886, 19890]
+19752:     }
+19753: 
+19754:     function ballisticPoint(origin, velocity, t, out) {
+19755:       out.copy(origin).addScaledVector(velocity, t);
+19756:       out.y -= 0.5 * BOMB_GRAVITY * t * t;
+-----
+19778:       let previousT = 0;
+19779:       for (let t = BOMB_PREDICT_STEP; t <= BOMB_MAX_FLIGHT; t += BOMB_PREDICT_STEP) {
+19780:         ballisticPoint(origin, velocity, t, tmpBallistic);
+19781:         if (tmpBallistic.y > reliefCeilingAt(tmpBallistic.x, tmpBallistic.z)) {
+19782:           previousT = t;
+-----
+19794:       for (let i = 1; i <= 8; i += 1) {
+19795:         const t = tLow + ((tHigh - tLow) * i) / 8;
+19796:         ballisticPoint(origin, velocity, t, tmpBallistic);
+19797:         if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) {
+19798:           low = t;
+-----
+19802:         for (let k = 0; k < 16; k += 1) {
+19803:           const mid = (low + high) * 0.5;
+19804:           ballisticPoint(origin, velocity, mid, tmpBallistic);
+19805:           if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) low = mid;
+19806:           else high = mid;
+-----
+19806:           else high = mid;
+19807:         }
+19808:         ballisticPoint(origin, velocity, high, out);
+19809:         return { time: high, x: out.x, y: out.y, z: out.z };
+19810:       }
+-----
+19852:         const previousT = bomb.life;
+19853:         bomb.life += dt;
+19854:         ballisticPoint(bomb.origin, bomb.velocity, bomb.life, tmpV1);
+19855: 
+19856:         // A bomb is not a proximity round: an aircraft only counts if the body
+-----
+19884:           for (let k = 0; k < 14; k += 1) {
+19885:             const mid = (low + high) * 0.5;
+19886:             ballisticPoint(bomb.origin, bomb.velocity, mid, tmpV2);
+19887:             if (tmpV2.y > surfaceHeightAt(tmpV2.x, tmpV2.z)) low = mid;
+19888:             else high = mid;
+-----
+19888:             else high = mid;
+19889:           }
+19890:           ballisticPoint(bomb.origin, bomb.velocity, high, tmpV1);
+19891:         }
+19892: 
+-----
+missilesInFlight: count=11 lines=[15057, 16378, 19324, 19364, 19365, 19560, 19562, 19715, 24234, 27660, 27661]
+15055:     };
+15056: 
+15057:     const missilesInFlight = [];
+15058:     const enemyMissiles = [];
+15059:     const effects = [];
+-----
+16376:         // Player rounds in flight, with the range to the aircraft each one is
+16377:         // tracking - the number the proximity fuse and the break turn argue over.
+16378:         missileProbe: () => missilesInFlight.map((missile) => {
+16379:           const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+16380:           return {
+-----
+19322:       scene.add(root);
+19323: 
+19324:       missilesInFlight.push({
+19325:         mesh: root,
+19326:         targetId: target.id,
+-----
+19362: 
+19363:     function updateMissiles(dt) {
+19364:       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
+19365:         const missile = missilesInFlight[i];
+19366:         missile.life += dt;
+-----
+19363:     function updateMissiles(dt) {
+19364:       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
+19365:         const missile = missilesInFlight[i];
+19366:         missile.life += dt;
+19367:         missile.trailTimer -= dt;
+-----
+19558: 
+19559:     function removeMissile(index) {
+19560:       const missile = missilesInFlight[index];
+19561:       scene.remove(missile.mesh);
+19562:       missilesInFlight.splice(index, 1);
+-----
+19560:       const missile = missilesInFlight[index];
+19561:       scene.remove(missile.mesh);
+19562:       missilesInFlight.splice(index, 1);
+19563:     }
+19564: 
+-----
+19713:       scene.add(root);
+19714: 
+19715:       missilesInFlight.push({
+19716:         mesh: root,
+19717:         targetId: target.id,
+-----
+24232:       let nearest = null;
+24233:       let nearestDistance = ENEMY_BREAK_RANGE;
+24234:       for (const missile of missilesInFlight) {
+24235:         if (missile.targetId !== enemy.id || !missile.closing) continue;
+24236:         const distance = missile.mesh.position.distanceTo(enemy.group.position);
+-----
+27658:       groundRouteCache.clear();
+27659: 
+27660:       for (const missile of missilesInFlight) scene.remove(missile.mesh);
+27661:       missilesInFlight.length = 0;
+27662: 
+-----
+27659: 
+27660:       for (const missile of missilesInFlight) scene.remove(missile.mesh);
+27661:       missilesInFlight.length = 0;
+27662: 
+27663:       for (const bomb of bombsInFlight) scene.remove(bomb.mesh);
+-----
+missile.diving: count=3 lines=[16389, 19444, 19453]
+16387:             y: Number(missile.mesh.position.y.toFixed(2)),
+16388:             z: Number(missile.mesh.position.z.toFixed(2)),
+16389:             diving: Boolean(missile.diving),
+16390:             life: missile.life,
+16391:             speed: missile.speed,
+-----
+19442:               // to level halfway down and porpoise the round into the target.
+19443:               let aim = tmpV1;
+19444:               if (missile.popup && !missile.diving) {
+19445:                 const drop = missile.mesh.position.y - target.group.position.y;
+19446:                 tmpV5.set(
+-----
+19451:                 const pushover = drop * POPUP_DIVE_RATIO;
+19452:                 if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
+19453:                   missile.diving = true;
+19454:                 } else {
+19455:                   aim = tmpV5.normalize();
+-----
+missile.closing: count=4 lines=[16392, 19384, 19395, 24235]
+16390:             life: missile.life,
+16391:             speed: missile.speed,
+16392:             closing: Boolean(missile.closing),
+16393:             lost: Boolean(missile.lost),
+16394:             // Whether this round is exempt from seeker loss. The QAAM's whole
+-----
+19382:           }
+19383:         } else {
+19384:           missile.closing = false;
+19385:         }
+19386:         const slice = dt / steps;
+-----
+19393:             // Break trigger input: a round that has been out-turned and is now
+19394:             // opening is no longer something the target needs to break against.
+19395:             missile.closing = distance < missile.lastTargetDistance;
+19396:             missile.lastTargetDistance = distance;
+19397:             tmpV1.normalize();
+-----
+24233:       let nearestDistance = ENEMY_BREAK_RANGE;
+24234:       for (const missile of missilesInFlight) {
+24235:         if (missile.targetId !== enemy.id || !missile.closing) continue;
+24236:         const distance = missile.mesh.position.distanceTo(enemy.group.position);
+24237:         if (distance < nearestDistance) {
+-----
+missile.lost: count=14 lines=[16393, 16398, 19417, 19420, 19421, 19422, 19430, 20365, 20366, 20367, 20375, 20383, 20442, 27357]
+16391:             speed: missile.speed,
+16392:             closing: Boolean(missile.closing),
+16393:             lost: Boolean(missile.lost),
+16394:             // Whether this round is exempt from seeker loss. The QAAM's whole
+16395:             // claim is that it keeps turning after it has been broken away
+-----
+16396:             // from, and that is only checkable against the flag itself.
+16397:             reattack: Boolean(missile.reattack),
+16398:             lostTime: Number((missile.lostTime || 0).toFixed(4)),
+16399:             range: target ? missile.mesh.position.distanceTo(target.group.position) : null
+16400:           };
+-----
+19415:             // the magazine: see the capacity on each airframe that carries it.
+19416:             const seekerRate = missile.turnRate ?? MISSILE_TURN_RATE;
+19417:             if (!missile.lost) {
+19418:               if (!missile.reattack) {
+19419:                 if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+-----
+19418:               if (!missile.reattack) {
+19419:                 if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+19420:                   missile.lostTime += slice;
+19421:                   if (missile.lostTime >= SEEKER_LOSS_TIME) {
+19422:                     missile.lost = true;
+-----
+19419:                 if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
+19420:                   missile.lostTime += slice;
+19421:                   if (missile.lostTime >= SEEKER_LOSS_TIME) {
+19422:                     missile.lost = true;
+19423:                     // A puff as the motor keeps burning on a dead seeker.
+-----
+19420:                   missile.lostTime += slice;
+19421:                   if (missile.lostTime >= SEEKER_LOSS_TIME) {
+19422:                     missile.lost = true;
+19423:                     // A puff as the motor keeps burning on a dead seeker.
+19424:                     for (let puff = 0; puff < 3; puff += 1) {
+-----
+19428:                   }
+19429:                 } else {
+19430:                   missile.lostTime = 0;
+19431:                 }
+19432:               }
+-----
+20363:           if (!decoyed) {
+20364:             if (missile.losValid && dt > 0 && missile.los.angleTo(tmpV1) / dt > missile.turnRate) {
+20365:               missile.lostTime += dt;
+20366:               if (missile.lostTime >= SEEKER_LOSS_TIME) {
+20367:                 missile.lost = true;
+-----
+20364:             if (missile.losValid && dt > 0 && missile.los.angleTo(tmpV1) / dt > missile.turnRate) {
+20365:               missile.lostTime += dt;
+20366:               if (missile.lostTime >= SEEKER_LOSS_TIME) {
+20367:                 missile.lost = true;
+20368:                 // A puff as the motor keeps burning on a dead seeker.
+-----
+20365:               missile.lostTime += dt;
+20366:               if (missile.lostTime >= SEEKER_LOSS_TIME) {
+20367:                 missile.lost = true;
+20368:                 // A puff as the motor keeps burning on a dead seeker.
+20369:                 for (let puff = 0; puff < 3; puff += 1) {
+-----
+20373:               }
+20374:             } else {
+20375:               missile.lostTime = 0;
+20376:             }
+20377:             missile.los.copy(tmpV1);
+-----
+20381:           // above stays live, so a round that happens to be pointed at the
+20382:           // player still kills them - it just cannot chase any more.
+20383:           if (!missile.lost) {
+20384:             tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+20385:             missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+-----
+20440:         // A round that has been broken is no longer a threat, and the alert
+20441:         // going quiet is how the player learns the break worked.
+20442:         if (missile.lost) continue;
+20443:         tmpV10.copy(missile.mesh.position).sub(player.position);
+20444:         const distance = tmpV10.length();
+-----
+27355:         },
+27356:         distance: missile.mesh.position.distanceTo(player.position),
+27357:         lost: Boolean(missile.lost),
+27358:         // Null for every round in the campaign outside the guard sorties. A
+27359:         // round with a name here is not chasing the player and is excluded
+-----
+missile.spw: count=2 lines=[16382, 19474]
+16380:           return {
+16381:             targetId: missile.targetId,
+16382:             spw: missile.spw ?? null,
+16383:             // Where the round is, the same way bombProbe reports it. The
+16384:             // sea-skimming profile is a claim about altitude over time, and
+-----
+19472:               < proximityFuseFor(target)) {
+19473:             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+19474:             if (missile.spw) spwHits += 1;
+19475:             else missileHits += 1;
+19476:             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
+-----
+updateMissiles: count=5 lines=[15010, 17274, 19363, 24229, 24776]
+15008:     // enemies[] is the mission's kill list: updateMission() ends a wave when
+15009:     // every entry in it is dead, damageEnemy() scores every death in it, and
+15010:     // updateLock()/fireGun()/updateMissiles() offer everything in it as a
+15011:     // target. A friendly satisfies none of those contracts - it must survive,
+15012:     // it must never be scored, and it must never be locked or shot - so
+-----
+17272:           updateMissileReload(dt);
+17273:           updateSpwReload(dt);
+17274:           updateMissiles(dt);
+17275:           updateBombs(dt);
+17276:           updateEnemyMissiles(dt);
+-----
+19361:     }
+19362: 
+19363:     function updateMissiles(dt) {
+19364:       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
+19365:         const missile = missilesInFlight[i];
+-----
+24227: 
+24228:     // Nearest player round that is tracking this aircraft, inside the warning
+24229:     // radius and still gaining. `closing` is set by updateMissiles a frame
+24230:     // earlier, which is a sixtieth of a second of staleness on an 800m call.
+24231:     function closingPlayerMissile(enemy) {
+-----
+24774:     // A mount does nothing on its own except the CIWS, which is a weapon in its
+24775:     // own right: it strafes the player here and shoots down rounds in
+24776:     // updateMissiles. Everything else about a mount is its parent's job, which
+24777:     // is what keeps twelve extra entities off the frame budget.
+24778:     function updateSubsystem(enemy, dt) {
+-----
+launchMissile: count=2 lines=[19298, 19622]
+19296:     }
+19297: 
+19298:     function launchMissile() {
+19299:       if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return false;
+19300:       if (loadedMissiles <= 0) {
+-----
+19620:     function fireWeapon() {
+19621:       if (selectedWeapon === "spw") return launchSpWeapon();
+19622:       return launchMissile();
+19623:     }
+19624: 
+-----
+tmpSwept: count=4 lines=[15001, 19502, 19503, 19504]
+14999:     const tmpAiB = new THREE.Vector3();
+15000:     // Owned by the missile swept-fuse test.
+15001:     const tmpSwept = new THREE.Vector3();
+15002:     const tmpQ1 = new THREE.Quaternion();
+15003:     const tmpM1 = new THREE.Matrix4();
+-----
+19500:     // Closest approach between the segment a round travels this step and a point.
+19501:     function sweptMissDistance(from, dir, length, point) {
+19502:       tmpSwept.copy(point).sub(from);
+19503:       const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+19504:       return tmpSwept.addScaledVector(dir, -along).length();
+-----
+19501:     function sweptMissDistance(from, dir, length, point) {
+19502:       tmpSwept.copy(point).sub(from);
+19503:       const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+19504:       return tmpSwept.addScaledVector(dir, -along).length();
+19505:     }
+-----
+19502:       tmpSwept.copy(point).sub(from);
+19503:       const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
+19504:       return tmpSwept.addScaledVector(dir, -along).length();
+19505:     }
+19506: 
+-----
+raycaster.far: count=1 lines=[14984]
+14982:     const raycaster = new THREE.Raycaster();
+14983:     raycaster.near = 0;
+14984:     raycaster.far = GUN_RANGE;
+14985: 
+14986:     const tmpV1 = new THREE.Vector3();
+-----
+
+============================================================================================
+DEBUG HOOK REGIONS
+============================================================================================
+gimbalProbe: [15863]
+15859:         forceFireWeapon: () => fireWeapon(),
+15860:         // The gimbal decision on the last round fired: the angle it measured,
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+15866:         // The assist driven through a synthetic history. Convergence, the
+15867:         // reset on a target switch and the release outside the cone cannot be
+15868:         // flown into existence on demand, so the step function takes the
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+15875:         // The same decision fireGun makes, asked directly. The angle a burst
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+15877:         // in from a test - and a test that tries ends up measuring its own
+15878:         // ability to park an aeroplane rather than the threshold. This is the
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+-----
+gunAssistProbe: [15864]
+15860:         // The gimbal decision on the last round fired: the angle it measured,
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+15866:         // The assist driven through a synthetic history. Convergence, the
+15867:         // reset on a target switch and the release outside the cone cannot be
+15868:         // flown into existence on demand, so the step function takes the
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+15875:         // The same decision fireGun makes, asked directly. The angle a burst
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+15877:         // in from a test - and a test that tries ends up measuring its own
+15878:         // ability to park an aeroplane rather than the threshold. This is the
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+15888:         // cannot be confirmed by flying: that wave only arrives once the ones
+-----
+gunAssistCapAt: [15865]
+15861:         // and whether it corrected. Reports the over-limit case too, which is
+15862:         // the half that proves this is not an auto-aim.
+15863:         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
+15864:         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
+15865:         gunAssistCapAt: (range) => gunAssistCap(range),
+15866:         // The assist driven through a synthetic history. Convergence, the
+15867:         // reset on a target switch and the release outside the cone cannot be
+15868:         // flown into existence on demand, so the step function takes the
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+15875:         // The same decision fireGun makes, asked directly. The angle a burst
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+15877:         // in from a test - and a test that tries ends up measuring its own
+15878:         // ability to park an aeroplane rather than the threshold. This is the
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+15888:         // cannot be confirmed by flying: that wave only arrives once the ones
+15889:         // before it are dead, so "did not appear in 20 seconds" says nothing
+-----
+gunAssistSim: [15870]
+15866:         // The assist driven through a synthetic history. Convergence, the
+15867:         // reset on a target switch and the release outside the cone cannot be
+15868:         // flown into existence on demand, so the step function takes the
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+15875:         // The same decision fireGun makes, asked directly. The angle a burst
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+15877:         // in from a test - and a test that tries ends up measuring its own
+15878:         // ability to park an aeroplane rather than the threshold. This is the
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+15888:         // cannot be confirmed by flying: that wave only arrives once the ones
+15889:         // before it are dead, so "did not appear in 20 seconds" says nothing
+15890:         // about whether it was added. This answers the question directly.
+15891:         missionSequence: (key) => {
+15892:           const mission = MISSIONS.find((entry) => entry.key === key);
+15893:           if (!mission) return null;
+15894:           return {
+-----
+gimbalEval: [15880]
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+15877:         // in from a test - and a test that tries ends up measuring its own
+15878:         // ability to park an aeroplane rather than the threshold. This is the
+15879:         // production function, not a copy of it, so the two cannot disagree.
+15880:         gimbalEval: (angleDeg, distance = 400) =>
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+15888:         // cannot be confirmed by flying: that wave only arrives once the ones
+15889:         // before it are dead, so "did not appear in 20 seconds" says nothing
+15890:         // about whether it was added. This answers the question directly.
+15891:         missionSequence: (key) => {
+15892:           const mission = MISSIONS.find((entry) => entry.key === key);
+15893:           if (!mission) return null;
+15894:           return {
+15895:             key: mission.key,
+15896:             totalTargets: mission.totalTargets,
+15897:             sequence: (mission.sequence || []).map((wave) => ({
+15898:               types: [...(wave.types || [])],
+15899:               tgt: wave.tgt !== false,
+15900:               band: wave.band,
+15901:               label: wave.label,
+15902:               delay: wave.delay ?? null,
+15903:               concurrent: Boolean(wave.concurrent),
+15904:               role: wave.role ?? null
+-----
+gunsightProbe: [15885]
+15881:           ({ ...gimbalDecision(THREE.MathUtils.degToRad(angleDeg), distance), angleDeg, distance }),
+15882:         // Where the gun ring is and how far ahead of its target it is sitting.
+15883:         // "It leads" is a claim about metres, and a screenshot cannot be asked
+15884:         // how many it drew.
+15885:         gunsightProbe: () => ({ ...gunsightState, visible: !ui.gunsight.classList.contains("hidden") }),
+15886:         // What a mission's wave list actually looks like after every payload
+15887:         // has registered. A payload that adds an aircraft to a late wave
+15888:         // cannot be confirmed by flying: that wave only arrives once the ones
+15889:         // before it are dead, so "did not appear in 20 seconds" says nothing
+15890:         // about whether it was added. This answers the question directly.
+15891:         missionSequence: (key) => {
+15892:           const mission = MISSIONS.find((entry) => entry.key === key);
+15893:           if (!mission) return null;
+15894:           return {
+15895:             key: mission.key,
+15896:             totalTargets: mission.totalTargets,
+15897:             sequence: (mission.sequence || []).map((wave) => ({
+15898:               types: [...(wave.types || [])],
+15899:               tgt: wave.tgt !== false,
+15900:               band: wave.band,
+15901:               label: wave.label,
+15902:               delay: wave.delay ?? null,
+15903:               concurrent: Boolean(wave.concurrent),
+15904:               role: wave.role ?? null
+15905:             }))
+15906:           };
+15907:         },
+15908:         // Where the nose points, in screen pixels - the answer the boresight
+15909:         // symbol is supposed to be drawing. `offPx` is how far that is from
+-----
+gunHitTest: [15981]
+15977:         // report whether the hit test found it. Asked directly because the
+15978:         // alternative - flying onto a contact's tail and holding the trigger
+15979:         // - measures the harness's ability to fly, and it was that indirection
+15980:         // that let "the gun does not hit aircraft" ship in the first place.
+15981:         gunHitTest: (id) => {
+15982:           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+15983:           if (!enemy) return null;
+15984:           const start = gunMuzzleOrigin(tmpV4);
+15985:           const range = gunLeadPoint(start, enemy, tmpV5);
+15986:           tmpV5.sub(start);
+15987:           const distance = tmpV5.length();
+15988:           if (distance < 0.001) return null;
+15989:           // Point the shot exactly at the lead solution, which is what the
+15990:           // sight tells the player to do, then ask the same arithmetic
+15991:           // fireGun uses whether that shot connects.
+15992:           tmpV6.copy(tmpV5).multiplyScalar(1 / distance);
+15993:           const along = tmpV5.dot(tmpV6);
+15994:           const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+15995:           const radius = enemyHitSphereRadius(enemy) * gunAimForgiveness(range);
+15996:           return {
+15997:             id, type: enemy.type, range: Number(range.toFixed(1)),
+15998:             radius: Number(radius.toFixed(2)),
+15999:             missDistance: Number(missDistance.toFixed(3)),
+16000:             inRange: range <= GUN_RANGE,
+16001:             wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
+16002:           };
+16003:         },
+16004:         __strikeProbe: () => enemies.filter((e) => e.alive && e.strikeTarget).map((e) => ({
+16005:           id: e.id, type: e.type, tgt: e.tgt !== false, fired: Boolean(e.bombRunFired),
+-----
+boresightProbe: [16101]
+16097:           },
+16098:           aircraft: selectedAircraftId,
+16099:           mode: controlMode
+16100:         }),
+16101:         boresightProbe: () => {
+16102:           const box = ui.boresight.getBoundingClientRect();
+16103:           return {
+16104:             x: box.left + box.width * 0.5,
+16105:             y: box.top + box.height * 0.5,
+16106:             visible: !ui.boresight.classList.contains("hidden"),
+16107:             // Reported so a test can tell a real aiming error from the camera
+16108:             // shake of taking a hit, which deliberately moves the sightline.
+16109:             shake: cameraShake
+16110:           };
+16111:         },
+16112:         // How much wider the hit test is at a given range. "Closing makes the
+16113:         // gun work" is a claim about this curve, and the curve can be asked
+16114:         // rather than inferred from where bursts happen to land.
+16115:         gunForgivenessAt: (range) => gunAimForgiveness(range),
+16116:         // Where the ring goes for a given contact, and where the gun tests.
+16117:         // One call, so a test can confirm they are the same point rather than
+16118:         // two numbers that happen to agree today.
+16119:         gunLeadProbe: (id) => {
+16120:           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+16121:           if (!enemy) return null;
+16122:           const p = new THREE.Vector3();
+16123:           const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
+16124:           return {
+16125:             id,
+-----
+gunForgivenessAt: [16115]
+16111:         },
+16112:         // How much wider the hit test is at a given range. "Closing makes the
+16113:         // gun work" is a claim about this curve, and the curve can be asked
+16114:         // rather than inferred from where bursts happen to land.
+16115:         gunForgivenessAt: (range) => gunAimForgiveness(range),
+16116:         // Where the ring goes for a given contact, and where the gun tests.
+16117:         // One call, so a test can confirm they are the same point rather than
+16118:         // two numbers that happen to agree today.
+16119:         gunLeadProbe: (id) => {
+16120:           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+16121:           if (!enemy) return null;
+16122:           const p = new THREE.Vector3();
+16123:           const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
+16124:           return {
+16125:             id,
+16126:             range: Number(range.toFixed(2)),
+16127:             leadM: Number(p.distanceTo(enemy.group.position).toFixed(2)),
+16128:             point: { x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)), z: Number(p.z.toFixed(2)) },
+16129:             muzzleSpeed: GUN_MUZZLE_SPEED
+16130:           };
+16131:         },
+16132:         forceSpwAmmo: (rounds) => {
+16133:           if (gameState !== STATE_PLAYING) return false;
+16134:           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
+16135:           // The magazine can no longer back more tubes than it holds shots for.
+16136:           spwLoaded = Math.min(spwLoaded, spwTubeCount(), spwAmmo);
+16137:           return spwAmmo;
+16138:         },
+16139:         // Live tube state for the firing-discipline probes: what is loaded, what
+-----
+gunLeadProbe: [16119]
+16115:         gunForgivenessAt: (range) => gunAimForgiveness(range),
+16116:         // Where the ring goes for a given contact, and where the gun tests.
+16117:         // One call, so a test can confirm they are the same point rather than
+16118:         // two numbers that happen to agree today.
+16119:         gunLeadProbe: (id) => {
+16120:           const enemy = enemies.find((entity) => entity.id === id && entity.alive);
+16121:           if (!enemy) return null;
+16122:           const p = new THREE.Vector3();
+16123:           const range = gunLeadPoint(gunMuzzleOrigin(new THREE.Vector3()), enemy, p);
+16124:           return {
+16125:             id,
+16126:             range: Number(range.toFixed(2)),
+16127:             leadM: Number(p.distanceTo(enemy.group.position).toFixed(2)),
+16128:             point: { x: Number(p.x.toFixed(2)), y: Number(p.y.toFixed(2)), z: Number(p.z.toFixed(2)) },
+16129:             muzzleSpeed: GUN_MUZZLE_SPEED
+16130:           };
+16131:         },
+16132:         forceSpwAmmo: (rounds) => {
+16133:           if (gameState !== STATE_PLAYING) return false;
+16134:           spwAmmo = THREE.MathUtils.clamp(Math.round(rounds), 0, PLAYER_SPW_CAPACITY);
+16135:           // The magazine can no longer back more tubes than it holds shots for.
+16136:           spwLoaded = Math.min(spwLoaded, spwTubeCount(), spwAmmo);
+16137:           return spwAmmo;
+16138:         },
+16139:         // Live tube state for the firing-discipline probes: what is loaded, what
+16140:         // is on the clock and how long the nearest tube still owes.
+16141:         spwTubeProbe: () => ({
+16142:           key: PLAYER_SPW ? PLAYER_SPW.key : null,
+16143:           tubes: spwTubeCount(),
+-----
+missileProbe: [16378]
+16374:           propRotation: enemy.model.propSpinners.length ? enemy.model.propSpinners[0].rotation.z : null
+16375:         })),
+16376:         // Player rounds in flight, with the range to the aircraft each one is
+16377:         // tracking - the number the proximity fuse and the break turn argue over.
+16378:         missileProbe: () => missilesInFlight.map((missile) => {
+16379:           const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+16380:           return {
+16381:             targetId: missile.targetId,
+16382:             spw: missile.spw ?? null,
+16383:             // Where the round is, the same way bombProbe reports it. The
+16384:             // sea-skimming profile is a claim about altitude over time, and
+16385:             // there is no other way to read altitude off a round in flight.
+16386:             x: Number(missile.mesh.position.x.toFixed(2)),
+16387:             y: Number(missile.mesh.position.y.toFixed(2)),
+16388:             z: Number(missile.mesh.position.z.toFixed(2)),
+16389:             diving: Boolean(missile.diving),
+16390:             life: missile.life,
+16391:             speed: missile.speed,
+16392:             closing: Boolean(missile.closing),
+16393:             lost: Boolean(missile.lost),
+16394:             // Whether this round is exempt from seeker loss. The QAAM's whole
+16395:             // claim is that it keeps turning after it has been broken away
+16396:             // from, and that is only checkable against the flag itself.
+16397:             reattack: Boolean(missile.reattack),
+16398:             lostTime: Number((missile.lostTime || 0).toFixed(4)),
+16399:             range: target ? missile.mesh.position.distanceTo(target.group.position) : null
+16400:           };
+16401:         }),
+16402:         bombProbe: () => bombsInFlight.map((bomb) => ({
+-----
+
+============================================================================================
+PLAYER GUN CALL SITES
+============================================================================================
+fireGun(): [15010, 19170, 19195, 22379]
+15007:     // Friendly units live in their own array, deliberately NOT in enemies[].
+15008:     // enemies[] is the mission's kill list: updateMission() ends a wave when
+15009:     // every entry in it is dead, damageEnemy() scores every death in it, and
+15010:     // updateLock()/fireGun()/updateMissiles() offer everything in it as a
+15011:     // target. A friendly satisfies none of those contracts - it must survive,
+15012:     // it must never be scored, and it must never be locked or shot - so
+15013:     // sharing the array would mean guarding a dozen call sites against a flag,
+15014:     // and one missed guard is a bug. A separate array makes the default
+-----
+19167: 
+19168:       gunCooldown = Math.max(0, gunCooldown - dt);
+19169:       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
+19170:         fireGun();
+19171:         gunCooldown += 1 / GUN_RATE;
+19172:       }
+19173: 
+19174:       boostActive = boost;
+-----
+19192:       for (const flame of playerModel.flames) flame.scale.z = THREE.MathUtils.lerp(flame.scale.z, pulse, damping(0.004, dt));
+19193:     }
+19194: 
+19195:     function fireGun() {
+19196:       gunShots += 1;
+19197:       // Fires GUN_RATE x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
+19198:       playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
+19199:       forwardOf(player, tmpV1);
+-----
+22376:       const model = createAircraftModel(spec.theme);
+22377:       group.add(model.group);
+22378:       // Deliberately no hitbox mesh. Nothing raycasts against friendlies -
+22379:       // fireGun() and the missile/bomb paths all build their target list from
+22380:       // enemies[] - and adding one would only invite a future call site to
+22381:       // find it.
+22382:       scene.add(group);
+22383: 
+-----
+updateGunsight(: [26396, 26749]
+26393:     // It sits on the lead point, computed by the same gunLeadPoint() the gun
+26394:     // itself tests against. That shared call is the whole contract: put the
+26395:     // ring on an aircraft and the rounds go there too.
+26396:     function updateGunsight(dt = 0) {
+26397:       let best = null;
+26398:       let bestRange = Infinity;
+26399:       forwardOf(player, tmpV9);
+26400:       for (const enemy of enemies) {
+-----
+26746:       }
+26747: 
+26748:       updateTargetDirectionArrow();
+26749:       updateGunsight(dt);
+26750:     }
+26751: 
+26752:     function updateTargetBox() {
+26753:       const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
+-----
+updateMissiles(: [15010, 17274, 19363]
+15007:     // Friendly units live in their own array, deliberately NOT in enemies[].
+15008:     // enemies[] is the mission's kill list: updateMission() ends a wave when
+15009:     // every entry in it is dead, damageEnemy() scores every death in it, and
+15010:     // updateLock()/fireGun()/updateMissiles() offer everything in it as a
+15011:     // target. A friendly satisfies none of those contracts - it must survive,
+15012:     // it must never be scored, and it must never be locked or shot - so
+15013:     // sharing the array would mean guarding a dozen call sites against a flag,
+15014:     // and one missed guard is a bug. A separate array makes the default
+-----
+17271:           updateLock(dt);
+17272:           updateMissileReload(dt);
+17273:           updateSpwReload(dt);
+17274:           updateMissiles(dt);
+17275:           updateBombs(dt);
+17276:           updateEnemyMissiles(dt);
+17277:           updateBattleArea(dt);
+17278:         }
+-----
+19360:       }
+19361:     }
+19362: 
+19363:     function updateMissiles(dt) {
+19364:       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
+19365:         const missile = missilesInFlight[i];
+19366:         missile.life += dt;
+19367:         missile.trailTimer -= dt;
+-----
+gunAssistStep(: [2759, 15872, 26416, 26437]
+02756:     // target change and the release outside the cone are claims about a curve
+02757:     // over time, and a test can drive this directly instead of trying to fly
+02758:     // two aircraft into a shape that happens to exhibit them.
+02759:     function gunAssistStep(state, targetId, angleRad, range, dt) {
+02760:       // A new contact starts from zero - the ring walks out from the nose
+02761:       // instead of appearing already parked on the target.
+02762:       if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
+02763:       if (targetId == null) { state.k = 0; return 0; }
+-----
+15869:         // events directly - the production step, not a copy of it.
+15870:         gunAssistSim: (events) => {
+15871:           const s = { k: 0, targetId: null };
+15872:           return events.map((e) => Number(gunAssistStep(s, e.targetId ?? null,
+15873:             THREE.MathUtils.degToRad(e.angleDeg || 0), e.range ?? 0, e.dt ?? 1 / 60).toFixed(4)));
+15874:         },
+15875:         // The same decision fireGun makes, asked directly. The angle a burst
+15876:         // flies at is a function of two moving aircraft, so it cannot be dialled
+-----
+26413:         bestRange = range;
+26414:       }
+26415:       if (!best) {
+26416:         gunAssistStep(gunAssist, null, 0, 0, dt);
+26417:         ui.gunsight.classList.add("hidden");
+26418:         gunsightState.active = false;
+26419:         gunsightState.targetId = null;
+26420:         return;
+-----
+26434:       const offAngle = solDist > 0.001
+26435:         ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
+26436:         : 0;
+26437:       const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
+26438: 
+26439:       // The ring is drawn where the rounds are actually going: the blend of
+26440:       // the uncorrected boresight impact and the full solution by the assist's
+26441:       // current k. At k=0 that is the nose itself, so the ring starts at the
+-----
