@@ -7,6 +7,9 @@ on:
     paths:
       - .github/workflows/chatgpt-split-combat-diagnose-once.yml
 
+permissions:
+  contents: write
+
 jobs:
   diagnose:
     runs-on: ubuntu-latest
@@ -80,8 +83,20 @@ jobs:
               })) });
               return out;
             });
-            console.log(JSON.stringify(result, null, 2));
-            if (errors.length) console.log('ERRORS\n' + errors.join('\n'));
+            const payload = { result, errors };
+            console.log(JSON.stringify(payload, null, 2));
+            fs.writeFileSync('tmp_combat_nav_probe.json', JSON.stringify(payload, null, 2) + '\n');
             await context.close(); await browser.close(); server.close();
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
+      - name: Publish the probe and remove this workflow
+        shell: bash
+        run: |
+          rm .github/workflows/chatgpt-split-combat-diagnose-once.yml
+          rm -f package.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp_combat_nav_probe.json
+          git add -u .github/workflows/chatgpt-split-combat-diagnose-once.yml
+          git commit -m "Record the combat navigation probe"
+          git push origin HEAD:chatgpt/split-combat
