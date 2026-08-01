@@ -534,6 +534,15 @@
       opacity: 0.14;
     }
 
+    /* One flex column per side of the silhouette; renderRack() fills each
+       with tube glyphs for the selected weapon (1 per side for the 2-tube
+       launchers, up to 4 per side for the 8AAM). */
+    .rackSide {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+    }
+
     #radarWrap {
       left: clamp(12px, 2vw, 28px);
       right: auto;
@@ -2217,16 +2226,17 @@
 
     <div id="shootCue" class="hudBox">SHOOT</div>
 
+    <!-- Ordnance cluster: the airframe silhouette (planform follows the jet's
+         model family) flanked by one tube glyph per launcher tube of the
+         SELECTED weapon. Both sides are rebuilt by renderRack() whenever the
+         selection or the tube state changes; the static pair of missiles it
+         replaces showed the standard launcher no matter what was armed. -->
     <section id="damageSilhouette" class="panel" aria-hidden="true">
-      <svg id="rackLeft" class="rackMissile" viewBox="0 0 12 34" width="12" height="34">
-        <path d="M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z" />
-      </svg>
+      <div id="rackLeft" class="rackSide"></div>
       <svg viewBox="0 0 40 44" width="40" height="44">
         <path id="silhouetteBody" d="M20 2 L23 14 L23 20 L38 30 L38 34 L23 29 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 29 L2 34 L2 30 L17 20 L17 14 Z" />
       </svg>
-      <svg id="rackRight" class="rackMissile" viewBox="0 0 12 34" width="12" height="34">
-        <path d="M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z" />
-      </svg>
+      <div id="rackRight" class="rackSide"></div>
     </section>
 
     <section id="scorePanel" class="panel">
@@ -14837,6 +14847,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       statusPanel: document.getElementById("statusPanel"),
       rackLeft: document.getElementById("rackLeft"),
       rackRight: document.getElementById("rackRight"),
+      silhouetteBody: document.getElementById("silhouetteBody"),
       speed: document.getElementById("speedValue"),
       altitude: document.getElementById("altitudeValue"),
       enemyMarkers: document.getElementById("enemyMarkers"),
@@ -14899,6 +14910,107 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       bigBannerText: document.getElementById("bigBannerText"),
       bigBannerSub: document.getElementById("bigBannerSub")
     };
+
+    // ---- Ordnance cluster (silhouette + weapon rack) ------------------------
+    // Tube glyphs per weapon, nose-up in a 12x34 box. One shape per weapon
+    // personality rather than per key: the salvo AAMs share the slim dart, and
+    // anything unlisted falls back to the standard missile outline.
+    const RACK_GLYPHS = Object.freeze({
+      msl: "M6 1 L9 7 L9 22 L11 27 L11 29 L7 27 L7 31 L9 33 L3 33 L5 31 L5 27 L1 29 L1 27 L3 22 L3 7 Z",
+      // QAAM: stubby dogfight round, canards amidships and big tail fins.
+      qaam: "M6 6 L9 11 L9 15 L11 17 L11 19 L9 18 L9 24 L12 29 L12 31 L7 29 L7 31 L9 33 L3 33 L5 31 L5 29 L0 31 L0 29 L3 24 L3 18 L1 19 L1 17 L3 15 L3 11 Z",
+      // XLAA: long and slim, small steering fins - a BVR telephone pole.
+      xlaa: "M6 0 L8 5 L8 24 L10 28 L10 30 L8 29 L8 31 L9 33 L3 33 L4 31 L4 29 L2 30 L2 28 L4 24 L4 5 Z",
+      // LASM: the fat ship-killer, broad chord fins.
+      lasm: "M6 1 L10 7 L10 21 L12 26 L12 29 L8 27 L8 30 L10 33 L2 33 L4 30 L4 27 L0 29 L0 26 L2 21 L2 7 Z",
+      // Salvo darts (4/6/8AAM): narrow, so eight of them still read as a rack.
+      aam: "M6 3 L8 8 L8 26 L10 30 L10 31 L8 30 L8 32 L9 33 L3 33 L4 32 L4 30 L2 31 L2 30 L4 26 L4 8 Z",
+      // 4AGM: square cruciform fins, the tank-buster profile.
+      agm: "M6 2 L9 8 L9 20 L12 23 L12 28 L9 26 L9 29 L12 33 L0 33 L3 29 L3 26 L0 28 L0 23 L3 20 L3 8 Z",
+      // Unguided bomb: teardrop and a drum tail.
+      ugb: "M6 3 C9 6 10 11 10 17 L10 23 C10 26 9 28 8 29 L11 32 L11 33 L1 33 L1 32 L4 29 C3 28 2 26 2 23 L2 17 C2 11 3 6 6 3 Z"
+    });
+
+    function rackGlyphFor(key) {
+      if (RACK_GLYPHS[key]) return RACK_GLYPHS[key];
+      if (key === "aam4" || key === "aam6" || key === "aam8") return RACK_GLYPHS.aam;
+      if (key === "agm4") return RACK_GLYPHS.agm;
+      return RACK_GLYPHS.msl;
+    }
+
+    // Planform per model family, nose-up in the 40x44 box the old generic
+    // delta used. Keyed by theme.variant so every airframe of a family shares
+    // its outline; anything unmapped keeps the original shape.
+    const SILHOUETTE_DEFAULT = "M20 2 L23 14 L23 20 L38 30 L38 34 L23 29 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 29 L2 34 L2 30 L17 20 L17 14 Z";
+    const SILHOUETTE_PATHS = Object.freeze({
+      // Canard delta: big triangular wing aft, foreplanes by the intake.
+      canard: "M20 2 L22 10 L27 13 L27 15 L22 14 L23 20 L38 32 L38 36 L22 34 L22 38 L26 41 L26 43 L20 41 L14 43 L14 41 L18 38 L18 34 L2 36 L2 32 L17 20 L18 14 L13 15 L13 13 L18 10 Z",
+      // Swing-wing caught mid-sweep: long glove, wingtips trailing far aft.
+      swing: "M20 2 L23 14 L24 22 L38 36 L38 39 L23 31 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 31 L2 39 L2 36 L16 22 L17 14 Z",
+      // Heavy twin-boom fighter: shoulder wing, twin tails astern.
+      heavy: "M20 2 L23 13 L23 19 L36 26 L36 30 L23 29 L23 34 L27 36 L27 43 L23 40 L23 42 L20 41 L17 42 L17 40 L13 43 L13 36 L17 34 L17 29 L4 30 L4 26 L17 19 L17 13 Z",
+      // Stealth diamond: chined nose flowing straight into the wing.
+      stealth: "M20 2 L24 16 L37 30 L37 33 L24 30 L24 36 L29 41 L29 43 L21 40 L19 40 L11 43 L11 41 L16 36 L16 30 L3 33 L3 30 L16 16 Z",
+      // Carrier trapezoid: mid-set wing, broad tail group.
+      carrier: "M20 2 L23 12 L23 19 L36 28 L36 32 L23 30 L23 36 L28 40 L28 43 L23 41 L20 43 L17 41 L12 43 L12 40 L17 36 L17 30 L4 32 L4 28 L17 19 L17 12 Z",
+      // Straight wing attacker: constant chord plank and twin fins.
+      hog: "M20 3 L22 12 L22 18 L38 18 L38 23 L22 23 L22 33 L28 33 L28 42 L24 38 L16 38 L12 42 L12 33 L18 33 L18 23 L2 23 L2 18 L18 18 L18 12 Z",
+      // Forward-swept: tips ahead of the root, unmistakably backwards.
+      berkut: "M20 2 L23 14 L23 24 L36 18 L37 22 L23 32 L23 36 L27 40 L27 43 L20 41 L13 43 L13 40 L17 36 L17 32 L3 22 L4 18 L17 24 L17 14 Z",
+      // Tailed delta: small delta plus a separate tailplane behind it.
+      fishbed: "M20 4 L22 14 L22 20 L34 30 L34 33 L22 31 L22 36 L28 39 L28 42 L20 40 L12 42 L12 39 L18 36 L18 31 L6 33 L6 30 L18 20 L18 14 Z"
+    });
+    const SILHOUETTE_FAMILY = Object.freeze({
+      gripen: "canard", rafale: "canard", typhoon: "canard",
+      tomcat: "swing", flogger: "swing",
+      foxhound: "heavy", lancer: "heavy", terminator: "heavy", bison: "heavy",
+      flankerd: "heavy", flankere: "heavy", fulcrum: "heavy",
+      hornet: "carrier", lightning: "carrier",
+      raptor: "stealth", felon: "stealth",
+      hog: "hog", frogfoot: "hog",
+      berkut: "berkut",
+      fishbed: "fishbed"
+    });
+
+    function updateHudSilhouette(spec) {
+      const variant = spec && spec.theme ? spec.theme.variant : null;
+      const family = variant ? SILHOUETTE_FAMILY[variant] : null;
+      ui.silhouetteBody.setAttribute("d", (family && SILHOUETTE_PATHS[family]) || SILHOUETTE_DEFAULT);
+    }
+
+    // Rebuild the rack only when what it shows would change; per frame this is
+    // one string compare. Tubes alternate right/left from the fuselage out,
+    // and a tube past the loaded count sits at .empty opacity - so a salvo
+    // leaving and the reload clocks bringing tubes back both read directly.
+    let rackCacheKey = "";
+    function renderRack() {
+      const spwSel = selectedWeapon === "spw" && PLAYER_SPW;
+      const key = spwSel ? PLAYER_SPW.key : "msl";
+      const tubes = spwSel ? spwTubeCount() : MISSILE_TUBE_COUNT;
+      const loaded = spwSel ? Math.min(spwLoaded, spwAmmo) : loadedMissiles;
+      const cache = `${key}:${tubes}:${loaded}`;
+      if (cache === rackCacheKey) return;
+      rackCacheKey = cache;
+      const glyph = rackGlyphFor(key);
+      // Two-tube launchers keep the original 12x34 size; wider racks shrink
+      // so four tubes a side still fit beside the silhouette.
+      const w = tubes >= 6 ? 8 : tubes >= 4 ? 10 : 12;
+      const h = tubes >= 6 ? 23 : tubes >= 4 ? 28 : 34;
+      let left = "";
+      let right = "";
+      for (let i = 0; i < tubes; i += 1) {
+        const svg =
+          `<svg class="rackMissile${i < loaded ? "" : " empty"}" viewBox="0 0 12 34" ` +
+          `width="${w}" height="${h}"><path d="${glyph}" /></svg>`;
+        // Even tubes hang right, odd left; prepending on the left mirrors the
+        // fill order so both racks grow outward from the fuselage.
+        if (i % 2 === 0) right += svg;
+        else left = svg + left;
+      }
+      ui.rackLeft.innerHTML = left;
+      ui.rackRight.innerHTML = right;
+    }
+
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x7ba8ba, 650, 3350);
@@ -26837,8 +26949,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.spwCount.textContent = String(spwAmmo);
       ui.mslRow.classList.toggle("wpnActive", !spwSelected);
       ui.spwRow.classList.toggle("wpnActive", spwSelected);
-      ui.rackLeft.classList.toggle("empty", loadedMissiles < 1);
-      ui.rackRight.classList.toggle("empty", loadedMissiles < 2);
+      renderRack();
 
       // Cockpit only. From outside the aircraft the middle of the screen
       // carries the gun reticle and nothing else, and the ladder's roll was
@@ -30361,6 +30472,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetSpwTubes();
       selectedWeapon = "msl";
       clearMultiLock();
+      // The HUD ordnance cluster is part of the loadout: the silhouette takes
+      // this airframe's planform and the rack redraws for its launcher.
+      updateHudSilhouette(spec);
       // STABILITY: how little the aircraft wanders when banked or slow.
       ROLL_SETTLE = spec.rollDamping;
       // The same number drives pitch and yaw. Roll already had inertia and a
