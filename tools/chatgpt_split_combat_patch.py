@@ -188,7 +188,7 @@ def main() -> None:
 '''
     text = replace_between(
         text,
-        "    // Sea-skimming profile for the surface rounds.\n",
+        "    // Sea-skimming profile for the surface rounds. They run level at launch\n",
         "    let loadedMissiles = MISSILE_TUBE_COUNT;\n",
         missile_controller,
         "missile guidance construction"
