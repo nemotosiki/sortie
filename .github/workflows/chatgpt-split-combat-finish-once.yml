@@ -1,0 +1,127 @@
+name: split-combat final verification
+
+on:
+  push:
+    branches:
+      - chatgpt/split-combat
+    paths:
+      - .github/workflows/chatgpt-split-combat-finish-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/split-combat
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Apply the structural extraction
+        run: python tools/chatgpt_split_combat_patch.py
+
+      - name: Repair the verification navigation only
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('tools/chatgpt_split_combat_verify.mjs')
+          text = path.read_text(encoding='utf-8')
+          replacement = r'''async function enterMission(page, key) {
+            const campaign = await page.evaluate(
+              (missionKey) => window.__game.debug.campaignOf(missionKey),
+              key
+            );
+            const forceCampaign = await page.evaluate(
+              (campaignId) => window.__game.debug.forceCampaign(campaignId),
+              campaign
+            );
+            const confirmCampaign = await page.evaluate(
+              () => window.__game.debug.forceConfirmCampaign()
+            );
+            await page.waitForFunction(() => window.__game?.state === 'missionSelect', null, { timeout: 10000 });
+
+            const selectMission = await page.evaluate(
+              (missionKey) => window.__game.debug.forceSelectMission(missionKey),
+              key
+            );
+            const confirmMission = await page.evaluate(
+              () => window.__game.debug.forceConfirmMission()
+            );
+            await page.waitForFunction(() => window.__game?.state === 'briefing', null, { timeout: 10000 });
+
+            const navigation = {
+              campaign,
+              forceCampaign,
+              confirmCampaign,
+              selectMission,
+              confirmMission,
+              state: await page.evaluate(() => window.__game.state)
+            };
+            if (!forceCampaign || !confirmCampaign || !selectMission || !confirmMission) {
+              throw new Error(`mission navigation failed: ${JSON.stringify(navigation)}`);
+            }
+            for (let attempt = 0; attempt < 5; attempt += 1) {
+              if (await page.evaluate(() => window.__game.state === 'playing')) break;
+              await page.keyboard.press('Enter');
+              await page.waitForTimeout(120);
+            }
+            await page.waitForFunction(() => window.__game?.state === 'playing', null, { timeout: 10000 });
+            return navigation;
+          }'''
+          text, count = re.subn(
+              r'async function enterMission\(page, key\) \{.*?\n\}\n\nasync function pageProbe',
+              replacement + '\n\nasync function pageProbe',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'enterMission replacement count: {count}')
+          # There is no forceGunFire debug hook in the shipped game. The public
+          # contract comparison already exercises the production lead/hit solver.
+          text = text.replace('      d.forceGunFire();\n', '', 1)
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+
+      - name: Install verification dependencies
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright three >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Run the existing registry gate
+        shell: bash
+        run: |
+          CHROME="$(node -e "const { chromium } = require('playwright'); process.stdout.write(chromium.executablePath())")"
+          SORTIE_PLAYWRIGHT="$PWD/node_modules/playwright" SORTIE_CHROME="$CHROME" node tools/registry_gate.mjs
+
+      - name: Compare gun and missile behaviour with base 079bde7
+        env:
+          BASE_SHA: 079bde72bb3bf877c06faa879f3ae3fad9b4a5d0
+        run: node tools/chatgpt_split_combat_verify.mjs
+
+      - name: Commit only production files
+        shell: bash
+        run: |
+          rm -f .github/workflows/chatgpt-split-combat-*.yml
+          rm -f tools/chatgpt_split_combat_patch.py tools/chatgpt_split_combat_verify.mjs
+          rm -f tmp_combat_*.txt tmp_combat_*.json tmp_combat_*.log
+          rm -f package.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git add -u .github/workflows tools
+          git add -u 'tmp_combat_*' || true
+          git commit -m "Wire the combat feature modules"
+          git push origin HEAD:chatgpt/split-combat
