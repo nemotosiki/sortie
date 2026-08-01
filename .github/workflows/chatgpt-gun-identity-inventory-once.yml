@@ -1,0 +1,101 @@
+name: gun identity inventory once
+
+on:
+  push:
+    branches: [chatgpt/gun-identity-impl]
+    paths: [.github/workflows/chatgpt-gun-identity-inventory-once.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/gun-identity-impl
+          fetch-depth: 0
+
+      - name: Extract exact host contracts
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path('index.html').read_text(encoding='utf-8')
+          lines = text.splitlines()
+          out = [f'index.html lines={len(lines)}']
+
+          patterns = [
+            'const SPW_TYPES', '4AGM', 'LASM', 'missilesInFlight.push',
+            'function fireMissile', 'function updateMissiles',
+            'createMissileGuidance', 'missileProbe', 'forceFireWeapon',
+            'function spawnGroundUnit', 'hitBox', 'function applyAircraftLoadout',
+            'selectedAircraftId', 'BORESIGHT_DISTANCE', 'function currentLockKind',
+            'function fireSpw', 'function fireWeapon', 'popup:', 'spw:'
+          ]
+
+          for pattern in patterns:
+            hits = [i for i, line in enumerate(lines) if pattern in line]
+            out.append('\n' + '=' * 100)
+            out.append(f'{pattern} count={len(hits)} lines={[i + 1 for i in hits]}')
+            for i in hits:
+              start = max(0, i - 18)
+              end = min(len(lines), i + 45)
+              out.append('-' * 100)
+              out.extend(f'{n + 1:05d}: {lines[n]}' for n in range(start, end))
+
+          # Full spans for the functions most likely to be edited.
+          for name in ['fireMissile', 'updateMissiles', 'spawnGroundUnit', 'applyAircraftLoadout', 'currentLockKind']:
+            regex = re.compile(rf'^\s*(?:async\s+)?function\s+{re.escape(name)}\s*\(', re.M)
+            matches = list(regex.finditer(text))
+            out.append('\n' + '#' * 100)
+            out.append(f'FUNCTION {name} matches={len(matches)}')
+            for match in matches:
+              start = text.rfind('\n', 0, match.start()) + 1
+              brace = text.find('{', match.end())
+              depth = 0
+              quote = None
+              escaped = False
+              end = None
+              for j in range(brace, len(text)):
+                ch = text[j]
+                if quote:
+                  if escaped:
+                    escaped = False
+                  elif ch == '\\':
+                    escaped = True
+                  elif ch == quote:
+                    quote = None
+                  continue
+                if ch in ('\"', "'", '`'):
+                  quote = ch
+                elif ch == '{':
+                  depth += 1
+                elif ch == '}':
+                  depth -= 1
+                  if depth == 0:
+                    end = j + 1
+                    break
+              if end is None:
+                out.append('NO CLOSING BRACE')
+                continue
+              start_line = text.count('\n', 0, start) + 1
+              span = text[start:end].splitlines()
+              out.extend(f'{start_line + k:05d}: {line}' for k, line in enumerate(span))
+
+          Path('tmp_gun_identity_inventory.txt').write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+
+      - name: Publish inventory only
+        shell: bash
+        run: |
+          rm .github/workflows/chatgpt-gun-identity-inventory-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp_gun_identity_inventory.txt
+          git add -u .github/workflows/chatgpt-gun-identity-inventory-once.yml
+          git commit -m "Record gun identity host contracts"
+          git push origin HEAD:chatgpt/gun-identity-impl
