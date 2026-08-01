@@ -2506,6 +2506,17 @@
       RADIO_PRIORITY,
       createRadioController
     } from "./src/ui/radio.js";
+    import {
+      DEFAULT_GUN_DAMAGE,
+      DEFAULT_GUN_GROUND_BONUS,
+      GUN_GIMBAL_DEG,
+      GUN_GIMBAL_STRENGTH,
+      GUN_MUZZLE_SPEED,
+      GUN_RANGE,
+      GUN_RATE,
+      createPlayerGunController
+    } from "./src/combat/player-gun.js";
+    import { createMissileGuidance } from "./src/combat/missile-guidance.js";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -2537,13 +2548,13 @@
     // Per-aircraft from here (see AIRCRAFT_TYPES / applyAircraftLoadout).
     let STALL_WARNING_SPEED = 96;
     let STALL_ENTRY_SPEED = 84;
-    let GUN_DAMAGE = 16;
+    let GUN_DAMAGE = DEFAULT_GUN_DAMAGE;
     // Multiplies GUN_DAMAGE, but only on a burst that lands on a surface
     // target. 1 for every airframe that does not set `gunGroundBonus`, so the
     // gun behaves exactly as it always has unless the aircraft is built around
     // an anti-armour cannon. See the A-10C entry for why the strength cannot
     // live in gunDamage itself.
-    let GUN_GROUND_BONUS = 1;
+    let GUN_GROUND_BONUS = DEFAULT_GUN_GROUND_BONUS;
     let MISSILE_DAMAGE = 130;
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
@@ -2604,169 +2615,65 @@
     let COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(42);
     let PLAYER_MAX_HEALTH = 100;
     const TARGET_FOCUS_HOLD_MS = 360;
-    const GUN_RANGE = 750;
-    // 機銃のガンバル。AC7 の機銃は「弱いガンバル効果」で、
-    // 機首を敵に向ける必要は残るが多少のズレは吸収される。
-    // 補正は即時ではなく時間で「合っていく」: 同じ相手を追っている間だけ
-    // 補正率 k が 0 から上限へ育ち、リングも弾道も同じ k で敵のリード点へ
-    // 寄っていく。出会い頭の一瞬で吸い付かないのはこの立ち上がりのため。
-    // 上限は距離で決まり、近いほど強い（至近 0.75 / 最大射程 0.3）。
-    // 4.5度ちょうどは「補正する」側（<= で判定）。境界をどちらに倒すかは
-    // 体感に影響しないが、テストが問える契約なので決めておく。
-    const GUN_GIMBAL_DEG = 4.5;      // これを超えていたら補正が解けていく
-    const GUN_GIMBAL_STRENGTH = 0.75; // 至近距離での補正上限（1.0 なら完全命中）
-    const GUN_ASSIST_FAR = 0.3;       // 最大射程での補正上限
-    const GUN_ASSIST_TAU_RISE = 0.55; // 合っていく時定数 [s]
-    const GUN_ASSIST_TAU_FALL = 0.18; // 解けていく時定数 [s]
-    const gunAssist = { k: 0, targetId: null };
-    // What the last round's gimbal check decided. The interesting assertion is
-    // the negative one - past the limit the burst must NOT bend - and that is
-    // invisible from outside unless the check reports itself. Patching
-    // Vector3.angleTo from a test instead picks up every other caller in the
-    // frame and cannot tell which reading was this one.
-    const lastGimbal = { applied: false, angleDeg: null, rangeM: null, k: null };
-    // How fast a round is treated as travelling. The gun resolves by ray, so
-    // nothing physically flies - this number exists so that a burst arrives
-    // LATER than it is fired, which is what makes leading a crossing target
-    // mean anything. Used by the sight to decide where to draw the ring and by
-    // the gun to decide what it hit; those two must share it or the ring stops
-    // being an aiming instrument and becomes decoration.
-    const GUN_MUZZLE_SPEED = 900;
-
-    // Where a burst fired now would meet the target. The one place this is
-    // worked out: the ring is drawn here and the hit is tested here, so "put
-    // the ring on the target and you will hit it" is true by construction
-    // rather than by two pieces of arithmetic happening to agree.
-    //
-    // A lead-computing sight offsets from the muzzle boresight by an angle
-    // proportional to the line-of-sight rate times the projectile time of
-    // flight. The part that matters for how it behaves is the RELATIVE motion,
-    // not the target's own: a contact coming straight at the nose needs no
-    // lead however fast it is going, because the sightline is not rotating.
-    // Extrapolating the target's own velocity instead - which is what this
-    // did first - put the ring metres off to one side at knife-fight range on
-    // a head-on pass, where the true lead is nearly zero.
-    //
-    // Straight-line extrapolation over the flight time, so a target that
-    // breaks hard mid-flight is led to where it was going rather than where it
-    // went. That is a real miss, and the same one a real sight makes.
-    // Where rounds leave the aircraft. The sight and the gun both measure from
-    // here: computing the solution from the aircraft origin instead put the
-    // ring about a metre off what the rounds were actually doing, because the
-    // muzzles are eight and a half metres up the nose.
-    function gunMuzzleOrigin(out) {
-      forwardOf(player, tmpMuzzle);
-      return out.copy(player.position).addScaledVector(tmpMuzzle, 8.5);
-    }
-    const tmpMuzzle = new THREE.Vector3();
-
-    function gunLeadPoint(from, enemy, out) {
-      out.copy(enemy.group.position);
-      const range = out.distanceTo(from);
-      if (enemy.ground || enemy.surface) return range;
-      // Relative velocity: the target's, less the shooter's own. What is left
-      // is how the sightline is actually moving.
-      forwardOf(enemy.group, tmpLead);
-      tmpLead.multiplyScalar(enemy.speed || 0);
-      forwardOf(player, tmpLeadC);
-      tmpLead.addScaledVector(tmpLeadC, -playerSpeed);
-      tmpLead.multiplyScalar(range / GUN_MUZZLE_SPEED);
-      // Only the part ACROSS the sightline moves the ring; closing speed just
-      // changes when the rounds arrive, not where they have to be sent. Left
-      // in, a fast overtake threw the solution up the target's own flight path
-      // and the ring slid off the side of the screen at knife range, where the
-      // true lead is nearly nothing.
-      if (range > 0.001) {
-        tmpLeadB.copy(out).sub(from).multiplyScalar(1 / range);
-        tmpLead.addScaledVector(tmpLeadB, -tmpLead.dot(tmpLeadB));
-      }
-      out.add(tmpLead);
-      return range;
-    }
-    const tmpLead = new THREE.Vector3();
-    const tmpLeadB = new THREE.Vector3();
-    const tmpLeadC = new THREE.Vector3();
-
-    // How much the hit radius is inflated at a given range. Knife-fight range
-    // is where a gun kill is supposed to be available, and at 100 m a fighter
-    // subtends enough of the screen that a shot which looks like a hit ought to
-    // be one; out at 700 m the same angular error is tens of metres of miss and
-    // the gun should be the wrong tool. Linear from 2.2x at point blank to 1.0x
-    // at maximum range, so closing the distance is the thing that makes the
-    // gun work rather than any single threshold the player has to learn.
-    // How far off the nose a contact may sit and still raise a gun ring. Wider
-    // than the 4.5 degree gimbal gate on purpose: the ring has to be visible
-    // while the player is still pulling the nose onto the target, or it only
-    // ever appears once the shot is already made. Roughly a third of the way
-    // out from the middle of the screen at the default field of view.
-    const GUNSIGHT_CONE_DEG = 20;
-    const GUNSIGHT_CONE_COS = Math.cos(THREE.MathUtils.degToRad(GUNSIGHT_CONE_DEG));
-
-    // The collider every enemy AIRCRAFT is built from: one shared sphere,
-    // scaled per profile by `hitboxScale`. Both the mesh in
-    // createSharedGeometry and the gun's arithmetic read this.
+    // Fixed-wing aircraft share one spherical fallback collider. The geometry
+    // builder and the gun controller read the same number, so the visible hitbox
+    // and analytic gun test cannot drift apart.
     const ENEMY_HITBOX_RADIUS = 10.5;
 
-    // The radius the gun tests against, for anything that can be shot at.
-    //
-    // Three kinds of contact describe their size three different ways, and the
-    // gun has to know all three. Ships and ground installations carry an
-    // explicit `hitBox` or `hitRadius`. AIRCRAFT CARRY NEITHER: their collider
-    // is the shared ENEMY_HITBOX_RADIUS sphere scaled by the profile's
-    // `hitboxScale`, which is set from wingspan (see the note above the
-    // `gripen` profile). Reading only hitBox/hitRadius therefore skipped every
-    // aeroplane in the game - the analytic hit test replaced a raycast that had
-    // been hitting the scaled sphere mesh, and the sphere was the one size the
-    // rewrite forgot to carry over.
+    const playerGun = createPlayerGunController({
+      THREE,
+      getPlayer: () => player,
+      getPlayerSpeed: () => playerSpeed,
+      getEnemies: () => enemies,
+      getPreferredTargetId: () => preferredTargetId,
+      getLockTargetId: () => lock.targetId,
+      getCamera: () => camera,
+      getUi: () => ui,
+      getDamage: () => GUN_DAMAGE,
+      getGroundBonus: () => GUN_GROUND_BONUS,
+      getEnemyHitboxRadius: () => ENEMY_HITBOX_RADIUS,
+      forwardOf: (object, out) => forwardOf(object, out),
+      upOf: (object, out) => upOf(object, out),
+      rightOf: (object, out) => rightOf(object, out),
+      isHudProjectionVisible: (...args) => isHudProjectionVisible(...args),
+      playSfx: (...args) => playSfx(...args),
+      damageEnemy: (...args) => damageEnemy(...args),
+      createImpactBurst: (...args) => createImpactBurst(...args),
+      createTracer: (...args) => createTracer(...args),
+      createMuzzleFlash: (...args) => createMuzzleFlash(...args),
+      onShot: () => { gunShots += 1; }
+    });
+    const gunAssist = playerGun.assistState;
+    const lastGimbal = playerGun.lastGimbal;
+    const gunsightState = playerGun.gunsightState;
+
+    function gunMuzzleOrigin(out) {
+      return playerGun.muzzleOrigin(out);
+    }
+
+    function gunLeadPoint(from, enemy, out) {
+      return playerGun.leadPoint(from, enemy, out);
+    }
+
     function enemyHitSphereRadius(enemy) {
-      const box = enemy.spec.hitBox;
-      if (box) return Math.max(box.x, box.y, box.z) * 0.5;
-      if (enemy.spec.hitRadius) return enemy.spec.hitRadius;
-      return ENEMY_HITBOX_RADIUS * (enemy.spec.hitboxScale || 1);
+      return playerGun.enemyHitSphereRadius(enemy);
     }
 
-    const GUN_CLOSE_FORGIVENESS = 2.2;
     function gunAimForgiveness(range) {
-      const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
-      return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
+      return playerGun.aimForgiveness(range);
     }
 
-    // The gimbal decision on its own, given an angle and a range. Pulled out of
-    // fireGun so the threshold can be asked about directly instead of being
-    // inferred from where rounds land: the angle a burst actually flies at is a
-    // function of two moving aircraft and cannot be dialled in from outside, so
-    // trying to place a target at 4.4 and then at 4.6 degrees is solving a
-    // problem the test does not have. fireGun calls this, so what a test asks
-    // and what a round does cannot drift apart.
     function gimbalDecision(angleRad, distance) {
-      if (!(distance > 0) || distance > GUN_RANGE) return { applied: false, reason: "range" };
-      if (angleRad > THREE.MathUtils.degToRad(GUN_GIMBAL_DEG)) return { applied: false, reason: "angle" };
-      return { applied: true, reason: "ok" };
+      return playerGun.gimbalDecision(angleRad, distance);
     }
 
-    // The assist's ceiling at a given range: strongest at knife-fight range,
-    // weakest at the edge of the envelope, so closing in is what buys the
-    // stronger pull - the same bargain gunAimForgiveness offers.
     function gunAssistCap(range) {
-      const t = THREE.MathUtils.clamp(range / GUN_RANGE, 0, 1);
-      return THREE.MathUtils.lerp(GUN_GIMBAL_STRENGTH, GUN_ASSIST_FAR, t);
+      return playerGun.assistCap(range);
     }
-    // One frame of the assist settling. A plain state-in, state-out step for
-    // the same reason gimbalDecision is separate: convergence, the reset on a
-    // target change and the release outside the cone are claims about a curve
-    // over time, and a test can drive this directly instead of trying to fly
-    // two aircraft into a shape that happens to exhibit them.
+
     function gunAssistStep(state, targetId, angleRad, range, dt) {
-      // A new contact starts from zero - the ring walks out from the nose
-      // instead of appearing already parked on the target.
-      if (targetId !== state.targetId) { state.targetId = targetId; state.k = 0; }
-      if (targetId == null) { state.k = 0; return 0; }
-      const cap = gimbalDecision(angleRad, range).applied ? gunAssistCap(range) : 0;
-      const tau = cap > state.k ? GUN_ASSIST_TAU_RISE : GUN_ASSIST_TAU_FALL;
-      if (dt > 0) state.k += (cap - state.k) * (1 - Math.exp(-dt / tau));
-      return state.k;
+      return playerGun.assistStep(state, targetId, angleRad, range, dt);
     }
-    const GUN_RATE = 6;
     const LOCK_RANGE = 1200;
     const LOCK_TIME = 0.85;
     const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
@@ -14997,8 +14904,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // loop and must not tread on the tmpV* slots that loop is already holding.
     const tmpAiA = new THREE.Vector3();
     const tmpAiB = new THREE.Vector3();
-    // Owned by the missile swept-fuse test.
-    const tmpSwept = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
@@ -15083,17 +14988,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Where the gun ring is and what it is solving for. Readable from a probe
     // because "the ring leads the target" is a claim about a distance, and a
     // screenshot cannot be asked how many metres ahead it drew.
-    const gunsightState = {
-      active: false,
-      targetId: null,
-      x: 0,
-      y: 0,
-      rangeM: 0,
-      leadM: 0,
-      assistK: 0,
-      hot: false,
-      forgiveness: 1
-    };
 
     const targetArrowState = {
       active: false,
@@ -15166,17 +15060,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Outside it nothing changes, so the cost is a few rounds per frame at most.
     const MISSILE_TERMINAL_RANGE = 150;
     const MISSILE_TERMINAL_SUBSTEPS = 8;
-    // Sea-skimming profile for the surface rounds. They run level at launch
-    // altitude to the target's ground position and only then tip over, instead
-    // of sinking towards the sea from the rail - the run-in the LASM is
-    // described by. POPUP_DIVE_RATIO is the pushover point in horizontal
-    // distance per metre of height left to lose: at 1.2 the straight line from
-    // there meets the target at atan(1/1.2) = 40 deg, and the chase steepens it
-    // through 45 on the way in. POPUP_MIN_DROP is the floor below which there is
-    // no height to trade - a round released level with a hull has no dive to
-    // make, and manufacturing one only puts it in the water short of the target.
-    const POPUP_DIVE_RATIO = 1.2;
-    const POPUP_MIN_DROP = 60;
+    // The array lifecycle, damage, effects and score stay in this module. Only
+    // the seeker / steering / swept-fuse calculation is owned by combat.
+    const missileGuidance = createMissileGuidance({
+      THREE,
+      localForward: LOCAL_FORWARD,
+      forwardOf: (object, out) => forwardOf(object, out),
+      damping: (k, dt) => damping(k, dt),
+      defaultTurnRate: MISSILE_TURN_RATE,
+      defaultMaxSpeed: MISSILE_MAX_SPEED,
+      defaultFuse: MISSILE_FUSE,
+      terminalRange: MISSILE_TERMINAL_RANGE,
+      terminalSubsteps: MISSILE_TERMINAL_SUBSTEPS,
+      seekerLossTime: SEEKER_LOSS_TIME
+    });
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
     const FLARE_CAPACITY = 2;
@@ -19191,108 +19088,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const pulse = 1 + Math.sin(performance.now() * 0.005) * 0.12;
       for (const flame of playerModel.flames) flame.scale.z = THREE.MathUtils.lerp(flame.scale.z, pulse, damping(0.004, dt));
     }
-
     function fireGun() {
-      gunShots += 1;
-      // Fires GUN_RATE x/sec, so keep it quiet and jitter the pitch to avoid a machine-like drone.
-      playSfx("gun", 0.22, 0.92 + Math.random() * 0.16);
-      forwardOf(player, tmpV1);
-      upOf(player, tmpV2);
-      rightOf(player, tmpV3);
-
-      const muzzleSide = Math.sin(performance.now() * 0.075) >= 0 ? 1 : -1;
-      const start = new THREE.Vector3().copy(player.position)
-        .addScaledVector(tmpV1, 8.5)
-        .addScaledVector(tmpV2, -0.15)
-        .addScaledVector(tmpV3, 2.8 * muzzleSide);
-
-      // Gun gimbal: a slight pull towards the aiming solution, not an auto-aim
-      // - the nose still has to be roughly on it. What it pulls towards is the
-      // LEAD POINT rather than where the target is standing, because that is
-      // where the burst is going to arrive and where the ring is drawn. The
-      // strength is gunAssist.k - the same settling value the ring is drawn
-      // with, and the target is the ring's target, so what the sight shows and
-      // what the rounds do are one mechanism rather than two rules that agree.
-      const gimbalTargetId = gunAssist.targetId;
-      lastGimbal.applied = false;
-      lastGimbal.angleDeg = null;
-      lastGimbal.rangeM = null;
-      lastGimbal.k = null;
-      if (gimbalTargetId) {
-        const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
-        if (gimbalTarget) {
-          const gimbalDist = gunLeadPoint(start, gimbalTarget, tmpV4);
-          tmpV4.sub(start);
-          const leadDist = tmpV4.length();
-          if (leadDist > 0) {
-            tmpV4.multiplyScalar(1 / leadDist);
-            const gimbalAngle = tmpV1.angleTo(tmpV4);
-            // Recorded whether or not the correction fires, because the claim
-            // being checked from outside is "past the limit it does NOT bend" -
-            // and a probe that only reports the corrected shots cannot show it.
-            lastGimbal.angleDeg = THREE.MathUtils.radToDeg(gimbalAngle);
-            lastGimbal.rangeM = gimbalDist;
-            lastGimbal.k = gunAssist.k;
-            if (gimbalDecision(gimbalAngle, gimbalDist).applied && gunAssist.k >= 0.01) {
-              tmpV1.lerp(tmpV4, gunAssist.k).normalize();
-              lastGimbal.applied = true;
-            }
-          }
-        }
-      }
-
-      // Rounds are tested against where each contact WILL be, not where it is.
-      // Raycasting the hitboxes where they sit would score the shot aimed at
-      // the target and miss the one that was led - the exact opposite of what
-      // the sight tells the player to do. So the test is analytic: how close
-      // does the ray pass to each lead point, against a radius taken from the
-      // same hitbox the old raycast used. Cheaper than the raycast it replaces.
-      const hits = [];
-      for (const enemy of enemies) {
-        if (!enemy.alive) continue;
-        const range = gunLeadPoint(start, enemy, tmpV5);
-        if (range > GUN_RANGE) continue;
-        tmpV5.sub(start);
-        const along = tmpV5.dot(tmpV1);
-        if (along <= 0) continue;                    // behind the muzzle
-        // Perpendicular distance from the ray to the lead point.
-        const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
-        // A sphere standing in for the hitbox, because a ray-point test cannot
-        // use a cuboid. Not everything on the board carries a `hitBox` - ship
-        // mounts describe themselves with `hitRadius` instead - so both are
-        // read, and anything with neither is skipped rather than throwing.
-        const baseRadius = enemyHitSphereRadius(enemy);
-        if (baseRadius <= 0) continue;
-        const radius = baseRadius * gunAimForgiveness(range);
-        if (missDistance > radius) continue;
-        hits.push({ enemy, distance: along, missDistance });
-      }
-      hits.sort((a, b) => a.distance - b.distance);
-      let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, GUN_RANGE);
-
-      if (hits.length > 0) {
-        // A mount's box sits INSIDE its ship's, so the hull is always the
-        // nearer intersection and "nearest wins" could never reach a mount.
-        // Aim decides instead: with a mount selected the burst goes to the
-        // mount, and with anything else selected mounts are transparent and
-        // the hull takes every round. Neither can absorb the other's fire.
-        const focusId = preferredTargetId ?? lock.targetId;
-        let hit = hits.find((entry) => entry.enemy.subsystem && entry.enemy.id === focusId);
-        if (!hit) hit = hits.find((entry) => !entry.enemy.subsystem);
-        if (hit) {
-          const victim = hit.enemy;
-          end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, hit.distance);
-          // The anti-armour multiplier is applied here, at the one place that
-          // knows WHAT was hit - `surface` is set on ships, their mounts and
-          // ground installations, and on nothing that flies. Putting it in the
-          // aircraft gunDamage would leak it into the AIR-TO-AIR bar.
-          damageEnemy(victim, victim.surface ? GUN_DAMAGE * GUN_GROUND_BONUS : GUN_DAMAGE, false);
-          createImpactBurst(end, 0xffb04a, 0.7);
-        }
-      }
-
-      createTracer(start, end, 0xffd35f, 0.11, 0.9);
-      createMuzzleFlash(start, 0xffe39a);
+      playerGun.fire();
     }
 
     function launchMissile() {
@@ -19359,7 +19156,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
     }
-
     function updateMissiles(dt) {
       for (let i = missilesInFlight.length - 1; i >= 0; i -= 1) {
         const missile = missilesInFlight[i];
@@ -19374,102 +19170,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
 
         const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
-        // One step out in the cruise, eight through the endgame.
-        let steps = 1;
-        if (target) {
-          if (missile.mesh.position.distanceTo(target.group.position) < MISSILE_TERMINAL_RANGE) {
-            steps = MISSILE_TERMINAL_SUBSTEPS;
-          }
-        } else {
-          missile.closing = false;
-        }
+        const steps = missileGuidance.stepsFor(missile, target);
         const slice = dt / steps;
         let struck = false;
 
         for (let step = 0; step < steps; step += 1) {
-          if (target) {
-            tmpV1.copy(target.group.position).sub(missile.mesh.position);
-            const distance = tmpV1.length();
-            // Break trigger input: a round that has been out-turned and is now
-            // opening is no longer something the target needs to break against.
-            missile.closing = distance < missile.lastTargetDistance;
-            missile.lastTargetDistance = distance;
-            tmpV1.normalize();
+          const guided = missileGuidance.step(missile, target, slice);
 
-            // Seeker lock-loss. The line of sight to a manoeuvring target rotates
-            // at v/r, which inside the last hundred metres of a break runs away
-            // from any finite turn rate. A seeker being asked for more than it
-            // has is not tracking any more - it is pointing where the target used
-            // to be - so once it has been behind for long enough it stops
-            // pretending and flies on ballistically. That is what makes a break
-            // turn work against an ordinary round: the loss is permanent, so one
-            // good break is the whole answer and the round is spent. Only
-            // resolvable because the terminal phase is sub-stepped - at frame
-            // resolution the line never rotates for more than one step.
-            //
-            // A `reattack` round (the QAAM) is exempt from the clock entirely and
-            // keeps steering for its whole life, the same discipline enemy rounds
-            // used to have. A break still beats it in the moment - 300 deg/s is
-            // finite and it overshoots - but it comes back round for a second
-            // pass, so breaking buys time rather than survival. What it costs is
-            // the magazine: see the capacity on each airframe that carries it.
-            const seekerRate = missile.turnRate ?? MISSILE_TURN_RATE;
-            if (!missile.lost) {
-              if (!missile.reattack) {
-                if (missile.losValid && slice > 0 && missile.los.angleTo(tmpV1) / slice > seekerRate) {
-                  missile.lostTime += slice;
-                  if (missile.lostTime >= SEEKER_LOSS_TIME) {
-                    missile.lost = true;
-                    // A puff as the motor keeps burning on a dead seeker.
-                    for (let puff = 0; puff < 3; puff += 1) {
-                      tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
-                      smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
-                    }
-                  }
-                } else {
-                  missile.lostTime = 0;
-                }
-              }
-              missile.los.copy(tmpV1);
-              missile.losValid = true;
-
-              // Cruise leg of the sea-skimming profile: steer at the target's
-              // horizontal position only, which holds the launch altitude
-              // because the round flies where its nose points. Steering only -
-              // the seeker LOS recorded above is the true one, so lock-loss is
-              // untouched. The pushover latches: while diving, height falls as
-              // fast as ground range does, so a live ratio test would flick back
-              // to level halfway down and porpoise the round into the target.
-              let aim = tmpV1;
-              if (missile.popup && !missile.diving) {
-                const drop = missile.mesh.position.y - target.group.position.y;
-                tmpV5.set(
-                  target.group.position.x - missile.mesh.position.x,
-                  0,
-                  target.group.position.z - missile.mesh.position.z
-                );
-                const pushover = drop * POPUP_DIVE_RATIO;
-                if (drop <= POPUP_MIN_DROP || tmpV5.lengthSq() <= pushover * pushover) {
-                  missile.diving = true;
-                } else {
-                  aim = tmpV5.normalize();
-                }
-              }
-              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, aim);
-              missile.mesh.quaternion.rotateTowards(tmpQ1, seekerRate * slice);
+          if (guided.seekerLostNow) {
+            // A puff as the motor keeps burning on a dead seeker.
+            for (let puff = 0; puff < 3; puff += 1) {
+              tmpV3.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+              smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
             }
           }
 
-          missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed ?? MISSILE_MAX_SPEED, damping(0.012, slice));
-          forwardOf(missile.mesh, tmpV2);
-          const travel = missile.speed * slice;
-
-          // Swept fuse: the round is a segment this step, not a point. Testing
-          // the segment's closest approach removes the tunnelling that let a
-          // clean pass score as a hit - and a real hit score as a pass - purely
-          // on where the sample points happened to land.
-          if (target && sweptMissDistance(missile.mesh.position, tmpV2, travel, target.group.position)
-              < proximityFuseFor(target)) {
+          if (guided.hit) {
             damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
             if (missile.spw) spwHits += 1;
             else missileHits += 1;
@@ -19479,7 +19195,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             break;
           }
 
-          missile.mesh.position.addScaledVector(tmpV2, travel);
+          missile.mesh.position.addScaledVector(guided.direction, guided.travel);
         }
         if (struck) continue;
 
@@ -19499,9 +19215,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // Closest approach between the segment a round travels this step and a point.
     function sweptMissDistance(from, dir, length, point) {
-      tmpSwept.copy(point).sub(from);
-      const along = THREE.MathUtils.clamp(tmpSwept.dot(dir), 0, length);
-      return tmpSwept.addScaledVector(dir, -along).length();
+      return missileGuidance.sweptMissDistance(from, dir, length, point);
     }
 
     // Hull radius for a surface target, the standard proximity fuse for an
@@ -19509,12 +19223,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // workaround for the endgame being quantised, and sub-stepping fixed the
     // cause, so every round faces the same radius it always did.
     function proximityFuseFor(target) {
-      // A mount is a small box bolted to a big ship: it fuses on its own
-      // radius undiluted, so a round aimed at one still arrives, while a round
-      // aimed at the hull still has to satisfy the hull's much larger figure.
-      if (target.subsystem) return target.spec.hitRadius;
-      if (target.surface) return target.spec.hitRadius * 0.35;
-      return MISSILE_FUSE;
+      return missileGuidance.proximityFuseFor(target);
     }
 
     const tmpCiwsAim = new THREE.Vector3();
@@ -26394,91 +26103,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // itself tests against. That shared call is the whole contract: put the
     // ring on an aircraft and the rounds go there too.
     function updateGunsight(dt = 0) {
-      let best = null;
-      let bestRange = Infinity;
-      forwardOf(player, tmpV9);
-      for (const enemy of enemies) {
-        if (!enemy.alive) continue;
-        tmpV8.copy(enemy.group.position).sub(player.position);
-        const range = tmpV8.length();
-        if (range > GUN_RANGE || range >= bestRange) continue;
-        // Being in range is not enough - the gun fires along the nose, so a
-        // contact well off the boresight cannot be hit however close it is.
-        // Anything outside the cone gets no ring, which is the honest answer:
-        // there is no shot to aim. Merely testing "ahead of the nose" let a
-        // contact almost abeam raise a ring the gun could never reach, and
-        // the solution for one landed hundreds of pixels off to the side.
-        if (tmpV8.dot(tmpV9) <= range * GUNSIGHT_CONE_COS) continue;
-        best = enemy;
-        bestRange = range;
-      }
-      if (!best) {
-        gunAssistStep(gunAssist, null, 0, 0, dt);
-        ui.gunsight.classList.add("hidden");
-        gunsightState.active = false;
-        gunsightState.targetId = null;
-        return;
-      }
-
-      // Where it will be when the rounds arrive - the same answer the gun uses.
-      gunLeadPoint(gunMuzzleOrigin(tmpV4), best, tmpV8);
-      // How far ahead of the contact the burst is being sent. Taken before the
-      // blend below, so it reports the full solution rather than however much
-      // of it the assist has walked out to.
-      const leadM = tmpV8.distanceTo(best.group.position);
-
-      // How far off the nose the full solution sits, and one settling step of
-      // the assist towards it.
-      tmpV5.copy(tmpV8).sub(tmpV4);
-      const solDist = tmpV5.length();
-      const offAngle = solDist > 0.001
-        ? tmpV9.angleTo(tmpV5.multiplyScalar(1 / solDist))
-        : 0;
-      const k = gunAssistStep(gunAssist, best.id, offAngle, bestRange, dt);
-
-      // The ring is drawn where the rounds are actually going: the blend of
-      // the uncorrected boresight impact and the full solution by the assist's
-      // current k. At k=0 that is the nose itself, so the ring starts at the
-      // centre of the screen and slides onto the target as the assist settles
-      // - never the other way round.
-      tmpV5.copy(tmpV4).addScaledVector(tmpV9, solDist).lerp(tmpV8, k);
-      tmpV8.copy(tmpV5);
-
-      tmpV7.copy(tmpV8).project(camera);
-      tmpV6.copy(tmpV8).applyMatrix4(camera.matrixWorldInverse);
-      if (!isHudProjectionVisible(tmpV7, tmpV6, 0.98)) {
-        // Hidden but not reset: the angle gate in the step is what decides
-        // whether the assist survives an excursion off screen.
-        ui.gunsight.classList.add("hidden");
-        gunsightState.active = false;
-        gunsightState.targetId = null;
-        return;
-      }
-
-      const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
-      ui.gunsight.style.left = `${x}px`;
-      ui.gunsight.style.top = `${y}px`;
-      ui.gunsight.classList.remove("hidden");
-      // The ring replaces the cross rather than joining it. Both are the gun's
-      // aiming mark, so having them up together offered two answers to one
-      // question - and the cross, being fixed to the nose, is the wrong one
-      // the moment a lead solution exists.
-      ui.boresight.classList.add("hidden");
-      // Still recorded, because the gun's gimbal turns on exactly this and a
-      // test needs to be able to ask. It no longer colours anything: red on
-      // this HUD belongs to a completed missile lock.
-      const hot = gimbalDecision(offAngle, bestRange).applied;
-
-      gunsightState.active = true;
-      gunsightState.targetId = best.id;
-      gunsightState.x = x;
-      gunsightState.y = y;
-      gunsightState.rangeM = bestRange;
-      gunsightState.leadM = leadM;
-      gunsightState.assistK = k;
-      gunsightState.hot = hot;
-      gunsightState.forgiveness = gunAimForgiveness(bestRange);
+      playerGun.updateGunsight(dt);
     }
 
     function clearTargetDirectionArrow() {
