@@ -31,10 +31,19 @@ export const POPUP_MIN_DROP = 60;
 export const LOFT_ABOVE_LAUNCH = 120;
 export const LOFT_ABOVE_TARGET = 180;
 export const LOFT_TERMINAL_RANGE = 420;
+// A fixed 420m dive point assumed the round was only LOFT_ABOVE_TARGET up.
+// The LASM locks ground targets too, cruises wherever its launch altitude
+// put it, and from 700m up a 420m dive point demands a 60-79 degree dive
+// that a 55 deg/s seeker cannot fly: it fell past the target - measured 50
+// of 144 ground shots lost exactly that way. The dive point now also scales
+// with height, so the entry angle never has to beat ~27 degrees.
+export const GROUND_DIVE_RATIO = 2.0;
 // The ground fuse is generous where the sea-skimmer's is not: a round that
 // arrives from directly overhead is either on the target or nowhere near it,
-// so there is no shallow near-miss to be strict about.
-export const GROUND_FUSE_SCALE = 0.9;
+// so there is no shallow near-miss to be strict about. 0.9 left an aaGun
+// (radius 20) with an 18m fuse and a measured pursuit-lag miss of 18.5m -
+// the full radius closes exactly that knife edge.
+export const GROUND_FUSE_SCALE = 1.0;
 // Ships were fused at 0.35 of their radius, which on a 62m frigate is 21.7m and
 // on a 26m missile boat is 9.1m: a round had to arrive within a third of the
 // hull's own extent or pass straight through it. An aircraft, by contrast, is
@@ -124,6 +133,25 @@ export function createMissileGuidance({
     return slope;
   }
 
+  // True when the straight line from the round to its target clears the
+  // terrain samples between them. The dive is a latch, so this is checked
+  // before committing: a round that dives while a crest still pokes through
+  // the sight line flies into the crest. The sample nearest the target is
+  // skipped - that is the ground the target itself sits on.
+  function sightLineClear(missile, target) {
+    for (let s = 1; s < TERRAIN_SAMPLES; s += 1) {
+      const t = s / TERRAIN_SAMPLES;
+      const h = surfaceHeightAt(
+        missile.mesh.position.x + (target.group.position.x - missile.mesh.position.x) * t,
+        missile.mesh.position.z + (target.group.position.z - missile.mesh.position.z) * t
+      );
+      const lineY = missile.mesh.position.y +
+        (target.group.position.y - missile.mesh.position.y) * t;
+      if (h > lineY - 10) return false;
+    }
+    return true;
+  }
+
   // Aim along the ground track at the given climb slope. Reads and mutates
   // `horizontal`, which the caller has already loaded with the ground-track
   // vector; only called with groundRange comfortably above zero.
@@ -155,7 +183,14 @@ export function createMissileGuidance({
 
       const seekerRate = missile.turnRate ?? defaultTurnRate;
       if (!missile.lost) {
-        if (!missile.reattack) {
+        // Seeker loss exists so a break turn can shake a missile. A ship or a
+        // battery cannot fly a break turn, so against surface targets the
+        // seeker never gives up - the turn-rate limit still applies, so a
+        // round that overshoots must physically come around for another pass
+        // instead of tracking through the miss. This is the "it stops guiding
+        // after the dive" bug: the steep terminal dive swung the sight line
+        // faster than 55 deg/s for 0.08s and the round went ballistic.
+        if (!missile.reattack && !target.surface) {
           if (missile.losValid && slice > 0 && missile.los.angleTo(toTarget) / slice > seekerRate) {
             missile.lostTime += slice;
             if (missile.lostTime >= seekerLossTime) {
@@ -190,7 +225,13 @@ export function createMissileGuidance({
                 target.group.position.y + LOFT_ABOVE_TARGET
               );
             }
-            if (groundRange <= LOFT_TERMINAL_RANGE) {
+            const drop = missile.mesh.position.y - target.group.position.y;
+            // Half a turn radius of anticipation: bending from the climb into
+            // the dive is not free, and a close-in shot that climbed first
+            // was reversing 46 degrees with 420m to do it in.
+            const entry = 0.5 * missile.speed / seekerRate;
+            if (groundRange <= Math.max(LOFT_TERMINAL_RANGE, drop * GROUND_DIVE_RATIO) + entry &&
+                sightLineClear(missile, target)) {
               missile.diving = true;
             } else if (groundRange > 0.001) {
               // Climb toward the ceiling while running in, so the round is
@@ -212,7 +253,8 @@ export function createMissileGuidance({
             // shot flies exactly as it always did.
             const drop = missile.mesh.position.y - target.group.position.y;
             const pushover = drop * POPUP_DIVE_RATIO;
-            if (drop <= POPUP_MIN_DROP || groundRange * groundRange <= pushover * pushover) {
+            if ((drop <= POPUP_MIN_DROP || groundRange * groundRange <= pushover * pushover) &&
+                sightLineClear(missile, target)) {
               missile.diving = true;
             } else if (groundRange > 0.001) {
               const slope = requiredClimbSlope(missile, target, groundRange);
