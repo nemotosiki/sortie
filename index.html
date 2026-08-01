@@ -15771,6 +15771,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           range,
           kind === "surface" ? { ground: true } : (kind === "air" ? {} : undefined)
         ),
+        // Selects the special weapon and pulls the trigger, which a test cannot
+        // reach reliably through the keyboard: the trigger is bound to a key
+        // that also does something else, and the salvo path needs a latched
+        // multi-lock first. Returns what the launcher itself reported.
+        forceFireSpw: () => {
+          if (gameState !== STATE_PLAYING) return { fired: 0, reason: "not playing" };
+          selectedWeapon = "spw";
+          const before = missilesInFlight.length;
+          fireWeapon();
+          return { fired: missilesInFlight.length - before, inFlight: missilesInFlight.length };
+        },
+        // Every player missile in the air, with the state its guidance is in.
+        // A ground round should be climbing early and diving late; a ship round
+        // should stay at launch altitude until the push-over.
+        missileFlightProbe: () => missilesInFlight.map((m) => ({
+          spw: m.spw || null,
+          popup: Boolean(m.popup),
+          diving: Boolean(m.diving),
+          loftCeiling: m.loftCeiling ?? null,
+          y: Number(m.mesh.position.y.toFixed(2)),
+          targetId: m.target ? m.target.id : null
+        })),
         // Loads an airframe's flight model and gun outright, skipping the
         // hangar. selectAircraft() only changes what is on display - the
         // loadout is applied at mission start - so a test that wants to read
@@ -19479,6 +19501,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         popup: Boolean(PLAYER_SPW.popup),
         reattack: Boolean(PLAYER_SPW.reattack),
         diving: false,
+        // Worked out on the first guided frame from where this round actually
+        // launched. Carrying a previous round's ceiling would hold the wrong
+        // altitude for the whole run.
+        loftCeiling: undefined,
         life: 0,
         trailTimer: 0,
         closing: false,
