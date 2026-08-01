@@ -3338,7 +3338,11 @@
         reload: 9,
         lockRange: 1600,
         lockKind: "surface",
-        popup: true
+        popup: true,
+        // The whole point of the wave-top profile: a round at 50m is under
+        // the CIWS engagement arc, so the one anti-ship round is the one
+        // round a defended fleet cannot shoot down.
+        ciwsImmune: true
       }),
       // F-15: BVR sniper. Sees past the standard 1200 m seeker, but flies
       // almost straight once it is off the rail.
@@ -6213,11 +6217,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hp: 49, hitRadius: 12, hitBox: Object.freeze({ x: 14, y: 14, z: 14 }),
         smokeHeight: 4, explosionColor: 0xffa348, tracerColor: 0xfff0a0,
         radarColor: "#ffb46a", surface: true,
-        // The reason to take a mount off before the hull. A live drum rolls
-        // once per second against every round inbound inside its range, so a
-        // missile fired past one is a missile you are likely to have wasted.
+        // The reason to take a mount off before the hull, and the reason the
+        // LASM exists. 0.7/s kills ~73% of ordinary rounds crossing the
+        // 800->320m engagement band at missile speed - a defended hull mostly
+        // cannot be hit from standoff with anything but the wave-top round.
+        // The counterplay is CIWS_MIN_ENGAGE: press to ~300m and the drum
+        // cannot traverse fast enough, and every round through that window
+        // flies clean. Or strafe the mount off first; a dead drum rolls
+        // nothing.
         ciws: Object.freeze({
-          range: 800, interceptPerSecond: 0.25,
+          range: 800, interceptPerSecond: 0.7,
           cooldownMin: 0.8, cooldownSpread: 0.5,
           damage: 7, maxHitChance: 0.12, tracers: 6
         })
@@ -6247,13 +6256,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         aa: Object.freeze({ range: 640, cooldownMin: 0.55, cooldownSpread: 0.55, damage: 7, maxHitChance: 0.16, tracers: 2 }),
         // Offsets are the ship model's own hardware in hull-local metres (bow
         // at -Z): the 5-inch mount forward, the CIWS drum on the hangar roof
-        // aft, and the two VLS cell fields the SAMs already launch out of.
-        // Array order is the NEXT-target walk: hull, AA, AA, VLS, VLS.
+        // aft - a live intercept mount since the fleet-defence pass, matching
+        // the drum the model has always worn - and the two VLS cell fields
+        // the SAMs already launch out of. Array order is the NEXT-target
+        // walk: hull, AA, AA, VLS, VLS, CIWS.
         subsystems: Object.freeze([
           Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: -48 }) }),
           Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 19, z: 51 }) }),
           Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: -37 }) }),
-          Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: 33 }) })
+          Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: 33 }) }),
+          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 0, y: 18, z: 64 }) })
         ]),
         radarColor: "#ffb46a",
         tracerColor: 0xffb04a,
@@ -15068,6 +15080,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Outside it nothing changes, so the cost is a few rounds per frame at most.
     const MISSILE_TERMINAL_RANGE = 150;
     const MISSILE_TERMINAL_SUBSTEPS = 8;
+    // A specialist round on its specialty hits half again as hard: an air
+    // lock (QAAM, XLAA, the AAM salvos) against an aircraft, a surface lock
+    // (LASM, 4AGM) against a hull or an installation. The standard missile
+    // is the generalist and pays full board rate everywhere.
+    const SPW_SPECIALTY_BONUS = 1.5;
     // The array lifecycle, damage, effects and score stay in this module. Only
     // the seeker / steering / swept-fuse calculation is owned by combat.
     const missileGuidance = createMissileGuidance({
@@ -19272,7 +19289,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
 
           if (guided.hit) {
-            damageEnemy(target, missile.damage ?? MISSILE_DAMAGE, true);
+            const specialised =
+              (missile.lockKind === "air" && !target.surface) ||
+              (missile.lockKind === "surface" && target.surface);
+            damageEnemy(
+              target,
+              (missile.damage ?? MISSILE_DAMAGE) * (specialised ? SPW_SPECIALTY_BONUS : 1),
+              true
+            );
             if (missile.spw) spwHits += 1;
             else missileHits += 1;
             createExplosion(missile.mesh.position, 0xffc24f, 0.68);
@@ -19327,15 +19351,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // round, against anything inbound inside its range - p converted to this
     // frame's slice so the rate does not drift with frame time. This is the
     // mechanical reason to strip a carrier's mounts before shooting at it.
+    // Inside this range the drum cannot traverse onto a crossing round: the
+    // deliberate hole in the fleet's defence. Firing from ~300m always
+    // connects, which is the risk-for-certainty trade the CIWS buff sells.
+    const CIWS_MIN_ENGAGE = 320;
+
     function ciwsIntercept(missile, dt) {
       if (gameState !== STATE_PLAYING || !(dt > 0)) return false;
+      // The sea-skimmer runs in under the engagement arc - CIWS never fires
+      // on it. Every other round is fair game.
+      if (missile.ciwsImmune) return false;
       forwardOf(missile.mesh, tmpCiwsDir);
       for (const enemy of enemies) {
         if (!enemy.alive || enemy.subsystemKind !== "ciws") continue;
         const ciws = enemy.spec.ciws;
         tmpCiwsAim.copy(enemy.group.position).sub(missile.mesh.position);
         const distance = tmpCiwsAim.length();
-        if (!(distance > 1) || distance > ciws.range) continue;
+        if (!(distance > 1) || distance < CIWS_MIN_ENGAGE || distance > ciws.range) continue;
         // Inbound only: a round that has already gone past is not a threat the
         // mount shoots at, so an overshoot is never "intercepted" after the fact.
         if (tmpCiwsAim.dot(tmpCiwsDir) <= 0) continue;
@@ -19523,6 +19555,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: PLAYER_SPW.damage,
         lifeLimit: PLAYER_SPW.life,
         spw: PLAYER_SPW.key,
+        lockKind: PLAYER_SPW.lockKind ?? null,
+        ciwsImmune: Boolean(PLAYER_SPW.ciwsImmune),
         popup: Boolean(PLAYER_SPW.popup),
         reattack: Boolean(PLAYER_SPW.reattack),
         diving: false,

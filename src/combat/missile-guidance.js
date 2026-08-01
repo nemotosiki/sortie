@@ -6,16 +6,25 @@
 // It imports no mission/entity feature; all shared contracts arrive as values or
 // callbacks from the composition root.
 
-// How far out the sea-skimmer pushes over, as a multiple of how far it has to
-// come down. At 1.2 a round launched from 600m started down 720m out and
-// arrived at nearly 40 degrees - but its own turn radius is 448m at 430m/s, so
-// inside the last 66m of fuse it could no longer correct, and it went past the
-// hull and into the water. Measured: two of three rounds ended at 56m and 59m
-// altitude having missed a ship whose fuse reaches 66m.
-//
-// At 3.4 the same launch starts down some 2km out and arrives at about 16
-// degrees, which the seeker can hold all the way in.
-export const POPUP_DIVE_RATIO = 3.4;
+// Anti-ship rounds fly the profile real ones fly: drop to wave-top height
+// straight off the rail, run in under the defences, and only rise to the deck
+// at the very end. SKIM_ALTITUDE is the cruise height over whatever surface
+// the samples report (so an island lifts the round over itself by the same
+// margin); SKIM_DESCENT_SLOPE caps how hard the round noses down to get
+// there - steeper than the 0.6 climb cap because going downhill is free.
+export const SKIM_ALTITUDE = 50;
+export const SKIM_DESCENT_SLOPE = -1.2;
+// How far ahead the descent aims to be at wave height. Short enough that the
+// round gets down right after launch instead of gliding at the target on a
+// straight line - which is what "descend toward where you arrive" computed.
+export const SKIM_DESCENT_HORIZON = 350;
+// Terminal latch: inside this range (or once the round is already at wave
+// height), aim straight at the hull. drop x 1.5 keeps a round that is still
+// high - fired close, or forced up over an island - entering its final
+// pursuit early enough that the dive never steepens past what a 55 deg/s
+// seeker can fly.
+export const SKIM_TERMINAL_RANGE = 500;
+export const SKIM_DIVE_RATIO = 1.5;
 export const POPUP_MIN_DROP = 60;
 
 // Anti-ship and anti-ground shared one profile and it suited neither. A ship
@@ -118,7 +127,7 @@ export function createMissileGuidance({
   // the path-averaged slope is exactly how rounds clipped hilltops. Sampled
   // sparsely and re-sampled every guided frame, so it also tracks the round's
   // progress and a moving target. Negative when nothing is in the way.
-  function requiredClimbSlope(missile, target, groundRange) {
+  function requiredClimbSlope(missile, target, groundRange, clearance = TERRAIN_CLEARANCE) {
     let slope = -Infinity;
     for (let s = 1; s <= TERRAIN_SAMPLES; s += 1) {
       const t = s / TERRAIN_SAMPLES;
@@ -126,11 +135,36 @@ export function createMissileGuidance({
         missile.mesh.position.x + (target.group.position.x - missile.mesh.position.x) * t,
         missile.mesh.position.z + (target.group.position.z - missile.mesh.position.z) * t
       );
-      const need = (h + TERRAIN_CLEARANCE - missile.mesh.position.y) /
+      const need = (h + clearance - missile.mesh.position.y) /
         Math.max(groundRange * t, 1);
       if (need > slope) slope = need;
     }
     return slope;
+  }
+
+  // The slope a sea-skimmer flies while running in: nose down hard enough to
+  // be at wave height SKIM_DESCENT_HORIZON ahead, but never through a terrain
+  // sample it will reach inside that horizon. Far samples are ignored - the
+  // command is recomputed every frame, so an island beyond the horizon starts
+  // binding as soon as the round gets near it.
+  function skimSlope(missile, target, groundRange) {
+    let slope = -Infinity;
+    let nearGround = 0;
+    for (let s = 1; s <= TERRAIN_SAMPLES; s += 1) {
+      const t = s / TERRAIN_SAMPLES;
+      const d = groundRange * t;
+      if (s > 1 && d > SKIM_DESCENT_HORIZON) break;
+      const h = surfaceHeightAt(
+        missile.mesh.position.x + (target.group.position.x - missile.mesh.position.x) * t,
+        missile.mesh.position.z + (target.group.position.z - missile.mesh.position.z) * t
+      );
+      if (s === 1) nearGround = h;
+      const need = (h + SKIM_ALTITUDE - missile.mesh.position.y) / Math.max(d, 1);
+      if (need > slope) slope = need;
+    }
+    const descent = (nearGround + SKIM_ALTITUDE - missile.mesh.position.y) /
+      SKIM_DESCENT_HORIZON;
+    return Math.max(slope, descent);
   }
 
   // True when the straight line from the round to its target clears the
@@ -139,12 +173,20 @@ export function createMissileGuidance({
   // the sight line flies into the crest. The sample nearest the target is
   // skipped - that is the ground the target itself sits on.
   function sightLineClear(missile, target) {
+    // Ground at or below the target's own footing is the plane the target
+    // stands on, not an obstacle: a wave-top run at a ship holds a sight
+    // line within metres of the sea the whole way, and treating the water
+    // as blocking meant the skimmer never latched at all. Anything higher
+    // is real terrain and gets a conservative 10m margin, because the dive
+    // is a latch and clipping a crest is fatal.
+    const footing = target.group.position.y + 2;
     for (let s = 1; s < TERRAIN_SAMPLES; s += 1) {
       const t = s / TERRAIN_SAMPLES;
       const h = surfaceHeightAt(
         missile.mesh.position.x + (target.group.position.x - missile.mesh.position.x) * t,
         missile.mesh.position.z + (target.group.position.z - missile.mesh.position.z) * t
       );
+      if (h <= footing) continue;
       const lineY = missile.mesh.position.y +
         (target.group.position.y - missile.mesh.position.y) * t;
       if (h > lineY - 10) return false;
@@ -155,9 +197,9 @@ export function createMissileGuidance({
   // Aim along the ground track at the given climb slope. Reads and mutates
   // `horizontal`, which the caller has already loaded with the ground-track
   // vector; only called with groundRange comfortably above zero.
-  function climbAim(slope, groundRange) {
+  function climbAim(slope, groundRange, minSlope = -0.6) {
     horizontal.multiplyScalar(1 / groundRange);
-    return horizontal.setY(THREE.MathUtils.clamp(slope, -0.6, 0.6)).normalize();
+    return horizontal.setY(THREE.MathUtils.clamp(slope, minSlope, 0.6)).normalize();
   }
 
   function proximityFuseFor(target) {
@@ -246,21 +288,24 @@ export function createMissileGuidance({
               );
             }
           } else if (missile.popup) {
-            // Ships: sea-skim at launch altitude, push over when the remaining
-            // ground range falls under the height difference times the ratio,
-            // and latch. An island on the run-in lifts the round over itself;
-            // it never descends toward the clearance height, so an open-sea
-            // shot flies exactly as it always did.
+            // Ships: drop to wave-top height straight off the rail, run in at
+            // SKIM_ALTITUDE over whatever surface is below (an island lifts
+            // the round over itself), and latch onto the hull at the terminal
+            // range - or immediately, if the round is already down at wave
+            // height. A round still high when the latch distance arrives
+            // enters its pursuit at drop x 1.5, so the dive never steepens
+            // past what its seeker can fly.
             const drop = missile.mesh.position.y - target.group.position.y;
-            const pushover = drop * POPUP_DIVE_RATIO;
-            if ((drop <= POPUP_MIN_DROP || groundRange * groundRange <= pushover * pushover) &&
+            if ((drop <= POPUP_MIN_DROP ||
+                 groundRange <= Math.max(SKIM_TERMINAL_RANGE, drop * SKIM_DIVE_RATIO)) &&
                 sightLineClear(missile, target)) {
               missile.diving = true;
             } else if (groundRange > 0.001) {
-              const slope = requiredClimbSlope(missile, target, groundRange);
-              aim = slope > 0
-                ? climbAim(slope, groundRange)
-                : horizontal.multiplyScalar(1 / groundRange);
+              aim = climbAim(
+                skimSlope(missile, target, groundRange),
+                groundRange,
+                SKIM_DESCENT_SLOPE
+              );
             }
           } else if (groundRange > LOFT_TERMINAL_RANGE) {
             // A plain missile at a surface target flies pure pursuit, and pure
