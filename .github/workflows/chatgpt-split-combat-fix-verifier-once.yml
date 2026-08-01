@@ -1,0 +1,97 @@
+name: split-combat fix verifier navigation once
+
+on:
+  push:
+    branches:
+      - chatgpt/split-combat
+    paths:
+      - .github/workflows/chatgpt-split-combat-fix-verifier-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/split-combat
+          fetch-depth: 0
+
+      - name: Drive the real campaign and mission controls in the verifier
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tools/chatgpt_split_combat_verify.mjs')
+          text = path.read_text(encoding='utf-8')
+          old = '''async function enterMission(page, key) {
+  const navigation = await page.evaluate((missionKey) => {
+    const d = window.__game.debug;
+    d.clearMissionRecords();
+    const campaign = d.campaignOf(missionKey);
+    return {
+      campaign,
+      forceCampaign: d.forceCampaign(campaign),
+      confirmCampaign: d.forceConfirmCampaign(),
+      selectMission: d.forceSelectMission(missionKey),
+      confirmMission: d.forceConfirmMission(),
+      state: window.__game.state
+    };
+  }, key);
+  if (!navigation.forceCampaign || !navigation.confirmCampaign || !navigation.selectMission || !navigation.confirmMission) {
+    throw new Error(`mission navigation failed: ${JSON.stringify(navigation)}`);
+  }
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (await page.evaluate(() => window.__game.state === 'playing')) break;
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(120);
+  }
+  await page.waitForFunction(() => window.__game?.state === 'playing', null, { timeout: 10000 });
+  return navigation;
+}
+'''
+          new = '''async function enterMission(page, key) {
+  const campaign = await page.evaluate((missionKey) => {
+    const d = window.__game.debug;
+    d.clearMissionRecords();
+    const campaignId = d.campaignOf(missionKey);
+    if (!d.forceCampaign(campaignId)) throw new Error(`could not select campaign ${campaignId}`);
+    return campaignId;
+  }, key);
+
+  await page.locator('#campaignConfirmBtn').click();
+  await page.waitForFunction(() => window.__game?.state === 'missionSelect', null, { timeout: 10000 });
+
+  const selected = await page.evaluate((missionKey) => window.__game.debug.forceSelectMission(missionKey), key);
+  if (!selected) throw new Error(`could not select mission ${key}`);
+  await page.locator('#missionConfirmBtn').click();
+  await page.waitForFunction(() => window.__game?.state === 'briefing', null, { timeout: 10000 });
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (await page.evaluate(() => window.__game.state === 'playing')) break;
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(120);
+  }
+  await page.waitForFunction(() => window.__game?.state === 'playing', null, { timeout: 10000 });
+  return { campaign, mission: key, state: 'playing' };
+}
+'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one old enterMission function, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8', newline='\n')
+          PY
+
+      - name: Remove the one-shot workflow and publish the verifier fix
+        shell: bash
+        run: |
+          rm .github/workflows/chatgpt-split-combat-fix-verifier-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/chatgpt_split_combat_verify.mjs
+          git add -u .github/workflows/chatgpt-split-combat-fix-verifier-once.yml
+          git commit -m "Drive the real mission navigation in combat checks"
+          git push origin HEAD:chatgpt/split-combat
