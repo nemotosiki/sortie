@@ -2551,6 +2551,8 @@
 
   <script type="module">
     import * as THREE from "three";
+    import { loadPayloadModules } from "./src/registry/payload-loader.js";
+    import { createRegistrySnapshot } from "./src/registry/registry-snapshot.js";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -10022,44 +10024,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // The snapshot tools/registry_gate.mjs diffs against. Keys only, never
     // values: the accident being guarded against is a key that DISAPPEARED in a
-    // merge, and a key-structure diff is the smallest thing that catches it
-    // while staying quiet about every legitimate balance tweak.
+    // merge. The pure traversal now lives in src/registry/registry-snapshot.js;
+    // this wrapper owns only the live tables supplied to it.
     function registrySnapshot() {
-      const keyPaths = (value, prefix, sink, depth) => {
-        if (!value || typeof value !== "object" || depth > 3) return sink;
-        if (Array.isArray(value)) { sink.push(`${prefix}[]`); return sink; }
-        for (const field of Object.keys(value).sort()) {
-          const at = prefix ? `${prefix}.${field}` : field;
-          sink.push(at);
-          keyPaths(value[field], at, sink, depth + 1);
-        }
-        return sink;
-      };
-      const shapeOf = (table) => Object.fromEntries(
-        Object.keys(table).sort().map((key) => [key, keyPaths(table[key], "", [], 0)])
-      );
-      return {
-        ENEMY_ROLES: shapeOf(ENEMY_ROLES),
-        SKILL_TIERS: shapeOf(SKILL_TIERS),
-        ACE_PROFILES: shapeOf(ACE_PROFILES),
-        AIRCRAFT_TYPES: shapeOf(AIRCRAFT_TYPES),
-        ENEMY_AI_PROFILES: shapeOf(ENEMY_AI_PROFILES),
-        ENEMY_MISSILE_PROFILES: shapeOf(ENEMY_MISSILE_PROFILES),
-        ENEMY_TYPES: shapeOf(ENEMY_TYPES),
-        SHIP_TYPES: shapeOf(SHIP_TYPES),
-        GROUND_TYPES: shapeOf(GROUND_TYPES),
-        HELI_TYPES: shapeOf(HELI_TYPES),
-        WORLD_PRESETS: shapeOf(WORLD_PRESETS),
-        AIRCRAFT_ORDER: [...AIRCRAFT_ORDER],
-        // Not a keyed table: an ordered list, whose interesting content is which
-        // maps each decorator claims. Recorded as id -> ["world:<key>", ...] so
-        // the gate's key-path diff reports a decorator that stopped being
-        // applied to a map exactly the way it reports a lost field.
-        WORLD_DECORATORS: Object.fromEntries(
-          WORLD_DECORATORS.map((entry) => [entry.id, [...entry.worlds].sort().map((key) => `world:${key}`)])
-        ),
-        MISSIONS: Object.fromEntries(MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)]))
-      };
+      return createRegistrySnapshot({
+        ENEMY_ROLES,
+        SKILL_TIERS,
+        ACE_PROFILES,
+        AIRCRAFT_TYPES,
+        ENEMY_AI_PROFILES,
+        ENEMY_MISSILE_PROFILES,
+        ENEMY_TYPES,
+        SHIP_TYPES,
+        GROUND_TYPES,
+        HELI_TYPES,
+        WORLD_PRESETS,
+        AIRCRAFT_ORDER,
+        WORLD_DECORATORS,
+        MISSIONS
+      });
     }
 
     // ==== @PAYLOADS:BEGIN ====
@@ -14550,19 +14533,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
-    // imports each module and runs its default export through the same ctx the
-    // spliced payloads use, so a branch can verify its payload against the real
-    // game before anything is written into this file. Absent from a normal load.
-    const payloadQuery = new URLSearchParams(location.search).get("payloads");
-    if (payloadQuery) {
-      for (const spec of payloadQuery.split(",").map((entry) => entry.trim()).filter(Boolean)) {
-        const module = await import(new URL(spec, location.href).href);
-        if (typeof module.default !== "function") {
-          throw new Error(`[payload] ${spec}: module has no default-exported register(ctx) function`);
-        }
-        applyPayload(module.default, spec);
-      }
-    }
+    // resolves and imports payload modules sequentially through the external
+    // registry module. A normal load remains a no-op, exactly as before.
+    await loadPayloadModules({
+      search: location.search,
+      baseUrl: location.href,
+      applyPayload
+    });
 
     finalizeRegistries();
 
