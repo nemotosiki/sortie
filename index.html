@@ -2667,12 +2667,12 @@
       return playerGun.gimbalDecision(angleRad, distance);
     }
 
-    function gunAssistCap(range) {
-      return playerGun.assistCap(range);
+    function gunAssistCap(range, target) {
+      return playerGun.assistCap(range, target);
     }
 
-    function gunAssistStep(state, targetId, angleRad, range, dt) {
-      return playerGun.assistStep(state, targetId, angleRad, range, dt);
+    function gunAssistStep(state, targetId, angleRad, range, dt, target) {
+      return playerGun.assistStep(state, targetId, angleRad, range, dt, target);
     }
     const LOCK_RANGE = 1200;
     const LOCK_TIME = 0.85;
@@ -15767,7 +15767,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // the half that proves this is not an auto-aim.
         gimbalProbe: () => ({ ...lastGimbal, limitDeg: GUN_GIMBAL_DEG, strength: GUN_GIMBAL_STRENGTH }),
         gunAssistProbe: () => ({ k: gunAssist.k, targetId: gunAssist.targetId }),
-        gunAssistCapAt: (range) => gunAssistCap(range),
+        gunAssistCapAt: (range, kind) => gunAssistCap(
+          range,
+          kind === "surface" ? { ground: true } : (kind === "air" ? {} : undefined)
+        ),
+        // Loads an airframe's flight model and gun outright, skipping the
+        // hangar. selectAircraft() only changes what is on display - the
+        // loadout is applied at mission start - so a test that wants to read
+        // one aircraft's gun cannot get there through the menu.
+        forceLoadout: (id) => {
+          if (!AIRCRAFT_TYPES[id]) return false;
+          applyAircraftLoadout(id);
+          return true;
+        },
+        // The resolved gun for the aircraft currently loaded, plus where its
+        // next round leaves from. A single-cannon airframe reports one muzzle
+        // and never advances past it; the index only moves after a shot.
+        gunProfileProbe: () => {
+          const p = playerGun.getProfile();
+          const next = playerGun.muzzleAt(playerGun.getMuzzleIndex(), new THREE.Vector3());
+          return {
+            aircraft: selectedAircraftId,
+            rate: p.rate,
+            range: p.range,
+            assist: { air: { ...p.assist.air }, surface: { ...p.assist.surface } },
+            muzzleCount: p.muzzles.length,
+            muzzleIndex: playerGun.getMuzzleIndex(),
+            muzzles: p.muzzles.map((m) => ({ ...m })),
+            nextMuzzle: { x: next.x, y: next.y, z: next.z }
+          };
+        },
         // The assist driven through a synthetic history. Convergence, the
         // reset on a target switch and the release outside the cone cannot be
         // flown into existence on demand, so the step function takes the
@@ -19082,7 +19111,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gunCooldown = Math.max(0, gunCooldown - dt);
       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
         fireGun();
-        gunCooldown += 1 / GUN_RATE;
+        gunCooldown += 1 / playerGun.getProfile().rate;
       }
 
       boostActive = boost;
@@ -30189,6 +30218,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function applyAircraftLoadout(id) {
       const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
       selectedAircraftId = spec.id;
+      // Rate, range, assist ceilings and muzzle geometry are resolved here and
+      // not looked up again while flying. An airframe with no entry keeps every
+      // number the gun shipped with.
+      playerGun.setAircraft(spec.id);
       CRUISE_SPEED = spec.cruiseSpeed;
       BOOST_SPEED = spec.boostSpeed;
       BRAKE_SPEED = spec.brakeSpeed;
