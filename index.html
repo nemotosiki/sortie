@@ -3334,10 +3334,18 @@
         maxSpeed: 430,
         life: 14,
         multi: 1,
-        tubes: 1,
-        reload: 9,
-        lockRange: 1600,
-        lockKind: "surface",
+        // Two tubes on a five-second clock - the standard missile's exact
+        // rhythm, because a single tube on a nine-second clock played as
+        // "fires once and never again": after the shot the pilot held a dead
+        // trigger for nine seconds against a fleet shooting back.
+        tubes: 2,
+        reload: 5,
+        // XLAA-class standoff: the whole point is launching from outside the
+        // fleet's SAM envelope, and 1600 sat inside the Aegis' 1700.
+        lockRange: 2000,
+        // Ships only. The 4AGM owns the ground; the wave-top profile, the
+        // CIWS immunity and the hull-sized fuse are all naval hardware.
+        lockKind: "ship",
         popup: true,
         // The whole point of the wave-top profile: a round at 50m is under
         // the CIWS engagement arc, so the one anti-ship round is the one
@@ -3372,11 +3380,16 @@
       // the plain missile's 98, so it still takes two rounds to down anything in
       // the hangar - a multi-target weapon wins on count, not punch.
       aam4: Object.freeze({
+        // Salvo family guidance ladder (2026-08-02 spec): the 4AAM tracks
+        // like the standard missile (190), the 6AAM at half (95), the 8AAM
+        // at a quarter (48). Width costs per-round tracking - eight fire-and-
+        // forget rounds that all steered like the standard missile made the
+        // salvo weapons strictly better than aiming.
         key: "aam4",
         label: "4AAM",
         kind: "aam",
         damage: 90,
-        turnRateDeg: 200,
+        turnRateDeg: 190,
         maxSpeed: 520,
         life: 9.5,
         multi: 4,
@@ -3395,7 +3408,7 @@
         label: "8AAM",
         kind: "aam",
         damage: 78,
-        turnRateDeg: 200,
+        turnRateDeg: 48,
         maxSpeed: 520,
         life: 9.5,
         multi: 8,
@@ -3418,7 +3431,7 @@
         label: "6AAM",
         kind: "aam",
         damage: 84,
-        turnRateDeg: 200,
+        turnRateDeg: 95,
         maxSpeed: 520,
         life: 9.5,
         multi: 6,
@@ -3479,7 +3492,9 @@
         tubes: 4,
         reload: 8,
         lockRange: 1500,
-        lockKind: "surface",
+        // Ground only - the LASM owns the water. The loft/top-attack profile
+        // is built for batteries and armour, not hulls.
+        lockKind: "ground",
         popup: true
       })
     });
@@ -3497,7 +3512,7 @@
         rollDamping: 9.6, stallWarnSpeed: 94, stallEntrySpeed: 82, stallAuthorityLoss: 0.7, structuralG: 3.0,
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
-        missileCapacity: 10, maxHealth: 100,
+        missileCapacity: 20, maxHealth: 100,
         spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.3, tipZ: 3.3,
         theme: Object.freeze({
@@ -3522,14 +3537,17 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         label: "GRIPEN E",
         role: "Lightweight Multirole",
         tag: "LIGHTWEIGHT",
-        blurb: "小型軽量の万能機。単発ゆえに絶対的な速度と装甲では大型機に及ばないが、軽さが生む旋回とロールの鋭さは上位機に迫る。6目標同時攻撃で、数で押し寄せる敵を一度に捌く。",
-        cruiseSpeed: 202, boostSpeed: 395, brakeSpeed: 126,
-        pitchRateDeg: 48, rollRateDeg: 176, yawRateDeg: 14, maxBankAngleDeg: 60,
-        normalRollSpring: 47, rollRateLimitDeg: 169, turnRateDeg: 35,
-        rollDamping: 11.6, stallWarnSpeed: 80, stallEntrySpeed: 68, stallAuthorityLoss: 0.50, structuralG: 3.2,
-        gunDamage: 20, missileDamage: 98,
-        boostResponse: 0.49, brakeResponse: 0.48, cruiseResponse: 0.56,
-        missileCapacity: 12, maxHealth: 125,
+        blurb: "小型軽量の万能機。単発ゆえに速度も装甲も大型機に及ばないが、軽快な取り回しと6目標同時攻撃が持ち味。数で押し寄せる敵を一度に捌く。",
+        // Ranked down 2026-08-02: the old figures put a lightweight single-
+        // engine jet shoulder to shoulder with the top tier. Price rank
+        // follows aircraftPower(), so trimming the airframe reranks it.
+        cruiseSpeed: 192, boostSpeed: 368, brakeSpeed: 122,
+        pitchRateDeg: 42, rollRateDeg: 158, yawRateDeg: 13, maxBankAngleDeg: 58,
+        normalRollSpring: 44, rollRateLimitDeg: 150, turnRateDeg: 31,
+        rollDamping: 11.0, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.52, structuralG: 2.9,
+        gunDamage: 18, missileDamage: 98,
+        boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.53,
+        missileCapacity: 24, maxHealth: 115,
         spw: Object.freeze({ key: "aam6", capacity: 24 }),
         tipSpan: 6.6, tipZ: 2.5,
         theme: Object.freeze({
@@ -3547,14 +3565,17 @@ canopy: 0x9fe6ff, exhaust: 0x9fd8ff, scale: 0.92, variant: "gripen"
         label: "F-2A VIPER ZERO",
         role: "Anti-Ship Multirole",
         tag: "STRIKE",
-        blurb: "F-16を拡大再設計した対艦攻撃の専門機。空戦性能は堅実な水準に留まるが、大型主翼が生む安定した射爆軸と長射程の対艦ミサイルで、海上の目標を遠距離から仕留める。",
-        cruiseSpeed: 195, boostSpeed: 385, brakeSpeed: 132,
-        pitchRateDeg: 41, rollRateDeg: 140, yawRateDeg: 12, maxBankAngleDeg: 54,
-        normalRollSpring: 39, rollRateLimitDeg: 134, turnRateDeg: 30,
-        rollDamping: 10.2, stallWarnSpeed: 90, stallEntrySpeed: 78, stallAuthorityLoss: 0.62, structuralG: 3.05,
-        gunDamage: 19, missileDamage: 98,
+        blurb: "F-16を拡大再設計した対艦攻撃の専門機。増えた重量のぶん空戦性能は素のF-16に一歩譲るが、大型主翼が生む安定した射爆軸と長射程の対艦ミサイルで、海上の目標を遠距離から仕留める。",
+        // Ranked below the F-16 (2026-08-02): the anti-ship specialist pays
+        // for its magazine in airframe - it should never out-dogfight the
+        // jet it was stretched from.
+        cruiseSpeed: 185, boostSpeed: 365, brakeSpeed: 134,
+        pitchRateDeg: 38, rollRateDeg: 136, yawRateDeg: 11, maxBankAngleDeg: 52,
+        normalRollSpring: 36, rollRateLimitDeg: 130, turnRateDeg: 28,
+        rollDamping: 9.4, stallWarnSpeed: 96, stallEntrySpeed: 84, stallAuthorityLoss: 0.72, structuralG: 2.9,
+        gunDamage: 18, missileDamage: 98,
         boostResponse: 0.56, brakeResponse: 0.54, cruiseResponse: 0.62,
-        missileCapacity: 12, maxHealth: 135,
+        missileCapacity: 24, maxHealth: 95,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 8.1, tipZ: 3.1,
         theme: Object.freeze({
@@ -3580,7 +3601,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
         rollDamping: 11.8, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.5, structuralG: 3.15,
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.52, brakeResponse: 0.5, cruiseResponse: 0.58,
-        missileCapacity: 12, maxHealth: 135,
+        missileCapacity: 24, maxHealth: 135,
         spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.9, tipZ: 2.9,
         theme: Object.freeze({
@@ -3600,7 +3621,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.02, variant: "hornet"
         rollDamping: 11.4, stallWarnSpeed: 86, stallEntrySpeed: 74, stallAuthorityLoss: 0.55, structuralG: 3.1,
         gunDamage: 22, missileDamage: 98,
         boostResponse: 0.48, brakeResponse: 0.48, cruiseResponse: 0.56,
-        missileCapacity: 12, maxHealth: 150,
+        missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 8.55, tipZ: 2.7,
         theme: Object.freeze({
@@ -3623,15 +3644,15 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         label: "F-14D SUPER TOMCAT",
         role: "Fleet Defense Interceptor",
         tag: "SWING-WING",
-        blurb: "可変後退翼を備えた艦隊防空の要。長射程XLAAで敵編隊を遠距離から削り、F-15を上回る速度で戦域を渡り歩く。格闘戦の旋回はイーグルに一歩譲るが、直線と長距離迎撃なら随一。",
+        blurb: "可変後退翼を備えた艦隊の狩人。長射程の対艦ミサイルで敵艦隊を遠距離から仕留め、F-15を上回る速度で戦域を渡り歩く。格闘戦の旋回はイーグルに一歩譲るが、直線と長距離侵攻なら随一。",
         cruiseSpeed: 220, boostSpeed: 445, brakeSpeed: 124,
         pitchRateDeg: 46, rollRateDeg: 150, yawRateDeg: 12, maxBankAngleDeg: 56,
         normalRollSpring: 41, rollRateLimitDeg: 143, turnRateDeg: 32,
         rollDamping: 10.9, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.6, structuralG: 3.05,
         gunDamage: 21, missileDamage: 98,
         boostResponse: 0.5, brakeResponse: 0.49, cruiseResponse: 0.57,
-        missileCapacity: 12, maxHealth: 150,
-        spw: Object.freeze({ key: "xlaa", capacity: 12 }),
+        missileCapacity: 24, maxHealth: 150,
+        spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 9.6, tipZ: 3.1,
         theme: Object.freeze({
 primary: 0xb0b8c0, secondary: 0x5c6c7c, accent: 0x2b3a49,
@@ -3663,7 +3684,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         rollDamping: 8.2, stallWarnSpeed: 108, stallEntrySpeed: 96, stallAuthorityLoss: 0.8, structuralG: 2.5,
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.66,
-        missileCapacity: 12, maxHealth: 150,
+        missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "xlaa", capacity: 16 }),
         tipSpan: 9.4, tipZ: 2.2,
         theme: Object.freeze({
@@ -3688,15 +3709,15 @@ canopy: 0x8fe0ff, exhaust: 0xbfd4ff, scale: 1.16, variant: "foxhound"
         label: "F-35C LIGHTNING II",
         role: "Stealth Multirole",
         tag: "MULTIROLE",
-        blurb: "艦載型の第5世代ステルス機。突出した最高値は持たないが弱点も無く、大型主翼による安定と堅牢な機体で、あらゆる任務を水準以上にこなす。4目標同時攻撃が空戦の主役だ。",
+        blurb: "艦載型の第5世代ステルス機。突出した最高値は持たないが弱点も無く、大型主翼による安定と堅牢な機体で、あらゆる任務を水準以上にこなす。対艦ミサイルの静かな運び手として、艦隊の懐へ忍び寄る。",
         cruiseSpeed: 210, boostSpeed: 400, brakeSpeed: 124,
         pitchRateDeg: 46, rollRateDeg: 152, yawRateDeg: 13, maxBankAngleDeg: 58,
         normalRollSpring: 44, rollRateLimitDeg: 146, turnRateDeg: 33,
         rollDamping: 12.0, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.48, structuralG: 3.1,
         gunDamage: 21, missileDamage: 98,
         boostResponse: 0.50, brakeResponse: 0.50, cruiseResponse: 0.56,
-        missileCapacity: 12, maxHealth: 165,
-        spw: Object.freeze({ key: "aam4", capacity: 20 }),
+        missileCapacity: 24, maxHealth: 165,
+        spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 7.6, tipZ: 2.8,
         theme: Object.freeze({
 primary: 0x6e767e, secondary: 0x40474e, accent: 0x2d8fa8,
@@ -3722,7 +3743,7 @@ canopy: 0xc8b47a, exhaust: 0xa8d8ff, scale: 1.0, variant: "lightning"
         rollDamping: 12.6, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.44, structuralG: 3.3,
         gunDamage: 22, missileDamage: 98,
         boostResponse: 0.47, brakeResponse: 0.47, cruiseResponse: 0.55,
-        missileCapacity: 14, maxHealth: 150,
+        missileCapacity: 28, maxHealth: 150,
         spw: Object.freeze({ key: "lasm", capacity: 16 }),
         tipSpan: 7.5, tipZ: 2.9,
         theme: Object.freeze({
@@ -3748,7 +3769,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fd8ff, scale: 0.99, variant: "rafale"
         rollDamping: 12.8, stallWarnSpeed: 80, stallEntrySpeed: 68, stallAuthorityLoss: 0.46, structuralG: 3.3,
         gunDamage: 24, missileDamage: 98,
         boostResponse: 0.45, brakeResponse: 0.46, cruiseResponse: 0.54,
-        missileCapacity: 14, maxHealth: 155,
+        missileCapacity: 28, maxHealth: 155,
         spw: Object.freeze({ key: "xlaa", capacity: 18 }),
         tipSpan: 7.8, tipZ: 2.7,
         theme: Object.freeze({
@@ -3786,7 +3807,7 @@ canopy: 0x8fe0ff, exhaust: 0xbfe4ff, scale: 1.03, variant: "typhoon"
         rollDamping: 12.4, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.40, structuralG: 3.35,
         gunDamage: 23, missileDamage: 98,
         boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.54,
-        missileCapacity: 12, maxHealth: 150,
+        missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "qaam", capacity: 5 }),
         tipSpan: 8.9, tipZ: 2.6,
         theme: Object.freeze({
@@ -3809,7 +3830,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.10, variant: "terminator"
         rollDamping: 7.5, stallWarnSpeed: 104, stallEntrySpeed: 92, stallAuthorityLoss: 0.88, structuralG: 2.6,
         gunDamage: 14, missileDamage: 98,
         boostResponse: 0.66, brakeResponse: 0.62, cruiseResponse: 0.7,
-        missileCapacity: 8, maxHealth: 125,
+        missileCapacity: 16, maxHealth: 125,
         spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 9.1, tipZ: 2.4,
         theme: Object.freeze({
@@ -3855,7 +3876,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         rollDamping: 12.6, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.50, structuralG: 2.4,
         gunDamage: 19, missileDamage: 98, gunGroundBonus: 3.2,
         boostResponse: 0.82, brakeResponse: 0.70, cruiseResponse: 0.80,
-        missileCapacity: 6, maxHealth: 240,
+        missileCapacity: 12, maxHealth: 240,
         spw: Object.freeze({ key: "agm4", capacity: 16 }),
         tipSpan: 9.6, tipZ: 1.6,
         theme: Object.freeze({
@@ -3880,8 +3901,8 @@ canopy: 0x9fd8e8, exhaust: 0xbfd9d0, scale: 1.06, variant: "hog"
         rollDamping: 13.2, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
-        missileCapacity: 14, maxHealth: 200,
-        spw: Object.freeze({ key: "aam8", capacity: 24 }),
+        missileCapacity: 28, maxHealth: 200,
+        spw: Object.freeze({ key: "aam4", capacity: 20 }),
         tipSpan: 6.85, tipZ: 2.7,
         theme: Object.freeze({
 primary: 0x3d434b, secondary: 0x21252b, accent: 0x35c2e0,
@@ -4003,7 +4024,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         // 98 = one missile, the only crewed airframe in the set at that mark
         // (the UAV is the other). This is what "weak early enemy" means here,
         // and it is a full step below the F-4's 125.
-        missileCapacity: 6, maxHealth: 98,
+        missileCapacity: 12, maxHealth: 98,
         spw: Object.freeze({ key: "qaam", capacity: 3 }),
         tipSpan: 6.2, tipZ: 2.6,
         theme: Object.freeze({
@@ -4025,7 +4046,7 @@ canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
         boostResponse: 0.53, brakeResponse: 0.52, cruiseResponse: 0.60,
         // Every number sits between the F-16 and the F/A-18F: the enemy's
         // ordinary jet, with no weakness worth exploiting and no edge either.
-        missileCapacity: 10, maxHealth: 135,
+        missileCapacity: 20, maxHealth: 135,
         spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.7, tipZ: 2.8,
         theme: Object.freeze({
@@ -4049,7 +4070,7 @@ canopy: 0x8fe0ff, exhaust: 0xffc79a, scale: 0.95, variant: "fulcrum"
         rollDamping: 11.9, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.50, structuralG: 3.15,
         gunDamage: 21, missileDamage: 98,
         boostResponse: 0.49, brakeResponse: 0.49, cruiseResponse: 0.56,
-        missileCapacity: 12, maxHealth: 165,
+        missileCapacity: 24, maxHealth: 165,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 9.2, tipZ: 2.9,
         theme: Object.freeze({
@@ -4072,7 +4093,7 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
         // 196 = 98 x 2 exactly: two missiles kill it and one never can. The
         // hardest enemy airframe short of the F-22's 200, which is what an
         // ace is supposed to feel like.
-        missileCapacity: 14, maxHealth: 196,
+        missileCapacity: 28, maxHealth: 196,
         spw: Object.freeze({ key: "aam6", capacity: 22 }),
         tipSpan: 9.0, tipZ: 2.7,
         theme: Object.freeze({
@@ -4109,7 +4130,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 13.0, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.4, structuralG: 3.5,
         gunDamage: 26, missileDamage: 98,
         boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
-        missileCapacity: 14, maxHealth: 196,
+        missileCapacity: 28, maxHealth: 196,
         spw: Object.freeze({ key: "aam8", capacity: 24 }),
         tipSpan: 7.0, tipZ: 2.8,
         theme: Object.freeze({
@@ -4135,7 +4156,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 12.4, stallWarnSpeed: 68, stallEntrySpeed: 56, stallAuthorityLoss: 0.36, structuralG: 3.3,
         gunDamage: 24, missileDamage: 98,
         boostResponse: 0.46, brakeResponse: 0.4, cruiseResponse: 0.54,
-        missileCapacity: 12, maxHealth: 165,
+        missileCapacity: 24, maxHealth: 165,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         // Forward-swept: the geometric tip is AHEAD of the root, so tipZ is
         // negative here where every other airframe in the table is positive.
@@ -4162,7 +4183,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 8.2, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.84, structuralG: 2.7,
         gunDamage: 16, missileDamage: 98,
         boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.68,
-        missileCapacity: 10, maxHealth: 135,
+        missileCapacity: 20, maxHealth: 135,
         spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 7.4, tipZ: 2.6,
         theme: Object.freeze({
@@ -4188,7 +4209,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 7.0, stallWarnSpeed: 72, stallEntrySpeed: 60, stallAuthorityLoss: 0.9, structuralG: 2.2,
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.75, brakeResponse: 0.7, cruiseResponse: 0.8,
-        missileCapacity: 6, maxHealth: 294,
+        missileCapacity: 12, maxHealth: 294,
         spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 8.6, tipZ: 1.4,
         theme: Object.freeze({
@@ -6239,7 +6260,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         surface: true,
         label: "AEGIS",
         role: "Guided Missile Destroyer",
-        hp: 250,
+        // Doubled from 250 in the fleet-defence pass: with the specialist
+        // bonus a 285-damage LASM was one-shotting the fleet's flagship
+        // escort. 500 is two LASM or six standard missiles - a capital
+        // target that has to be worked, matching its CIWS umbrella.
+        hp: 500,
         cruiseSpeed: 13,
         turnRate: THREE.MathUtils.degToRad(3),
         hitRadius: 84,
@@ -6359,7 +6384,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         surface: true,
         label: "CARRIER",
         role: "Aircraft Carrier",
-        hp: 520,
+        // Doubled from 520 in the fleet-defence pass, same reasoning as the
+        // Aegis: four LASM (285 each with the specialist bonus) or eleven
+        // standard missiles. The flat-top is the campaign's biggest hull and
+        // now takes a whole magazine's attention to put down.
+        hp: 1040,
         cruiseSpeed: 10,
         turnRate: THREE.MathUtils.degToRad(1.6),
         hitRadius: 150,
@@ -19291,7 +19320,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (guided.hit) {
             const specialised =
               (missile.lockKind === "air" && !target.surface) ||
-              (missile.lockKind === "surface" && target.surface);
+              (missile.lockKind !== "air" && missile.lockKind != null && target.surface);
             damageEnemy(
               target,
               (missile.damage ?? MISSILE_DAMAGE) * (specialised ? SPW_SPECIALTY_BONUS : 1),
@@ -20319,6 +20348,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function canLock(enemy, lockKind) {
       if (lockKind === "air") return !enemy.surface;
       if (lockKind === "surface") return Boolean(enemy.surface);
+      // The 2026-08-02 specialist split: the 4AGM sees only what stands on
+      // land, the LASM only what floats (hulls and the mounts riding them -
+      // ship subsystems carry `surface` without `ground`).
+      if (lockKind === "ground") return Boolean(enemy.ground);
+      if (lockKind === "ship") return Boolean(enemy.surface && !enemy.ground);
       if (lockKind === "none") return false;
       return true;
     }
@@ -30561,13 +30595,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // reads 1.0: the guided round's accuracy without the single-aim-point
         // limit that keeps a bomb at 0.95. Checked before the plain
         // surface-only branch below, which the 4AGM would otherwise match.
-        if (weapon.lockKind === "surface" && weapon.multi > 1) return 1.0;
+        if ((weapon.lockKind === "surface" || weapon.lockKind === "ground") && weapon.multi > 1) return 1.0;
         if (weapon.kind === "bomb") return 0.95;
         // A guided anti-ship round is a surface attack role too - less flexible
         // than a bomb (it only takes hulls and installations, never a runway or
         // a soft target the seeker can't see) but far more accurate. Absolute,
         // like the other two branches, so no existing airframe's bar moves.
-        if (weapon.lockKind === "surface") return 0.8;
+        if (weapon.lockKind === "surface" || weapon.lockKind === "ship" || weapon.lockKind === "ground") return 0.8;
         return 0.25;
       };
       const stabilities = specs.map(stabilityScore);
