@@ -2776,6 +2776,14 @@
     const BATTLE_RADIUS = 12000;
     const BATTLE_WARN_FRACTION = 0.9;
     const BATTLE_FAIL_TIME = 10;
+    // A physical backstop outside the authored boundary. The warning and the
+    // ten-second failure timer still begin at `battleArea.radius`; this margin
+    // only removes the unbounded dark world beyond it and leaves room to turn.
+    const BATTLE_HARD_LIMIT_MARGIN = 600;
+    // The chase camera can sit behind a nose-high aircraft by more than its
+    // height offset, which used to put the camera below the one-sided sea/land
+    // surface while the aircraft itself was still safely above it.
+    const CAMERA_SURFACE_CLEARANCE = 2.5;
     // Selected-contact blink on the radar scope, in milliseconds per cycle.
     const RADAR_BLINK_PERIOD_MS = 430;
     // Friendly blips and markers. The same blue the airbase diamond uses, so
@@ -16432,6 +16440,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         })),
         surfaceHeightAt: (x, z) => surfaceHeightAt(x, z),
         surfaceTopAt: (x, z) => surfaceTopAt(x, z),
+        cameraSurfaceProbe: () => {
+          const floor = cameraSurfaceTopAt(camera.position.x, camera.position.z);
+          return {
+            cameraY: Number(camera.position.y.toFixed(4)),
+            floor: Number(floor.toFixed(4)),
+            clearance: Number((camera.position.y - floor).toFixed(4)),
+            minimum: CAMERA_SURFACE_CLEARANCE
+          };
+        },
         // Running total of terrain rays cast. A convoy bakes its road at spawn
         // and casts nothing afterwards, so this number must stop moving once
         // the sortie is under way - that is the gate, and it cannot be faked
@@ -21201,6 +21218,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return height;
     }
 
+    // Camera-only surface sampler. It deliberately does not increment
+    // `surfaceSamples`: that counter belongs to gameplay placement and must stay
+    // at zero once a convoy has baked its route. Mountains use the same exact
+    // mesh ray as surfaceTopAt. Decorative islands are not gameplay terrain, but
+    // they are still visible solids, so createWorld records them separately for
+    // this presentation-only collision.
+    const cameraSurfaceRay = new THREE.Raycaster();
+    const cameraSurfaceRayOrigin = new THREE.Vector3();
+    function cameraSurfaceTopAt(x, z) {
+      let height = 0;
+      for (const mountain of world.mountains) {
+        const dx = x - mountain.x;
+        const dz = z - mountain.z;
+        if (dx * dx + dz * dz > mountain.r * mountain.r * 3.24) continue;
+        mountain.mesh.updateMatrixWorld();
+        const top = mountain.capHeight || mountain.h;
+        cameraSurfaceRayOrigin.set(x, top * 1.2 + 20, z);
+        cameraSurfaceRay.set(cameraSurfaceRayOrigin, SURFACE_RAY_DOWN);
+        const hit = cameraSurfaceRay.intersectObject(mountain.mesh, false)[0];
+        if (hit) height = Math.max(height, hit.point.y);
+      }
+      for (const surface of world.cameraSurfaces || []) {
+        const dx = x - surface.x;
+        const dz = z - surface.z;
+        if (dx * dx + dz * dz > surface.r * surface.r) continue;
+        surface.mesh.updateMatrixWorld();
+        cameraSurfaceRayOrigin.set(x, surface.maxHeight + 20, z);
+        cameraSurfaceRay.set(cameraSurfaceRayOrigin, SURFACE_RAY_DOWN);
+        const hit = cameraSurfaceRay.intersectObject(surface.mesh, true)[0];
+        if (hit) height = Math.max(height, hit.point.y);
+      }
+      return height;
+    }
+
+    function keepCameraAboveSurface() {
+      const floor = cameraSurfaceTopAt(camera.position.x, camera.position.z);
+      const minimumY = floor + CAMERA_SURFACE_CLEARANCE;
+      if (camera.position.y < minimumY) camera.position.y = minimumY;
+      return floor;
+    }
+
     // ---- Vehicle routes -------------------------------------------------
     // A mission hands a vehicle a list of [x, z] waypoints. Those are turned
     // into a polyline ONCE, at spawn: every leg is cut into steps no longer
@@ -23825,6 +23883,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.targetSpeed = spec.patrolSpeed + (enemy.wave - 1) * 7;
         }
 
+        // A player-driven chase may not strand a live objective outside the
+        // mission arena. Once a pursuing/breaking fighter crosses the authored
+        // radius, its temporary aim point becomes the arena centre until it is
+        // back inside. Authored patrol, strike and hunt routes retain their exact
+        // old behaviour.
+        const arenaDx = enemy.group.position.x - battleArea.centerX;
+        const arenaDz = enemy.group.position.z - battleArea.centerZ;
+        if (
+          !enemy.huntRef && !enemy.strikeTarget &&
+          (enemy.mode === "pursuit" || enemy.mode === "break") &&
+          arenaDx * arenaDx + arenaDz * arenaDz > battleArea.radius * battleArea.radius
+        ) {
+          targetPoint = enemy.targetPoint.set(
+            battleArea.centerX,
+            Math.max(enemy.group.position.y, 260),
+            battleArea.centerZ
+          );
+          enemy.targetSpeed = Math.min(
+            spec.maxSpeed + (enemy.wave - 1) * 4,
+            Math.max(spec.patrolSpeed, enemy.targetSpeed || 0)
+          );
+        }
+
         // Terrain avoidance. Project the altitude ~1.8s ahead along the
         // current descent; if that dips toward the sea - or a mountain the
         // aircraft is near - override the aim point with a climb straight
@@ -25490,6 +25571,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       camera.position.lerp(desiredPosition,
         THREE.MathUtils.lerp(damping(0.0017, dt), 1, rigidW));
+      keepCameraAboveSurface();
 
       const desiredLook = tmpV5.copy(camera.position).addScaledVector(tmpV1, profile.look);
       if (focusTarget) {
@@ -25540,6 +25622,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       camera.position.copy(player.position)
         .addScaledVector(tmpV1, -profile.back)
         .addScaledVector(cameraUp, profile.height);
+      keepCameraAboveSurface();
       // Parallel to the nose, exactly as updateCamera does it - a snap that
       // used the old tilted sightline would put the aircraft symbol 5 degrees
       // off for the frame after every teleport and mission start.
@@ -25670,9 +25753,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gameState !== STATE_PLAYING || outcomePending.active) return;
       const dx = player.position.x - battleArea.centerX;
       const dz = player.position.z - battleArea.centerZ;
-      const distance = Math.hypot(dx, dz);
-      battleArea.distance = distance;
+      let distance = Math.hypot(dx, dz);
       battleArea.bearing = Math.atan2(dx, dz);
+
+      const hardLimit = battleArea.radius + BATTLE_HARD_LIMIT_MARGIN;
+      if (distance > hardLimit && distance > 0) {
+        const scale = hardLimit / distance;
+        player.position.x = battleArea.centerX + dx * scale;
+        player.position.z = battleArea.centerZ + dz * scale;
+        distance = hardLimit;
+      }
+      battleArea.distance = distance;
 
       const outside = distance > battleArea.radius;
       const warning = distance > battleArea.radius * BATTLE_WARN_FRACTION;
@@ -32002,6 +32093,7 @@ varying vec2 vOceanUv;`
       const sceneryX = sceneryOrigin[0];
       const sceneryZ = sceneryOrigin[1];
       const mountains = [];
+      const cameraSurfaces = [];
       const mountainTotal = corridorSlots.length + mountainConfig.count + (mountainConfig.plateau ? 1 : 0);
       for (let i = 0; i < mountainTotal; i += 1) {
         const slot = i < corridorSlots.length ? corridorSlots[i] : null;
@@ -32151,6 +32243,16 @@ varying vec2 vOceanUv;`
 
         island.position.set(x, 0, z);
         addRoot(island);
+        // Decorative islands are intentionally absent from gameplay terrain and
+        // collision, but the camera must not cross their one-sided meshes. The
+        // proxy is only a cheap broad phase; the final height is raycast from the
+        // real child meshes. Shape 1's sand spit is the widest at about 1.65r.
+        cameraSurfaces.push({
+          x, z,
+          r: radius * (shape === 1 ? 1.75 : 1.25),
+          maxHeight: height * 1.3,
+          mesh: island
+        });
         // Handed to the decoration pass so shore rings and props can find the
         // islands without re-deriving their placement.
         islandAnchors.push({ x, z, radius, height, squash, shape });
@@ -32903,7 +33005,7 @@ varying vec2 vOceanUv;`
       }
 
       return {
-        preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains,
+        preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains, cameraSurfaces,
         ocean, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
         textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
@@ -32974,6 +33076,7 @@ varying vec2 vOceanUv;`
       target.textures.length = 0;
       if (target.textureStats) target.textureStats.length = 0;
       target.mountains.length = 0;
+      if (target.cameraSurfaces) target.cameraSurfaces.length = 0;
       target.cloudVolumes.length = 0;
       return true;
     }
