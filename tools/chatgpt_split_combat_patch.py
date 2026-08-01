@@ -5,9 +5,7 @@ import re
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[0]
-if not (ROOT / "index.html").exists():
-    ROOT = Path.cwd()
+ROOT = Path.cwd()
 INDEX = ROOT / "index.html"
 
 
@@ -97,6 +95,8 @@ def main() -> None:
 '''
     text = text.replace(import_anchor, combat_imports, 1)
 
+    require_once(text, "    let GUN_DAMAGE = 16;\n", "default gun damage")
+    require_once(text, "    let GUN_GROUND_BONUS = 1;\n", "default gun ground bonus")
     text = text.replace("    let GUN_DAMAGE = 16;\n", "    let GUN_DAMAGE = DEFAULT_GUN_DAMAGE;\n", 1)
     text = text.replace("    let GUN_GROUND_BONUS = 1;\n", "    let GUN_GROUND_BONUS = DEFAULT_GUN_GROUND_BONUS;\n", 1)
 
@@ -171,9 +171,7 @@ def main() -> None:
     start, end = object_declaration_span(text, "gunsightState")
     text = text[:start] + text[end:]
 
-    missile_controller = '''    // The array lifecycle, damage, effects and score stay in this module. Only
-    // the seeker / steering / swept-fuse calculation is owned by combat.
-    const missileGuidance = createMissileGuidance({
+    missile_controller = '''    const missileGuidance = createMissileGuidance({
       THREE,
       localForward: LOCAL_FORWARD,
       forwardOf: (object, out) => forwardOf(object, out),
@@ -186,15 +184,19 @@ def main() -> None:
       seekerLossTime: SEEKER_LOSS_TIME
     });
 '''
+    # Anchor on executable declarations, not prose. The explanatory sea-skimming
+    # comment is deliberately retained immediately above the extracted controller.
     text = replace_between(
         text,
-        "    // Sea-skimming profile for the surface rounds. They run level at launch\n",
+        "    const POPUP_DIVE_RATIO = 1.2;\n",
         "    let loadedMissiles = MISSILE_TUBE_COUNT;\n",
         missile_controller,
         "missile guidance construction"
     )
 
-    text = text.replace("    // Owned by the missile swept-fuse test.\n    const tmpSwept = new THREE.Vector3();\n", "", 1)
+    tmp_swept = "    const tmpSwept = new THREE.Vector3();\n"
+    require_once(text, tmp_swept, "tmpSwept declaration")
+    text = text.replace(tmp_swept, "", 1)
 
     text = replace_function(text, "fireGun", '''    function fireGun() {
       playerGun.fire();
