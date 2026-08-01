@@ -15080,7 +15080,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       defaultFuse: MISSILE_FUSE,
       terminalRange: MISSILE_TERMINAL_RANGE,
       terminalSubsteps: MISSILE_TERMINAL_SUBSTEPS,
-      seekerLossTime: SEEKER_LOSS_TIME
+      seekerLossTime: SEEKER_LOSS_TIME,
+      // Lets surface-bound rounds cruise above the ridges between them and
+      // the target, now that touching terrain kills a round.
+      surfaceHeightAt: (x, z) => surfaceHeightAt(x, z)
     });
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
@@ -15791,7 +15794,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           diving: Boolean(m.diving),
           loftCeiling: m.loftCeiling ?? null,
           y: Number(m.mesh.position.y.toFixed(2)),
-          targetId: m.target ? m.target.id : null
+          targetId: m.targetId ?? null,
+          lost: Boolean(m.lost)
         })),
         // Loads an airframe's flight model and gun outright, skipping the
         // hangar. selectAircraft() only changes what is on display - the
@@ -16544,6 +16548,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // is what the placement sampler returned and `top` is the unclamped
         // mesh; the two being equal is what "sited on the skirt" means, and is
         // the gate a base layout has to pass.
+        // Hulls, not installations: `surface` without `ground`. Turret
+        // subsystems are left out so a test aiming at "a ship" gets the ship
+        // rather than one of the guns bolted to it.
+        shipProbe: () => enemies
+          .filter((enemy) => enemy.alive && enemy.surface && !enemy.ground && !enemy.subsystem)
+          .map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            hp: enemy.hp,
+            x: enemy.group.position.x,
+            y: enemy.group.position.y,
+            z: enemy.group.position.z,
+            hitRadius: enemy.spec.hitRadius ?? null
+          })),
         groundProbe: () => enemies
           .filter((enemy) => enemy.ground && !enemy.route)
           .map((enemy) => {
@@ -19274,7 +19292,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           missile.trailTimer += 0.03;
         }
 
-        if (missile.life > (missile.lifeLimit ?? MISSILE_LIFE) || missile.mesh.position.y < 0) {
+        // A round that runs out of fuel, hits the sea, or hits the ground. The
+        // terrain test matters for anti-armour rounds diving at a battery on a
+        // hillside: without it the round passes through the hill and carries on
+        // underground until it falls below sea level, which is both invisible
+        // and far past the point where it should have gone off.
+        if (missile.life > (missile.lifeLimit ?? MISSILE_LIFE) ||
+            missile.mesh.position.y < 0 ||
+            missile.mesh.position.y < surfaceHeightAt(missile.mesh.position.x, missile.mesh.position.z)) {
           createImpactBurst(missile.mesh.position, 0xffca70, 0.5);
           removeMissile(i);
         }
