@@ -43363,7 +43363,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         // Last-resort floor: the AI never goes below the sea surface or into
         // a mountainside, even mid-dive - snap up and level the nose.
-        const hardFloor = floorHeight + 26;
+        // Re-sampled AFTER the move. `floorHeight` was taken before it, and a
+        // fighter closing a slope at 833 m/s covers up to 41m in a frame - the
+        // cone rises under it during that step, so clamping to the old floor
+        // let the aircraft sink below the real one and snap back out next
+        // frame. That snap is the "warp" this clamp was written to remove.
+        const hardFloor = Math.max(floorHeight, terrainFloorAt(enemy.group.position)) + 26;
         if (enemy.group.position.y < hardFloor) {
           enemy.group.position.y = hardFloor;
           if (tmpV4.y < 0) {
