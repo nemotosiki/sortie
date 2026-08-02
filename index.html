@@ -1181,61 +1181,6 @@
       letter-spacing: 0.14em;
     }
 
-    #targetDirectionArrow {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      visibility: hidden;
-      pointer-events: none;
-      transition: opacity 90ms ease;
-      will-change: left, top;
-    }
-
-    #targetDirectionArrow.active {
-      opacity: 0.96;
-      visibility: visible;
-    }
-
-    #targetDirectionGlyph {
-      position: absolute;
-      left: -11px;
-      top: -15px;
-      width: 22px;
-      height: 30px;
-      background: #ffe66f;
-      clip-path: polygon(50% 0, 100% 100%, 50% 76%, 0 100%);
-      filter: drop-shadow(0 0 7px rgba(255, 218, 70, 0.92));
-      transform-origin: 50% 50%;
-    }
-
-    #targetDirectionArrow.locked #targetDirectionGlyph {
-      background: #ff5968;
-      filter: drop-shadow(0 0 8px rgba(255, 54, 77, 0.95));
-    }
-
-    #targetDirectionLabel {
-      position: absolute;
-      left: 0;
-      top: 20px;
-      transform: translateX(-50%);
-      padding: 2px 5px;
-      background: rgba(3, 15, 25, 0.68);
-      color: #ffe66f;
-      white-space: nowrap;
-      font-size: 8px;
-      font-weight: 900;
-      letter-spacing: 0.1em;
-      text-shadow: 0 0 6px rgba(255, 218, 70, 0.9);
-    }
-
-    #targetDirectionArrow.locked #targetDirectionLabel {
-      color: #ff6a76;
-      text-shadow: 0 0 7px rgba(255, 54, 77, 0.95);
-    }
-
     #missionBanner {
       position: absolute;
       left: 50%;
@@ -1349,8 +1294,7 @@
 
     #stallWarning,
     #missileWarning,
-    #battleAreaWarning,
-    #cameraFocusStatus {
+    #battleAreaWarning {
       position: absolute;
       left: 50%;
       transform: translateX(-50%);
@@ -1454,17 +1398,6 @@
       border-color: rgba(255, 72, 82, 0.8);
       text-shadow: 0 0 12px rgba(255, 38, 54, 0.95);
       animation-duration: 0.3s;
-    }
-
-    #cameraFocusStatus {
-      top: 122px;
-      color: #ffe97b;
-      text-shadow: 0 0 9px rgba(255, 218, 71, 0.85);
-    }
-
-    #cameraFocusStatus.active {
-      opacity: 0.92;
-      border-color: rgba(255, 226, 105, 0.55);
     }
 
     @keyframes alertPulse {
@@ -2402,17 +2335,11 @@
 
     <div id="ccipMarker"><span id="ccipLabel">CCIP</span></div>
 
-    <div id="targetDirectionArrow">
-      <span id="targetDirectionGlyph"></span>
-      <span id="targetDirectionLabel">TGT</span>
-    </div>
-
     <div id="missionBanner"></div>
     <div id="boostIndicator">AFTERBURNER</div>
     <div id="stallWarning">STALL · ACCELERATE / LOWER NOSE</div>
     <div id="missileWarning">MISSILE ALERT</div>
     <div id="battleAreaWarning">RETURN TO THE BATTLE AREA</div>
-    <div id="cameraFocusStatus">TARGET VIEW</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
   </div>
 
@@ -32442,7 +32369,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const spawned = rankStats.spawnedValue;
       const kill = rankStats.playerKillValue;
       const timeBonus = Math.round(missionTimeBonus(missionElapsed, par, spawned));
-      const total = kill + timeBonus;
+      // What the sortie was FOR counts against it. The briefing promises that
+      // letting the base (or the city) be bombed "shows in your evaluation",
+      // and updateStrikeThreat's own comment says it costs a rank - but the
+      // penalty only ever moved the on-screen score, so a sortie that lost the
+      // airfield ranked identically to one that never let a bomb through.
+      // Clamped at zero: a botched defence can cost the whole bonus, never
+      // turn the kills already earned into a negative.
+      const total = Math.max(0, kill + timeBonus - baseDamagePenalty);
       const max = (1 + RANK_TUNING.TIME_BONUS_WEIGHT) * spawned;
       // A mission that spawned nothing measurable cannot be scored, so it reads
       // as a full clear rather than dividing by zero and stamping a C on a
@@ -32679,11 +32613,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       targetBoxTgt: document.getElementById("targetBoxTgt"),
       targetBoxName: document.getElementById("targetBoxName"),
       targetRange: document.getElementById("targetRange"),
-      targetDirectionArrow: document.getElementById("targetDirectionArrow"),
       gunsight: document.getElementById("gunsight"),
       boresight: document.getElementById("boresight"),
-      targetDirectionGlyph: document.getElementById("targetDirectionGlyph"),
-      targetDirectionLabel: document.getElementById("targetDirectionLabel"),
       pitchLadder: document.getElementById("pitchLadder"),
       horizonLine: document.querySelector("#pitchLadder .horizonLine"),
       pitchViewport: document.getElementById("pitchViewport"),
@@ -32695,7 +32626,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallWarning: document.getElementById("stallWarning"),
       missileWarning: document.getElementById("missileWarning"),
       battleAreaWarning: document.getElementById("battleAreaWarning"),
-      cameraFocusStatus: document.getElementById("cameraFocusStatus"),
       gamepadStatus: document.getElementById("gamepadStatus"),
       audioHint: document.getElementById("audioHint"),
       damageFlash: document.getElementById("damageFlash"),
@@ -33004,15 +32934,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Where the gun ring is and what it is solving for. Readable from a probe
     // because "the ring leads the target" is a claim about a distance, and a
     // screenshot cannot be asked how many metres ahead it drew.
-
-    const targetArrowState = {
-      active: false,
-      targetId: null,
-      x: 0,
-      y: 0,
-      angle: 0,
-      mode: "hidden"
-    };
 
     let gameState = STATE_READY;
     let score = 0;
@@ -33670,7 +33591,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hud: {
         visibleEnemyMarkers: [],
         visibleFriendlyMarkers: [],
-        targetArrow: { active: false, targetId: null, x: 0, y: 0, angle: 0, mode: "hidden" }
       },
       friendlies: [],
       // Dormant until a guard sortie arms it. Present from boot so a probe can
@@ -36458,14 +36378,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       lock.locked = false;
       // A mount has no meaningful number to read out - it is "the VLS on that
       // ship" - so it announces itself by name instead.
-      showBanner(`TARGET SELECT · ${next.subsystem ? next.label : next.id}`, 0.75);
     }
 
     function cycleCamera() {
       const currentIndex = Math.max(0, CAMERA_MODES.indexOf(cameraMode));
       cameraMode = CAMERA_MODES[(currentIndex + 1) % CAMERA_MODES.length];
       if (gameState === STATE_PLAYING) playerModel.group.visible = cameraMode !== "cockpit";
-      showBanner(`CAMERA · ${cameraMode.toUpperCase()}`, 0.75);
     }
 
     function updateHoldInputs() {
@@ -37399,13 +37317,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // C3: a sortie that opens an act gets the ACT band first, and MISSION
       // START queued behind it on the same element - two consecutive wipes, not
       // two banners fighting for the same strip of screen.
-      const actBanner = missionActBanner(MISSIONS[currentMissionIndex]);
-      if (actBanner) {
-        showBigBanner(actBanner.label, actBanner.jp, ACT_BANNER_TIME);
-        queueBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
-      } else {
-        showBigBanner("MISSION START", MISSIONS[currentMissionIndex].title, 2.4);
-      }
       // Scenery and installations first: a strike wave lays its run in against
       // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
@@ -37586,7 +37497,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const marker of enemyMarkerElements.values()) marker.remove();
       enemyMarkerElements.clear();
       enemyMarkerScreenState.length = 0;
-      clearTargetDirectionArrow();
       resetLock();
       preferredTargetId = null;
 
@@ -42764,13 +42674,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // concurrent naval entry is an escort screen riding in with the group
         // it screens - not a new wave the player has to clear.
         const lightHulls = wave.fleet.every((hull) => hull === "missileBoat");
-        // A concurrent entry is usually a non-target escort screen - but a
-        // mission can author a concurrent PRIORITY target (a named ace riding
-        // in with the pack), and calling that "NON-TARGET" tells the player to
-        // ignore the one thing the sortie needs dead.
-        if (wave.concurrent) showBanner(isTgtEntry(wave) ? `${wave.label || "PRIORITY CONTACT"} · TARGET` : `${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
-        else if (first) showBanner(lightHulls ? "WAVE 1 · SURFACE CONTACTS" : "WAVE 1 · ENEMY FLEET AHEAD", 2.2);
-        else showBanner(`WAVE ${waveNumber} · ${lightHulls ? "SURFACE CONTACTS" : "ENEMY FLEET DETECTED"}`, 2.2, "danger");
+        // A concurrent entry rides in on the wave it screens and announces
+        // nothing - it is not a new wave the player has to clear, and naming it
+        // was one of the state captions that made the HUD read as a UI rather
+        // than as a canopy.
+        if (!wave.concurrent) {
+          if (first) showBanner(lightHulls ? "WAVE 1 · SURFACE CONTACTS" : "WAVE 1 · ENEMY FLEET AHEAD", 2.2);
+          else showBanner(`WAVE ${waveNumber} · ${lightHulls ? "SURFACE CONTACTS" : "ENEMY FLEET DETECTED"}`, 2.2, "danger");
+        }
         // A wave that fields anything other than WAVE_PRESETS.naval's exact
         // composition has to author its own lines, or it would announce ships
         // that are not there.
@@ -42812,13 +42723,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             `wave-bearing-${missionWaveIndex}`
           );
         }
-        // A concurrent escort rides in on the wave it protects, so it announces
-        // itself as a contact - not as a new wave the player has to clear.
-        // Same TGT-aware banner as the naval branch: an authored concurrent
-        // target must not be announced as ignorable.
-        if (wave.concurrent) showBanner(isTgtEntry(wave) ? `${wave.label || "PRIORITY CONTACT"} · TARGET` : `${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
-        else if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
-        else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
+        // Same as the naval branch: a concurrent escort announces nothing.
+        if (!wave.concurrent) {
+          if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
+          else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
+        }
         if (wave.radio) {
           for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
         } else if (acePilot) {
@@ -46317,111 +46226,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playerGun.updateGunsight(dt);
     }
 
-    function clearTargetDirectionArrow() {
-      ui.targetDirectionArrow.classList.remove("active", "locked");
-      targetArrowState.active = false;
-      targetArrowState.targetId = null;
-      targetArrowState.x = 0;
-      targetArrowState.y = 0;
-      targetArrowState.angle = 0;
-      targetArrowState.mode = "hidden";
-    }
-
-    function updateTargetDirectionArrow() {
-      // Keep the cue alive for the complete physical hold, including after the
-      // long-hold camera focus state has activated.
-      const directionHeld = cameraKeyHold.pressed || cameraKeyHold.focus ||
-        gamepadInput.previousTarget || gamepadInput.targetFocus;
-      if (!directionHeld) {
-        clearTargetDirectionArrow();
-        return;
-      }
-
-      const heldTargetId = gamepadInput.previousTarget || gamepadInput.targetFocus
-        ? gamepadInput.targetId
-        : cameraKeyHold.targetId;
-      const targetId = heldTargetId ?? preferredTargetId ?? lock.targetId;
-      const target = enemies.find((enemy) => enemy.alive && enemy.id === targetId);
-      if (!target || gameState !== STATE_PLAYING) {
-        clearTargetDirectionArrow();
-        return;
-      }
-
-      tmpV6.copy(target.group.position).applyMatrix4(camera.matrixWorldInverse);
-      tmpV7.copy(target.group.position).project(camera);
-      const locked = lock.locked && lock.targetId === target.id;
-      const distance = Math.round(player.position.distanceTo(target.group.position));
-
-      if (isHudProjectionVisible(tmpV7, tmpV6, 1.12)) {
-        const width = Math.max(1, window.innerWidth);
-        const height = Math.max(1, window.innerHeight);
-        const x = THREE.MathUtils.clamp((tmpV7.x * 0.5 + 0.5) * width, 42, width - 42);
-        const y = THREE.MathUtils.clamp((-tmpV7.y * 0.5 + 0.5) * height - 58, 42, height - 42);
-        const angle = Math.PI;
-
-        ui.targetDirectionArrow.style.left = `${x}px`;
-        ui.targetDirectionArrow.style.top = `${y}px`;
-        ui.targetDirectionGlyph.style.transform = `rotate(${angle}rad)`;
-        ui.targetDirectionLabel.textContent = `TGT ${target.id} · ${distance}M`;
-        ui.targetDirectionArrow.classList.add("active");
-        ui.targetDirectionArrow.classList.toggle("locked", locked);
-
-        targetArrowState.active = true;
-        targetArrowState.targetId = target.id;
-        targetArrowState.x = x;
-        targetArrowState.y = y;
-        targetArrowState.angle = angle;
-        targetArrowState.mode = "onscreen";
-        return;
-      }
-
-      tmpV8.copy(target.group.position).sub(camera.position);
-      tmpQ1.copy(camera.quaternion).invert();
-      tmpV8.applyQuaternion(tmpQ1);
-
-      let directionX = tmpV8.x;
-      let directionY = -tmpV8.y;
-      if (tmpV8.z > 0) {
-        directionX *= -1;
-        directionY *= -1;
-      }
-
-      let directionLength = Math.hypot(directionX, directionY);
-      if (directionLength < 0.001) {
-        directionX = 0;
-        directionY = 1;
-        directionLength = 1;
-      }
-      directionX /= directionLength;
-      directionY /= directionLength;
-
-      const width = Math.max(1, window.innerWidth);
-      const height = Math.max(1, window.innerHeight);
-      const margin = Math.max(48, Math.min(76, Math.min(width, height) * 0.085));
-      const halfWidth = Math.max(1, width * 0.5 - margin);
-      const halfHeight = Math.max(1, height * 0.5 - margin);
-      const scaleX = Math.abs(directionX) > 0.0001 ? halfWidth / Math.abs(directionX) : Infinity;
-      const scaleY = Math.abs(directionY) > 0.0001 ? halfHeight / Math.abs(directionY) : Infinity;
-      const edgeScale = Math.min(scaleX, scaleY);
-      const x = width * 0.5 + directionX * edgeScale;
-      const y = height * 0.5 + directionY * edgeScale;
-      const angle = Math.atan2(directionY, directionX) + Math.PI * 0.5;
-
-      ui.targetDirectionArrow.style.left = `${x}px`;
-      ui.targetDirectionArrow.style.top = `${y}px`;
-      ui.targetDirectionGlyph.style.transform = `rotate(${angle}rad)`;
-      ui.targetDirectionLabel.textContent = `TGT ${target.id} · ${distance}M`;
-      ui.targetDirectionArrow.classList.add("active");
-      ui.targetDirectionArrow.classList.toggle("locked", locked);
-
-      targetArrowState.active = true;
-      targetArrowState.targetId = target.id;
-      targetArrowState.x = x;
-      targetArrowState.y = y;
-      targetArrowState.angle = angle;
-      targetArrowState.mode = "edge";
-    }
-
     // Blue diamond over the friendly airfield, with the range to it. Only ever
     // drawn when the field is actually in front of the camera - it is context,
     // not an off-screen arrow competing with the target cue.
@@ -46519,7 +46323,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         updateGunsight(0);
         for (const marker of enemyMarkerElements.values()) marker.remove();
         enemyMarkerElements.clear();
-        clearTargetDirectionArrow();
         return;
       }
 
@@ -46592,7 +46395,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemyMarkerElements.delete(id);
       }
 
-      updateTargetDirectionArrow();
       updateGunsight(dt);
     }
 
@@ -46836,11 +46638,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? "STALL · ACCELERATE / LOWER NOSE"
         : "LOW SPEED · STALL RISK";
 
-      ui.cameraFocusStatus.classList.toggle("active", cameraFocusActive);
-      ui.cameraFocusStatus.textContent = cameraFocusActive
-        ? `TARGET VIEW · ${cameraFocusTargetId}`
-        : "TARGET VIEW";
-
       const boundaryWarning = gameState === STATE_PLAYING && battleArea.warning;
       ui.battleAreaWarning.classList.toggle("active", boundaryWarning);
       ui.battleAreaWarning.classList.toggle("critical", boundaryWarning && battleArea.outside);
@@ -47056,12 +46853,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             })()
           }
         : null;
-      hook.hud.targetArrow.active = targetArrowState.active;
-      hook.hud.targetArrow.targetId = targetArrowState.targetId;
-      hook.hud.targetArrow.x = targetArrowState.x;
-      hook.hud.targetArrow.y = targetArrowState.y;
-      hook.hud.targetArrow.angle = targetArrowState.angle;
-      hook.hud.targetArrow.mode = targetArrowState.mode;
       hook.battleArea.centerX = battleArea.centerX;
       hook.battleArea.centerZ = battleArea.centerZ;
       hook.battleArea.radius = battleArea.radius;
@@ -47582,7 +47373,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const marker of enemyMarkerElements.values()) marker.remove();
       enemyMarkerElements.clear();
       enemyMarkerScreenState.length = 0;
-      clearTargetDirectionArrow();
       resetLock();
     }
 
