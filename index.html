@@ -46172,7 +46172,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // tag and #targetBox on it, a dozen pixels apart - the same aircraft
         // captioned twice. The frame is what the salvo needs; the name comes
         // from the lock box, which is already sitting on this contact.
-        const nameShownByLockBox = onScreen && lock.targetId === enemy.id;
+        const nameShownByLockBox = onScreen && targetBoxContactId() === enemy.id;
         const selected = selectedId === enemy.id;
         const locked = lock.locked && lock.targetId === enemy.id;
 
@@ -46223,6 +46223,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateGunsight(dt);
     }
 
+    // Which contact #targetBox is sitting on. ONE definition, because the
+    // enemy markers suppress their own name tag for exactly this contact
+    // (`captioned`) - when the two disagreed, the manually selected aircraft
+    // got its name and range drawn twice, a few pixels apart.
+    function targetBoxContactId() {
+      return preferredTargetId ?? lock.targetId;
+    }
+
     function updateTargetBox() {
       // The same contact the radar blinks, the direction arrow points at and
       // the on-screen marker calls `selected`. Reading lock.targetId alone
@@ -46230,8 +46238,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // picked target left the lock cone - and left it blank for the whole of
       // a bombing run, where currentLockKind() is "none" so lock.targetId is
       // never set at all.
-      const readoutId = preferredTargetId ?? lock.targetId;
-      const target = enemies.find((enemy) => enemy.id === readoutId && enemy.alive);
+      const target = enemies.find((enemy) => enemy.id === targetBoxContactId() && enemy.alive);
       if (!target || gameState !== STATE_PLAYING) {
         // Reset the readout as well as hiding it. The panel is display:none so
         // nothing here is on screen either way, but leaving "LOCKED" sitting in
