@@ -3987,11 +3987,11 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
       // is the only thing that reads it.
       bomber: Object.freeze({
         id: "bomber",
-        // Not a B-52: this airframe carries FOUR SINGLE pods, while a
-        // Stratofortress carries four PAIRED pods for eight engines. The real
-        // B-52 is its own airframe now (variant "b52"), so this one keeps the
-        // silhouette it actually has and drops the claim it never matched.
-        label: "HEAVY BOMBER",
+        // The enemy heavy IS a B-52, and since 2026-08-03 it looks like one:
+        // theme.variant points at the payload-registered "b52" model (four
+        // PAIRED pods, eight engines) instead of the old inline four-single-pod
+        // approximation that carried this name without earning it.
+        label: "B-52H STRATOFORTRESS",
         role: "Strategic Bomber",
         tag: "ENEMY",
         enemyOnly: true,
@@ -4003,10 +4003,12 @@ canopy: 0xd9bd6d, exhaust: 0x8cecff, scale: 0.96, variant: "raptor"
         gunDamage: 12, missileDamage: 98,
         boostResponse: 0.9, brakeResponse: 0.85, cruiseResponse: 0.92,
         missileCapacity: 0, maxHealth: 290,
-        tipSpan: 12.5, tipZ: 1.2,
+        // Model units, taken off the b52 build: the outer panel is hinged 19 deg
+        // down at x 11.0 so its drawn tip x 16.6 actually sits at 16.29.
+        tipSpan: 16.2, tipZ: 9.2,
         theme: Object.freeze({
-primary: 0x4c5550, secondary: 0x333b38, accent: 0x20262a,
-canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.2, variant: "bomber"
+primary: 0x474f52, secondary: 0x2e3538, accent: 0x6c777c,
+canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.10, variant: "b52"
         })
       }),
       // Enemy-only. The UAV is the opposite end of the roster from the bomber:
@@ -5243,8 +5245,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       bomber: Object.freeze({
         behavior: "armored",
         // Enemy display name. Without this ENEMY_TYPES would take the first word
-        // of the airframe label ("HEAVY"); the HUD wants the class.
-        label: "BOMBER",
+        // of the airframe label ("B-52H"); the HUD wants the type the way the
+        // fighters show theirs.
+        label: "B-52",
         hitboxScale: 2.6,
         patrolSpeedScale: 1.0,
         patrolPathScale: 0.3,
@@ -10801,7 +10804,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // 米編 m-glacier の完全な裏。あちらは「壁のレーダーサイト4基とSu-25が2機」を
           // 指定目標にした対地侵攻で、ここではその4基がこちらの持ち物になる。
           // 指定目標は「回廊を潰しに来た攻撃隊」5機:
-          //   重爆(bomber) 2機 = 回廊の飽和爆撃を担当する本命。290HPの3発機体で、鈍重ゆえに
+          //   B-52 2機 = 回廊の飽和爆撃を担当する本命。290HPの3発機体で、鈍重ゆえに
           //     谷底へ降りたら逃げ場が無い——m-glacier の Su-25 と同じ役どころを、
           //     同じ谷で、逆側から演じさせている
           //   F/A-18F 3機 = 先行して壁のSAMを叩くストライク隊。135HPで旋回33。
@@ -11112,7 +11115,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // そして epilogue が、その結果と関係なく列車を失わせる。
           // プレイヤーの操作が効く層と、効かない層を、別々の場所に置いてある。
           //
-          // 内訳は 重爆(bomber) 2機（290HP・3発機体。線路に沿って落としていく本命で、
+          // 内訳は B-52H 2機（290HP・3発機体。線路に沿って落としていく本命で、
           // 鈍重だから必ず追いつける——「間に合わなかった」ではなく「間に合ったのに」
           // にするために、逃げ切る敵は1機も置いていない）と F/A-18F 4機。
           // 非TGT 10機は F-15 と F-16 の護衛。6 : 10 = 1:1.67。
@@ -11134,7 +11137,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["bomber", "bomber"], band: 2, label: "HEAVY", role: "trash",
               radio: [
-                { speaker: "command", text: "こちらNORTHSTAR。重爆が2機、線路の東端から入ってくる。……SICKLE 2、急げ。", id: "r10-heavy-inbound" }
+                { speaker: "command", text: "こちらNORTHSTAR。B-52が2機、線路の東端から入ってくる。……SICKLE 2、急げ。", id: "r10-heavy-inbound" }
               ]
             },
             {
@@ -23210,7 +23213,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const strato = AIRCRAFT_TYPES.bomber;
         const stratoAI = ENEMY_AI_PROFILES.bomber;
         if (!strato || !stratoAI) {
-          throw new Error("[b1b] expected the bomber (HEAVY BOMBER) aircraft and AI templates to exist");
+          throw new Error("[b1b] expected the bomber (B-52H) aircraft and AI templates to exist");
         }
 
         // Sera (US) heavy palette. Taken off the B-52's line so the two American
@@ -29049,7 +29052,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const strato = AIRCRAFT_TYPES.bomber;
         const stratoAI = ENEMY_AI_PROFILES.bomber;
         if (!strato || !stratoAI) {
-          throw new Error("[b52] expected the bomber (HEAVY BOMBER) aircraft and AI templates to exist");
+          throw new Error("[b52] expected the bomber (B-52H) aircraft and AI templates to exist");
         }
 
         // Sera (US) heavy palette, taken off the inline bomber's line so the two read
@@ -48547,7 +48550,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         add(geometry.canopy, navL, -9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 9.02, 0.12, 3.6, 0.12, 0.12, 0.12);
       } else if (theme.variant === "bomber") {
-        // Generic heavy bomber: long slab-sided fuselage, high-aspect swept wing, four
+        // Legacy inline approximation, no longer used by any airframe: four
         // underwing pods, one tall fin, and a tail turret. At theme scale 2.2
         // it is over twice a fighter's span, which is the whole point - it has
         // to read as a heavy from any range the player can lock it at.

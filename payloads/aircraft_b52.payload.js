@@ -117,7 +117,7 @@ export default function register(ctx) {
   const strato = AIRCRAFT_TYPES.bomber;
   const stratoAI = ENEMY_AI_PROFILES.bomber;
   if (!strato || !stratoAI) {
-    throw new Error("[b52] expected the bomber (HEAVY BOMBER) aircraft and AI templates to exist");
+    throw new Error("[b52] expected the bomber (B-52H) aircraft and AI templates to exist");
   }
 
   // Sera (US) heavy palette, taken off the inline bomber's line so the two read
