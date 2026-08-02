@@ -536,11 +536,22 @@
 
     /* One flex column per side of the silhouette; renderRack() fills each
        with tube glyphs for the selected weapon (1 per side for the 2-tube
-       launchers, up to 4 per side for the 8AAM). */
+       launchers, up to 4 per side for the 8AAM). Fixed width - sized for the
+       widest rack - so the aircraft never shifts when the selection changes
+       tube count; racks grow outward from the fuselage into the free space. */
     .rackSide {
       display: flex;
       align-items: flex-end;
       gap: 3px;
+      width: 44px;
+    }
+
+    #rackLeft {
+      justify-content: flex-end;
+    }
+
+    #rackRight {
+      justify-content: flex-start;
     }
 
     #radarWrap {
@@ -14942,23 +14953,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // delta used. Keyed by theme.variant so every airframe of a family shares
     // its outline; anything unmapped keeps the original shape.
     const SILHOUETTE_DEFAULT = "M20 2 L23 14 L23 20 L38 30 L38 34 L23 29 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 29 L2 34 L2 30 L17 20 L17 14 Z";
+    // First pass at these drew eight polite variations of the same diamond
+    // and at 40px they all read identical - the complaint "every fighter
+    // looks the same" was fair. Each family now leads with one exaggerated
+    // signature feature nothing else has: detached foreplanes, an arrowhead
+    // with no fuselage, wingtips past the tail, a full-span shoulder plank.
     const SILHOUETTE_PATHS = Object.freeze({
-      // Canard delta: big triangular wing aft, foreplanes by the intake.
-      canard: "M20 2 L22 10 L27 13 L27 15 L22 14 L23 20 L38 32 L38 36 L22 34 L22 38 L26 41 L26 43 L20 41 L14 43 L14 41 L18 38 L18 34 L2 36 L2 32 L17 20 L18 14 L13 15 L13 13 L18 10 Z",
-      // Swing-wing caught mid-sweep: long glove, wingtips trailing far aft.
-      swing: "M20 2 L23 14 L24 22 L38 36 L38 39 L23 31 L23 37 L27 41 L27 43 L20 41 L13 43 L13 41 L17 37 L17 31 L2 39 L2 36 L16 22 L17 14 Z",
-      // Heavy twin-boom fighter: shoulder wing, twin tails astern.
-      heavy: "M20 2 L23 13 L23 19 L36 26 L36 30 L23 29 L23 34 L27 36 L27 43 L23 40 L23 42 L20 41 L17 42 L17 40 L13 43 L13 36 L17 34 L17 29 L4 30 L4 26 L17 19 L17 13 Z",
-      // Stealth diamond: chined nose flowing straight into the wing.
-      stealth: "M20 2 L24 16 L37 30 L37 33 L24 30 L24 36 L29 41 L29 43 L21 40 L19 40 L11 43 L11 41 L16 36 L16 30 L3 33 L3 30 L16 16 Z",
-      // Carrier trapezoid: mid-set wing, broad tail group.
-      carrier: "M20 2 L23 12 L23 19 L36 28 L36 32 L23 30 L23 36 L28 40 L28 43 L23 41 L20 43 L17 41 L12 43 L12 40 L17 36 L17 30 L4 32 L4 28 L17 19 L17 12 Z",
+      // Canard delta: detached foreplanes standing clear of a big aft delta.
+      canard: "M20 1 L22 8 L32 11 L32 14 L22 13 L23 18 L38 34 L38 37 L22 36 L22 39 L26 42 L26 43 L14 43 L14 42 L18 39 L18 36 L2 37 L2 34 L17 18 L18 13 L8 14 L8 11 L18 8 Z",
+      // Swing-wing at full sweep: the tips trail BEHIND the tail, an arrow.
+      swing: "M20 1 L23 15 L23 20 L37 41 L37 43 L23 32 L23 38 L26 42 L26 43 L14 43 L14 42 L17 38 L17 32 L3 43 L3 41 L17 20 L17 15 Z",
+      // Heavy twin: full-span shoulder wing worn like a crossbar, wide stabs.
+      heavy: "M20 1 L23 10 L24 16 L38 22 L38 27 L24 27 L24 33 L33 37 L33 40 L24 38 L24 43 L21 41 L19 41 L16 43 L16 38 L7 40 L7 37 L16 33 L16 27 L2 27 L2 22 L16 16 L17 10 Z",
+      // Stealth: one unbroken arrowhead nose-to-tips, no fuselage line at all.
+      stealth: "M20 1 L38 32 L38 35 L24 32 L24 37 L30 41 L30 43 L20 40 L10 43 L10 41 L16 37 L16 32 L2 35 L2 32 Z",
+      // Carrier trapezoid: mid wing plus oversized flat stabilisers.
+      carrier: "M20 1 L23 12 L23 20 L36 26 L36 30 L23 30 L23 34 L34 39 L34 42 L23 40 L23 43 L17 43 L17 40 L6 42 L6 39 L17 34 L17 30 L4 30 L4 26 L17 20 L17 12 Z",
       // Straight wing attacker: constant chord plank and twin fins.
       hog: "M20 3 L22 12 L22 18 L38 18 L38 23 L22 23 L22 33 L28 33 L28 42 L24 38 L16 38 L12 42 L12 33 L18 33 L18 23 L2 23 L2 18 L18 18 L18 12 Z",
-      // Forward-swept: tips ahead of the root, unmistakably backwards.
-      berkut: "M20 2 L23 14 L23 24 L36 18 L37 22 L23 32 L23 36 L27 40 L27 43 L20 41 L13 43 L13 40 L17 36 L17 32 L3 22 L4 18 L17 24 L17 14 Z",
-      // Tailed delta: small delta plus a separate tailplane behind it.
-      fishbed: "M20 4 L22 14 L22 20 L34 30 L34 33 L22 31 L22 36 L28 39 L28 42 L20 40 L12 42 L12 39 L18 36 L18 31 L6 33 L6 30 L18 20 L18 14 Z"
+      // Forward-swept: tips clearly AHEAD of the root, nothing else bends
+      // this way.
+      berkut: "M20 1 L23 12 L23 26 L37 15 L38 19 L23 34 L23 37 L28 41 L28 43 L12 43 L12 41 L17 37 L17 34 L2 19 L3 15 L17 26 L17 12 Z",
+      // Tailed delta: small mid-set delta plus a separate tailplane, slim.
+      fishbed: "M20 4 L22 16 L22 22 L33 30 L33 33 L22 32 L22 36 L29 40 L29 42 L11 42 L11 40 L18 36 L18 32 L7 33 L7 30 L18 22 L18 16 Z"
     });
     const SILHOUETTE_FAMILY = Object.freeze({
       gripen: "canard", rafale: "canard", typhoon: "canard",
