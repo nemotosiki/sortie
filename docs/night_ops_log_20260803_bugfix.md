@@ -42,3 +42,23 @@
 - [S2] 雲の中でミッション終了→ハンガーが白ベールで覆われたまま: 非playing時はveil目標0で減衰
 - [S3] #statusPanel .hudVal同一詳細度の死に定義(min-width:52px側)を削除(見た目不変)
 - [S3] #radarLabelOld死にセレクタ削除
+
+### Batch 2 — デバッグフック破壊系+小粒S3(23:4x適用、スモーク緑)
+- [S2] forceSpawnAirWave: 艦マウント(model:null)でTypeError→nullガード(艦ボード上で実証)
+- [S2] forceFireSpw: 生代入でSP.W無し機がソフトロック→PLAYER_SPWガード+toggleWeapon経由(発射実証)
+- [S2] clearMissionRecords: 収入だけ消して支出(購入)が残り財布が恒久マイナス→purchases対消去
+- [S2] applyAircraftLoadout: spw無し機でTypeError半端適用→spwSpecガード(既存2セレクタと同型)
+- [S2] メニュースティックがドリフトで永久武装解除→applyDeadzone適用
+- [S3] gunHitTest射程がGUN_RANGE固定(機体別射程と乖離)→playerGun.getProfile().range
+- [S3] forceRetireGuarded: exit無し艦を退避数に数えプローブが永久待ち→filter(f.exit)
+- [S3] readAircraftPurchases: コメ(hangar order濾過)とコード(全テーブル濾過)の乖離→AIRCRAFT_ORDER
+- [S3] readHighscore: parseIntが"1e9"を1に切る→Number+floor
+- [S3] 艦沈没時の生存マウントが無演出で即消滅(1フレーム孤児煙)→WRECK_TIME付与で甲板上炎上
+- [S3] resetMusicCombatStateにdelayTimer=0(デブリーフ遅延の持ち越しでcombat曲0.6s無音)
+  ★適用時にTDZリグレッション(const musicの手前に挿入)を自スモークが捕捉→即修正、コミット前に根治
+- [S3] pathPointAt頂点ちょうどで進入方向を返す(placeOnRouteと不整合)→厳密不等号
+- [S3] placeOnRoute: 1点ルートでスポーン時throw(payload到達可)→route.length<2ガード
+- [S3] ブースト時カメラジッタが地表クランプ後に加算され0.21m地下→再クランプ
+- 見送り(理由付き): forceSelectMissionの状態ガード強化=並走モデルバッチ班のプローブAPI互換を
+  夜間中に変えない。STABILITY_MIN/SPAN拡幅+brakeSpeed/stallEntry表修正=飛行感が変わる
+  バランス隣接のためユーザー判断待ち(所見はfindings_raw.mdに保存)

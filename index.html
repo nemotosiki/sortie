@@ -4347,7 +4347,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // array: a stale id from an older build would otherwise sit in the
         // wallet's outgoings forever, charging the player for a jet that no
         // longer exists.
-        return Array.isArray(raw) ? raw.filter((id) => AIRCRAFT_TYPES[id]) : [];
+        return Array.isArray(raw) ? raw.filter((id) => AIRCRAFT_ORDER.includes(id)) : [];
       } catch {
         return [];
       }
@@ -24695,9 +24695,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // thing with a crossing to skip, and the carrier - which holds station
         // and has no exit at all - is still passed over.
         forceRetireGuarded: () => {
-          const flying = guardedFriendlies().filter((f) => f.alive && !f.retired);
+          // Only hulls that HAVE an exit can be fast-forwarded to it - a
+          // carrier has none, and counting it as "retiring" sent probes into
+          // a wait that could never resolve.
+          const flying = guardedFriendlies().filter((f) => f.alive && !f.retired && f.exit);
           for (const friendly of flying) {
-            if (!friendly.exit) continue;
             friendly.group.position.copy(friendly.exit);
           }
           return { retiring: flying.length, saved: guardState.saved };
@@ -24773,7 +24775,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // multi-lock first. Returns what the launcher itself reported.
         forceFireSpw: () => {
           if (gameState !== STATE_PLAYING) return { fired: 0, reason: "not playing" };
-          selectedWeapon = "spw";
+          // Through toggleWeapon, never a raw assignment: the raw write left a
+          // no-SP.W airframe stuck on "spw" (toggleWeapon refuses to toggle
+          // back without a PLAYER_SPW) and skipped the lock-kind validation.
+          if (!PLAYER_SPW) return { fired: 0, reason: "no spw" };
+          if (selectedWeapon !== "spw") toggleWeapon();
+          if (selectedWeapon !== "spw") return { fired: 0, reason: "toggle refused" };
           const before = missilesInFlight.length;
           fireWeapon();
           return { fired: missilesInFlight.length - before, inFlight: missilesInFlight.length };
@@ -24964,8 +24971,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             id, type: enemy.type, range: Number(range.toFixed(1)),
             radius: Number(radius.toFixed(2)),
             missDistance: Number(missDistance.toFixed(3)),
-            inRange: range <= GUN_RANGE,
-            wouldHit: range <= GUN_RANGE && along > 0 && missDistance <= radius
+            inRange: range <= playerGun.getProfile().range,
+            wouldHit: range <= playerGun.getProfile().range && along > 0 && missDistance <= radius
           };
         },
         __strikeProbe: () => enemies.filter((e) => e.alive && e.strikeTarget).map((e) => ({
@@ -25650,6 +25657,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         clearMissionRecords: () => {
           for (const key of Object.keys(missionRecords)) delete missionRecords[key];
           saveMissionRecords();
+          // Records are the wallet's income and purchases are its outgoings -
+          // wiping one side left every owned jet as unpayable debt and the
+          // balance permanently negative.
+          aircraftPurchases.clear();
+          saveAircraftPurchases();
           return true;
         },
         forceTeleport: (x, y, z) => {
@@ -25980,7 +25992,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             enemy.alive = false;
             enemy.deadTimer = 0.2;
             enemy.hitbox.visible = false;
-            enemy.model.group.visible = false;
+            // Ship mounts are model:null - the other three clear loops guard
+            // this read, and an unguarded one threw mid-loop on naval boards.
+            if (enemy.model) enemy.model.group.visible = false;
           }
           resetLock();
           preferredTargetId = null;
@@ -26943,7 +26957,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Same menu moves on the left stick: players reach for the stick first,
       // and the D-pad alone left them thinking the pad was dead. One step per
       // flick, never while flying - there the stick belongs to the aircraft.
-      const menuStickY = Number(selected.axes?.[1]) || 0;
+      // Through the deadzone like every other axis read: a drifting stick
+      // parked between RELEASE(0.3) and FIRE(0.55) never re-armed the menu
+      // stick, killing stick navigation until the pad was unplugged.
+      const menuStickY = applyDeadzone(Number(selected.axes?.[1]) || 0);
       if (Math.abs(menuStickY) < MENU_STICK_RELEASE) {
         gamepadInput.menuStickArmed = true;
       } else if (gamepadInput.menuStickArmed && Math.abs(menuStickY) > MENU_STICK_FIRE) {
@@ -27526,6 +27543,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function resetMusicCombatState() {
       const music = audioSystem.music;
+      // A debrief-bed delay banked by the previous outcome must not gag the
+      // combat bed of the sortie that just launched.
+      music.delayTimer = 0;
       music.aceEngaged = false;
       music.aceActive = false;
       music.aceHold = 0;
@@ -27761,7 +27781,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function readHighscore() {
       try {
-        const value = Number.parseInt(window.localStorage.getItem("sortieHighscore") || "0", 10);
+        // Number(), not parseInt: parseInt silently truncates "1e9"-style
+        // strings to their mantissa and reads a corrupted store as a tiny
+        // legitimate score instead of rejecting it.
+        const value = Math.floor(Number(window.localStorage.getItem("sortieHighscore") || "0"));
         return Number.isFinite(value) && value > 0 ? value : 0;
       } catch {
         return 0;
@@ -31050,7 +31073,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const [x0, z0] = path[i - 1];
         const [x1, z1] = path[i];
         const leg = Math.hypot(x1 - x0, z1 - z0);
-        if (travelled + leg >= distance || i === path.length - 1) {
+        // Strict, matching placeOnRoute's cursor: a distance landing exactly
+        // on a waypoint belongs to the OUTGOING leg, or a corner unit spawns
+        // facing the way it came for one frame and snaps next frame.
+        if (travelled + leg > distance || i === path.length - 1) {
           const t = leg > 1e-6 ? THREE.MathUtils.clamp((distance - travelled) / leg, 0, 1) : 0;
           return {
             x: x0 + (x1 - x0) * t,
@@ -33051,6 +33077,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // nothing - the y it reads was measured at bake time.
     function placeOnRoute(enemy, snap = false, dt = 0) {
       const route = enemy.route;
+      // A one-point route has no leg to walk - reachable through a payload
+      // mission authoring a single-waypoint road, and route[i + 1] threw
+      // during spawn, taking the whole mission load down.
+      if (!route || route.length < 2) return;
       // The cursor never rewinds, so over a whole sortie this is one step per
       // 25m of road rather than a search per frame.
       while (enemy.routeIndex < route.length - 2 && route[enemy.routeIndex + 1].d <= enemy.routeDistance) {
@@ -34926,7 +34956,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (const sub of enemy.subsystems) {
           if (!sub.alive && sub.deadTimer <= 0) continue;
           sub.alive = false;
-          sub.deadTimer = 0;
+          // The full wreck window, not zero: mounts that die with their ship
+          // burn on the deck through the sink. Zero made updateEnemies splice
+          // them on the next frame - no blast, no hulk, one orphan smoke puff.
+          sub.deadTimer = SUBSYSTEM_WRECK_TIME;
           sub.hitbox.visible = false;
           if (lock.targetId === sub.id) resetLock();
           if (preferredTargetId === sub.id) preferredTargetId = null;
@@ -35954,6 +35987,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         camera.position.x += (Math.random() - 0.5) * amp;
         camera.position.y += (Math.random() - 0.5) * amp;
         camera.position.z += (Math.random() - 0.5) * amp;
+        // The jitter runs after the surface clamp above, so re-clamp: at
+        // minimum clearance a downward sample poked the camera up to 0.21m
+        // under the terrain for a frame.
+        keepCameraAboveSurface();
       }
 
       world.skyGroup.position.copy(camera.position);
@@ -40980,8 +41017,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       PLAYER_MAX_HEALTH = spec.maxHealth;
       // SP.W is part of the airframe, so picking a jet picks the special weapon
       // with it - and always hands the pilot the standard missile first.
-      PLAYER_SPW = SPW_TYPES[spec.spw.key];
-      PLAYER_SPW_CAPACITY = spec.spw.capacity;
+      // Guarded like the two selector paths already are: enemy-only airframes
+      // (bomber, transports, every payload jet) carry no `spw`, and the raw
+      // read crashed forceLoadout halfway - flight constants swapped, weapons
+      // not - leaving the loadout in a half-applied state.
+      const spwSpec = spec.spw ? SPW_TYPES[spec.spw.key] || null : null;
+      PLAYER_SPW = spwSpec;
+      PLAYER_SPW_CAPACITY = spwSpec ? spec.spw.capacity : 0;
       spwAmmo = PLAYER_SPW_CAPACITY;
       resetSpwTubes();
       selectedWeapon = "msl";
