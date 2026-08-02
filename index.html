@@ -704,6 +704,18 @@
       transform-origin: 50% 50%;
     }
 
+    /* ...except the CONFORMAL ladder, which must not be scaled at all. Its one
+       job is to overlay the outside world 1:1 - the horizon line ON the real
+       horizon, the N-degree rung where N degrees actually is - and a scale
+       factor breaks exactly that, by exactly that factor. Measured: 0.82 put
+       the horizon 60px off at 1280x720 and a rung up to 181px off, which is
+       the shrink leaking into an instrument that is not free to shrink.
+       Cancelled by the reciprocal so the surrounding HUD still shrinks. */
+    body[data-camera="cockpit"] #pitchViewport.conformal {
+      transform: scale(1.2195);
+      transform-origin: 50% 50%;
+    }
+
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
        against the frame to keep pointing at the real horizon. Chasing the
@@ -24326,10 +24338,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // simply ran out, which is what made it look like the instrument had lost
     // the aircraft. The series carries the scale all the way round.
     const PITCH_RUNG_MAX = 90;
-    // How many rungs are in view at once. 25 marks at 5 degrees apart is a
-    // +-60-degree window - wide enough that the scale never empties around the
-    // pipper, tight enough that the numbers stay readable.
-    const PITCH_RUNG_VISIBLE = 25;
+    // How many rungs are in view at once. 13 marks at 5 degrees apart is a
+    // +-30-degree window around the pipper: compact like the reference, while
+    // the SCALE itself still runs to +-90 so it never runs out underneath you.
+    // Those are different numbers and the earlier versions conflated them - the
+    // ladder ran out at 30 because the scale stopped there, not because the
+    // window was small.
+    const PITCH_RUNG_VISIBLE = 13;
     const PITCH_RUNG_DEGREES = [];
     for (let deg = PITCH_RUNG_MAX; deg >= -PITCH_RUNG_MAX; deg -= PITCH_RUNG_STEP) {
       // No 0 rung - level is the horizon bar, which is a different symbol.
@@ -36530,7 +36545,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // was settled against the projected true horizon, not reasoned out.
       ui.pitchLadder.style.transform = `translate(-50%, -50%) rotate(${rollCam}rad)`;
 
-      if (CONFORMAL_LADDER_AIRCRAFT.has(selectedAircraftId)) {
+      const conformal = CONFORMAL_LADDER_AIRCRAFT.has(selectedAircraftId);
+      // The CSS needs to know: the conformal ladder opts out of the cockpit
+      // HUD shrink, because scaling a 1:1 overlay stops it being 1:1.
+      ui.pitchViewport.classList.toggle("conformal", conformal);
+      if (conformal) {
         // Conformal: the scale is pinned to the world and slides past the frame.
         placePitchElement(ui.horizonLine, pitchCam, 0, focal, frameHeight);
         for (let i = 0; i < pitchRungNodes.length; i += 1) {
@@ -36589,10 +36608,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // not a window onto the world, so it must not resize when the FOV breathes
     // under boost. Chosen so +-30 degrees spans a comfortable part of the
     // canopy without reaching the tapes.
-    // Sized so the 25-mark window (PITCH_RUNG_VISIBLE, +-60 degrees of scale)
-    // spans a little under half the frame height, the way the reference does.
-    // At the old 5.2 the same 25 marks ran ~650px and swamped the canopy.
-    const FIXED_LADDER_PX_PER_DEG = 2.6;
+    // Wide enough that the rungs read as separate marks with legible numbers
+    // between them. Tightening this to fit more of the scale on screen was
+    // tried and is wrong: 25 marks at 2.6 crammed into one illegible block. The
+    // window is what limits the height (PITCH_RUNG_VISIBLE), not the spacing.
+    const FIXED_LADDER_PX_PER_DEG = 5.2;
 
     // Where a line `deg` degrees above the horizon falls, in pixels along the
     // ladder's axis from the boresight. tan(), not the small-angle focal*angle:
