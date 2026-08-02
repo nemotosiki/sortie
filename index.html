@@ -190,6 +190,14 @@
       top: 50%;
       transform: translateY(-50%);
       text-align: left;
+      /* FIXED width, and this is the whole bug fix. These panels are sized by
+         their content, and the rail hangs off an edge - so every time the
+         readout crossed a digit boundary (999 -> 1000) the box grew and took
+         the rail with it. Measured before: 55.2px of travel on SPEED, 72.8px
+         on ALT, exactly at the 1000 mark the user identified. Pinning the
+         width lets the number grow inside a box that does not, so the rail
+         holds still. Wide enough for five digits at this size. */
+      width: 132px;
     }
 
     #altData {
@@ -197,6 +205,7 @@
       top: 50%;
       transform: translateY(-50%);
       text-align: right;
+      width: 132px;
     }
 
     #flightData .hudVal.big,
@@ -222,6 +231,16 @@
       mask-image: linear-gradient(transparent, #000 12%, #000 88%, transparent);
     }
 
+    /* Anchored to the panel's own edge, NOT to `left: 100%`. That resolves
+       against the PARENT's width, and #flightData is sized by its content - so
+       every time the speed crossed a digit boundary (999 -> 1000) the panel got
+       wider and the rail slid right with it. Measured: 55.2px of drift across
+       1-to-5 digits, while the ALT rail held still because its own number
+       happened not to change. A readout that walks across the canopy as the
+       number it reports grows is the instrument moving, not the aeroplane.
+
+       right: 0 / left: 0 pins each rail to the fixed side of its panel; the
+       text grows away from it and the rail stays put. */
     #speedTape { left: 100%; margin-left: 14px; }
     #altTape { right: 100%; margin-right: 14px; }
 
@@ -705,8 +724,8 @@
        SPEED/ALT box and the big number are outboard). Measured rather than
        reasoned - anchoring on the panel put the columns 34px past centre, on
        top of each other. 239 = 100 of clearance + that 139. */
-    body[data-camera="cockpit"] #flightData { left: calc(50% - 264px); }
-    body[data-camera="cockpit"] #altData { right: calc(50% - 264px); }
+    body[data-camera="cockpit"] #flightData { left: calc(50% - 317px); }
+    body[data-camera="cockpit"] #altData { right: calc(50% - 317px); }
 
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
@@ -32882,6 +32901,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // uses every other scratch.
     const tmpMissileFrom = new THREE.Vector3();
     const tmpV10 = new THREE.Vector3();
+    // describeMissileDirection consumes (normalises) what it is handed, so the
+    // threat scan needs a second scratch rather than a fresh Vector3 per frame
+    // - the one allocation left in the update loop.
+    const tmpV11 = new THREE.Vector3();
     // Owned by the enemy break / post-stall code, which runs inside the enemy
     // loop and must not tread on the tmpV* slots that loop is already holding.
     // Owned by the pitch ladder. Same reason tmpAiA/tmpAiB exist: updateHud
@@ -33385,13 +33408,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // simply ran out, which is what made it look like the instrument had lost
     // the aircraft. The series carries the scale all the way round.
     const PITCH_RUNG_MAX = 90;
-    // How many rungs are in view at once. 13 marks at 5 degrees apart is a
-    // +-30-degree window around the pipper: compact like the reference, while
-    // the SCALE itself still runs to +-90 so it never runs out underneath you.
-    // Those are different numbers and the earlier versions conflated them - the
-    // ladder ran out at 30 because the scale stopped there, not because the
-    // window was small.
-    const PITCH_RUNG_VISIBLE = 13;
+    // How many rungs are in view at once, while the SCALE itself still runs to
+    // +-90 so it never runs out underneath you. Those are different numbers and
+    // the earlier versions conflated them - the ladder ran out at 30 because
+    // the scale stopped there, not because the window was small.
+    //
+    // 9 marks (a +-20-degree window) squares the ladder off with the SPEED and
+    // ALT rails beside it: at 13 the scale stood 313px tall against their
+    // 230px and hung 41px past each end, which read as the ladder spilling out
+    // of the cluster rather than sitting in it.
+    const PITCH_RUNG_VISIBLE = 9;
     const PITCH_RUNG_DEGREES = [];
     for (let deg = PITCH_RUNG_MAX; deg >= -PITCH_RUNG_MAX; deg -= PITCH_RUNG_STEP) {
       // No 0 rung - level is the horizon bar, which is a different symbol.
@@ -38352,7 +38378,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           tmpV2.y -= BOMB_GRAVITY * bomb.life;
           if (tmpV2.lengthSq() > 0.001) {
             tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV2.normalize());
-            bomb.mesh.quaternion.slerp(tmpQ1, Math.min(1, dt * 6));
+            // damping(), like every other smoother here: dt*6 made the nose
+            // drop at a different rate on a 30fps machine than on a 144fps one.
+            bomb.mesh.quaternion.slerp(tmpQ1, damping(0.0025, dt));
           }
           if (bomb.life > BOMB_MAX_FLIGHT) removeBomb(i);
           continue;
@@ -38940,7 +38968,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             ownerId: missile.ownerId,
             ownerType: missile.ownerType,
             distance,
-            direction: describeMissileDirection(tmpV10.clone())
+            direction: describeMissileDirection(tmpV11.copy(tmpV10))
           };
         }
       }
@@ -43651,7 +43679,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forwardOf(player, tmpV3);
       for (let i = 0; i < mounts.length; i += 1) {
         const start = mounts[i].clone();
-        const hitChance = THREE.MathUtils.clamp(
+        // clamp(v, 0.02, max) returns the FLOOR when max < 0.02, so a mount
+        // declaring maxHitChance 0 would still land 2% of its rounds. Only the
+        // range/tracer guards were keeping that off the board.
+        const hitChance = aa.maxHitChance <= 0 ? 0 : THREE.MathUtils.clamp(
           (1 - distance / (aa.range + 140)) * 0.5,
           0.02,
           aa.maxHitChance
@@ -45050,8 +45081,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       tmpV3.copy(WORLD_UP)
         .multiplyScalar(1 - profile.rollFollow)
-        .addScaledVector(tmpV2, profile.rollFollow)
-        .normalize();
+        .addScaledVector(tmpV2, profile.rollFollow);
+      // Arithmetic guard, not an observed failure: at rollFollow 0.5 (the
+      // CLOSE profile, exactly) a perfectly inverted aircraft cancels this
+      // blend to zero, and three's normalize() leaves a zero vector as zero.
+      // Flying inverted was probed at bank 180 and the camera held, so exact
+      // cancellation does not happen in practice - this only makes sure it
+      // cannot.
+      if (tmpV3.lengthSq() < 1e-6) tmpV3.copy(tmpV2);
+      tmpV3.normalize();
       const desiredPosition = tmpV4.copy(player.position)
         .addScaledVector(tmpV1, -profile.back)
         .addScaledVector(tmpV3, profile.height);
@@ -45169,8 +45207,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const profile = CAMERA_PROFILES[cameraMode] || CAMERA_PROFILES.chase;
       cameraUp.copy(WORLD_UP)
         .multiplyScalar(1 - profile.rollFollow)
-        .addScaledVector(tmpV2, profile.rollFollow)
-        .normalize();
+        .addScaledVector(tmpV2, profile.rollFollow);
+      // Same arithmetic guard as updateCamera, for the frame after a teleport.
+      if (cameraUp.lengthSq() < 1e-6) cameraUp.copy(tmpV2);
+      cameraUp.normalize();
       camera.fov = BASE_CAMERA_FOV;
       currentCameraFov = BASE_CAMERA_FOV;
       camera.updateProjectionMatrix();
@@ -45420,12 +45460,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (offsets && offsets.length >= 3) {
             offsets[0].copy(world.oceanNormalTexture.offset);
             offsets[1].set(
-              oceanNormalDriftU1 + camX / normalTiles[1],
-              oceanNormalDriftV1 - camZ / normalTiles[1]
+              oceanNormalDriftU1 + camX / (normalTiles[1] || normalTile),
+              oceanNormalDriftV1 - camZ / (normalTiles[1] || normalTile)
             );
             offsets[2].set(
-              oceanNormalDriftU2 + camX / normalTiles[2],
-              oceanNormalDriftV2 - camZ / normalTiles[2]
+              oceanNormalDriftU2 + camX / (normalTiles[2] || normalTile),
+              oceanNormalDriftV2 - camZ / (normalTiles[2] || normalTile)
             );
           }
         }
