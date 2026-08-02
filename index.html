@@ -42366,6 +42366,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             exhaust: FRIENDLY_TRANSPORT_SPEC.theme.exhaust
           })
         : FRIENDLY_TRANSPORT_SPEC.theme;
+      // The frame the formation is drawn in - spawnFriendlyShips' course/across
+      // pair, for the same reason. `lateral` and `trail` mean "abeam" and
+      // "astern", which are directions relative to where the flight is going;
+      // writing them straight onto world X and Z only happened to be right
+      // because both convoys shipped so far fly due south. A course on the
+      // diagonal would have spread the vee ALONG the line of flight and hung
+      // its trail out to one side.
+      const course = new THREE.Vector3(
+        config.exit.x - config.start.x, 0, config.exit.z - config.start.z
+      );
+      if (course.lengthSq() < 0.001) course.set(0, 0, -1);
+      course.normalize();
+      const across = new THREE.Vector3(-course.z, 0, course.x);
       const spawned = [];
       for (let i = 0; i < count; i += 1) {
         const lateral = (i - (count - 1) / 2) * spacing;
@@ -42380,8 +42393,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // the AI's own aim, not of a collider the player's gun could hit.
         scene.add(group);
 
-        group.position.set(config.start.x + lateral, altitude, config.start.z + trail);
-        const exit = new THREE.Vector3(config.exit.x + lateral, altitude, config.exit.z + trail);
+        // Abeam by `lateral`, astern by `trail`. Applied to both ends of the
+        // leg, so the flight flies its course in formation instead of
+        // converging on a point.
+        const offsetX = across.x * lateral - course.x * trail;
+        const offsetZ = across.z * lateral - course.z * trail;
+        group.position.set(config.start.x + offsetX, altitude, config.start.z + offsetZ);
+        const exit = new THREE.Vector3(config.exit.x + offsetX, altitude, config.exit.z + offsetZ);
         tmpV1.copy(exit).sub(group.position).normalize();
         group.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
 
