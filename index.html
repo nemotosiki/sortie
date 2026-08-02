@@ -42730,6 +42730,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // an empty array, so a friendly with neither pays one property read.
         if (friendly.model) {
           spinPropDiscs(friendly.model, friendly.speed || 0, dt);
+          // deployFriendlies takes any registered airframe, so an escorted
+          // flight can be a swing wing (F-14, Su-24M, Tu-22M3...). Cruise speed
+          // is the band a friendly flies in, so it reads as wings-forward
+          // transit rather than a jet frozen mid-configuration.
+          sweepWingPivots(friendly.model, ((friendly.speed || 0) - 120) / 200, dt);
         }
         if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
@@ -43702,19 +43707,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // the top. The result is legible from outside - a Flogger on patrol has its
     // wings forward, and sweeps them back the moment it commits to a chase.
     // Presentation only: nothing in the enemy flight model reads the angle.
-    function updateEnemyWingSweep(enemy, dt) {
-      const pivots = enemy.model.wingPivots;
+    // `t` is how far into its own speed band the aircraft is, 0..1. Who owns
+    // the aircraft never enters into it - a swing wing sweeps because it is
+    // going fast, the way a propeller turns because the engine is running.
+    function sweepWingPivots(model, t, dt) {
+      const pivots = model && model.wingPivots;
       if (!pivots || pivots.length === 0) return;
-      const spec = enemy.spec;
-      const span = Math.max(1, spec.pursuitBonus || 1);
-      const t = THREE.MathUtils.clamp((enemy.speed - spec.patrolSpeed) / span, 0, 1);
       const targetRad = THREE.MathUtils.degToRad(
-        THREE.MathUtils.lerp(WING_SWEEP_FORWARD_DEG, WING_SWEEP_AFT_DEG, t) - WING_SWEEP_FORWARD_DEG
+        THREE.MathUtils.lerp(WING_SWEEP_FORWARD_DEG, WING_SWEEP_AFT_DEG, THREE.MathUtils.clamp(t, 0, 1))
+        - WING_SWEEP_FORWARD_DEG
       );
       for (const pivot of pivots) {
         const side = pivot.userData.sweepSide || 1;
         pivot.rotation.y = THREE.MathUtils.lerp(pivot.rotation.y, -targetRad * side, damping(WING_SWEEP_RATE, dt));
       }
+    }
+
+    function updateEnemyWingSweep(enemy, dt) {
+      const spec = enemy.spec;
+      const span = Math.max(1, spec.pursuitBonus || 1);
+      sweepWingPivots(enemy.model, (enemy.speed - spec.patrolSpeed) / span, dt);
     }
 
     // Turboprop discs (Tu-95). Speed sets the rate, but never to zero: props
