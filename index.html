@@ -4555,14 +4555,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // 護衛対象を狙う波は、その対象を撃てる距離の外から入ってくる。ASM の射程
     // (ANTI_SHIP_MISSILE_PROFILE.range = 1800) の内側に湧かせると、プレイヤーが
     // どれだけ急いでも到達前に発射が終わっていて、守りようのない損害が確定する。
-    // 2100 は射程 +300m: 発射までに必ず「詰める時間」が生まれ、かつ RADAR_RANGE
-    // (1400) の外なので、最初は無線とレーダー端で気づく形になる。
     //
-    // 上の band 半径と違いこれは WAVE_SPAWN_MAX_RANGE (2100) の下ではなく丁度
-    // 同値だが、窓は閉端なので依然として満たせる: 湧き点はリングを離れないので
-    // プレイヤーがアンカーに重なっている最悪ケースでも距離は 2100 = 天井ちょうど
-    // で、下の clamp は諦めずに済む。
-    const HUNT_WAVE_RING_RADIUS = 2100;
+    // 3600 = 射程 1800 + 進入脚 1800m。護衛対象「群」の重心にアンカーするため
+    // 隊形の端は重心より ~550m リングに近く、実効スタンドオフは ~3050m。
+    // 初代の 2100 (射程+300) は ~160 m/s の
+    // 進入で発射可能圏まで ~1.6 秒しかなく、「護衛対象の目の前に湧いて猶予が
+    // ない」体感の正体だった。3400 なら射程到達まで ~8-10 秒: 無線コールから
+    // 反転して間に合う幅になる。湧き点はこのリングを離れないので、下のスライド
+    // がどのベアリングを選ぼうと護衛対象からの距離 = この猶予は幾何的に保証
+    // される。リングが対プレイヤー窓 (2100) の外に出るぶんは clamp が最寄り点に
+    // 潰れて「プレイヤー側の湧き」になるだけで、これも護衛には都合がよい。
+    const HUNT_WAVE_RING_RADIUS = 3600;
+    // Hunt 波は護衛対象の進行方向 ±110° には置かない。正面湧きは相対速度が
+    // 全部足し算になり (輸送機 140 + 攻撃機 160 = 300 m/s)、リングを広げた
+    // ぶんの猶予が食い潰される。後半球なら追い付き速度だけになり、同じ半径で
+    // 倍以上の時間が残る。スライド後に最小回転で半球の縁へ寄せるだけなので、
+    // ミッションごとの決定論 (golden angle) は保たれる。
+    const HUNT_SPAWN_REAR_ANGLE = 110 * Math.PI / 180;
     // 対艦攻撃は「向かって、狙って、撃つ」。空対空の 1.4 秒で初弾が出ると、
     // 湧いた瞬間に射点へ入っている攻撃機に対してプレイヤーは物理的に間に合わず、
     // 守りようのない損害が確定する（実測: r14 で開始10秒に1隻喪失）。
@@ -4573,6 +4582,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // 周囲を旋回中で launchDot を満たせない ＝ 初弾は遅れるのではなく消える。
     // 実測: 22 を入れたとき m-carrier の空母は 81 秒通して無傷、友軍向けミサイル
     // 発射数は 0 だった。
+    // (追記: リングを 3400 へ広げた後は射程 1800 到達自体が t≈8-10s になり、
+    // この 6 はその前に必ず消化される = 発射窓は距離だけが締める。)
     // 6 はプレイヤーが 1600m を全力(375 m/s)で詰める ~4.3 秒を上回り、なお発射窓
     // の後半 5 秒以上を残す。攻撃機は手順を踏むが、撃つ機会そのものは失わない。
     //
@@ -4598,8 +4609,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // worst case of 1796m. That is the "it spawns in front of me" complaint
     // coming back in through the clamp. At 2100 the same sweep moves 30% of
     // positions by an average of 250m.
-    const WAVE_SPAWN_MIN_RANGE = 600;
+    // 900: 600 では合流まで ~1-2 秒で「顔の前に湧く」。900 でも十分近いが、
+    // リング半径 (1150) を下回るのでプレイヤーがアンカー上に立つ最悪ケースの
+    // 収束は崩さない。
+    const WAVE_SPAWN_MIN_RANGE = 900;
     const WAVE_SPAWN_MAX_RANGE = 2100;
+    // ミッション開幕だけは「接近フェーズ」から始める。開幕直後はまだ状況を
+    // 掴んでおらず、通常窓 (900-2100m) に湧かれると数秒で合流が始まる。開幕
+    // 8 秒以内に置かれる波はリングごと押し出し、対プレイヤー窓もレーダー外縁
+    // ~最悪視程 (m-night 霧 2150m は例外的に貫くが、着弾コールとレーダー端で
+    // 追える) の 2300-3200m に移す。8 秒は waves[0] と concurrent の開幕組だけ
+    // を掴み、delay 付きの増援 (delay 30 等) を通常窓のまま残す幅。hunt 波は
+    // 自前のスタンドオフ (HUNT_WAVE_RING_RADIUS) を持つので対象外。
+    const OPENING_SPAWN_TIME = 8;
+    const OPENING_SPAWN_RADIUS = 2700;
+    const OPENING_SPAWN_MIN_RANGE = 2300;
+    const OPENING_SPAWN_MAX_RANGE = 3200;
     // How far the anchor may sit from the player when a wave is placed. Beyond
     // this the ring cannot reach the window at all - the furthest a band-1 ring
     // reaches is its own radius plus the ceiling, 1150 + 2100 = 3250 - so an
@@ -14588,6 +14613,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // the end of it, so a spawn from anywhere else falls back to the old
     // nose-on-to-player behaviour.
     let spawningForward = null;
+    // Course of the friendly a hunt wave was anchored on - unit XZ vector to
+    // its exit point, or null when the anchor was not a moving charge. Same
+    // relay pattern as spawningForward: written by waveAnchorFor, read once
+    // by spawnWave to keep the spawn out of the charge's front hemisphere.
+    let spawningHuntCourse = null;
     // The whole result computeMissionRank returns - { rank, kill, timeBonus,
     // total, nextRankDelta } - not just the letter, because the debrief shows
     // the breakdown that produced it and the record stores the total.
@@ -15845,7 +15875,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             alive: friendly.alive,
             retired: Boolean(friendly.retired),
             hp: Math.max(0, Math.round(friendly.hp)),
-            maxHp: friendly.maxHp
+            maxHp: friendly.maxHp,
+            // Position and course, so a gate can measure a hunt wave's spawn
+            // standoff and hemisphere against the charge it was aimed at.
+            x: Number(friendly.group.position.x.toFixed(0)),
+            z: Number(friendly.group.position.z.toFixed(0)),
+            exitX: friendly.exit ? Number(friendly.exit.x.toFixed(0)) : null,
+            exitZ: friendly.exit ? Number(friendly.exit.z.toFixed(0)) : null
           })),
           // Who is actually flying at a friendly right now, and what they are
           // flying at. An empty list on a guard mission with live TGT means
@@ -15857,6 +15893,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               type: enemy.type,
               tgt: enemy.tgt,
               hunt: enemy.hunt,
+              x: Number(enemy.group.position.x.toFixed(0)),
+              z: Number(enemy.group.position.z.toFixed(0)),
               charge: enemy.huntRef ? enemy.huntRef.label : null,
               distanceToCharge: enemy.huntRef
                 ? Number(enemy.group.position.distanceTo(enemy.huntRef.group.position).toFixed(1))
@@ -16264,10 +16302,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           type: enemy.type,
           mode: enemy.mode,
           speed: Number(enemy.speed.toFixed(1)),
-          stationRange: enemy.patrolCenter ? Math.hypot(
+          stationRange: enemy.loiterX !== undefined ? Math.hypot(
+            enemy.group.position.x - enemy.loiterX,
+            enemy.group.position.z - enemy.loiterZ
+          ) : (enemy.patrolCenter ? Math.hypot(
             enemy.group.position.x - enemy.patrolCenter.x,
             enemy.group.position.z - enemy.patrolCenter.z
-          ) : null,
+          ) : null),
           turnRadius: Number((enemy.speed / Math.max(enemy.spec.patrolTurn, 0.05)).toFixed(0)),
           arenaRange: Math.hypot(
             enemy.group.position.x - battleArea.centerX,
@@ -20780,16 +20821,40 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // satisfiable from anywhere and the slide below never has to give up.
     function waveAnchorFor(wave, out) {
       let resolved = false;
+      spawningHuntCourse = null;
       if (wave && wave.hunt) {
-        // Same filter huntTargetFor() applies at runtime, so the wave is
-        // placed around exactly the friendly its aircraft will fly at.
+        // Same filter huntTargetFor() applies at runtime - but the CENTROID
+        // of every live charge, not the first one. Each hunter picks its own
+        // nearest charge at runtime; anchoring on one end of a spread-out
+        // group let the far side of the formation sit up to its whole width
+        // closer to the ring than the standoff promises (measured: 2600m of
+        // a 3400m ring on LIFELINE's transport spread). The centroid halves
+        // the worst case and owes nothing to authored unit order.
+        let chargeCount = 0;
+        let courseFriendly = null;
+        out.set(0, 0, 0);
         for (const friendly of friendlies) {
           if (!friendly.alive || !friendly.vulnerable || friendly.retired) continue;
           const isShip = isFriendlyShip(friendly);
           if (wave.hunt === "ship" ? !isShip : isShip) continue;
-          out.copy(friendly.group.position).setY(0);
+          out.x += friendly.group.position.x;
+          out.z += friendly.group.position.z;
+          chargeCount += 1;
+          if (!courseFriendly && friendly.exit) courseFriendly = friendly;
+        }
+        if (chargeCount > 0) {
+          out.multiplyScalar(1 / chargeCount).setY(0);
+          if (courseFriendly) {
+            const courseX = courseFriendly.exit.x - courseFriendly.group.position.x;
+            const courseZ = courseFriendly.exit.z - courseFriendly.group.position.z;
+            const courseLen = Math.hypot(courseX, courseZ);
+            if (courseLen > 1) {
+              spawningHuntCourse = { x: courseX / courseLen, z: courseZ / courseLen };
+            }
+          }
           resolved = true;
-          break;
+        } else {
+          out.set(0, 0, 0);
         }
         // A hunt wave whose charge is already gone falls through to the fixed
         // anchor rather than spawning at the origin.
@@ -20801,8 +20866,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const dx = out.x - player.position.x;
       const dz = out.z - player.position.z;
       const range = Math.hypot(dx, dz);
+      // Hunt 波 (resolved=true) は実物の護衛対象にアンカーしたまま残す。この
+      // 引き寄せを通すとリングの中心が対象からズレて、リング半径=猶予の保証が
+      // 実距離では崩れる (実測: 対象がプレイヤーから 3km 超のとき standoff
+      // 3400 のはずが 2550m で湧いた)。hunt の見つけやすさは湧きコール無線と
+      // HUD の護衛対象表示が担う。
       // Strictly greater, so the zero-length case never reaches the division.
-      if (range > WAVE_ANCHOR_MAX_RANGE) {
+      if (!resolved && range > WAVE_ANCHOR_MAX_RANGE) {
         const scale = WAVE_ANCHOR_MAX_RANGE / range;
         out.set(player.position.x + dx * scale, 0, player.position.z + dz * scale);
       }
@@ -20820,7 +20890,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // `anchor` is resolved by the caller and passed in rather than looked up
     // here, so the point and the formation heading downstream are guaranteed to
     // be measured against the same anchor even though it is a live value.
-    function resolveWaveSpawnPoint(anchor, waveIndex, radius, out) {
+    function resolveWaveSpawnPoint(anchor, waveIndex, radius, out, minRange = WAVE_SPAWN_MIN_RANGE, maxRange = WAVE_SPAWN_MAX_RANGE) {
       const bearing = waveBearing(MISSIONS[currentMissionIndex].key, waveIndex);
       // Planar offset from the anchor to the player, which is what the slide is
       // measured against. Both the anchor and the ring live at y = 0; height
@@ -20847,8 +20917,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // ceiling the clamp below collapses to that end of the range, which is
         // the best the ring can do - and is why this is written as a clamp
         // rather than as a search that can fail.
-        const nearLimit = Math.acos(THREE.MathUtils.clamp(cosFor(WAVE_SPAWN_MIN_RANGE), -1, 1));
-        const farLimit = Math.acos(THREE.MathUtils.clamp(cosFor(WAVE_SPAWN_MAX_RANGE), -1, 1));
+        const nearLimit = Math.acos(THREE.MathUtils.clamp(cosFor(minRange), -1, 1));
+        const farLimit = Math.acos(THREE.MathUtils.clamp(cosFor(maxRange), -1, 1));
         // cos is decreasing, so the FAR target yields the SMALLER cosine and
         // therefore the LARGER angle: nearLimit is the lower bound of the
         // allowed offset band and farLimit the upper.
@@ -20887,9 +20957,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const ringBand = Math.min(band, 2) === 2 ? 2 : 1;
       // hunt 波だけ band を無視してスタンドオフ半径に乗る。band は「何波目か」の
       // 難度つまみでしかなく、ここで問題なのは護衛対象からの距離なので。
-      const radius = wave && wave.hunt ? HUNT_WAVE_RING_RADIUS : WAVE_RING_RADIUS[ringBand];
+      // 開幕組 (OPENING_SPAWN_TIME 以内) はリングと窓を押し出して接近フェーズを
+      // 作る - 定数の所の理由書き参照。
+      const opening = !((wave && wave.hunt)) && missionElapsed < OPENING_SPAWN_TIME;
+      const radius = wave && wave.hunt
+        ? HUNT_WAVE_RING_RADIUS
+        : (opening ? Math.max(WAVE_RING_RADIUS[ringBand], OPENING_SPAWN_RADIUS) : WAVE_RING_RADIUS[ringBand]);
       const anchor = waveAnchorFor(wave, new THREE.Vector3());
-      const origin = resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
+      const origin = opening
+        ? resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3(), OPENING_SPAWN_MIN_RANGE, OPENING_SPAWN_MAX_RANGE)
+        : resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
+      // Hunt 波は護衛対象の前半球に置かない。スライドが選んだベアリングを、
+      // 進行方向から HUNT_SPAWN_REAR_ANGLE 以上離れた最寄りの角へ最小回転で
+      // 寄せる。リング半径は変えないので猶予の保証はそのまま。
+      if (wave && wave.hunt && spawningHuntCourse) {
+        const courseAngle = Math.atan2(spawningHuntCourse.x, spawningHuntCourse.z);
+        const spawnAngle = Math.atan2(origin.x - anchor.x, origin.z - anchor.z);
+        let offCourse = spawnAngle - courseAngle;
+        offCourse = Math.atan2(Math.sin(offCourse), Math.cos(offCourse));
+        if (Math.abs(offCourse) < HUNT_SPAWN_REAR_ANGLE) {
+          const side = offCourse < 0 ? -1 : 1;
+          const rearAngle = courseAngle + side * HUNT_SPAWN_REAR_ANGLE;
+          origin.set(
+            anchor.x + Math.sin(rearAngle) * radius,
+            origin.y,
+            anchor.z + Math.cos(rearAngle) * radius
+          );
+        }
+      }
       // The formation faces its anchor, so a strike flight is already pointed
       // at what it came to bomb the instant it exists and a fighter wave is
       // already turned into the fight. This replaces forwardOf(player), which
@@ -24244,7 +24339,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             spec.maxSpeed + (enemy.wave - 1) * 4,
             enemy.perceivedPlayerSpeed + spec.pursuitBonus
           );
-        } else if (spec.behavior === "formation" && leader) {
+        } else if (spec.behavior === "formation" && leader && enemy.id !== enemy.formationLeaderId) {
+          // Wingmen only. The lead ship of a formation wave used to fall in
+          // here too (its "leader" resolving to its own wingman via the
+          // fallback), so the pair chased each other's tail offsets in a
+          // closed loop and neither ever flew anywhere - the last of the
+          // "circling nothing" bugs. The lead now takes the purpose loiter
+          // below and the element follows it.
           enemy.aimKind = "formation";
           forwardOf(leader.group, tmpV8);
           rightOf(leader.group, tmpV3);
@@ -24275,17 +24376,59 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // stable at any turn rate, because the carrot only advances as
           // the aircraft does; the ring is sized to the airframe, so an
           // F-22 holds a tight CAP circle and a Foxhound a wide one.
-          enemy.aimKind = "loiter";
+          // The loiter is tied to a PURPOSE, not to the abstract spawn
+          // point - an idle fighter reads as part of the mission instead of
+          // circling nothing:
+          //   1. escort duty - the nearest live striker/hunter (its own
+          //      package if it has one). m-city's escorts ride with their
+          //      bomber stream, HOME PLATE's cover follows the anti-ship
+          //      run, exactly what the radio already claims they do.
+          //   2. fleet CAP - the nearest live enemy ship, when no package
+          //      is flying. FLEET DESTRUCTION's CAP orbits the hulls it
+          //      guards.
+          //   3. the spawn station, arena-clamped, when the mission offers
+          //      neither.
+          // The ring geometry below is unchanged - only the centre moves.
+          let escortRef = null;
+          let escortD2 = Infinity;
+          let fleetRef = null;
+          let fleetD2 = Infinity;
+          // Escort duty is a fighter's job. A patrolling heavy chasing a
+          // strike package it can never catch is a tail chase across the
+          // whole map, not an escort.
+          const fighterPatroller = !HEAVY_AIR_TYPES.has(enemy.type);
+          for (const mate of enemies) {
+            if (!mate.alive || mate === enemy || mate.subsystem) continue;
+            if (mate.surface) {
+              if (mate.ground) continue;
+              const d2 = mate.group.position.distanceToSquared(enemy.group.position);
+              if (d2 < fleetD2) { fleetD2 = d2; fleetRef = mate; }
+            } else if (fighterPatroller && !mate.heli && (mate.strikeTarget || mate.hunt)) {
+              const d2 = mate.group.position.distanceToSquared(enemy.group.position);
+              if (d2 < escortD2) { escortD2 = d2; escortRef = mate; }
+            }
+          }
+          const stationRef = escortRef || fleetRef;
+          const stationX = stationRef ? stationRef.group.position.x : enemy.patrolCenter.x;
+          const stationZ = stationRef ? stationRef.group.position.z : enemy.patrolCenter.z;
+          // A package is escorted at its own altitude plus separation; ships
+          // are capped from proper CAP height rather than mast height.
+          const stationY = escortRef
+            ? escortRef.group.position.y + 120
+            : (fleetRef ? Math.max(fleetRef.group.position.y + 500, 500) : enemy.patrolCenter.y);
+          enemy.aimKind = escortRef ? "loiter-escort" : (fleetRef ? "loiter-fleet" : "loiter");
+          enemy.loiterX = stationX;
+          enemy.loiterZ = stationZ;
           const loiterTurnRadius = Math.max(60, enemy.speed / Math.max(spec.patrolTurn, 0.05));
           const loiterRadius = Math.max(enemy.patrolRadius, loiterTurnRadius * 1.25);
           const loiterBearing = Math.atan2(
-            enemy.group.position.x - enemy.patrolCenter.x,
-            enemy.group.position.z - enemy.patrolCenter.z
+            enemy.group.position.x - stationX,
+            enemy.group.position.z - stationZ
           ) + enemy.patrolSense * 0.75;
           targetPoint = enemy.targetPoint.set(
-            enemy.patrolCenter.x + Math.sin(loiterBearing) * loiterRadius,
-            enemy.patrolCenter.y,
-            enemy.patrolCenter.z + Math.cos(loiterBearing) * loiterRadius
+            stationX + Math.sin(loiterBearing) * loiterRadius,
+            stationY,
+            stationZ + Math.cos(loiterBearing) * loiterRadius
           );
           enemy.targetSpeed = spec.patrolSpeed + (enemy.wave - 1) * 7;
         }
