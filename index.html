@@ -698,34 +698,19 @@
       z-index: 1;
     }
 
-    /* Cockpit pulls the FLIGHT CLUSTER in toward the middle - the speed tape,
-       the altitude tape and the ladder between them read as one instrument
-       either side of the boresight, the way the series draws it. Only these
-       two move. The radar, the score and time, the weapons panel and the
-       damage readout are corner furniture and stay exactly where they are:
-       scaling the whole HUD was the previous attempt and it shrank all of
-       those too, which is not what was asked for and made the corners harder
-       to read for no gain.
+    /* The SPEED and ALT columns sit alongside the ladder as one cluster, with
+       their boxes and big numbers outboard - the AC layout. There is no longer
+       a cockpit-only override: giving the panels a fixed width (the digit-drift
+       fix above) already brought them inboard in BOTH views, and the position
+       that reads well - about 44px of air between each rail and the ladder's
+       numbers - turned out to be the 24% they already had.
 
-       Left and right only. Nothing here touches the ladder, so the F-4's
-       conformal 1:1 overlay is unaffected by construction rather than by a
-       cancelling rule - the earlier global scale broke it by 0.18 of a half
-       frame and needed the reciprocal to undo.
-
-       Anchored a fixed distance from the CENTRE, not at a percentage of the
-       frame. The thing they have to clear is the ladder, which is a fixed
-       number of pixels wide - so a percentage put them 129px clear at 1920 and
-       overlapping the numbers at 1280. calc() from 50% holds the cluster
-       together at every width, which is what makes it read as one instrument
-       the way the reference does.
-
-       239px, not the ~100 the geometry suggests: the anchor is the PANEL's
-       outer edge, but the tape's scale column sits 139px inboard of it (the
-       SPEED/ALT box and the big number are outboard). Measured rather than
-       reasoned - anchoring on the panel put the columns 34px past centre, on
-       top of each other. 239 = 100 of clearance + that 139. */
-    body[data-camera="cockpit"] #flightData { left: calc(50% - 357px); }
-    body[data-camera="cockpit"] #altData { right: calc(50% - 357px); }
+       Two values were tried and rejected on measurement. 317px from centre gave
+       28px of air and looked pinched against the numbers. 357px opened it to
+       68px but put the cockpit tapes 24px OUTBOARD of third person's, so the
+       "pull in" rule was pushing the cluster apart - the opposite of its job. A
+       rule that has to exist only to restate the default is a rule that should
+       not exist, so it is gone rather than tuned to a no-op. */
 
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
