@@ -35,6 +35,7 @@ export function createRegistrySnapshot({
   WORLD_PRESETS,
   AIRCRAFT_ORDER,
   WORLD_DECORATORS,
+  AIRCRAFT_MODELS,
   MISSIONS
 }) {
   return {
@@ -56,6 +57,18 @@ export function createRegistrySnapshot({
       WORLD_DECORATORS.map((entry) => [
         entry.id,
         [...entry.worlds].sort().map((key) => `world:${key}`)
+      ])
+    ),
+    // Keyed by variant, but the values are functions, so keyPaths would only
+    // ever say "build" and tell nobody anything. What can actually be lost here
+    // is the airframe itself and its HUD outline, so those are what is written:
+    // dropping a registration, or dropping the silhouette off one, both fail.
+    AIRCRAFT_MODELS: Object.fromEntries(
+      Object.keys(AIRCRAFT_MODELS).sort().map((variant) => [
+        variant,
+        AIRCRAFT_MODELS[variant] && AIRCRAFT_MODELS[variant].silhouette
+          ? ["build", "silhouette"]
+          : ["build"]
       ])
     ),
     MISSIONS: Object.fromEntries(

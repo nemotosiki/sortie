@@ -9855,6 +9855,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // reaches inside createWorld(). See ctx.addWorldDecorator.
     const WORLD_DECORATORS = [];
 
+    // Airframe geometry contributed by payloads, keyed by `theme.variant`.
+    // createAircraftModel consults this BEFORE its own if/else chain, so a
+    // registered variant replaces nothing and shadows nothing: the inline chain
+    // only ever sees variants nobody registered. See ctx.addAircraftModel.
+    //
+    // Held as a map of { build, silhouette } rather than being written straight
+    // into the model code for the same reason WORLD_DECORATORS exists - the
+    // builder needs the shared geometry, the per-model materials and the `add`
+    // helpers, all of which are locals inside createAircraftModel and cannot be
+    // reached from out here. The env is assembled per call and handed in.
+    const AIRCRAFT_MODELS = {};
+
+    // Every variant createAircraftModel's own if/else answers, including the
+    // "raptor" its trailing else covers. Only used to reject a registration
+    // that would name one of them: the lookup is consulted before the chain, so
+    // a collision would shadow an existing airframe's geometry rather than add
+    // anything, which is exactly what the add-only rule exists to prevent.
+    //
+    // Spelled out rather than derived because the chain is a chain, not a
+    // table, and there is nothing to derive it from. It has to be kept in step
+    // by hand if a variant is ever added inline - the cost of being wrong is a
+    // payload allowed to shadow that variant, so a new inline branch belongs
+    // here in the same edit.
+    const INLINE_AIRCRAFT_VARIANTS = new Set([
+      "viper", "viperzero", "lancer", "bison", "hornet", "tomcat", "foxhound",
+      "lightning", "terminator", "bomber", "transport", "uav", "felon",
+      "berkut", "flogger", "frogfoot", "bear", "rafale", "typhoon", "gripen",
+      "hog", "fishbed", "fulcrum", "flankerd", "flankere", "raptor"
+    ]);
+
     // Handed to every payload's default export. Deliberately the only surface a
     // payload gets - it cannot reach the tables directly, so every addition goes
     // through the duplicate and schema checks above.
@@ -9968,6 +9998,59 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         WORLD_DECORATORS.push(entry);
         return entry;
       },
+      // A new airframe's 3D geometry, keyed by the `variant` string its
+      // AIRCRAFT_TYPES / ACE_PROFILES theme carries. `ctx.addAircraft` registers
+      // the flight model and the hangar card; this registers what the thing
+      // LOOKS like. They are separate on purpose - a payload can add an
+      // airframe that reuses an existing shape by simply not calling this.
+      //
+      // `build(env)` runs inside createAircraftModel with the same locals the
+      // inline variants use (shared geometry, this model's materials, the add /
+      // addWingPivot / addProp / addFlame helpers). It builds by CALLING those
+      // helpers, exactly like an inline branch does, and returns nothing: the
+      // parts, flames, pivots and spinners the helpers collected are assembled
+      // into the standard return shape by createAircraftModel itself. That is
+      // what keeps a payload airframe indistinguishable downstream - the flash,
+      // the dispose, the sweep and the prop spin all read the same fields.
+      //
+      // `silhouette` is the HUD's top-view outline: one closed SVG path in the
+      // same 40x44 box every inline path uses. Optional - an airframe without
+      // one falls back to SILHOUETTE_DEFAULT, which is what an unregistered
+      // variant already does. It cannot be written into SILHOUETTE_PATHS here
+      // because that table is declared thousands of lines below and is still in
+      // its temporal dead zone while payloads run, so it is carried on the
+      // registry entry and read out when the table is built.
+      addAircraftModel(variant, def) {
+        if (typeof variant !== "string" || !variant) {
+          throw new Error("[payload] addAircraftModel: variant must be a non-empty string");
+        }
+        if (Object.prototype.hasOwnProperty.call(AIRCRAFT_MODELS, variant)) {
+          throw new Error(`[payload] addAircraftModel: duplicate variant "${variant}" - registration is add-only`);
+        }
+        if (!def || typeof def !== "object") {
+          throw new Error(`[payload] addAircraftModel("${variant}"): definition must be an object`);
+        }
+        if (typeof def.build !== "function") {
+          throw new Error(`[payload] addAircraftModel("${variant}"): build must be a function`);
+        }
+        if (def.silhouette !== undefined && (typeof def.silhouette !== "string" || !def.silhouette)) {
+          throw new Error(`[payload] addAircraftModel("${variant}"): silhouette must be a non-empty SVG path string`);
+        }
+        // The inline chain is the fallback for anything unregistered, so a
+        // variant that already has a branch there would have its geometry
+        // silently replaced by this one. Rejecting the collision at
+        // registration is the add-only rule applied to shapes.
+        if (INLINE_AIRCRAFT_VARIANTS.has(variant)) {
+          throw new Error(`[payload] addAircraftModel("${variant}"): an inline airframe already uses that variant - registration is add-only`);
+        }
+        const entry = Object.freeze({
+          variant,
+          build: def.build,
+          silhouette: def.silhouette || null
+        });
+        AIRCRAFT_MODELS[variant] = entry;
+        return entry;
+      },
       // Friendlies a mission fields: a wingman, an airbase, a carrier, ships to
       // guard. Queued rather than written, because FRIENDLY_DEPLOYMENTS is
       // declared thousands of lines below this object and is still in its
@@ -10048,6 +10131,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(HELI_TYPES);
       Object.freeze(WORLD_PRESETS);
       Object.freeze(WORLD_DECORATORS);
+      Object.freeze(AIRCRAFT_MODELS);
       Object.freeze(MISSIONS);
       Object.freeze(payloadContext);
     }
@@ -10071,6 +10155,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         WORLD_PRESETS,
         AIRCRAFT_ORDER,
         WORLD_DECORATORS,
+        AIRCRAFT_MODELS,
         MISSIONS
       });
     }
@@ -14560,6 +14645,2024 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "ground_heli_pack"
     ); // @payload:ground_heli_pack
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const bear = AIRCRAFT_TYPES.tu95;
+        const bearAI = ENEMY_AI_PROFILES.tu95;
+        if (!bear || !bearAI) {
+          throw new Error("[tu22m3] expected the tu95 aircraft and AI templates");
+        }
+
+        // Elem palette, taken from the Tu-95's so the two Russian heavies read as one
+        // air force. The accent is darkened a shade because on this airframe it paints
+        // the two full-length intake trunks rather than four propeller nacelles, and
+        // those have to separate from the primary-grey body along their whole run.
+        const theme = {
+          primary: 0x9aa3a8,
+          secondary: 0x646d74,
+          accent: 0x39424a,
+          canopy: 0xa8e4ff,
+          exhaust: 0xffc47a,
+          // 42.4 m against the Tu-95's 49.5 m at scale 2.3 -> 1.97. Rounded to 1.95,
+          // which puts it a clear step below both heavies (B-52 2.2, Tu-95 2.3) and
+          // well above every fighter (0.74 - 1.16), exactly as the real sizes rank.
+          scale: 1.95,
+          variant: "tu22m3"
+        };
+
+        // BALANCE TODO: placeholder. Every flight-model number below is the Tu-95's,
+        // spread through unchanged - the Backfire should end up markedly faster and
+        // less durable than the Bear, but that is a tuning pass, not this delivery.
+        ctx.addAircraft("tu22m3", {
+          ...bear,
+          id: "tu22m3",
+          label: "Tu-22M3 BACKFIRE",
+          role: "Supersonic Strategic Bomber",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "エレム軍の超音速戦略爆撃機。可変後退翼と胴体脇の巨大なインテークが特徴で、市街・艦隊への長距離攻撃を担う。尾部銃座を備える。",
+          // Half-span at full spread: 34.3 m of real wingspan against the Bear's
+          // 50.1 m, corrected for the two aircraft's different theme scales, so the
+          // contrail leaves the geometric tip of the modelled wing.
+          tipSpan: 10.6,
+          tipZ: 2.2,
+          theme
+        }, { order: false });
+
+        // BALANCE TODO: placeholder. The Tu-95's armored heavy-bomber AI, spread
+        // unchanged apart from the two numbers that would otherwise be visibly wrong
+        // on a different-sized model: the hitbox and the tail turret's position.
+        ctx.addEnemyProfile("tu22m3", {
+          ...bearAI,
+          hitboxScale: 2.4,
+          // Local z of the turret (12.4) times this model's scale (1.95).
+          rearGunOffset: 24,
+          theme
+        });
+
+        ctx.addAircraftModel("tu22m3", {
+          // Top view, nose up, in the same 40x44 box every inline outline uses. Drawn
+          // at the mid-sweep the model is built at. Reading down: a long pointed nose,
+          // the flanks bulging out where the intake trunks start, the broad glove
+          // shoulders, the swept outer panels, then the tail with one big fin behind
+          // the swept stabilators. The narrow waist between the glove and the tail is
+          // what tells it apart from the B-52's straight slab at this size.
+          silhouette: "M20 2 L22 7 L22.5 13 L25 15 L25 20 L36 31 L36 34 L25 26 L25 30 L29.5 35 L29.5 38 L23 36.5 L23 40 L24.5 43 L15.5 43 L17 40 L17 36.5 L10.5 38 L10.5 35 L15 30 L15 26 L4 34 L4 31 L15 20 L15 15 L17.5 13 L18 7 Z",
+          build(env) {
+            const { geometry, extrudedSurface, add, addWingPivot, addFlame,
+                    primary, secondary, accent, canopy, dark, light, navL, navR } = env;
+
+            // ---- Outer wing panel -------------------------------------------------
+            // ONE side only (+x) with its inboard edge on the pivot line, the contract
+            // wingTomcat and wingFlogger both follow, because each panel is parented
+            // to its own rotating group rather than being one mirrored mesh. Drawn at
+            // the intermediate sweep the real aircraft cruises at, which on a
+            // 26-unit-long body means a leading edge that rakes 4.4 of z across 5.4 of
+            // span - a hard 40 deg, twice the Tomcat panel's rake, because a bomber
+            // wing at cruise sweep is not a fighter wing at full spread.
+            // Reaching x 7.0 off a pivot at x 3.6 gives the 10.6 half-span the
+            // airframe entry's tipSpan promises.
+            const wingBackfire = extrudedSurface([
+              [0.2, -1.9], [1.4, -1.5], [7.0, 4.2], [7.0, 5.2], [1.6, 2.4], [0.2, 2.4]
+            ], 0.3);
+
+            // Swept stabilators, cut to the same sweep line as the wing so the tail
+            // reads as one design with it - the Bear does the same thing with stabBear.
+            // Deliberately short-span (5.0 against the wing's 10.6 half-span) so it
+            // can never be mistaken for a second wing from above.
+            const stabBackfire = extrudedSurface([
+              [0, -1.3], [5.0, 2.1], [5.0, 3.0], [1.5, 2.5],
+              [-1.5, 2.5], [-5.0, 3.0], [-5.0, 2.1]
+            ], 0.28);
+
+            // ---- Fuselage ---------------------------------------------------------
+            // A long cigar in three sections, near-constant in width the whole way.
+            // The Bear tapers to a slim tail cone; this one stays fat back to the
+            // turret because the two engines live inside it, and that fullness aft is
+            // half of what makes a Backfire look like a Backfire from the side.
+            add(geometry.fuselage, primary, 0, 0, -3.2, 1.06, 1.0, 1.35);
+            add(geometry.fuselage, primary, 0, 0, 6.0, 1.1, 1.04, 1.05);
+            // Blunt, fat forebody rather than a needle. The shared cone is scaled 1.06
+            // wide against 0.9 long, so it reads as a rounded radome on the front of
+            // the tube instead of the fighter spike every other variant carries - the
+            // Backfire has a metre-class radar dish behind that fairing.
+            add(geometry.nose, primary, 0, -0.06, -11.0, 1.1, 1.0, 0.72);
+            // Radome cap: a SPHERE, not a second cone. The cone tip is what made the
+            // first two rounds read as a fighter spike; capping the taper with a
+            // rounded dome at 0.86 radius is the only way to get a blunt Tupolev nose
+            // out of primitives that are all pointed.
+            add(geometry.canopy, dark, 0, -0.1, -12.0, 0.86, 0.8, 1.5);
+            // Stepped flight deck behind it. Two crew rows, so the glazing runs long -
+            // but it sits well forward on a 26-unit body, which is what says "bomber"
+            // rather than "big fighter".
+            add(geometry.canopy, canopy, 0, 0.72, -9.4, 0.62, 0.46, 1.7);
+            add(geometry.panel, dark, 0, 0.9, -9.2, 0.44, 0.14, 0.16);
+
+            // ---- Wing glove -------------------------------------------------------
+            // The fixed inner wing: a single broad surface spanning both sides through
+            // the fuselage, thick in chord and heavily raked. On the real aircraft the
+            // glove is nearly as much wing as the moving panels are, and it is what
+            // carries the silhouette when the wing is swept fully aft.
+            // Widened to x 4.4 so it stands clear of the 1.72-offset intake trunks
+            // instead of hiding inside them - a glove that does not visibly emerge
+            // from the flank is not a glove.
+            // The outboard trailing edge is cut FORWARD (z 1.9 at x 4.4 against 3.8 on
+            // the centreline) so the moving panel emerges from behind it instead of
+            // being buried inside it - with a square glove the two surfaces overlapped
+            // and the wing read as a stub.
+            const glove = extrudedSurface([
+              [0, -4.8], [2.0, -4.6], [5.0, -1.2], [5.0, 2.2],
+              [0, 4.2], [-5.0, 2.2], [-5.0, -1.2], [-2.0, -4.6]
+            ], 0.5);
+            add(glove, secondary, 0, -0.34, 0.2);
+
+            // ---- Swing wings ------------------------------------------------------
+            // Low-mounted, at y -0.3 rather than the MiG-23's shoulder height: the
+            // Backfire's wing comes out of the bottom of the body, which is the third
+            // read after the trunks and the length.
+            // Pivot at x 3.6, outboard of the 3.5 outer face of the intake trunk, so
+            // the panel root is clear of the duct rather than intersecting it.
+            addWingPivot(wingBackfire, secondary, -1, -3.6, -0.4, -0.4);
+            addWingPivot(wingBackfire, secondary, 1, 3.6, -0.4, -0.4);
+
+            // ---- Intake trunks ----------------------------------------------------
+            // The signature. Two enormous rectangular ducts bolted to the flanks,
+            // starting level with the cockpit and running most of the way to the tail
+            // - far longer than the MiG-23's or MiG-31's side boxes, which stop at the
+            // wing root. Each is built from a long box for the trunk, a raked splitter
+            // plate at its mouth and a shallower fairing on top that blends the duct
+            // into the fuselage shoulder.
+            for (const side of [-1, 1]) {
+              // The trunk itself: 1.5 wide, 2.0 deep and 14.4 long, set out at x 2.05
+              // so its inner face is clear of the 1.55-radius fuselage and its outer
+              // face stands at x 2.8. That width is the whole read - at 0.92 it was a
+              // dark stripe painted on the body; at 1.5 it is a duct bolted to it.
+              // Mouth at z -5.4, tail end at z 7.2: the duct starts BEHIND the cockpit
+              // and runs most of the way to the nozzles, which is the direction that
+              // matters. Reaching forward past the canopy (the first attempt's z -6.6
+              // mouth) made the aircraft read nose-heavy and hid the forebody; running
+              // it back past the stabilator root turned the whole tail into one black
+              // brick from the side, so it stops short of them.
+              // 2.3 wide against the fuselage's 1.7 radius and set out at x 2.35, so
+              // the duct spans x 1.2 - 3.5 and reads as a BOX beside the body from
+              // directly above. At 1.5 wide it was a sliver; the trunks are the
+              // identification, so they get the width the real aircraft's do.
+              add(geometry.panel, accent, side * 2.35, -0.2, 0.9, 2.3, 2.1, 12.6);
+              // Raked intake mouth: the lip plate at the front of the duct, canted
+              // outward so the front quarter shows a rectangular hole, not a flat end.
+              add(geometry.panel, dark, side * 2.35, -0.2, -5.3, 2.36, 2.16, 0.5);
+              add(geometry.panel, dark, side * 3.48, -0.2, -3.9, 0.2, 2.04, 3.6, side * -0.14);
+              // Shoulder fairing blending the duct top into the spine, and the
+              // boundary-layer splitter gap plate between duct and fuselage skin -
+              // which is why the trunks stand off the body instead of merging with it.
+              add(geometry.panel, secondary, side * 2.0, 0.98, 0.8, 1.5, 0.44, 11.2);
+              add(geometry.panel, dark, side * 1.22, -0.2, -1.6, 0.14, 1.8, 8.0);
+            }
+
+            // ---- Tail -------------------------------------------------------------
+            // ONE fin, tall and hard-swept, sitting on a dorsal fillet that runs
+            // forward along the spine. The stabilators are set below and behind it.
+            add(geometry.fin, secondary, 0, 0.66, 6.8, 1.2, 2.0, 1.65);
+            add(geometry.panel, secondary, 0, 0.92, 3.6, 0.36, 0.5, 5.4);
+            // Stabilators AHEAD of the nozzles at z 8.6, not out past them - on the
+            // real aircraft they sit on the sides of the engine bay, and pushing them
+            // any further aft is what made them read as a second wing.
+            add(stabBackfire, primary, 0, -0.2, 8.6, 1.0, 1, 1.0);
+
+            // ---- Engines ----------------------------------------------------------
+            // Twin nozzles side by side in the tail, close-coupled at +/-0.86 - the
+            // two engines are buried in the aft fuselage and exhaust through a single
+            // flat tail face, which is why there are no nacelles anywhere on this
+            // aircraft. Afterburners: this is the only heavy in the game with them.
+            add(geometry.rearBody, secondary, -0.86, -0.1, 9.4, 0.9, 0.9, 1.3);
+            add(geometry.rearBody, secondary, 0.86, -0.1, 9.4, 0.9, 0.9, 1.3);
+            add(geometry.nozzle, accent, -0.86, -0.1, 11.3, 1.25, 1.25, 1.3);
+            add(geometry.nozzle, accent, 0.86, -0.1, 11.3, 1.25, 1.25, 1.3);
+            addFlame(-0.86, -0.1, 12.9, 1.15, 1.15);
+            addFlame(0.86, -0.1, 12.9, 1.15, 1.15);
+
+            // ---- Tail turret ------------------------------------------------------
+            // At z 12.4, which is the rearGunOffset 24 in the AI profile divided by
+            // this model's scale of 1.95 - so the cannon is visibly where the rounds
+            // come from, exactly as on the B-52 and the Bear.
+            add(geometry.panel, dark, 0, 0.34, 12.4, 0.8, 0.72, 1.2);
+            add(geometry.missileBody, dark, -0.26, 0.34, 13.4, 0.5, 0.5, 0.5);
+            add(geometry.missileBody, dark, 0.26, 0.34, 13.4, 0.5, 0.5, 0.5);
+
+            // ---- Details ----------------------------------------------------------
+            // Anti-glare panel ahead of the windscreen, a ventral store on the
+            // centreline recess (the Kh-22 the aircraft exists to carry), and nav
+            // lights on the GLOVES rather than the tips, because the tips move.
+            add(geometry.panel, dark, 0, 0.48, -10.6, 0.5, 0.08, 1.9);
+            add(geometry.missileBody, light, 0, -1.5, 0.4, 1.7, 1.7, 1.9);
+            add(geometry.missileNose, dark, 0, -1.5, -3.6, 1.6, 1.6, 1.6);
+            // Nav lights on the GLOVE tips at x 5.0, not the wing tips - the tips move.
+            add(geometry.canopy, navL, -5.0, -0.32, -0.6, 0.16, 0.16, 0.16);
+            add(geometry.canopy, navR, 5.0, -0.32, -0.6, 0.16, 0.16, 0.16);
+          }
+        });
+      },
+      "aircraft_tu22m3"
+    ); // @payload:aircraft_tu22m3
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ENEMY_MISSILE_PROFILES } = ctx.tables;
+        const su25 = AIRCRAFT_TYPES.su25;
+        const su25AI = ENEMY_AI_PROFILES.su25;
+        const su25Missile = ENEMY_MISSILE_PROFILES.su25;
+        if (!su25 || !su25AI || !su25Missile) {
+          throw new Error("[su24m] expected the Su-25 aircraft / AI / missile templates to exist");
+        }
+
+        // Elem (Russian-side) palette: the same olive-over-grey the MiG-23 and Su-25
+        // wear, so the Fencer reads as belonging to the same air force at a glance,
+        // with the warm orange accent every Elem airframe here carries.
+        const theme = {
+          primary: 0x82887a,
+          secondary: 0x555b4d,
+          accent: 0xba5e2a,
+          canopy: 0xa8e4ff,
+          exhaust: 0xff9a42,
+          // Set from the model's own drawn length, not by eye. The body below runs
+          // z -13.2 (pitot) to +8.5 (nozzle) = 21.7 units, so 1.18 puts the Fencer
+          // at 25.6 world units for its real 22.5 m = 1.14 units/m.
+          //
+          // The roster's existing ratios, measured the same way, are: MiG-23 1.04,
+          // Su-25 1.18, Tu-95 1.34, F-16 1.37. 1.14 sits inside that band, and the
+          // resulting lengths are the ones that matter: 25.6 against the F-16's
+          // 20.5 (visibly bigger, as 22.5 m against 15 m should be) and against the
+          // Tu-95's 66.5 (visibly a fraction of it, as 22.5 m against 49.5 m should
+          // be). Cross-checked against the MiG-31, the roster's other 22.6 m
+          // airframe, which lands at 25.4 - within 1% of this one.
+          scale: 1.18,
+          variant: "su24m"
+        };
+
+        ctx.addAircraft("su24m", {
+          ...su25,
+          id: "su24m",
+          label: "Su-24M FENCER",
+          role: "Variable-Geometry Strike",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "敵の可変翼前線爆撃機。並列複座の角張った機体で低空を這うように侵攻する。鈍重だが頑丈で、迎撃されるまで爆装を降ろさない。",
+          // BALANCE TODO: placeholder. Every flight-model number below this line is
+          // the Su-25's, inherited wholesale. A 1400 km/h swing-wing bomber is not a
+          // 250 km/h CAS aircraft and these will not survive a balance pass.
+          // Only the geometry-linked fields are authored here:
+          //   tipSpan  9.35 = the pivot station (2.45) plus the panel's outboard edge
+          //                   (6.9), so the contrail leaves the real tip rather than
+          //                   floating inboard of it
+          //   tipZ     3.45 = that tip's fore-aft station: the pivot sits at z 1.2 and
+          //                   the panel's outboard edge spans z 1.5..3.0 on it
+          tipSpan: 9.35, tipZ: 3.45,
+          theme
+        }, { order: false });
+
+        ctx.addEnemyProfile("su24m", {
+          ...su25AI,
+          // BALANCE TODO: placeholder. Inherited from the Su-25's "armored" branch -
+          // it flies a line and does not jink, which is the right shape for a strike
+          // aircraft, but the envelope, the gun reach and the hit ceiling are all the
+          // Frogfoot's and have not been tuned for a faster, larger target.
+          radarColor: "#ff9a4a",
+          tracerColor: 0xff8a3a,
+          explosionColor: 0xff9d48,
+          theme
+        });
+
+        ctx.addEnemyMissileProfile("su24m", {
+          ...su25Missile
+          // BALANCE TODO: placeholder. The Su-25's short-range self-defence round,
+          // unchanged. The real aircraft carries R-60s for the same job, so the
+          // template is at least the right class of weapon.
+        });
+
+        ctx.addAircraftModel("su24m", {
+          // Top view, 40x44 box, nose up, traced off the model's own TOP cell so the
+          // HUD outline and the aircraft agree. Four features carry it, in the order
+          // they read:
+          //   1. the long WIDE forebody (x 17.4..22.6 for a third of the length) -
+          //      the side-by-side cockpit, and the only nose in the roster that does
+          //      not pinch to a point,
+          //   2. the intake boxes stepping OUT again at x 15.2/24.8, which no other
+          //      outline here does - every other body narrows monotonically aft,
+          //   3. two swept outer panels off the gloves, drawn at the spread setting,
+          //   4. wide stabilators well aft, with the tail cone between them.
+          // Against the MiG-23's outline (a spindle with wings) this is a plank.
+          silhouette: "M20 1 L21.4 5 L22.2 9.5 L22.6 13 L22.6 16.5 L24.8 17.2 L24.8 25.5 L23 26 L23 27 L36.5 32.5 L36.5 36.5 L23 33 L23 34.5 L31.5 38 L31.5 41 L22.6 39 L22.6 40.2 L21 43 L19 43 L17.4 40.2 L17.4 39 L8.5 41 L8.5 38 L17 34.5 L17 33 L3.5 36.5 L3.5 32.5 L17 27 L17 26 L15.2 25.5 L15.2 17.2 L17.4 16.5 L17.4 13 L17.8 9.5 L18.6 5 Z",
+
+          build(env) {
+            const {
+              geometry, extrudedSurface, primary, secondary, accent, canopy, dark, light,
+              navL, navR, add, addWingPivot, addFlame
+            } = env;
+
+            // ---- Planforms authored for this airframe --------------------------
+            // Outer wing panel, ONE side only (+x) with its inboard edge on the pivot
+            // line - the same contract wingTomcat and wingFlogger follow, because each
+            // panel hangs off its own rotating group. It reaches 6.9 out from the
+            // pivot at x 2.45, so the tip lands at tipSpan 9.35 at the modelled
+            // spread setting. The real Fencer's outer panel is bigger and much
+            // squarer than a MiG-23's (17.6 m spread against 13.97 m): a deep,
+            // near-constant chord and shallow rake, not a fighter's raked triangle.
+            const wingSu24 = extrudedSurface([
+              [0.2, -2.6], [1.1, -2.3], [6.9, 1.5], [6.9, 3.0], [1.5, 3.0], [0.2, 3.0]
+            ], 0.3);
+            // Fixed glove: the part of the wing that does NOT move. Drawn as one
+            // full-span surface on the centreline (the stabRaptor / stabBear
+            // contract), with a hard 45-deg leading-edge rake out to the hinge at
+            // +/-2.45 and a straight trailing edge. Reaching a little past the hinge
+            // (2.6) leaves no gap when the panel is drawn at spread.
+            const gloveSu24 = extrudedSurface([
+              [0, -3.4], [2.6, -1.0], [2.6, 3.0], [1.4, 3.2],
+              [-1.4, 3.2], [-2.6, 3.0], [-2.6, -1.0]
+            ], 0.32);
+            // Stabilators: all-moving slabs, wide and low-swept, because a body this
+            // broad needs a tail that reaches outside it. Drawn as ONE full-span
+            // surface and added on the centreline (the stabRaptor / stabBear
+            // contract) - adding it per side would draw two overlapping tailplanes.
+            const stabSu24 = extrudedSurface([
+              [0, -2.0], [6.4, 0.7], [6.4, 2.4], [1.8, 2.8],
+              [-1.8, 2.8], [-6.4, 2.4], [-6.4, 0.7]
+            ], 0.28);
+
+            // ---- Slab-sided box fuselage ----------------------------------------
+            // The Fencer is a welded box, and unlike the MiG-31 - which squares off a
+            // `fuselage` CYLINDER with plates bolted to its flanks - there is no
+            // cylinder here at all. A round core of radius 1.55 would poke through
+            // any slab narrow enough to look like a Su-24's flat side, so the whole
+            // body is boxes: one long centre section, flat top and flat belly, with
+            // the flanks standing proud of both.
+            add(geometry.panel, primary, 0, 0.0, 1.2, 3.0, 2.2, 9.8);
+            add(geometry.panel, secondary, 0, 1.16, 1.2, 3.16, 0.26, 9.4);
+            add(geometry.panel, secondary, 0, -1.14, 1.4, 3.1, 0.26, 8.8);
+            add(geometry.panel, primary, -1.58, 0.0, 1.2, 0.24, 2.1, 9.4);
+            add(geometry.panel, primary, 1.58, 0.0, 1.2, 0.24, 2.1, 9.4);
+
+            // ---- Wide flat-sided forebody: the identification --------------------
+            // Side-by-side seating makes the forward fuselage the WIDEST part of the
+            // aeroplane ahead of the wing, and flat-sided with it. Where every other
+            // airframe in the roster tapers a cone into a spindle, this one carries a
+            // slab 3.24 wide against 2.0 tall for most of its length and only then
+            // chisels down. That ratio, not the outline, is the whole read.
+            //
+            // Four boxes stepping down in width, and every step is SHALLOW: the plan
+            // taper from 3.24 to 1.9 happens over 7 units of z. Cutting it faster (or
+            // capping it with a long cone) puts a needle back on the front, which was
+            // the first thing that went wrong here.
+            add(geometry.panel, primary, 0, 0.02, -5.0, 3.24, 2.0, 4.0);
+            add(geometry.panel, primary, 0, -0.02, -8.0, 3.0, 1.6, 2.2);
+            add(geometry.panel, primary, 0, -0.06, -9.9, 2.5, 1.2, 1.8);
+            add(geometry.panel, primary, 0, -0.1, -11.2, 1.9, 0.86, 1.0);
+            // Chined flanks on the forebody, standing proud of the box so the flat
+            // side reads as a surface with an edge on it rather than a plain slab.
+            add(geometry.panel, secondary, -1.7, 0.02, -5.0, 0.24, 1.76, 3.8);
+            add(geometry.panel, secondary, 1.7, 0.02, -5.0, 0.24, 1.76, 3.8);
+            // Radome: a cone squashed WIDE (1.05 x) and FLAT (0.4 y) and, crucially,
+            // SHORT (0.34 z = 1.4 units of cone). Anything longer puts a needle back
+            // on the front of a top view that spent four boxes staying a plank, which
+            // is the single mistake this forebody exists to avoid.
+            add(geometry.nose, dark, 0, -0.1, -12.0, 1.05, 0.42, 0.34);
+            // Stub pitot boom, for the same reason.
+            add(geometry.panel, dark, 0, -0.1, -12.9, 0.09, 0.09, 0.55);
+
+            // ---- Side-by-side cockpit --------------------------------------------
+            // TWO canopies abreast at +/-0.86, not one on the centreline. Nothing
+            // else in the roster does this: every other cockpit here is a single
+            // bubble, tandem at most, so a pair of hoods sitting shoulder to shoulder
+            // identifies the aircraft from directly above or in front. A centre rib
+            // and a flat windscreen plate tie them into one glasshouse.
+            add(geometry.canopy, canopy, -0.86, 1.06, -5.2, 0.74, 0.46, 1.4);
+            add(geometry.canopy, canopy, 0.86, 1.06, -5.2, 0.74, 0.46, 1.4);
+            add(geometry.panel, dark, 0, 1.08, -5.2, 0.14, 0.42, 2.6);
+            add(geometry.panel, dark, 0, 0.76, -7.0, 2.5, 0.2, 0.7);
+            // Anti-glare panel between the glass and the radome.
+            add(geometry.panel, dark, 0, 0.6, -8.8, 2.1, 0.12, 2.9);
+
+            // ---- Box intakes on the fuselage SIDES --------------------------------
+            // Rectangular, vertical-sided, bolted flat to the flanks and running the
+            // length of the mid-body. Bigger and further forward than the MiG-23's,
+            // and outboard of the slab (x 2.15 against the flank at 1.58) so they
+            // stand off the body as their own boxes rather than blending into it -
+            // which is exactly how the real aircraft's look.
+            //
+            // Painted in `secondary`, not `accent`. A box this large in the warm
+            // accent colour reads as a fuel tank strapped to the side rather than as
+            // structure - it swamped the side view when it was tried. `accent` stays
+            // where the rest of the roster puts it: on the intake LIP and the
+            // nozzles, as a trim line rather than a mass.
+            add(geometry.panel, secondary, -2.15, -0.24, 0.6, 0.86, 1.85, 6.8);
+            add(geometry.panel, secondary, 2.15, -0.24, 0.6, 0.86, 1.85, 6.8);
+            // Intake lips, then the dark faces inside them so they read as breathing.
+            add(geometry.panel, accent, -2.15, -0.24, -2.86, 0.9, 1.9, 0.3);
+            add(geometry.panel, accent, 2.15, -0.24, -2.86, 0.9, 1.9, 0.3);
+            add(geometry.panel, dark, -2.15, -0.24, -2.6, 0.8, 1.72, 0.34);
+            add(geometry.panel, dark, 2.15, -0.24, -2.6, 0.8, 1.72, 0.34);
+            // Raked splitter plates standing outboard of each lip.
+            add(geometry.panel, dark, -2.66, -0.24, -2.5, 0.16, 1.8, 1.4, 0.16);
+            add(geometry.panel, dark, 2.66, -0.24, -2.5, 0.16, 1.8, 1.4, -0.16);
+
+            // ---- Shoulder-mounted variable geometry -------------------------------
+            // Fixed glove sitting ON TOP of the box at y 1.06 - shoulder height, on
+            // the top deck and above the intakes rather than through them. This is
+            // the third of the three features: the MiG-23 carries its gloves mid-body
+            // on a spindle and the F-14 carries them at pancake level, so the same
+            // swing-wing machinery reads differently on all three.
+            //
+            // The glove is drawn as its OWN raked planform rather than a plain box,
+            // because that is what makes the variable geometry read: a fixed stub
+            // with a hard leading-edge rake, and a separate panel hinged off its
+            // outboard end. A rectangular glove (tried first) blends into the panel
+            // and the whole wing comes out looking like one fixed trapezoid.
+            add(gloveSu24, secondary, 0, 1.06, 1.2);
+            // Hinge fairings over the pivot line - the visible seam between what
+            // moves and what does not.
+            add(geometry.panel, dark, -2.45, 1.2, 0.4, 0.3, 0.34, 3.4);
+            add(geometry.panel, dark, 2.45, 1.2, 0.4, 0.3, 0.34, 3.4);
+            // The panels themselves, each on its own pivot group at the glove's
+            // outboard end. Same call the MiG-23 and F-14 branches make.
+            //
+            // ★ HOST GAP: the inline branches do `wingPivots.push(addWingPivot(...))`
+            // - the helper only records the group in `parts`, it does NOT put it in
+            // the sweep list. A payload is handed `addWingPivot` but not the
+            // `wingPivots` array, so these two groups are built correctly, carry the
+            // right `userData.sweepSide`, and are simply never driven by
+            // updateWingSweep. The wing is modelled at its spread setting and stays
+            // there. The fix is one line in the host (have addWingPivot push into
+            // wingPivots itself, which is what every existing caller already does by
+            // hand); this payload needs no edit when that lands.
+            addWingPivot(wingSu24, secondary, -1, -2.45, 1.06, 1.2);
+            addWingPivot(wingSu24, secondary, 1, 2.45, 1.06, 1.2);
+
+            // ---- Twin engines buried in the rear box ------------------------------
+            // Side by side inside the body, not in podded nacelles: the box is what
+            // encloses them, and only the nozzles come out the back.
+            add(geometry.rearBody, secondary, -0.8, -0.1, 6.0, 1.05, 1.05, 1.3);
+            add(geometry.rearBody, secondary, 0.8, -0.1, 6.0, 1.05, 1.05, 1.3);
+            add(geometry.nozzle, accent, -0.8, -0.1, 7.6, 1.25, 1.25, 1.25);
+            add(geometry.nozzle, accent, 0.8, -0.1, 7.6, 1.25, 1.25, 1.25);
+            addFlame(-0.8, -0.1, 9.0, 1.12, 1.12);
+            addFlame(0.8, -0.1, 9.0, 1.12, 1.12);
+
+            // ---- ONE fin, and the tail --------------------------------------------
+            // A single tall fin on the centreline with a long dorsal fillet running
+            // forward into the spine. Against the MiG-31 and the Flanker family -
+            // twin canted fins - one big fin standing on a wide flat box is what the
+            // Fencer looks like from astern.
+            add(geometry.fin, secondary, 0, 1.18, 3.8, 1.05, 0.95, 1.05);
+            add(geometry.panel, secondary, 0, 1.26, 1.4, 0.44, 0.3, 4.4);
+            add(stabSu24, primary, 0, -0.3, 7.2);
+            // Ventral strakes under the tail.
+            add(geometry.panel, dark, -1.05, -1.5, 5.8, 0.16, 0.8, 2.4, 0.26);
+            add(geometry.panel, dark, 1.05, -1.5, 5.8, 0.16, 0.8, 2.4, -0.26);
+
+            // ---- Strike load ------------------------------------------------------
+            // A bomber flies with something under it, and the Su-24's stores live on
+            // the fixed structure - the swinging panels cannot carry pylons, which is
+            // why the real aircraft's load hangs inboard under the gloves and belly.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 1.1, -1.35, 1.4, 0.24, 0.42, 2.0);
+              add(geometry.missileBody, light, side * 1.1, -1.72, 1.6, 1.3, 1.3, 1.25);
+              add(geometry.missileNose, dark, side * 1.1, -1.72, -1.5, 1.25, 1.25, 1.15);
+              add(geometry.panel, dark, side * 2.7, -0.9, 1.6, 0.24, 0.55, 1.8);
+              add(geometry.missileBody, light, side * 2.7, -1.36, 1.8, 1.15, 1.15, 1.1);
+              add(geometry.missileNose, dark, side * 2.7, -1.36, -0.9, 1.1, 1.1, 1.05);
+            }
+
+            // ---- Nav lights on the GLOVES -----------------------------------------
+            // The tips move, so the lights go where they cannot: on the fixed glove,
+            // the same choice the MiG-23 and F-14 branches make.
+            // Placed at the glove's outboard LEADING corner and just ahead of the
+            // hinge fairing rather than under it - an earlier placement at x 2.5 /
+            // z -0.8 put both lamps inside the fairing box and neither was visible
+            // from any of the four preview angles.
+            add(geometry.canopy, navL, -2.62, 1.24, -0.6, 0.15, 0.15, 0.15);
+            add(geometry.canopy, navR, 2.62, 1.24, -0.6, 0.15, 0.15, 0.15);
+          }
+        });
+      },
+      "aircraft_su24m"
+    ); // @payload:aircraft_su24m
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ENEMY_MISSILE_PROFILES } = ctx.tables;
+        const su35 = AIRCRAFT_TYPES.su35;
+        const su35AI = ENEMY_AI_PROFILES.su35;
+        const su35Missile = ENEMY_MISSILE_PROFILES.su35 || ENEMY_MISSILE_PROFILES.su33;
+
+        if (!su35 || !su35AI || !su35Missile) {
+          throw new Error("[su34] expected the Su-35S aircraft/AI templates and a Russian missile profile to copy");
+        }
+
+        // Elem (Russian) palette, taken from the Su-33's carrier-grey rather than the
+        // Su-35S's near-black so the strike aircraft reads as a different machine in
+        // the same air force. The exhaust stays WARM amber, which is the faction tell
+        // every Russian airframe in the roster carries.
+        const su34Theme = {
+          primary: 0x6f7a72,
+          secondary: 0x424b46,
+          accent: 0x8a6f3c,
+          canopy: 0x9fe6ff,
+          exhaust: 0xffc79a,
+          // Su-34 is 23.3 m long against the Su-35S's 21.9 m at scale 1.09, and the
+          // F-16 sets the ladder's origin at 15.0 m = 1.00. 23.3/21.9 x 1.09 = 1.16,
+          // which also lands it just under the MiG-31 (26.9 m) - correct: the
+          // Fullback is the second-longest fighter in the roster, not the longest.
+          scale: 1.16,
+          variant: "su34"
+        };
+
+        // BALANCE TODO: placeholder. Every performance number below is the Su-35S's,
+        // spread verbatim. A Fullback should be slower, far less agile in roll and
+        // pitch, and considerably tougher than a superiority fighter - none of that
+        // is expressed yet.
+        ctx.addAircraft("su34", {
+          ...su35,
+          id: "su34",
+          label: "Su-34 FULLBACK",
+          role: "Strike Fighter-Bomber",
+          tag: "ENEMY",
+          blurb: "並列複座の重戦闘爆撃機。幅広の「カモノハシ」機首に二人の乗員を収め、装甲コックピットと大搭載量で敵地の目標を叩く。空戦機動は鈍いが、対地攻撃能力は敵航空戦力で随一。",
+          // Half-span 8.9 is where the wingTerminator planform's geometric tip
+          // actually is, so the contrail leaves the real wingtip. tipZ matches the
+          // Su-37/Su-35S station because the wing sits at the same z on this model.
+          tipSpan: 8.9,
+          tipZ: 2.6,
+          theme: su34Theme
+        }, { order: false });
+
+        // BALANCE TODO: placeholder. Spread from the Su-35S's "evasive" profile, which
+        // is the wrong behaviour for a bomber - a strike aircraft should run a
+        // formation/ingress pattern and break off rather than jink like an ace.
+        ctx.addEnemyProfile("su34", {
+          ...su35AI,
+          behavior: "formation",
+          // The only two fields moved off the template, and both are readability
+          // rather than balance: the hitbox has to match a visibly bigger airframe,
+          // and the radar blip has to be a different colour from the Su-35S's gold
+          // or the player cannot tell the strike package from its escort.
+          hitboxScale: 1.12,
+          radarColor: "#c08a3a",
+          theme: su34Theme
+        });
+
+        // BALANCE TODO: placeholder. Copied wholesale from the closest Russian
+        // fighter's air-to-air launcher; a Fullback's missile envelope has not been
+        // considered at all.
+        ctx.addEnemyMissileProfile("su34", { ...su35Missile });
+
+        // ---- The model ---------------------------------------------------------
+        // Read against the inline flankerd / flankere / terminator branches, which
+        // are the same real fuselage. What this build changes from them is entirely
+        // the front end, plus the stinger - which is exactly what separates a Su-34
+        // from a Su-27 in life.
+        ctx.addAircraftModel("su34", {
+          // Top view, 40x44, nose up, one closed path - same box and same style as
+          // SILHOUETTE_PATHS' flankere entry, which this is derived from. The three
+          // edits that make it a Fullback, in the order they read:
+          //  - the nose is a BLUNT FLAT face, 5.6 wide across x 17.2-22.8 at y 3,
+          //    where every other path in the table converges on a single point at 20
+          //  - the canards are back (the shoulders out to x 10 / 30 at y 14-18.5,
+          //    the same feature the flankerd path carries and flankere does not)
+          //  - the tail runs past the stabilators to a centreline STINGER: the spike
+          //    at x 19-21 reaching y 43.5, aft of the nozzle line at y 41
+          silhouette:
+            "M17.2 3 L22.8 3 L24 8 L24.6 12 L25 14 L30 16 L30 18.5 L25 17.5 L25.2 19.5 " +
+            "L37 26.5 L37 30 L25 30 L27.5 32.5 L27.5 35.5 L25 34.5 L25 36 L32 38.5 L32 41.5 " +
+            "L23 39.5 L21.6 41 L21 43.5 L19 43.5 L18.4 41 L17 39.5 L8 41.5 L8 38.5 L15 36 L15 34.5 " +
+            "L12.5 35.5 L12.5 32.5 L15 30 L3 30 L3 26.5 L14.8 19.5 L15 17.5 L10 18.5 L10 16 " +
+            "L15 14 L15.4 12 L16 8 Z",
+          build(env) {
+            const { geometry, extrudedSurface, add, addFlame,
+                    primary, secondary, accent, canopy, dark, light, navL, navR } = env;
+
+            // ★ THE FEATURE: the "platypus" (утконос) forebody. The Flanker's nose is
+            // a round radome on a slim boom; the Su-34's is a broad FLAT pan holding
+            // two crew SIDE BY SIDE, wider than it is tall and wider than the
+            // fuselage behind it. Everything else on this airframe is a Flanker, so
+            // if this does not read the model has failed.
+            //
+            // Built as a plan-view surface rather than a scaled cone, because a cone
+            // squashed in y is still round in plan and the whole point is that this
+            // one is not.
+            //
+            // Proportion is the whole trick: 6.2 ACROSS against 7.1 long, so the pan
+            // is nearly as wide as it is long. The fuselage cylinder behind it is
+            // 3.1 across at its widest, which means the forebody is DOUBLE the width
+            // of the body it is attached to - the single measurement that decides
+            // whether this reads as a Fullback or as a Flanker with a fat nose.
+            //
+            // The two points at +/-0.62 on the front edge are the second half of it:
+            // the planform STOPS at a 1.24-wide flat face instead of converging on a
+            // single apex. A pan with a point on it just reads as a fat radome, which
+            // is the exact mistake this shape exists to avoid.
+            const platypus = extrudedSurface([
+              [-0.62, -4.7], [0.62, -4.7], [1.35, -4.2], [2.35, -2.6], [3.1, 0.2], [3.05, 2.5],
+              [0, 2.5],
+              [-3.05, 2.5], [-3.1, 0.2], [-2.35, -2.6], [-1.35, -4.2]
+            ], 0.86);
+            // The same planform again, thinner and slightly higher: the upper deck of
+            // the pan, which is what gives the nose a flat TOP as well as a flat
+            // plan. Two stacked slabs read as one flattened box from the side, and a
+            // total depth of 1.25 against 6.2 of width is what "flat" means here.
+            const platypusDeck = extrudedSurface([
+              [-0.5, -4.1], [0.5, -4.1], [1.15, -3.7], [2.05, -2.2], [2.7, 0.3], [2.65, 2.4],
+              [0, 2.4],
+              [-2.65, 2.4], [-2.7, 0.3], [-2.05, -2.2], [-1.15, -3.7]
+            ], 0.4);
+
+            // Core fuselage, pulled AFT and shortened (z-scale 0.72 = 8.3 long
+            // against the Flanker branches' 11.3). The inline Flankers run the
+            // cylinder forward to z -6.7 because a cone sits on the end of it; here
+            // the pan is the forebody, and a full-length cylinder underneath it reads
+            // in the top view as a spine laid over the nose - which is the one thing
+            // that stops the pan being read as the nose at all.
+            add(geometry.fuselage, primary, 0, 0.02, 1.6, 0.96, 0.72, 0.66);
+            add(platypus, primary, 0, -0.14, -5.3);
+            add(platypusDeck, primary, 0, 0.26, -5.2);
+            // The shoulder: the pan's 6.2 of width has to come DOWN to the 3.0-wide
+            // body somewhere, and if it does not the trailing edge of the forebody is
+            // a wall you can see from above. One tapering plan surface runs from the
+            // pan's aft edge back into the wing root and does that in a straight
+            // line, which is also how the real aircraft's forebody fairs in.
+            const shoulder = extrudedSurface([
+              [0, -2.6], [3.0, -2.6], [1.9, 2.2], [0, 2.6],
+              [-1.9, 2.2], [-3.0, -2.6]
+            ], 0.66);
+            add(shoulder, primary, 0, -0.08, -2.3);
+            // Dark radome across the blunt face. Every other airframe in the roster
+            // wears its radome as a cone on the end of a point; here it is a wide low
+            // SLAB capping a flat face, and there is deliberately no cone anywhere on
+            // the front of this aircraft - one would undo the pan in a single part.
+            add(geometry.panel, dark, 0, -0.12, -10.1, 1.45, 0.52, 0.55);
+            // ★ Side-by-side cockpit: TWO low blisters, not the Flanker's one tall
+            // narrow bubble, and not one wide one either. A single sphere scaled to
+            // 1.7 in x is still a circle from above, which is exactly the read a
+            // one-seat canopy gives; a pair at +/-0.72 is unmistakably a crew of two
+            // sitting shoulder to shoulder. They sit low (y 0.4 against the Su-35S's
+            // 0.88) because this is a cockpit the crew walk into rather than climb
+            // onto, and low+wide is the whole of what "platypus" describes.
+            add(geometry.canopy, canopy, -0.72, 0.4, -5.4, 0.78, 0.42, 1.25);
+            add(geometry.canopy, canopy, 0.72, 0.4, -5.4, 0.78, 0.42, 1.25);
+            // The frame between the two crew stations, which is what stops the pair
+            // merging back into one blister at range.
+            add(geometry.panel, dark, 0, 0.5, -5.4, 0.16, 0.3, 2.5);
+            // Chine strips along the straight flat sides of the pan, which is what
+            // gives it a hard edge in the three-quarter views.
+            add(geometry.panel, dark, -2.95, -0.1, -5.2, 0.2, 0.24, 3.6);
+            add(geometry.panel, dark, 2.95, -0.1, -5.2, 0.2, 0.24, 3.6);
+
+            // Blended centre section ahead of the tunnel - the Flanker's continuous
+            // lifting body, identical treatment to the inline branches.
+            add(geometry.panel, primary, 0, -0.16, 0.9, 3.6, 0.52, 7.4);
+            add(geometry.wingTerminator, secondary, 0, -0.05, 1.7);
+            // LERX from the cockpit sides into the wing root.
+            add(geometry.panel, secondary, -1.55, 0.04, -3.6, 1.0, 0.12, 4.4);
+            add(geometry.panel, secondary, 1.55, 0.04, -3.6, 1.0, 0.12, 4.4);
+            // ★ Canards, the same full-span foreplane the Su-33 and Su-37 carry,
+            // added ONCE on the centreline - two per-side copies would draw
+            // overlapping surfaces through the forebody.
+            //
+            // Mounted at y 0.52, ABOVE the LERX (0.04) and above the forebody deck,
+            // because on this airframe the strake and the wide nose are both big
+            // enough to swallow a foreplane sitting at the Su-37's height. Stretched
+            // 1.2 in span so the tips reach 5.2 - clear of the pan's 3.1 half-width
+            // by two full units, which is what makes them read in plan at all. Painted
+            // `primary` against the `secondary` strake underneath so the two surfaces
+            // separate in the top view instead of merging into one shoulder.
+            add(geometry.canardTerminator, primary, 0, 0.52, -2.2, 1.2, 1, 1.1);
+
+            // Widely spaced nacelles with the tunnel open between them.
+            add(geometry.rearBody, secondary, -2.0, -0.1, 5.4, 0.94, 0.94, 1.65);
+            add(geometry.rearBody, secondary, 2.0, -0.1, 5.4, 0.94, 0.94, 1.65);
+            // Intakes hang BELOW the shoulder surface (y -0.6 against the shoulder's
+            // -0.08 on a 0.66-thick slab) rather than at the Flanker branches' -0.42.
+            // The forebody on this airframe is wide enough to cover them completely
+            // from above at the inline station, and the accent-painted intake lips
+            // are one of the two places the faction colour shows on the airframe.
+            add(geometry.intake, accent, -2.05, -0.6, -1.2, 1.0, 1.2, 1.65);
+            add(geometry.intake, accent, 2.05, -0.6, -1.2, 1.0, 1.2, 1.65);
+            // Straight nozzles: no vectoring on a Fullback.
+            add(geometry.nozzle, accent, -2.0, -0.1, 8.8, 1.18, 1.18, 1.18);
+            add(geometry.nozzle, accent, 2.0, -0.1, 8.8, 1.18, 1.18, 1.18);
+            addFlame(-2.0, -0.1, 10.2, 1.1, 1.1);
+            addFlame(2.0, -0.1, 10.2, 1.1, 1.1);
+
+            // ★ THE STINGER: the long tail boom that runs out of the tunnel BETWEEN
+            // the two nacelles and past both nozzles. On the real aircraft it houses
+            // the rearward-facing radar, and it is the Su-34's second identifying
+            // feature after the nose - from behind or from above, no other Flanker
+            // has anything on the centreline aft of the engines.
+            //
+            // The boom reaches z 13.6 against the nozzles' trailing lip at 9.5 and
+            // the flame tips at ~11.5, so more than two units of it stand clear of
+            // the exhaust in every attitude. Anything shorter disappears into the
+            // afterburner plume the moment the aircraft lights the burners, which is
+            // exactly when the player is looking at its tail.
+            add(geometry.rearBody, primary, 0, -0.06, 7.8, 0.52, 0.52, 1.7);
+            add(geometry.fuselage, primary, 0, -0.06, 11.0, 0.3, 0.3, 0.52);
+            // `geometry.nose` is authored apex-FORWARD (rotateX(-PI/2)), so a tail
+            // cone has to be turned end for end - dropped in as-is it would taper
+            // towards the cockpit and read as a dent rather than a boom.
+            add(geometry.nose, dark, 0, -0.06, 13.0, 0.44, 0.44, 0.32).rotation.y = Math.PI;
+
+            // Twin outward-canted fins above the nacelles, ventral fins below.
+            add(geometry.fin, secondary, -2.35, 0.55, 5.3, 0.82, 1.12, 0.92, 0.2);
+            add(geometry.fin, secondary, 2.35, 0.55, 5.3, 0.82, 1.12, 0.92, -0.2);
+            add(geometry.panel, dark, -2.0, -0.9, 7.0, 0.16, 0.8, 2.0, 0.28);
+            add(geometry.panel, dark, 2.0, -0.9, 7.0, 0.16, 0.8, 2.0, -0.28);
+            // Stabilators outboard of the nacelles, straddling the stinger.
+            add(geometry.tailWing, primary, 0, -0.14, 7.4, 1.14, 1, 0.95);
+
+            // Details: dorsal spine, wingtip rails with rounds, and the strike
+            // aircraft's reason for existing - four heavy underwing stores that no
+            // other Flanker in the roster carries.
+            add(geometry.panel, secondary, 0, 0.5, 2.9, 0.32, 0.2, 4.4);
+            add(geometry.panel, dark, -8.9, 0.0, 4.4, 0.22, 0.16, 2.3);
+            add(geometry.panel, dark, 8.9, 0.0, 4.4, 0.22, 0.16, 2.3);
+            add(geometry.missileBody, light, -8.9, -0.24, 4.1, 0.8, 0.8, 0.75);
+            add(geometry.missileBody, light, 8.9, -0.24, 4.1, 0.8, 0.8, 0.75);
+            add(geometry.missileNose, dark, -8.9, -0.24, 2.3, 0.75, 0.75, 0.75);
+            add(geometry.missileNose, dark, 8.9, -0.24, 2.3, 0.75, 0.75, 0.75);
+            // Underwing pylons and air-to-ground stores, inboard and mid-span. Slung
+            // CLOSE under the wing (y -0.55 on a 0.3-thick surface at -0.05) - hung
+            // any lower they stop reading as ordnance on a pylon and start reading as
+            // a second aircraft flying formation underneath this one.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 4.2, -0.28, 2.4, 0.2, 0.36, 1.4);
+              add(geometry.panel, dark, side * 6.4, -0.26, 2.9, 0.18, 0.34, 1.3);
+              add(geometry.missileBody, dark, side * 4.2, -0.55, 2.6, 0.95, 0.95, 0.8);
+              add(geometry.missileNose, dark, side * 4.2, -0.55, 0.95, 0.9, 0.9, 0.85);
+              add(geometry.missileBody, dark, side * 6.4, -0.5, 3.0, 0.8, 0.8, 0.7);
+              add(geometry.missileNose, dark, side * 6.4, -0.5, 1.6, 0.78, 0.78, 0.8);
+            }
+            // Nav lights at the geometric wingtips: left red, right green.
+            add(geometry.canopy, navL, -9.02, 0.12, 3.8, 0.12, 0.12, 0.12);
+            add(geometry.canopy, navR, 9.02, 0.12, 3.8, 0.12, 0.12, 0.12);
+          }
+        });
+      },
+      "aircraft_su34"
+    ); // @payload:aircraft_su34
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+
+        // The nearest existing template on both tables: an unarmed enemy-only heavy.
+        // Spreading it is what guarantees the required-key schema is satisfied
+        // without restating a contract this payload does not own.
+        const transport = AIRCRAFT_TYPES.transport;
+        const transportAI = ENEMY_AI_PROFILES.transport;
+        if (!transport || !transportAI) {
+          throw new Error("[a100] expected the transport aircraft and AI templates to exist");
+        }
+
+        // Elem (Russian) support-aircraft paint. The faction cue this game uses is
+        // the exhaust colour - Western airframes burn blue-white, Elem airframes burn
+        // warm - so the exhaust is taken from the Tu-95's family (0xffc47a) rather
+        // than the C-17's cold grey. Primary/secondary sit on the same grey ladder
+        // the other Elem heavies use; the accent is the maritime-patrol red the
+        // faction's support machines already carry.
+        const theme = {
+          primary: 0x9aa3a8,
+          secondary: 0x666f75,
+          accent: 0xb0453d,
+          canopy: 0xa8e4ff,
+          exhaust: 0xffc47a,
+          // Real A-100: 46.6 m long, 50.5 m span - within a metre of the Tu-95 on
+          // both, so it carries the Tu-95's scale. tipSpan 13.0 x 2.3 = 29.9 visual
+          // half-span, which lands between the Bear's 30.4 and the C-17's 29.6 and
+          // holds the real ratio against the F-16's 7.2.
+          scale: 2.3,
+          variant: "a100"
+        };
+
+        // BALANCE TODO: placeholder. Every flight-model number below is inherited
+        // from `transport` unchanged - this payload ships a SHAPE, not a balance
+        // pass. maxHealth stays on the 98-point quantum (196 = exactly two missiles).
+        ctx.addAircraft("a100", {
+          ...transport,
+          id: "a100",
+          label: "A-100 PREMIER",
+          role: "Airborne Early Warning & Control",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "敵の早期警戒管制機。背中の巨大な円盤レーダーで戦域を見渡し、僚機を誘導する。武装は無いが、これを落とせば敵の目が潰れる。",
+          // Geometric wingtip of the model above: half-span 13.0, and the tip chord
+          // runs z 3.2..4.8 with the wing mounted at -0.2, so 4.0 is its mid-chord.
+          // Contrails then leave the real tip rather than floating inboard of it.
+          tipSpan: 13.0,
+          tipZ: 4.0,
+          theme: { ...theme }
+        }, { order: false });
+
+        // BALANCE TODO: placeholder. The unarmed `transport` contract verbatim -
+        // attackRange 0 is what states "this aircraft never shoots" - with only the
+        // readability fields moved: a bigger hitbox for a wider airframe, a slightly
+        // higher and flatter orbit than the airlifter (an AWACS holds a station), and
+        // the Elem warm radar/tracer colours instead of the C-17's green.
+        ctx.addEnemyProfile("a100", {
+          ...transportAI,
+          label: "AWACS",
+          hitboxScale: 3.1,
+          patrolSpeedScale: 0.96,
+          patrolPathScale: 0.22,
+          verticalBias: 30,
+          verticalAmplitude: 4,
+          verticalFrequency: 0.18,
+          explosionScale: 1.75,
+          radarColor: "#ffb45a",
+          tracerColor: 0xffb45a,
+          explosionColor: 0xffc063,
+          theme: { ...theme }
+        });
+        // No addEnemyMissileProfile: the absence of an entry in that table IS the
+        // "carries no missiles" statement, the same way it is for the transport.
+
+        ctx.addAircraftModel("a100", {
+          // Top view in the shared 40x44 box, nose up, traced from the model's own
+          // z/x extents (nose tip -13.1, tail 12.6, half-span 13.0) so the outline
+          // and the geometry are the same aircraft.
+          //
+          // Reading down the path: the blunt glazed nose, the parallel-sided freight
+          // hull, the four engine nacelles stepping out ahead of the wing leading
+          // edge, the big swept high wing out to x 2/38, and then the feature that
+          // makes this outline unmistakable - the fuselage swelling into a fat
+          // OCTAGONAL disc between the wing and the tail before pinching back in for
+          // the T-tail's wide slab. A round waist aft of the wing is a read no other
+          // outline in this game has, and it is the one the HUD has to sell, because
+          // the strut gap that carries it does not exist in a top view.
+          silhouette:
+            "M20 1 L21.6 3.4 L22.4 7.5 L22.4 19 " +
+            "L25.4 20.4 L25.4 15.5 L28.4 16.4 L28.4 21.4 " +
+            "L31.2 21.8 L31.2 18.6 L34 19.6 L34 23 " +
+            "L38 24.6 L38 27.4 L22.4 24.6 " +
+            "L24.2 25.4 L25.6 26.8 L26.2 28.8 L26.2 33.4 L25.6 35.4 L24.2 36.8 " +
+            "L22.4 37.6 L22.4 40.6 " +
+            "L28.2 40.6 L28.2 43.4 L11.8 43.4 L11.8 40.6 L17.6 40.6 L17.6 37.6 " +
+            "L15.8 36.8 L14.4 35.4 L13.8 33.4 L13.8 28.8 L14.4 26.8 L15.8 25.4 " +
+            "L17.6 24.6 " +
+            "L2 27.4 L2 24.6 L6 23 L6 19.6 L8.8 18.6 L8.8 21.8 " +
+            "L11.6 21.4 L11.6 16.4 L14.6 15.5 L14.6 20.4 L17.6 19 " +
+            "L17.6 7.5 L18.4 3.4 Z",
+          build(env) {
+            const { THREE, geometry, extrudedSurface, add, addFlame,
+                    primary, secondary, accent, canopy, dark, navL, navR } = env;
+
+            // ---- Wing ---------------------------------------------------------
+            // The Il-76 wing: a big swept high-mounted surface, drawn separately
+            // rather than reusing wingTransport because the A-100 is a metre and a
+            // half wider in half-span and rather deeper in root chord. Half-span
+            // 13.0 matches the airframe's tipSpan exactly.
+            const wingPremier = extrudedSurface([
+              [0, -4.2], [1.9, -3.8], [13.0, 3.0], [13.0, 4.6], [3.4, 3.2],
+              [0, 3.0], [-3.4, 3.2], [-13.0, 4.6], [-13.0, 3.0], [-1.9, -3.8]
+            ], 0.32);
+            // T-tail plane. Wider than the C-17's (half-span 5.9 against 5.4) and
+            // swept to match the wing, so the tail reads as one design with it.
+            const stabPremier = extrudedSurface([
+              [0, -2.0], [5.9, 1.4], [5.9, 2.6], [1.7, 2.8],
+              [-1.7, 2.8], [-5.9, 2.6], [-5.9, 1.4]
+            ], 0.28);
+            // The rotodome itself: an 18-sided disc, 3.6 in radius and 0.6 thick, so
+            // it is a plate seen edge-on from the side and a full circle from above.
+            // Built here rather than scaled from geometry.canopy because a sphere
+            // squashed flat still bulges at the rim, and a radar disc must not.
+            // 7.2 across against a 26.0 span is roughly the real A-100 proportion,
+            // and 3.6 is the smallest radius that still reads as a radar disc rather
+            // than as a blister at the range the player first sees this contact.
+            const rotodome = new THREE.CylinderGeometry(3.6, 3.6, 0.6, 18, 1, false);
+            // The rim ring, drawn as a slightly larger, much thinner disc so the dome
+            // has a visible edge band rather than being one flat pancake.
+            const rotodomeRim = new THREE.CylinderGeometry(3.72, 3.72, 0.24, 18, 1, false);
+
+            // ---- Fuselage -----------------------------------------------------
+            // Il-76: a fat, near-constant-section freight hull. Shorter and thicker
+            // than the Bear's slim body sharing this scale.
+            add(geometry.fuselage, primary, 0, 0, -1.6, 1.3, 1.28, 1.4);
+            // Upswept aft body running back to the ramp, the airlifter tell the
+            // transport branch already uses. Lifted and tapered. Run out to z 13.4
+            // in two steps rather than one: the rotodome sits on the FIRST of them,
+            // aft of the wing where the real aircraft carries it, and the second is
+            // the ramp itself. A single section would have put the disc over the
+            // wing, where it is half hidden from above by the surface it is meant to
+            // stand clear of.
+            add(geometry.fuselage, primary, 0, 0.4, 5.6, 1.2, 1.15, 0.62);
+            add(geometry.fuselage, primary, 0, 1.25, 9.4, 0.92, 0.82, 0.55);
+            // Rounded glazed nose. The Il-76 forebody is short and blunt, so the
+            // cone is squat (z 1.0) rather than the Bear's long 1.6 taper.
+            add(geometry.nose, primary, 0, 0.05, -11.1, 1.26, 1.22, 0.95);
+            // Flight deck high on the spine, and the navigator's glazed nose blister
+            // BELOW it - the Il-76 signature that no Western heavy here has. Two
+            // canopy pieces stacked is what makes the nose read as glass rather than
+            // as a radome, and the lower one runs right out to the tip so the nose
+            // is glazed rather than merely windowed.
+            add(geometry.canopy, canopy, 0, 1.26, -8.2, 0.76, 0.52, 1.5);
+            add(geometry.canopy, canopy, 0, -0.2, -11.3, 0.74, 0.6, 1.5);
+
+            // ---- High wing and four podded turbofans ---------------------------
+            // The wing rides the spine at y 1.5, not the belly.
+            add(wingPremier, secondary, 0, 1.5, -0.2);
+            for (const side of [-1, 1]) {
+              // Four engines slung UNDER the wing on pylons and ahead of its leading
+              // edge. Nacelle tops sit at y 0.55 / 0.75 against a wing underside of
+              // 1.34, so the pylons visibly bridge the gap instead of the pods being
+              // buried in the surface. The outboard pair is further aft because the
+              // wing is swept and the pylons follow its edge outboard.
+              // Nacelles in `secondary`, not `accent`: this airframe's accent is the
+              // faction red that the rotodome trim needs, and four red barrels under
+              // the wing read as ordnance rather than as engines.
+              add(geometry.rearBody, secondary, side * 4.9, -0.62, -4.5, 0.9, 0.9, 1.6);
+              add(geometry.rearBody, secondary, side * 8.9, -0.38, -1.9, 0.86, 0.86, 1.5);
+              add(geometry.panel, secondary, side * 4.9, 1.0, -3.8, 0.26, 0.85, 1.5);
+              add(geometry.panel, secondary, side * 8.9, 1.14, -1.2, 0.24, 0.66, 1.4);
+              // ONE dark ring per pod, at the exhaust end. The intake face is left as
+              // the bare nacelle: a second dark ring at the front turned each pod
+              // into a stack of tubes rather than into an engine.
+              add(geometry.nozzle, dark, side * 4.9, -0.62, -2.1, 1.0, 1.0, 1);
+              add(geometry.nozzle, dark, side * 8.9, -0.38, 0.35, 0.96, 0.96, 1);
+              addFlame(side * 4.9, -0.62, -0.85, 0.55, 0.55);
+              addFlame(side * 8.9, -0.38, 1.6, 0.52, 0.52);
+              // Main-gear blister pods down the lower fuselage sides. The Il-76
+              // carries its bogies in fairings that stand proud of the skin, so they
+              // are set out at 1.9 to bulge past it.
+              add(geometry.panel, secondary, side * 1.9, -1.0, 0.8, 0.9, 0.76, 4.4);
+            }
+
+            // ---- Rotodome: the whole point of the aircraft ----------------------
+            // Two struts standing on the spine behind the wing, carrying a 7.2-wide
+            // disc clear above the fuselage. Nothing else in the game has anything
+            // above its spine, so this is the identification from every angle: a
+            // circle from above, a plate on legs from the side, a wide bar from the
+            // front. The struts are set fore and aft (z 5.1 / 8.5) rather than side
+            // by side, which is the real pylon arrangement and keeps the disc
+            // supported when it is seen from directly ahead.
+            //
+            // Centred at z 6.8 - AFT of the wing's root trailing edge at 2.8, which
+            // is where the Il-76-based aircraft actually carries it, and far enough
+            // back that the top view shows the WHOLE circle standing clear of the
+            // wing instead of a disc half buried in the surface behind it. That
+            // clearance is the reason the wing root chord was cut back to 3.0 rather
+            // than the airlifter's 3.6: the dome has to have its own sky.
+            //
+            // Dome underside at y 4.05 against a fuselage top of about 1.5 and a wing
+            // top of 1.66: a 2.4-unit air gap, so the disc is unmistakably STANDING
+            // on legs rather than being a blister on the back. That gap is the whole
+            // read from the side, and it is the reason the struts are 2.8 tall.
+            add(geometry.panel, dark, 0, 3.0, 5.1, 0.6, 2.8, 0.75);
+            add(geometry.panel, dark, 0, 3.0, 8.5, 0.6, 2.8, 0.75);
+            add(rotodome, secondary, 0, 4.35, 6.8, 1, 1, 1);
+            // Rim band in the faction red, and a hub cap on top. The band is a
+            // slightly wider, much thinner disc set at the dome's mid-height, so it
+            // paints the EDGE only - the flat faces stay grey and the disc reads as
+            // a machined radar plate instead of a red counter.
+            add(rotodomeRim, accent, 0, 4.35, 6.8, 1, 1, 1);
+            add(geometry.nozzle, accent, 0, 4.77, 6.8, 1.1, 1.1, 0.5).rotation.x = Math.PI / 2;
+            // Fairings where the two struts meet the spine, so the legs are planted
+            // on the fuselage rather than passing through its skin.
+            add(geometry.panel, secondary, 0, 1.55, 5.1, 0.8, 0.55, 1.6);
+            add(geometry.panel, secondary, 0, 1.5, 8.5, 0.72, 0.5, 1.5);
+
+            // ---- T-tail ---------------------------------------------------------
+            // Carried at the very top of the fin, and set at z 11.4 - behind the
+            // dome's aft edge at 9.8, so the two never overlap in the top view and
+            // the tailplane is not read as part of the radar installation. The fin
+            // is the tallest surface on the aircraft (top at y 10.6 against the
+            // dome's 4.65), which is what a T-tail has to be to carry a tailplane
+            // clear of the wing wake.
+            add(geometry.fin, secondary, 0, 1.0, 11.4, 1.35, 2.5, 1.35);
+            add(stabPremier, primary, 0, 10.3, 11.2);
+
+            // ---- Details --------------------------------------------------------
+            // Weather radar nose cap, flight-deck anti-glare panel, the dorsal spine
+            // running from the wing root back under the dome to the fin, and a pair
+            // of ventral antenna blades that mark this out as a sensor aircraft.
+            add(geometry.nose, dark, 0, 0.2, -12.9, 0.34, 0.32, 0.26);
+            add(geometry.panel, dark, 0, 1.55, -9.4, 0.78, 0.09, 1.9);
+            add(geometry.panel, secondary, 0, 1.45, 10.2, 0.3, 0.22, 2.4);
+            add(geometry.panel, dark, 0, -1.45, -4.8, 0.16, 0.55, 1.8);
+            add(geometry.panel, dark, 0, -1.3, 3.4, 0.16, 0.5, 1.8);
+            // Nav lights at the geometric wingtips: left red, right green.
+            add(geometry.canopy, navL, -13.0, 1.62, 3.6, 0.2, 0.2, 0.2);
+            add(geometry.canopy, navR, 13.0, 1.62, 3.6, 0.2, 0.2, 0.2);
+          }
+        });
+      },
+      "aircraft_a100"
+    ); // @payload:aircraft_a100
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const uav = AIRCRAFT_TYPES.uav;
+        const uavAI = ENEMY_AI_PROFILES.uav;
+        if (!uav || !uavAI) {
+          throw new Error("[s70] expected the MQ-99 drone entries to spread from");
+        }
+
+        // Elem's stealth palette, taken from the Su-57 (felon) entry's family rather
+        // than invented: a thin dark grey airframe with a colder, darker secondary
+        // and an almost-black accent for intake lip and nozzle. The nav/sensor colour
+        // stays on the drone line's amber-free side; exhaust is a dull heat glow
+        // instead of a fighter's blue afterburner, because this thing does not have
+        // one - the nozzle is a plain unaugmented duct.
+        const theme = {
+          primary: 0x4a5057,
+          secondary: 0x33383e,
+          accent: 0x1e2227,
+          canopy: 0xff7a3c,
+          exhaust: 0xff9a4d,
+          scale: 1,
+          variant: "s70"
+        };
+
+        // BALANCE TODO: placeholder. Every flight-model number below is the MQ-99's,
+        // inherited by spread and deliberately untouched - a 19 m airframe should not
+        // fly like a 7 m one, and HP 98 (one missile) is far too light for a heavy.
+        // Only identity, size (tipSpan/tipZ) and theme are authored here.
+        ctx.addAircraft("s70", {
+          ...uav,
+          id: "s70",
+          label: "S-70 OKHOTNIK",
+          role: "Heavy Unmanned Combat Aerial Vehicle",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "エレムの重無人攻撃機。尾翼を持たない全翼のステルス機で、MQ-99の三倍を超える巨体を持つ。有人機の随伴なしに単独で戦域へ入る、無人戦争の主役。",
+          // Half-span 11.0 is the geometric wingtip of the planform below, so the
+          // wingtip contrails leave the actual tip. tipZ 3.2 is that tip's z.
+          tipSpan: 11.0,
+          tipZ: 3.2,
+          theme
+        }, { order: false });
+
+        // BALANCE TODO: placeholder. Spread from the MQ-99's AI wholesale; only the
+        // HUD label, the hitbox (which has to follow the airframe's real size or the
+        // gun's analytic test disagrees with what the player sees), the explosion
+        // scale and the radar/tracer colours are set. Jink amplitudes, engage ranges
+        // and gun numbers are all still the small drone's and want a pass of their own.
+        ctx.addEnemyProfile("s70", {
+          ...uavAI,
+          label: "S-70",
+          // The MQ-99 runs 0.55 against a 3.2 m half-span (ratio ~1.78). This airframe's
+          // half-span is 11.0 units, so the same ratio asks for ~1.9.
+          hitboxScale: 1.9,
+          explosionScale: 1.15,
+          radarColor: "#ff8a4d",
+          tracerColor: 0xff8a4d,
+          explosionColor: 0xffb066,
+          theme
+        });
+
+        ctx.addAircraftModel("s70", {
+          // Top view in the shared 40x44 box, nose up. Projected point-for-point from
+          // the same planform polygon the 3D model extrudes (x scaled by 38/22, z by
+          // 42/15.9), so the HUD outline and the aircraft cannot drift apart.
+          //
+          // It is the only path in the table with NO fin, NO tailplane and no
+          // fuselage break anywhere - one continuous chevron from tip to tip. The
+          // leading edge leaves the apex almost straight, cranks at the shoulder and
+          // runs out at 42 deg to tips that reach the full width of the box; the
+          // trailing edge is the real aircraft's W, cutting forward from each tip to
+          // a notch and back out to the exhaust shelf either side of the centreline.
+          silhouette: "M20.0 1.0 L22.6 5.8 L25.9 12.6 L39.0 33.2 L37.6 36.1 L28.6 30.3 L24.1 43.0 L20.0 42.2 L15.9 43.0 L11.4 30.3 L2.4 36.1 L1.0 33.2 L14.1 12.6 L17.4 5.8 Z",
+          build(env) {
+            const { geometry, extrudedSurface, verticalSurface,
+                    primary, secondary, accent, canopy, dark, light, navL, navR,
+                    add, addFlame } = env;
+
+            // THE AIRFRAME. One surface, and it is the whole aeroplane: there is no
+            // fuselage cylinder, no fin, no tailplane and no separate wing anywhere
+            // below - which is the single fact that has to read from every angle.
+            // Every other airframe in the game is a body with things bolted to it.
+            //
+            // Planform, +z aft, apex on the nose at z -9.0 and half-span 11.0 at
+            // z 3.2 (42 deg of leading-edge sweep). The trailing edge is the real
+            // S-70's W: it runs FORWARD from the tip to a notch at x +/-4.4 / z 5.4,
+            // back out to the exhaust shelf at x +/-2.1 / z 7.2, and the centreline
+            // sits at 7.0 between them. Authored as one closed polygon so the two
+            // halves cannot drift apart.
+            const blendedWing = extrudedSurface([
+              [0, -9.0],
+              [1.5, -7.2], [3.4, -4.6], [11.0, 3.2],
+              [10.2, 4.3], [5.0, 2.1], [2.4, 6.9], [0, 6.6],
+              [-2.4, 6.9], [-5.0, 2.1], [-10.2, 4.3],
+              [-11.0, 3.2], [-3.4, -4.6], [-1.5, -7.2]
+            ], 0.42);
+            add(blendedWing, primary, 0, 0, 0);
+
+            // The centrebody. Not a fuselage - a shallow lens faired INTO the wing,
+            // so from the side the aircraft is a wedge that thickens toward the
+            // engine and thins to nothing at the tips. Built from stacked panels
+            // rather than geometry.fuselage on purpose: a cylinder would put a round
+            // body back on an aircraft whose whole identity is not having one.
+            add(geometry.panel, primary, 0, 0.4, -0.8, 5.2, 0.66, 9.2);
+            add(geometry.panel, primary, 0, -0.36, -0.8, 4.8, 0.46, 8.6);
+            // The forebody tapering into the apex, narrow enough to stay inside the
+            // planform's cranked leading edge all the way forward.
+            add(geometry.panel, primary, 0, 0.16, -5.4, 2.4, 0.44, 4.2);
+            add(geometry.panel, primary, 0, 0.06, -7.0, 1.3, 0.3, 2.0);
+            // Forebody chine: the flat faceted edge that carries the leading-edge
+            // line into the apex, the same trick the Su-57 uses down its nose sides.
+            add(geometry.panel, secondary, -1.5, 0.02, -4.7, 0.8, 0.18, 3.6).rotation.y = -0.28;
+            add(geometry.panel, secondary, 1.5, 0.02, -4.7, 0.8, 0.18, 3.6).rotation.y = 0.28;
+
+            // DORSAL INTAKE. A shouldered box sitting ON TOP of the centre spine,
+            // fed by a raked lip ahead of it, with the duct fairing running aft to
+            // the engine. Nothing else in the game breathes from its back except the
+            // MQ-99, and this one is four times the size and has a visible lip and
+            // spine - a low-observable inlet hides the compressor face from below,
+            // which is exactly why it is up here.
+            add(geometry.intake, secondary, 0, 0.98, -2.8, 3.2, 0.95, 1.6);
+            // The mouth: a wide, flat, dark rectangular aperture across the front of
+            // that box. Deliberately much wider than it is tall - a low-observable
+            // inlet is a letterbox, not a round hole, and it is the shape that reads
+            // as "intake" from the front quarter rather than as a lump on the spine.
+            add(geometry.panel, accent, 0, 0.98, -4.45, 3.3, 0.6, 0.42);
+            // Splitter lip standing proud above the mouth, and the two side cheeks
+            // that box the aperture in.
+            add(geometry.panel, primary, 0, 1.4, -4.2, 3.4, 0.24, 1.1);
+            add(geometry.panel, primary, -1.72, 1.0, -3.6, 0.22, 0.7, 2.4);
+            add(geometry.panel, primary, 1.72, 1.0, -3.6, 0.22, 0.7, 2.4);
+            // Duct fairing: the spine that swells from the inlet back to the nozzle.
+            add(geometry.panel, primary, 0, 0.92, -0.2, 2.8, 0.9, 5.6);
+            add(geometry.panel, primary, 0, 0.78, 3.6, 2.3, 0.82, 3.0);
+            // Shoulder fillets blending the intake box down into the wing upper
+            // surface, so the box does not read as a crate dropped on the aircraft.
+            add(geometry.panel, primary, -1.6, 0.66, -1.8, 1.0, 0.6, 6.4, 0.26);
+            add(geometry.panel, primary, 1.6, 0.66, -1.8, 1.0, 0.6, 6.4, -0.26);
+
+            // EXPOSED SINGLE NOZZLE. The real aircraft flies with a plain round
+            // unshrouded AL-31 duct hanging out of the trailing edge, which is the
+            // one un-stealthy thing on it and therefore worth showing: one nozzle,
+            // on the centreline, standing clear behind the trailing edge notch
+            // rather than being buried in a shelf.
+            // Shelf: the short tailboom the duct exits through, carrying the nozzle
+            // clear of the trailing edge so it is a separate object from behind
+            // rather than a hole in the wing.
+            add(geometry.panel, secondary, 0, 0.62, 6.6, 2.2, 1.0, 2.2);
+            add(geometry.nozzle, accent, 0, 0.62, 8.0, 2.0, 2.0, 1.5);
+            add(geometry.nozzle, dark, 0, 0.62, 8.8, 1.6, 1.6, 0.5);
+            addFlame(0, 0.62, 9.5, 1.4, 1.3);
+
+            // Control surfaces scribed into the trailing edge - elevons outboard and
+            // the split drag rudders that do this aircraft's yaw, because there is no
+            // fin to do it with. Thin dark panels, canted to follow the swept edge.
+            // Outboard elevons, laid along the tip-to-notch trailing edge segment
+            // (10.2,4.3)->(5.0,2.1): centre (7.6,3.2), length 5.65, rotation.y -0.400.
+            add(geometry.panel, dark, -7.6, 0.14, 3.05, 5.3, 0.2, 0.62).rotation.y = 0.400;
+            add(geometry.panel, dark, 7.6, 0.14, 3.05, 5.3, 0.2, 0.62).rotation.y = -0.400;
+            // Split drag rudders on the inboard segment (5.0,2.1)->(2.4,6.9), which
+            // is what does this aircraft's yaw - there is no fin to do it with.
+            add(geometry.panel, dark, -3.7, 0.16, 4.32, 5.1, 0.24, 0.62).rotation.y = -1.075;
+            add(geometry.panel, dark, 3.7, 0.16, 4.32, 5.1, 0.24, 0.62).rotation.y = 1.075;
+
+            // Facet lines on the upper surface: the sawtooth panel joints that make a
+            // large flat wing read as a low-observable one rather than as a sheet.
+            // The leading edge runs (3.4,-4.6)->(11.0,3.2), so a scribe line parallel
+            // to it is a thin z-long box turned by 0.798 about y. Set inboard of the
+            // edge and stopped short of both ends so it stays on the surface.
+            add(geometry.panel, secondary, -5.3, 0.26, -0.9, 0.16, 0.1, 5.2).rotation.y = -0.798;
+            add(geometry.panel, secondary, 5.3, 0.26, -0.9, 0.16, 0.1, 5.2).rotation.y = 0.798;
+            add(geometry.panel, secondary, -8.2, 0.16, 1.4, 0.14, 0.08, 3.0).rotation.y = -0.798;
+            add(geometry.panel, secondary, 8.2, 0.16, 1.4, 0.14, 0.08, 3.0).rotation.y = 0.798;
+
+            // Weapons-bay doors scribed into the belly. This airframe carries
+            // everything internally - the same reason the F-35C's belly is scribed -
+            // and it is the only detail on the underside, so it is what tells the
+            // bottom view apart from the top.
+            add(geometry.panel, dark, -1.3, -0.62, 0.2, 1.1, 0.14, 5.4);
+            add(geometry.panel, dark, 1.3, -0.62, 0.2, 1.1, 0.14, 5.4);
+
+            // NO COCKPIT. The canopy material goes on the electro-optical turret
+            // faired into the underside of the apex, exactly as the MQ-99 does it: a
+            // single emissive eye under the nose instead of a windscreen. That, and
+            // the missing tail, are the two reads that say "unmanned" head-on.
+            add(geometry.canopy, canopy, 0, -0.46, -6.2, 0.46, 0.3, 0.56);
+            // Flush apertures either side of it - the conformal sensor panels.
+            add(geometry.panel, dark, -0.86, -0.3, -5.4, 0.4, 0.1, 1.2, 0.1);
+            add(geometry.panel, dark, 0.86, -0.3, -5.4, 0.4, 0.1, 1.2, -0.1);
+            // Flat radome facet on the apex itself, kept narrow so the nose stays a
+            // point rather than growing a lump. No pitot boom anywhere: a
+            // low-observable drone does not hang a metal rod off its radar cross
+            // section, and there is no pilot to trust it.
+            add(geometry.panel, light, 0, 0.04, -7.7, 0.42, 0.2, 1.3);
+
+            // LIGHTING, minimal by design. Two small nav lights at the geometric
+            // tips and nothing else - no beacon, no strobes, no formation strips.
+            // Every crewed airframe here wears more; a machine sent somewhere it is
+            // not supposed to be wears the legal minimum, and at 0.09 they are barely
+            // more than a pinprick against the 22-unit span.
+            add(geometry.canopy, navL, -10.5, 0.06, 3.5, 0.1, 0.1, 0.1);
+            add(geometry.canopy, navR, 10.5, 0.06, 3.5, 0.1, 0.1, 0.1);
+
+            // `verticalSurface` is deliberately unused: there is no vertical surface
+            // anywhere on this aircraft. Kept destructured so the omission is a
+            // stated decision rather than something nobody thought about.
+            void verticalSurface;
+          }
+        });
+      },
+      "aircraft_s70"
+    ); // @payload:aircraft_s70
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ENEMY_MISSILE_PROFILES } = ctx.tables;
+
+        const f14 = AIRCRAFT_TYPES.f14;
+        const f14ai = ENEMY_AI_PROFILES.f14;
+        const f14missile = ENEMY_MISSILE_PROFILES.f14;
+        if (!f14 || !f14ai) {
+          throw new Error("[f111f] expected the F-14D aircraft entry and enemy AI profile as templates");
+        }
+
+        // Sera livery: the same cool grey/blue family the F-14D and the rest of the
+        // US-family airframes wear, one step darker because this one lives at 200 ft.
+        const theme = {
+          primary: 0x9aa6b2,
+          secondary: 0x53616e,
+          accent: 0x2a3742,
+          canopy: 0x8fe0ff,
+          exhaust: 0x8cecff,
+          // 22.4 m airframe. `scale` is NOT read off the table's ladder directly,
+          // because what ends up on screen is (model's own z-extent) x scale and the
+          // models are not all the same length. Measured on the built geometry:
+          //
+          //   F-16     20.5 units x 1.00 = 20.5 on screen for 15.0 m
+          //   F-14D    20.1        x 1.06 = 21.3            for 19.1 m
+          //   MiG-31   21.9        x 1.16 = 25.4            for 22.7 m
+          //   this     23.8        x 1.06 = 25.2            for 22.4 m
+          //
+          // 1.06 is the number that lands a 22.4 m aircraft level with the 22.7 m
+          // MiG-31 and about 18% longer than the 19.1 m F-14D — which is the real
+          // ratio. Reading 1.16 off the ladder would have made it the biggest
+          // fighter in the game by a wide margin, because this model carries a much
+          // longer nose than the airframes the ladder was fitted to.
+          scale: 1.06,
+          variant: "f111f"
+        };
+
+        // ---------------------------------------------------------------- 1. entry
+        // Spread from the F-14D: the only other variable-geometry airframe in the
+        // table, so every field that exists because of the swing wing already reads
+        // correctly here.
+        //
+        // BALANCE TODO: placeholder. Every flight/damage/HP number below is the
+        // F-14D's, unchanged. The F-111 is not an interceptor — it should end up
+        // slower in a turn, tougher, and with a strike loadout rather than LASM —
+        // but tuning it is a separate pass with the rest of the roster in view.
+        // `spw` is a PLAYER contract (the special-weapon rack in the hangar), so it
+        // is stripped rather than inherited — the same rule payloads/support_aircraft
+        // applies to its enemy-only entries. Spreading the F-14D wholesale would
+        // otherwise hand an enemy airframe a LASM loadout it has no way to use.
+        const { spw: _playerOnlySpw, ...f14WithoutSpw } = f14;
+
+        ctx.addAircraft("f111f", {
+          ...f14WithoutSpw,
+          id: "f111f",
+          label: "F-111F AARDVARK",
+          role: "Strike Interdictor",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "セラ軍の可変翼戦闘爆撃機。長い機首と並列複座を持つ低空侵攻機で、地形に張り付いて進入し、拠点や輸送列車を叩く。格闘戦の機体ではない。",
+          // Where the contrail leaves the airframe, in MODEL units before scale (the
+          // host multiplies by theme.scale). Taken off the built geometry rather
+          // than off the real aircraft's 19.2 m span: the wing pivot sits at x 1.6
+          // and the panel reaches 10.2 from there, so the drawn tip is at 11.8 and
+          // its chord centre is 2.35 aft of the pivot's z of 0.2. Slightly inboard
+          // of 11.8 so the ribbon starts on the panel, not off its edge.
+          tipSpan: 11.5, tipZ: 2.35,
+          theme
+          // { order: false } — enemy-only airframe, kept out of the hangar list.
+        }, { order: false });
+
+        // ------------------------------------------------------------ 2. enemy AI
+        // BALANCE TODO: placeholder. Spread from the F-14D profile; only the
+        // readability fields (radar/tracer/explosion colour, hitbox for the bigger
+        // hull, and the livery) are set here. Behaviour, ranges, fire timing and hit
+        // chance are the Tomcat's and want a strike-aircraft pass later.
+        ctx.addEnemyProfile("f111f", {
+          ...f14ai,
+          hitboxScale: 1.22,
+          radarColor: "#ffb35c",
+          tracerColor: 0xffab4d,
+          explosionColor: 0xffbb6a,
+          theme: { ...theme }
+        });
+
+        // Optional and minimal: the same launcher contract the Tomcat carries, so
+        // this airframe can shoot back at all rather than being gun-only.
+        // BALANCE TODO: placeholder — F-14D values verbatim.
+        if (f14missile) {
+          ctx.addEnemyMissileProfile("f111f", { ...f14missile });
+        }
+
+        // ------------------------------------------------------------- 3. airframe
+        ctx.addAircraftModel("f111f", {
+          // Top view, 40x44 box, nose up. The read is: a very long fine nose spike,
+          // a smooth body that swells at the intakes, shoulder gloves whose trailing
+          // edge runs unbroken into the tailplane, wings at mid sweep, one fin.
+          // Deliberately narrower and MUCH longer-nosed than the tomcat path above
+          // it, and with a single centreline fin instead of the Tomcat's two.
+          silhouette:
+            "M20 1 L20.8 9 L21.6 16 L22 19 L23.6 21 L23.6 24 " +
+            "L36.5 31.5 L36.5 35.5 L23.6 30.5 L23.6 33.5 L30 38 L30 41 " +
+            "L21.6 39 L21.6 41 L23 43 L17 43 L18.4 41 L18.4 39 " +
+            "L10 41 L10 38 L16.4 33.5 L16.4 30.5 L3.5 35.5 L3.5 31.5 " +
+            "L16.4 24 L16.4 21 L18 19 L18.4 16 L19.2 9 Z",
+
+          build(env) {
+            const {
+              geometry, extrudedSurface,
+              primary, secondary, accent, canopy, dark, light, navL, navR,
+              add, addWingPivot, addFlame
+            } = env;
+
+            // Outer wing panel, ONE side only (+x) with its inboard edge on the
+            // pivot line — the contract wingTomcat and wingFlogger follow, because
+            // each panel is parented to its own rotating group. The biggest of the
+            // three: the real F-111 spreads 19.2 m, wider than the Tomcat's 19.5 m
+            // over a shorter body, so half-span 10.2 matches this airframe's tipSpan
+            // and the tip is where the contrail leaves it.
+            //
+            // Drawn at a MID sweep (leading edge back 4.6 z over 8.6 of span, about
+            // 28 deg) for the same reason the tomcat silhouette is: at the real
+            // 16 deg spread the panel reads as an unswept plank next to the Su-25
+            // already in the roster, and the whole point of a VG airframe is that it
+            // looks like it is caught between two shapes.
+            const wingAardvark = extrudedSurface([
+              [0.2, -3.4], [1.6, -3.0], [10.2, 1.6], [10.2, 2.7], [2.2, 3.1], [0.2, 3.1]
+            ], 0.3);
+
+            // ---- Body ------------------------------------------------------------
+            // Su-24 is a flat-sided box; this one must not be. Overlapping tapered
+            // cylinders and nothing slab-sided anywhere is the whole difference —
+            // the F-111 is a smooth area-ruled tube that swells at the intakes and
+            // necks down at the tail. The three sections overlap in z by more than a
+            // radius each so no step is visible from any angle.
+            add(geometry.fuselage, primary, 0, 0, -2.4, 1.0, 0.94, 1.05);
+            add(geometry.fuselage, primary, 0, -0.06, 3.6, 1.02, 0.9, 0.85);
+            add(geometry.rearBody, secondary, 0, -0.12, 8.2, 1.05, 0.92, 1.0);
+            // The Aardvark: a long, fine, drooped nose, but a NOSE and not a needle.
+            // 0.72 radius over 6.0 z of cone is the sharpest taper on any airframe
+            // here while still reading as a fuselage, and the -y is the real
+            // aircraft's downward rake.
+            add(geometry.nose, primary, 0, -0.14, -10.9, 0.86, 0.7, 1.4);
+            // ONE long bridging section rather than a butt joint. `fuselage` is a
+            // cone frustum (0.95 forward, 1.55 aft), so a single stretched copy runs
+            // continuously from the cone's base out to the cockpit section without a
+            // step anywhere — which is the "rounder and smoother than an Su-24" read
+            // the whole airframe is built around. Three abutting short cylinders
+            // would each show their own rim; one long one shows none.
+            add(geometry.fuselage, primary, 0, -0.08, -7.4, 0.62, 0.56, 0.72);
+
+            // ---- Cockpit ---------------------------------------------------------
+            // SIDE-BY-SIDE, one piece. Every other two-seater in the game is tandem
+            // (long in z, narrow in x); this one is the inverse — wide in x, short
+            // in z — and that is the identification from the front and from above.
+            // The escape-capsule shoulders under it carry the width down into the
+            // body so the canopy does not look bolted on.
+            // Escape-capsule shoulders first, then the glass ON TOP of them, so the
+            // canopy is the highest thing on the forward body instead of being
+            // swallowed by its own fairing.
+            add(geometry.panel, primary, 0, 0.32, -4.6, 1.62, 0.9, 3.4);
+            add(geometry.canopy, canopy, 0, 0.86, -4.9, 1.05, 0.56, 1.55);
+            // Windscreen frame down the middle of the two-place glass.
+            add(geometry.panel, dark, 0, 1.22, -4.9, 0.08, 0.2, 2.7);
+            // Anti-glare panel running forward from the windscreen onto the spike.
+            add(geometry.panel, dark, 0, 0.6, -7.4, 0.56, 0.1, 2.6);
+
+            // ---- Shoulder gloves + swing wings -----------------------------------
+            // Mounted HIGH on the body (y 0.62 against the Tomcat's 0.16), which is
+            // the shoulder-wing read, and the fixed gloves are long in z because the
+            // real wing tucks its whole span into them at 72.5 degrees.
+            add(geometry.panel, secondary, -1.55, 0.5, 0.4, 1.9, 0.3, 5.4, 0.07);
+            add(geometry.panel, secondary, 1.55, 0.5, 0.4, 1.9, 0.3, 5.4, -0.07);
+            // Glove fairings blending into the spine, so the wing root is a curve
+            // rather than a step — the smoothness the brief asks for against Su-24.
+            add(geometry.canopy, secondary, -1.5, 0.44, -1.6, 0.95, 0.5, 2.4);
+            add(geometry.canopy, secondary, 1.5, 0.44, -1.6, 0.95, 0.5, 2.4);
+            // The pivots. Each outer panel hangs off its own group whose rotation.y
+            // IS the sweep, and addWingPivot stamps userData.sweepSide so the sign
+            // is right on both sides. Drawn at the deployed 16 deg spread.
+            //
+            // NOTE (host gap, not a payload bug): the inline swing-wing branches do
+            // `wingPivots.push(addWingPivot(...))`, but `wingPivots` is a local of
+            // createAircraftModel and is NOT part of the build env — a payload can
+            // only call the helper, not register the result. So the panels are
+            // built, parented and lit correctly but sit at the modelled sweep for
+            // now. Handing `wingPivots` (or having addWingPivot self-register) to
+            // the env is a one-line host change and is reported rather than worked
+            // around here, because the alternative is reaching outside the contract.
+            addWingPivot(wingAardvark, secondary, -1, -1.6, 0.62, 0.2);
+            addWingPivot(wingAardvark, secondary, 1, 1.6, 0.62, 0.2);
+
+            // ---- Engines ---------------------------------------------------------
+            // BURIED in the lower half of the fuselage: the nacelles sit at +/-0.86
+            // (against the Tomcat's 2.05) and at y -0.42, so they read as part of
+            // the body rather than as two separate tubes with a tunnel between them.
+            // That single spacing choice is the F-111/F-14 tell from directly behind.
+            add(geometry.rearBody, secondary, -0.8, -0.44, 7.4, 0.86, 0.82, 1.7);
+            add(geometry.rearBody, secondary, 0.8, -0.44, 7.4, 0.86, 0.82, 1.7);
+            // Quarter-round intakes tucked under the glove, canted outward at the
+            // lip like the real Triple Plow inlets, with a rounded shock-cone
+            // fairing on the outer face.
+            add(geometry.intake, accent, -1.32, -0.3, -2.4, 1.05, 1.55, 1.7, 0.16);
+            add(geometry.intake, accent, 1.32, -0.3, -2.4, 1.05, 1.55, 1.7, -0.16);
+            add(geometry.canopy, accent, -1.36, -0.3, -4.1, 0.6, 0.72, 0.75);
+            add(geometry.canopy, accent, 1.36, -0.3, -4.1, 0.6, 0.72, 0.75);
+            add(geometry.nozzle, accent, -0.8, -0.44, 9.2, 1.1, 1.1, 1.15);
+            add(geometry.nozzle, accent, 0.8, -0.44, 9.2, 1.1, 1.1, 1.15);
+            addFlame(-0.8, -0.44, 10.5, 1.02, 1.02);
+            addFlame(0.8, -0.44, 10.5, 1.02, 1.02);
+
+            // ---- Tail ------------------------------------------------------------
+            // ONE tall fin on the centreline, and the stabilators mounted LOW — well
+            // below the wing line at y -0.55 — which together are the aft-quarter
+            // read against the F-14D's twin canted fins and shoulder-height stabs.
+            // The stabs are deliberately smaller than the wing panels above them
+            // (half-span 5.1 against 10.2) — on a swing-wing the tailplane must
+            // never compete with the wing for the eye — but big enough to be seen
+            // past the nozzles from above, because an all-moving slab tailplane is
+            // how this aircraft is controlled and it should look like it.
+            // Fin height is measured against the BODY, not against another fighter:
+            // this hull is 24 units long, so a fin scaled like the MiG-23's (1.45 on
+            // a 20-unit body) disappears. 1.85 puts the tip roughly a body-diameter
+            // and a half above the spine, which is the real aircraft's proportion.
+            add(geometry.fin, secondary, 0, 0.55, 5.4, 1.05, 1.85, 1.1);
+            add(geometry.tailWing, primary, 0, -0.58, 7.0, 1.0, 1, 1.05);
+            // Ventral strakes under the nozzles.
+            add(geometry.panel, dark, -0.9, -1.05, 8.4, 0.14, 0.62, 2.0, 0.24);
+            add(geometry.panel, dark, 0.9, -1.05, 8.4, 0.14, 0.62, 2.0, -0.24);
+
+            // ---- Details ---------------------------------------------------------
+            // Attack-radar radome in the tip of the spike, pitot boom ahead of it.
+            add(geometry.nose, dark, 0, -0.1, -12.6, 0.3, 0.26, 0.44);
+            add(geometry.panel, dark, 0, -0.1, -13.6, 0.06, 0.06, 1.1);
+            // Dorsal spine from the canopy to the fin root.
+            add(geometry.panel, secondary, 0, 0.78, 2.2, 0.3, 0.22, 6.2);
+            // Pallet stores on the glove pylons: this aircraft carries bombs, and
+            // the underwing hardware is what says "interdictor" rather than "fighter".
+            add(geometry.missileBody, light, -2.4, -0.55, 1.6, 1.2, 1.2, 1.25);
+            add(geometry.missileBody, light, 2.4, -0.55, 1.6, 1.2, 1.2, 1.25);
+            add(geometry.missileNose, dark, -2.4, -0.55, -1.4, 1.15, 1.15, 1.05);
+            add(geometry.missileNose, dark, 2.4, -0.55, -1.4, 1.15, 1.15, 1.05);
+            add(geometry.panel, dark, -2.4, -0.1, 1.2, 0.2, 0.65, 1.8);
+            add(geometry.panel, dark, 2.4, -0.1, 1.2, 0.2, 0.65, 1.8);
+            // Nav lights on the GLOVES, not the tips — the tips move with the sweep.
+            add(geometry.canopy, navL, -2.9, 0.62, -1.4, 0.13, 0.13, 0.13);
+            add(geometry.canopy, navR, 2.9, 0.62, -1.4, 0.13, 0.13, 0.13);
+          }
+        });
+      },
+      "aircraft_f111f"
+    ); // @payload:aircraft_f111f
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const transport = AIRCRAFT_TYPES.transport;
+        const transportAI = ENEMY_AI_PROFILES.transport;
+
+        if (!transport || !transportAI) {
+          throw new Error("[e2d] expected the transport aircraft and AI templates to exist");
+        }
+
+        // Naval grey, matched to the F/A-18F carrier scheme already in the table
+        // (primary 0xb9c2ca / secondary 0x707a85 / canopy 0x8fe0ff) so the Hawkeye
+        // reads as the Hornet's deck-mate rather than a new faction. The accent is
+        // the darker grey the real low-visibility scheme uses for the radome and
+        // propeller spinners, and the exhaust is a warm turboprop stain rather than
+        // the Hornet's blue-white afterburner - there is no afterburner here.
+        const e2dTheme = {
+          primary: 0xb9c2ca,
+          secondary: 0x707a85,
+          accent: 0x4a545e,
+          canopy: 0x8fe0ff,
+          exhaust: 0xffc79a,
+          scale: 1.3,
+          variant: "e2d"
+        };
+
+        // ---- 1. Flight entry -----------------------------------------------------
+        // Spread from `transport`: the only other unarmed, enemy-only, propeller-slow
+        // aircraft class in the table, so every required field arrives proven.
+        // BALANCE TODO: placeholder. Every flight-model number below (speeds, rates,
+        // damping, stall, HP) is the C-17's, unreviewed for a much smaller airframe.
+        // Only identity, dimensions and theme are authored here.
+        const { spw: _noPlayerSpecialWeapon, ...unarmedBase } = transport;
+        ctx.addAircraft("e2d", {
+          ...unarmedBase,
+          id: "e2d",
+          label: "E-2D ADVANCED HAWKEYE",
+          role: "Carrier Airborne Early Warning",
+          tag: "SUPPORT",
+          enemyOnly: true,
+          blurb: "空母から上がる艦載早期警戒機。背中の回転レドームで艦隊の目となり、迎撃機を管制する。武装は無い。",
+          // Geometric wingtip, in model units, for the contrail anchor. Matches the
+          // planform's half-span (12.9) and the wing's mid-chord z, so the vortex
+          // leaves the actual tip.
+          tipSpan: 12.9,
+          tipZ: 1.6,
+          theme: e2dTheme
+        }, { order: false });
+
+        // ---- 2. AI profile -------------------------------------------------------
+        // BALANCE TODO: placeholder. Spread from the transport profile - unarmed
+        // (attackRange 0 rejects every shot in attemptEnemyAttack), no rear gun, no
+        // missile profile. Only the hitbox/explosion size and the radar colour are
+        // authored, and both follow from this being a smaller aircraft than the C-17.
+        const { rearGun: _noRearGun, rearGunOffset: _noRearGunOffset, ...unarmedAI } = transportAI;
+        ctx.addEnemyProfile("e2d", {
+          ...unarmedAI,
+          label: "HAWKEYE",
+          // 1.3 theme scale against the transport's 2.6, so half its hitbox.
+          hitboxScale: 1.6,
+          explosionScale: 1.15,
+          // Orbits its station rather than transiting: a controller holds a racetrack.
+          patrolPathScale: 0.3,
+          verticalBias: 40,
+          verticalAmplitude: 6,
+          verticalFrequency: 0.18,
+          radarColor: "#7ad4ff",
+          tracerColor: 0x7ad4ff,
+          explosionColor: 0xffc46a,
+          theme: e2dTheme
+        });
+
+        // ---- 3. Model ------------------------------------------------------------
+        ctx.addAircraftModel("e2d", {
+          // Top view, 40x44 box, nose up. Drawn as one closed path from the nose,
+          // clockwise down the right side and back up the left. What has to survive
+          // at HUD size is the order of the reads: a very wide straight wing on a
+          // stubby body, the disc overlapping the wing trailing edge, and FOUR
+          // fins on the tailplane. The disc cannot be a separate subpath (the HUD
+          // sets one `d`), so it is cut into the outline as a hexagonal bulge either
+          // side of the fuselage at the wing's trailing edge - at 40px wide it reads
+          // as the round thing on the back, which is the identification.
+          silhouette:
+            "M20 2 L22 5 L22.5 11 L22.5 15 L39 17 L39 21 L22.5 22.5 " +
+            "L29 24 L32 28 L29 32 L22.5 33.5 L22.5 34.5 " +
+            "L26 34.5 L26 41 L23.5 41 L23.5 36 L22.5 36 " +
+            "L31 37 L31 43 L28.5 43 L28.5 38.5 L20 37.5 " +
+            "L11.5 38.5 L11.5 43 L9 43 L9 37 L17.5 36 " +
+            "L16.5 36 L16.5 41 L14 41 L14 34.5 L17.5 34.5 L17.5 33.5 " +
+            "L11 32 L8 28 L11 24 L17.5 22.5 L1 21 L1 17 L17.5 15 L17.5 11 L18 5 Z",
+
+          build(env) {
+            const {
+              geometry, extrudedSurface, verticalSurface,
+              primary, secondary, accent, canopy, dark, light, navL, navR,
+              add, addProp
+            } = env;
+
+            // ---- Planform -------------------------------------------------------
+            // The E-2's wing is the widest-for-its-length surface in the game: half
+            // span 12.9 on a fuselage only 18.4 long, and essentially UNSWEPT - the
+            // leading edge rakes back barely 1.4 units over the whole half-span,
+            // where every fighter here rakes 3-6. Straight and enormous is the first
+            // read from above, and the only other unswept wing in the roster is the
+            // A-10's (half-span 9.6 on a body of similar length). Constant thickness,
+            // slight taper at the tip so the nav light has a facet to sit on.
+            const wingHawkeye = extrudedSurface([
+              [0, -2.9], [2.2, -2.7], [12.9, -1.5], [12.9, 1.2], [3.2, 2.6],
+              [0, 2.7], [-3.2, 2.6], [-12.9, 1.2], [-12.9, -1.5], [-2.2, -2.7]
+            ], 0.3);
+
+            // The tailplane is unusually large because it carries the whole fin
+            // group: half-span 6.6, chord 2.8. That is 51% of the wing's half-span
+            // where a fighter's stabilator runs 60-70% of a much smaller wing, and it
+            // has to stay WIDER than the 3.7-radius rotodome or the disc hides it in
+            // plan view. Its span is what sets the fin spacing below - the outer pair
+            // sits at the tips, the inner pair just outboard of the fuselage.
+            const stabHawkeye = extrudedSurface([
+              [0, -1.4], [6.6, -0.6], [6.6, 1.6], [2.2, 2.0],
+              [-2.2, 2.0], [-6.6, 1.6], [-6.6, -0.6]
+            ], 0.26);
+
+            // One vertical fin, drawn short and broad with a rounded-off top: the
+            // Hawkeye's fins are stubby paddles, not the tall swept blade
+            // geometry.fin is. Four of these go on, and getting the proportion wrong
+            // (using the shared tall fin) would read as a jet with a tail problem
+            // rather than as a Hawkeye. Points are (z, y); `depth` becomes thickness
+            // in x, the same convention geometry.fin is built with.
+            // Chord 2.65 over height 2.3, and only 0.16 thick: a broad low paddle.
+            // The leading edge rakes back and the tip is cut off short of the trailing
+            // edge, which is the shape that stops four of them reading as a picket
+            // fence. The shared geometry.fin is 3.9 tall on a 3.45 chord - far too
+            // tall here, and using it was what made the first draft's tail look wrong.
+            const finHawkeye = verticalSurface([
+              [-1.3, 0], [1.35, 0], [1.25, 1.75], [0.35, 2.3], [-0.75, 2.05]
+            ], 0.16);
+
+            // The rotodome disc. extrudedSurface takes (x, z) points and lays the
+            // result FLAT in the xz plane with `depth` as its thickness in y - which
+            // is exactly a radar plate and the reason it cannot be a scaled
+            // geometry.nozzle: that primitive's axis is z, so squashing it produces a
+            // wedge, not a disc. Twelve-sided at radius 3.7, so 7.4 across - wider
+            // than the tailplane and the single biggest feature on the aircraft.
+            // Radius 3.4 - so 6.8 across against a 25.8 span, the 26% the real
+            // aircraft runs (7.3 m dome on a 24.6 m span). Sixteen-sided rather than
+            // twelve so the rim reads as round rather than as a stop sign in the
+            // top-down view, where this is the largest thing on the aircraft.
+            const domePoints = [];
+            for (let i = 0; i < 16; i += 1) {
+              const a = (i / 16) * Math.PI * 2;
+              domePoints.push([Math.cos(a) * 3.4, Math.sin(a) * 3.4]);
+            }
+            // 0.95 thick: a lens, not a plate. The real dome is about 0.8 m on 7.3 m
+            // and at that ratio it vanished completely in the pure side view, which
+            // is one of the four angles this has to read from - so it is drawn
+            // deliberately fatter than scale.
+            const rotodome = extrudedSurface(domePoints, 0.95);
+            // The dark antenna band around the rim: the same polygon at a slightly
+            // larger radius and much thinner, so it shows as a stripe on the edge of
+            // the plate rather than as a second disc.
+            const domeRim = extrudedSurface(
+              domePoints.map(([x, z]) => [x * 1.02, z * 1.02]), 0.2
+            );
+
+            // ---- Fuselage -------------------------------------------------------
+            // Short and DEEP - the Hawkeye's fineness ratio is about 4:1 against a
+            // fighter's 10:1 and the Tu-95's 12:1, and that stubbiness is a named
+            // requirement. The shared cylinder is 11.5 long, so 0.66 in z gives a
+            // 7.6-long barrel; holding x/y at ~1.15 makes it 2.6 wide against that,
+            // which is the ratio. The Tu-95 uses the same primitive at 1.75 in z and
+            // 0.9 across, so the two are opposite ends of the same knob.
+            add(geometry.fuselage, primary, 0, 0, -0.9, 1.2, 1.16, 0.66);
+            // Belly pannier under the cabin. The E-2's lower fuselage is a deep
+            // slab-sided box holding the mission equipment, and adding it is what
+            // takes the side profile from a 7:1 tube toward the ~4:1 the aircraft
+            // actually has - the single thing that most makes it read as stubby.
+            // y -1.85 clears the fuselage cylinder's own underside (bottom radius
+            // 1.55 x 1.16 = 1.80 at its widest), so the box shows as a keel rather
+            // than sitting invisibly inside the skin.
+            add(geometry.panel, primary, 0, -1.62, -0.9, 1.85, 1.05, 6.4);
+            // Fairing blending the keel's aft end up into the tail boom, so the box
+            // ends in a taper rather than in a cut face.
+            add(geometry.panel, primary, 0, -1.15, 2.9, 1.5, 0.85, 2.6);
+            // Aft boom, tapering and lifting into the tail. Overlapped deliberately
+            // with the cabin section (its forward end at z 1.4 against the cabin's
+            // aft end at 2.9) so the two read as one continuous body rather than as
+            // two cylinders with a step between them.
+            add(geometry.fuselage, primary, 0, 0.34, 4.2, 0.86, 0.82, 0.48);
+            // Short blunt radome. Cone height 4.2 x 0.52 = 2.2 long against the
+            // F-16's 4.4 - a Hawkeye's nose is a stub, not a spike, and a long one
+            // here was the single biggest thing wrong with the first draft.
+            add(geometry.nose, primary, 0, 0.05, -4.6, 1.06, 1.0, 0.6);
+            // Blunt cap on the tip. The shared cone comes to a point, which on a
+            // 2.5-long radome reads as a spike from above; a small squashed sphere
+            // sunk into the last of the cone rounds it off without becoming a bulb.
+            add(geometry.canopy, primary, 0, 0.05, -5.55, 0.3, 0.28, 0.34);
+
+            // Flight deck: a low windscreen band set into the forward upper fuselage,
+            // not a fighter's bubble. Flattened in y so it reads as glazing.
+            add(geometry.canopy, canopy, 0, 0.78, -3.3, 0.74, 0.4, 1.05);
+            // Cheek windows down the cabin sides for the three radar operators - the
+            // detail that says "crewed cabin" rather than "cockpit".
+            add(geometry.canopy, canopy, -1.22, 0.2, -0.4, 0.14, 0.24, 1.8);
+            add(geometry.canopy, canopy, 1.22, 0.2, -0.4, 0.14, 0.24, 1.8);
+
+            // ---- High wing ------------------------------------------------------
+            // Mounted on the SPINE at y 1.05, clear above the fuselage centreline, so
+            // the nacelles hang under it with room for oversized discs. High wing
+            // plus underslung props is the whole reason the propellers can be this
+            // large, and it is also what keeps the dome's struts short.
+            add(wingHawkeye, secondary, 0, 1.05, 1.5);
+
+            // ---- Turboprop nacelles ---------------------------------------------
+            // Two only - the Hawkeye's twin T56s, against the Tu-95's four nacelles
+            // of contra-rotating pairs. One four-blade disc each, at the nacelle
+            // NOSE and well ahead of the leading edge where it is visible from the
+            // side, and NO flames anywhere: a turboprop has no afterburner, which is
+            // the same rule the Bear follows.
+            for (const side of [-1, 1]) {
+              // Long nacelle slung under the wing, running from ahead of the leading
+              // edge back past the trailing edge. rearBody is 3.1 long, so 1.9 in z
+              // makes it 5.9 - as long as the cabin, which is what a T56 installation
+              // looks like on an airframe this short.
+              add(geometry.rearBody, secondary, side * 3.4, 0.5, 0.7, 0.88, 0.88, 1.9);
+              // Pylon bridging nacelle top to wing underside.
+              add(geometry.panel, secondary, side * 3.4, 1.0, 1.1, 0.36, 0.6, 2.6);
+              // Spinner cone at the nacelle nose, then the disc in front of it.
+              add(geometry.nose, accent, side * 3.4, 0.5, -3.2, 0.26, 0.26, 0.5);
+              // Four-blade disc, radius 2.6 - so 5.2 across on a fuselage only 2.6
+              // wide. Oversized props are the third read after the dome and the
+              // fins, and undersizing them was the other clear miss in the first
+              // draft. The two discs turn opposite ways (dir = side).
+              addProp(side * 3.4, 0.5, -3.7, 2.6, side);
+              // Main gear blister on the nacelle underside: the E-2 stows its mains
+              // in the nacelles, and the bulge is a clear tell against a C-17.
+              add(geometry.panel, secondary, side * 3.4, -0.35, 1.4, 0.66, 0.5, 2.4);
+              // Jet-pipe stain aft of each nacelle, in the dark detail material.
+              add(geometry.nozzle, dark, side * 3.4, 0.5, 3.3, 0.85, 0.85, 0.9);
+            }
+
+            // ---- Rotodome -------------------------------------------------------
+            // THE feature: a 6.8-wide disc on struts above the wing. At theme scale
+            // 1.3 that is 8.8 scaled units - larger than any single part on any other
+            // airframe in the game, and wider than this aircraft's own tailplane.
+            // domeY 3.05 puts the plate's underside about 1.4 clear of the wing
+            // upper surface (y 1.05 + half the 0.3 extrusion), so the gap under the
+            // disc is visible from the side and from both three-quarter views. A dome
+            // resting on the wing reads as a slab of cargo, not as a radar.
+            // domeZ 1.6 puts the disc's centre directly over the wing, which is where
+            // it sits on the real aircraft and what stops it looking like a trailer
+            // being towed behind the cabin. Its aft rim then overhangs to z 5.0,
+            // leaving the tailplane at 6.9 clear of it in plan view.
+            const domeY = 2.85;
+            const domeZ = 1.9;
+            // Bipod struts, canted outward, from the spine up to the disc underside.
+            // Two struts, not one column: the daylight between them at this height is
+            // what makes the disc read as mounted ON something.
+            add(geometry.panel, secondary, -0.9, 1.9, domeZ, 0.34, 2.1, 1.9, 0.2);
+            add(geometry.panel, secondary, 0.9, 1.9, domeZ, 0.34, 2.1, 1.9, -0.2);
+            // Pintle the disc turns on, between the strut tops and the plate.
+            add(geometry.panel, dark, 0, domeY - 0.5, domeZ, 0.8, 0.8, 0.8);
+            // The plate, then the dark antenna band on its rim.
+            add(rotodome, primary, 0, domeY, domeZ);
+            add(domeRim, dark, 0, domeY - 0.15, domeZ);
+            // Dorsal fairing under the strut feet, blending them into the spine.
+            add(geometry.panel, secondary, 0, 1.2, domeZ, 0.9, 0.5, 4.2);
+
+            // ---- Quadruple tail --------------------------------------------------
+            // The second signature, and the reason the airframe cannot be confused
+            // with anything else in the roster. FOUR vertical surfaces on one
+            // tailplane: the aircraft has to fit a carrier hangar, so the fin area a
+            // single tall fin would need is split four ways and kept under the deck
+            // height limit. The outer pair sits at the tailplane tips (+/-5.35) and
+            // is canted outward; the inner pair (+/-2.0) stands vertical. Only the
+            // outer two carry rudders on the real aircraft, so the inner pair is
+            // drawn slightly shorter - the asymmetry is what stops the four reading
+            // as a fence.
+            add(stabHawkeye, primary, 0, 0.6, 6.9);
+            // Outer pair, at the tips and canted outward - these carry the rudders.
+            add(finHawkeye, secondary, -6.3, 0.68, 6.9, 1.0, 1.15, 1.0, 0.22);
+            add(finHawkeye, secondary, 6.3, 0.68, 6.9, 1.0, 1.15, 1.0, -0.22);
+            // Inner pair, vertical and slightly shorter: on the real aircraft these
+            // are fixed surfaces without rudders, and drawing them at the same height
+            // as the outer pair is what would turn four fins into a fence.
+            add(finHawkeye, secondary, -2.3, 0.68, 6.9, 0.9, 0.9, 0.92);
+            add(finHawkeye, secondary, 2.3, 0.68, 6.9, 0.9, 0.9, 0.92);
+
+            // ---- Carrier kit and details ----------------------------------------
+            // Arrestor hook stowed under the tail boom - the same idiom the Hornet
+            // and the Rafale M use, and the only other place rotation.x is set.
+            add(geometry.panel, dark, 0, -0.85, 5.9, 0.14, 0.14, 2.6).rotation.x = 0.32;
+            // Fat twin-wheel nose leg fairing, well forward under the flight deck and
+            // ahead of the belly pannier.
+            add(geometry.panel, dark, 0, -1.5, -4.3, 0.36, 0.6, 1.3);
+            // Anti-glare panel ahead of the windscreen.
+            add(geometry.panel, dark, 0, 0.86, -5.0, 0.6, 0.08, 1.6);
+            // Refuelling probe on the spine, ahead of the dome struts.
+            add(geometry.panel, dark, 0, 1.1, -2.6, 0.1, 0.1, 1.6);
+            // Wingtip strobes at the geometric tips, so the contrail anchor at
+            // tipSpan 12.9 and the lights agree. Red left, green right.
+            add(geometry.canopy, navL, -12.95, 1.08, 1.6, 0.14, 0.14, 0.14);
+            add(geometry.canopy, navR, 12.95, 1.08, 1.6, 0.14, 0.14, 0.14);
+            // Underwing ESM antenna fairings, in the light detail material - the only
+            // things hanging off the wing, because this aircraft carries no stores.
+            add(geometry.missileBody, light, -7.6, 0.72, 1.3, 0.5, 0.5, 0.55);
+            add(geometry.missileBody, light, 7.6, 0.72, 1.3, 0.5, 0.5, 0.55);
+          }
+        });
+      },
+      "aircraft_e2d"
+    ); // @payload:aircraft_e2d
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const raptor = AIRCRAFT_TYPES.f22;
+        const raptorAI = ENEMY_AI_PROFILES.f22;
+        if (!raptor || !raptorAI) {
+          throw new Error("[yf23] expected the f22 aircraft and AI templates to exist");
+        }
+
+        // Sera (US) stealth palette, taken off the F-22 line so the two read as the
+        // same air force: same graphite/charcoal body, same cyan accent and exhaust.
+        // The canopy is the one deliberate difference - the real YF-23's glass was
+        // plain tinted rather than the Raptor's gold-film wash, and at a distance the
+        // canopy tint is the only paint detail a player can actually resolve.
+        const theme = {
+          primary: 0x373d45,
+          secondary: 0x1d2127,
+          accent: 0x35c2e0,
+          canopy: 0x8fc4d8,
+          exhaust: 0x8cecff,
+          scale: 0.98,
+          variant: "yf23"
+        };
+
+        // BALANCE TODO: placeholder. Every performance number below is the F-22's,
+        // unchanged. Only identity, dimensions and paint are authored here; the real
+        // YF-23 was faster and less agile than the Raptor and the numbers should
+        // eventually say so.
+        ctx.addAircraft("yf23", {
+          ...raptor,
+          id: "yf23",
+          label: "YF-23 BLACK WIDOW II",
+          role: "Prototype Stealth Fighter",
+          tag: "ENEMY",
+          enemyOnly: true,
+          blurb: "ATF計画で敗れた試作ステルス戦闘機。菱形主翼と大きく外傾したV字尾翼を持ち、F-22より細長く滑らかな機影を描く。ごく一部のエースだけが駆る幻の機体。",
+          // Geometric wingtip for the contrail. The rhombus apex is at half-span 6.6
+          // and the wing is added at z 0.9, so the tip sits at (6.6, 0.9) - the trail
+          // leaves the actual point of the diamond rather than floating inboard of it
+          // or trailing from a root station the way a copied number would.
+          tipSpan: 6.6, tipZ: 0.9,
+          theme
+        }, { order: false });
+
+        // BALANCE TODO: placeholder. The AI profile is the F-22's evasive template
+        // with nothing but the paint and the radar colour changed, so a YF-23 fights
+        // exactly like a Raptor until someone tunes it.
+        ctx.addEnemyProfile("yf23", {
+          ...raptorAI,
+          label: "YF-23",
+          theme
+        });
+
+        ctx.addAircraftModel("yf23", {
+          // Top view in the shared 40x44 box, nose up. Traced off the model rather
+          // than drawn freehand: every vertex is a real part station run through
+          // x = 20 + 2.18*mx, y = 1.5 + 2.10*(mz + 10.9), so the outline and the
+          // aircraft cannot drift apart.
+          //
+          // Reading down the page: the chined forebody, the rhombus wing out to a
+          // POINTED tip at y 26 with its trailing edge raked forward back to the
+          // root, and then the two V-tail blades as separate surfaces springing off
+          // the trailing edge outboard. No fin, no tailplane, nothing on the
+          // centreline aft - the empty tail is as much of the read as the diamond is.
+          silhouette:
+            "M20 1.5 L21.3 6.8 L22.1 15.2 L22.8 17 L34.4 25.8 L34.4 26.8 " +
+            "L27.2 32.9 L26.6 33.6 L34.3 35.7 L32.9 39.1 L26.2 41.8 L23.2 40.6 " +
+            "L23.2 35.9 L20 38 L16.8 35.9 L16.8 40.6 L13.8 41.8 L7.1 39.1 " +
+            "L5.7 35.7 L13.4 33.6 L12.8 32.9 L5.6 26.8 L5.6 25.8 L17.2 17 " +
+            "L17.9 15.2 L18.7 6.8 Z",
+
+          build(env) {
+            const {
+              geometry, extrudedSurface, verticalSurface,
+              primary, secondary, accent, canopy, dark, navL, navR,
+              add, addFlame
+            } = env;
+
+            // ---- Planforms ------------------------------------------------------
+            // THE wing, and a rhombus rather than the Raptor's clipped diamond. The
+            // leading edge runs from the root apex at z -5.5 out to a POINTED tip at
+            // (+/-6.6, 0), and the trailing edge runs back from that same tip to the
+            // root at z 5.5 - forward-swept by the identical 40 deg (6.6 of span
+            // against 5.54 of z on both edges). Four edges, two parallel pairs, one
+            // point at each corner: that is what makes it a diamond and not a delta,
+            // and it is the difference a player sees from above.
+            //
+            // The tips carry a 0.5-deep chord rather than closing to nothing, because
+            // a mathematical point renders as a jagged sliver at distance and there
+            // has to be something for the nav light to sit on.
+            const wingYf23 = extrudedSurface([
+              [0, -5.5], [1.3, -4.4], [6.6, -0.25], [6.6, 0.25], [1.3, 4.4],
+              [0, 5.5], [-1.3, 4.4], [-6.6, 0.25], [-6.6, -0.25], [-1.3, -4.4]
+            ], 0.3);
+
+            // One V-tail blade, drawn in the vertical plane and rolled outboard by
+            // the variant. All-moving, so it is a single trapezoid with no rudder
+            // break: root chord 4.2, tip chord 1.3, blade length 4.4.
+            //
+            // Two things about this shape were arrived at by looking at the render,
+            // and both are load-bearing:
+            //
+            // - PROPORTION. An earlier pass drew a 5.8 root chord on a 3.6 blade and
+            //   it read as an F-14's twin fin from the side no matter how far it was
+            //   canted, because a blade wider than it is long projects a fin. Making
+            //   it longer than its chord (4.4 against 4.2) is what lets the cant show.
+            // - TRAILING EDGE. The tip chord is raked FORWARD of the root's (tip TE at
+            //   shape -1.5 against the root's -2.1), so the trailing edge sweeps
+            //   forward like the wing's. A blade with a straight vertical trailing
+            //   edge reads as a fin from the side even at the right proportions.
+            //
+            // verticalSurface maps shape +x onto model -z, so a SWEPT-BACK blade puts
+            // its tip chord at NEGATIVE shape-x relative to the root. The stock `fin`
+            // follows the same convention; getting it backwards draws a forward-swept
+            // tail, which is the one mistake this planform cannot survive.
+            const vtailYf23 = verticalSurface([
+              [-2.1, 0], [2.1, 0], [-0.2, 4.4], [-1.5, 4.4]
+            ], 0.22);
+
+            // ---- Body -----------------------------------------------------------
+            // THE wing goes down first and everything else is placed not to bury it.
+            // At y 0.0 it is the aircraft's reference plane: the body sits ON it, the
+            // nacelles hang from it and the tails grow off its trailing edge. Every
+            // airframe in the game stacks the other way round, and the reason this
+            // one does not is that the diamond has to be visible edge to edge from
+            // above or the aircraft is unidentifiable.
+            add(wingYf23, secondary, 0, 0, 0.9);
+
+            // Wide and FLAT: sx 1.2 against the Raptor's 1.14 and sy 0.46 against its
+            // 0.66, so the same primitive reads as a lifting platter rather than a
+            // tube. sz 0.88 shortens it hard - the body only has to cover the cockpit
+            // and the bay, because on this aircraft everything aft of the wing root
+            // is deck and everything forward of it is chined forebody.
+            add(geometry.fuselage, primary, 0, 0.12, -2.6, 1.2, 0.46, 0.88);
+            // The forebody is a flat chined WEDGE, not a radar cone. Drawn as a
+            // horizontal planform surface (a long thin diamond) with the cone laid
+            // over it flattened to sy 0.34, so the section is wide and shallow with
+            // hard side edges - which is what the real aircraft's chine line does and
+            // what a plain cone can never look like.
+            const forebodyYf23 = extrudedSurface([
+              [0, -4.4], [0.6, -1.6], [0.98, 2.4], [0, 3.2], [-0.98, 2.4], [-0.6, -1.6]
+            ], 0.34);
+            add(forebodyYf23, primary, 0, 0.1, -6.8);
+            add(geometry.nose, primary, 0, 0.12, -8.7, 0.56, 0.34, 1.05);
+            // Flush low-profile canopy well forward, small and shallow (sy 0.4): on
+            // the real aircraft the glass barely breaks the upper mould line, which
+            // is the opposite of the F-16's bubble and half the "smooth" read.
+            add(geometry.canopy, canopy, 0, 0.5, -5.4, 0.56, 0.4, 1.6);
+
+            // The aft deck: a flat plate between and OVER the nacelles, carrying the
+            // troughs. Half-width 2.6 covers both nacelle stations (+/-1.9) so the
+            // engines are buried under one continuous upper surface - which is how
+            // the real aircraft gets a flat top to sink the exhausts into - while
+            // still being far narrower than the wing, so it can never be mistaken for
+            // the planform from above. A wider plate swallowed the diamond in the
+            // first pass; a narrower one let the nacelles poke through it in the
+            // second, which put the troughs behind two round tubes.
+            add(geometry.panel, primary, 0, 0.2, 4.3, 5.2, 0.44, 5.6);
+
+            // ---- Nacelles and the upper-surface exhaust troughs -------------------
+            // Set at +/-1.9, more than twice the Raptor's +/-0.78, and hung BELOW the
+            // deck (y -0.5, sy 0.58) rather than sitting proud of it. The engines are
+            // separated so the exhaust can be spread flat across the top; if they
+            // stand above the deck there is no top left to spread it on.
+            add(geometry.rearBody, secondary, -1.9, -0.5, 4.2, 1.0, 0.58, 1.6);
+            add(geometry.rearBody, secondary, 1.9, -0.5, 4.2, 1.0, 0.58, 1.6);
+            // Trapezoidal shoulder intakes with their outboard splitter plates, raked
+            // like the wing root they feed off and slung UNDER the wing at y -0.42.
+            add(geometry.intake, accent, -1.95, -0.42, -2.4, 0.9, 0.76, 1.6, 0.2);
+            add(geometry.intake, accent, 1.95, -0.42, -2.4, 0.9, 0.76, 1.6, -0.2);
+            add(geometry.panel, dark, -2.44, -0.42, -3.7, 0.1, 0.8, 1.5, 0.2);
+            add(geometry.panel, dark, 2.44, -0.42, -3.7, 0.1, 0.8, 1.5, -0.2);
+
+            // THE troughs. Each is a dark slot let into the upper deck, walled on
+            // both sides by a thin light-toned lip, running from the nacelle station
+            // back over the trailing edge. There are no nozzles anywhere on this
+            // aircraft: the flames sit IN the slots, on the deck, at deck height -
+            // which is the read no other airframe in the game has.
+            for (const side of [-1, 1]) {
+              // The slot floor, in `dark` - the deepest tone on the aircraft, sunk
+              // into a `primary` deck so the trough reads as a hole and not a stripe.
+              add(geometry.panel, dark, side * 1.9, 0.4, 5.6, 1.5, 0.22, 5.2);
+              // The hot section at the aft end of it, in `accent`. This is the one
+              // bright thing on the airframe's upper surface and it is why the top
+              // view identifies a YF-23 rather than a generic stealth twin.
+              add(geometry.panel, accent, side * 1.9, 0.44, 7.2, 1.3, 0.18, 2.4);
+              // Trough lips: thin walls either side, standing proud of the deck.
+              add(geometry.panel, secondary, side * 1.06, 0.48, 5.6, 0.22, 0.34, 5.2);
+              add(geometry.panel, secondary, side * 2.74, 0.48, 5.6, 0.22, 0.34, 5.2);
+              // Flat and WIDE (sx 1.5, sy 0.24): a slot exhaust lying on the upper
+              // deck, not a round pipe hanging off the back.
+              addFlame(side * 1.9, 0.46, 7.9, 1.5, 0.24);
+            }
+
+            // ---- The V-tails -----------------------------------------------------
+            // Two blades, and nothing else back here. They replace BOTH the fins and
+            // the tailplane, and deleting the tailplane is as much of the silhouette
+            // as adding these is: it leaves the centreline aft completely empty,
+            // which no other airframe in the game does.
+            //
+            // Canted 55 deg outward (rz +/-0.96). Verified against a control render
+            // at rz 0 - at zero cant these draw as two upright fins and the aircraft
+            // reads as an F-15, so the angle is doing the work it is supposed to.
+            // The tip ends up at x 3.05 + 4.4 sin55 = 6.65, just outboard of the
+            // wingtip at 6.6, and only 2.52 above its root: a wide shallow V.
+            //
+            // Rooted at +/-3.05, just outboard of the deck edge (2.6) and the outer
+            // trough lip (2.74), so the blades grow off the corner of the upper
+            // surface instead of intersecting the exhaust.
+            //
+            // z 6.3 puts the root leading edge at 4.2, which is where the wing's own
+            // trailing edge crosses x 3.05 (0.9 + 5.5 x (1 - 3.05/6.6) = 3.86). The
+            // blades therefore start where the diamond ends. At an earlier z 4.9 they
+            // overlapped the wing by 1.3 and the top view read them as a tailplane
+            // growing out of the trailing edge instead of as a separate pair of
+            // surfaces, which is the whole feature.
+            add(vtailYf23, primary, -3.05, 0.2, 6.3, 1, 1, 1, 0.96);
+            add(vtailYf23, primary, 3.05, 0.2, 6.3, 1, 1, 1, -0.96);
+
+            // ---- Details ---------------------------------------------------------
+            // Chine strips down the forebody sides. Longer and shallower than the
+            // Raptor's because the YF-23's chine runs almost to the cockpit.
+            add(geometry.panel, dark, -0.88, 0.06, -6.4, 0.36, 0.06, 4.6, 0.08);
+            add(geometry.panel, dark, 0.88, 0.06, -6.4, 0.36, 0.06, 4.6, -0.08);
+            // Radome cap and the weapons-bay door outline under the belly.
+            add(geometry.nose, dark, 0, 0.12, -10.2, 0.24, 0.18, 0.3);
+            add(geometry.panel, dark, 0, -0.34, 0.2, 1.4, 0.1, 4.4);
+            // Nav lights on the geometric tips of the rhombus, at the wing station.
+            add(geometry.canopy, navL, -6.5, 0.0, 0.9, 0.12, 0.12, 0.12);
+            add(geometry.canopy, navR, 6.5, 0.0, 0.9, 0.12, 0.12, 0.12);
+          }
+        });
+      },
+      "aircraft_yf23"
+    ); // @payload:aircraft_yf23
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -15065,7 +17168,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // was true at 40px. Each path is a top view, nose up, single closed
     // polygon, eyeballed against the real aircraft's planform (canards,
     // sweep direction, tail count, wing shape) on a rendered contact sheet.
-    const SILHOUETTE_PATHS = Object.freeze({
+    // Frozen a few lines below rather than here, because the outlines payloads
+    // registered through ctx.addAircraftModel are merged in first. They cannot
+    // be written here directly: payloads run far above this line, while this
+    // table is still in its temporal dead zone.
+    const SILHOUETTE_PATHS = ({
       viper: "M20 1 L21.5 8 L23 15 L23 17 L34 26 L34 29 L23 28.5 L23 33 L30 37 L30 40 L22 38.5 L22 41 L23.5 43 L16.5 43 L18 41 L18 38.5 L10 40 L10 37 L17 33 L17 28.5 L6 29 L6 26 L17 17 L17 15 L18.5 8 Z",  // F-16
       viperzero: "M20 1 L21.5 8 L23 14 L23 16 L36 26 L36 29.5 L23 29 L23 33 L30 37 L30 40 L22 38.5 L22 41 L23.5 43 L16.5 43 L18 41 L18 38.5 L10 40 L10 37 L17 33 L17 29 L4 29.5 L4 26 L17 16 L17 14 L18.5 8 Z",  // F-2A
       hornet: "M20 1 L21 7 L24 17 L24 19 L36 24 L36 27 L24 28 L27 31 L27 33 L24 32 L24 34 L33 37 L33 40 L23 38 L23 43 L17 43 L17 38 L7 40 L7 37 L16 34 L16 32 L13 33 L13 31 L16 28 L4 27 L4 24 L16 19 L16 17 L19 7 Z",  // F/A-18F
@@ -15089,6 +17196,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hog: "M20 3 L22 12 L22 18 L38 18 L38 23 L22 23 L22 33 L28 33 L28 42 L24 38 L16 38 L12 42 L12 33 L18 33 L18 23 L2 23 L2 18 L18 18 L18 12 Z",  // A-10
       frogfoot: "M20 2 L21.5 8 L23 13 L23 17 L37 19 L37 23 L23 24 L23 33 L30 34 L30 37.5 L22.5 36.5 L22.5 40 L24 43 L16 43 L17.5 40 L17.5 36.5 L10 37.5 L10 34 L17 33 L17 24 L3 23 L3 19 L17 17 L17 13 L18.5 8 Z",  // Su-25
     });
+    // Payload outlines, then the freeze the literal above used to carry.
+    // addAircraftModel already rejects a variant the inline chain answers, so
+    // nothing here can land on a key written above - this only ever adds.
+    for (const variant of Object.keys(AIRCRAFT_MODELS)) {
+      const path = AIRCRAFT_MODELS[variant].silhouette;
+      if (path) SILHOUETTE_PATHS[variant] = path;
+    }
+    Object.freeze(SILHOUETTE_PATHS);
 
     function updateHudSilhouette(spec) {
       const variant = spec && spec.theme ? spec.theme.variant : null;
@@ -15157,7 +17272,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     windStreaks.frustumCulled = false;
     windStreaks.renderOrder = 9;
     camera.add(windStreaks);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    // Reversed-Z depth buffer (EXT_clip_control, three r180+). The chase view
+    // stares kilometres across a near=0.1 frustum: at 2km a classic depth
+    // buffer resolves ~2.4m, so the shore discs 0.25m over the ocean plane
+    // z-fight into flicker. Reversed-Z makes depth precision near-uniform and
+    // resolves them at any range. Where EXT_clip_control is missing the flag
+    // is silently dropped (capabilities.reversedDepthBuffer stays false) and
+    // the shore rings keep their polygonOffset mitigation instead.
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true, alpha: false, powerPreference: "high-performance",
+      reversedDepthBuffer: true
+    });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x6698b2, 1);
     renderer.domElement.setAttribute("aria-label", "Sortie 3D game view");
@@ -17469,6 +19594,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let cockpitRigidBlend = 0;
     const cameraUp = new THREE.Vector3(0, 1, 0);
 
+    // `?modelPreview=<aircraftId>` swaps the whole boot for a contact sheet of
+    // one airframe. Read once, here, so the value cannot change under anything
+    // downstream: null on a normal load, which is the only state every line
+    // below has ever seen.
+    const MODEL_PREVIEW_ID = new URLSearchParams(location.search).get("modelPreview");
+
+    if (!MODEL_PREVIEW_ID) {
     resetPlayerTransform();
     snapCamera();
     buildCampaignScreen();
@@ -17494,6 +19626,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Network only - no AudioContext is touched here, so this cannot trip the
     // autoplay policy and nothing downstream waits on it.
     loadMusic();
+    }
 
     ui.startBtn.addEventListener("click", () => {
       ensureAudio();
@@ -17698,7 +19831,155 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     window.addEventListener("gamepadconnected", updateGamepadInput);
     window.addEventListener("gamepaddisconnected", updateGamepadInput);
 
-    requestAnimationFrame(animate);
+    // Preview mode owns the renderer and draws once; starting the game loop as
+    // well would immediately paint the live scene over the contact sheet.
+    if (MODEL_PREVIEW_ID) renderModelPreview(MODEL_PREVIEW_ID);
+    else requestAnimationFrame(animate);
+
+    // A static 2x2 contact sheet of one airframe, for checking a model that was
+    // just registered without flying a sortie to find it. Four fixed camera
+    // angles - front three-quarter, side, top, rear three-quarter - on a plain
+    // background under a plain three-point rig, because the point is to see the
+    // SHAPE. The game's own sky, fog and map lighting are all deliberately
+    // absent: they are what the airframe has to read against in play, and what
+    // makes a modelling mistake hard to see while making it.
+    //
+    // Drawn with scissor+viewport rather than four canvases so it is the one
+    // renderer, the one WebGL context and the one colour pipeline the game
+    // itself uses - a model that looks right here looks the same in the air.
+    function renderModelPreview(aircraftId) {
+      const spec = AIRCRAFT_TYPES[aircraftId];
+      if (!spec) {
+        const known = Object.keys(AIRCRAFT_TYPES).join(", ");
+        console.error(`[modelPreview] unknown aircraft id "${aircraftId}". Known ids: ${known}`);
+        document.body.innerHTML =
+          `<pre style="color:#f66;background:#111;font:14px monospace;padding:24px;white-space:pre-wrap">` +
+          `[modelPreview] unknown aircraft id "${aircraftId}"\n\nKnown ids:\n${known}</pre>`;
+        return;
+      }
+
+      // setState never runs in this mode, so the screens keep their authored
+      // default visibility - which leaves the hangar, the HUD and the audio
+      // prompt sitting on top of the sheet. Hide the overlays rather than
+      // teaching setState about a state it will never legitimately be in.
+      for (const node of document.querySelectorAll(".screen, #hud, #audioHint")) {
+        node.style.display = "none";
+      }
+
+      // A scene of its own. The live one already holds the world, the player and
+      // every pool, and none of that belongs on a contact sheet.
+      const previewScene = new THREE.Scene();
+      previewScene.background = new THREE.Color(0x2a2f36);
+      const model = createAircraftModel(spec.theme);
+      previewScene.add(model.group);
+
+      // Three-point rig: key high off the front-left, fill low from the right to
+      // open the shadow side, rim from behind to separate the airframe from a
+      // background that is close to it in value. Hemisphere underneath so the
+      // undersides are never pure black in the top-down and rear views.
+      const key = new THREE.DirectionalLight(0xffffff, 2.4);
+      key.position.set(-6, 9, -7);
+      previewScene.add(key);
+      const fill = new THREE.DirectionalLight(0xbcd2e8, 1.0);
+      fill.position.set(8, -2, 5);
+      previewScene.add(fill);
+      const rim = new THREE.DirectionalLight(0xffe9c4, 1.6);
+      rim.position.set(3, 4, 12);
+      previewScene.add(rim);
+      previewScene.add(new THREE.HemisphereLight(0x93a6bb, 0x35393f, 1.1));
+
+      // Frame from the model's own bounds, so a Tu-95 and a MiG-21 both fill
+      // their cells. `theme.scale` is already baked into group.scale, which is
+      // why the box is measured after the model is built rather than from any
+      // number in the airframe's entry.
+      const bounds = new THREE.Box3().setFromObject(model.group);
+      const center = bounds.getCenter(new THREE.Vector3());
+      const radius = Math.max(0.5, bounds.getSize(new THREE.Vector3()).length() * 0.5);
+
+      const previewCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 4000);
+      // Unit view directions, +z aft and +y up - the same frame the models are
+      // authored in, so "front" really is the nose.
+      const VIEWS = [
+        { label: "FRONT 3/4", dir: new THREE.Vector3(-0.62, 0.34, -0.71), up: new THREE.Vector3(0, 1, 0) },
+        { label: "SIDE", dir: new THREE.Vector3(-1, 0, 0), up: new THREE.Vector3(0, 1, 0) },
+        // Straight down. `up` cannot be +y here or the lookAt basis is
+        // degenerate; -z puts the nose at the top of the cell.
+        { label: "TOP", dir: new THREE.Vector3(0, 1, 0.0001), up: new THREE.Vector3(0, 0, -1) },
+        { label: "REAR 3/4", dir: new THREE.Vector3(0.62, 0.3, 0.72), up: new THREE.Vector3(0, 1, 0) }
+      ];
+
+      const labelLayer = document.createElement("div");
+      labelLayer.style.cssText =
+        "position:fixed;inset:0;pointer-events:none;z-index:50;" +
+        "font:600 13px/1 ui-monospace,Consolas,monospace;letter-spacing:0.12em;color:#cfe4f5";
+      const caption = document.createElement("div");
+      caption.style.cssText =
+        "position:absolute;left:12px;top:10px;color:#9fd0ef;font-size:14px;letter-spacing:0.08em";
+      caption.textContent = `${spec.label}  ·  id=${aircraftId}  ·  variant=${spec.theme.variant}` +
+        `${AIRCRAFT_MODELS[spec.theme.variant] ? "  ·  PAYLOAD MODEL" : ""}`;
+      labelLayer.appendChild(caption);
+      document.body.appendChild(labelLayer);
+
+      function drawPreview() {
+        const width = Math.max(2, window.innerWidth);
+        const height = Math.max(2, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(width, height, false);
+        renderer.setScissorTest(true);
+        const cellW = Math.floor(width / 2);
+        const cellH = Math.floor(height / 2);
+        previewCamera.aspect = cellW / cellH;
+        previewCamera.updateProjectionMatrix();
+        // How far back the camera sits so a sphere of `radius` fits the cell,
+        // limited by whichever of the two field angles is tighter. 1.22 is the
+        // margin that keeps a wingtip off the cell edge.
+        const vFov = (previewCamera.fov * Math.PI) / 180;
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * previewCamera.aspect);
+        const distance = (radius * 1.22) / Math.tan(Math.min(vFov, hFov) / 2);
+
+        for (let i = 0; i < VIEWS.length; i += 1) {
+          const view = VIEWS[i];
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          // WebGL's origin is bottom-left; row 0 is the top of the sheet.
+          const x = col * cellW;
+          const y = height - (row + 1) * cellH;
+          renderer.setViewport(x, y, cellW, cellH);
+          renderer.setScissor(x, y, cellW, cellH);
+          previewCamera.up.copy(view.up);
+          previewCamera.position.copy(center).addScaledVector(view.dir, distance);
+          previewCamera.lookAt(center);
+          renderer.render(previewScene, previewCamera);
+        }
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, width, height);
+
+        for (const node of labelLayer.querySelectorAll("[data-cell]")) node.remove();
+        for (let i = 0; i < VIEWS.length; i += 1) {
+          const tag = document.createElement("div");
+          tag.dataset.cell = String(i);
+          tag.textContent = VIEWS[i].label;
+          tag.style.position = "absolute";
+          tag.style.left = `${(i % 2) * (width / 2) + 14}px`;
+          tag.style.top = `${Math.floor(i / 2) * (height / 2) + 34}px`;
+          labelLayer.appendChild(tag);
+        }
+      }
+
+      drawPreview();
+      window.addEventListener("resize", drawPreview);
+      // Something for a screenshot harness to wait on, and for a human to poke
+      // at from the console.
+      window.__MODEL_PREVIEW__ = {
+        id: aircraftId,
+        variant: spec.theme.variant,
+        fromPayload: Boolean(AIRCRAFT_MODELS[spec.theme.variant]),
+        parts: model.group.children.length,
+        wingPivots: model.wingPivots.length,
+        propSpinners: model.propSpinners.length,
+        redraw: drawPreview
+      };
+    }
 
     function startAceKillCam(enemy) {
       killCam.active = true;
@@ -17787,7 +20068,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateAudioCues(rawDt);
       // rawDt: music follows wall-clock, never the kill-cam slowdown.
       updateMusic(rawDt);
-      if (gameState === STATE_READY) updateHangarCamera(rawDt);
+      if (gameState === STATE_READY) updateHangarView(rawDt);
       else updateCamera(rawDt);
       updateWorld(rawDt);
       updateFlightEffects(rawDt);
@@ -17799,7 +20080,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateHud();
       drawRadar();
       syncGameHook();
-      renderer.render(scene, camera);
+      // The select screen draws the hangar showroom instead of the live
+      // world; every other state renders the world exactly as before.
+      if (gameState === STATE_READY && hangarView.scene) {
+        renderer.render(hangarView.scene, hangarView.camera);
+      } else {
+        renderer.render(scene, camera);
+      }
     }
 
     function isControlKey(code) {
@@ -26396,26 +28683,357 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    // Hangar beauty cam: slow orbit around the parked player aircraft while the
-    // select screen is up. Runs on rawDt so kill-cam timescale can't touch it.
-    function updateHangarCamera(dt) {
-      hangarOrbitAngle += dt * 0.28;
-      const radius = 26;
-      camera.position.set(
-        player.position.x + Math.sin(hangarOrbitAngle) * radius,
-        player.position.y + 6.5 + Math.sin(hangarOrbitAngle * 0.6) * 2.2,
-        player.position.z + Math.cos(hangarOrbitAngle) * radius
+    // ---- Hangar showroom ---------------------------------------------------
+    // The select screen used to orbit the player parked in the live mission
+    // world, which left the airframe hanging in midair over whatever map the
+    // sortie was about to use. STATE_READY now renders this scene instead: a
+    // hangar interior of its own, with the selected airframe up on maintenance
+    // trestles under strip lights, daylight spilling in through the open door.
+    // The live scene, the parked player and the launch path are untouched -
+    // the world keeps existing behind this and LAUNCH flies out of the same
+    // state it always did. Everything here is procedural (canvas textures,
+    // box geometry): no external assets, no shadow maps, no postprocessing.
+    // Trestles rather than landing gear because none of the airframe models
+    // carry gear, and a jack stand reads as "in maintenance" at every size
+    // from a Gripen to a bomber without per-airframe tuning.
+    const HANGAR_TRESTLE_TOP = 1.7;
+    const hangarView = {
+      scene: null,
+      camera: null,
+      displayed: null,
+      displayedId: null,
+      // One parked display group per airframe id, kept for the session: a
+      // dozen low-poly models is cheaper than a dispose/rebuild churn every
+      // time the cursor walks the list.
+      cache: new Map(),
+      trestleMat: null,
+      trestleBaseMat: null,
+      shadowTexture: null
+    };
+
+    function makeHangarTexture(size, draw) {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      draw(canvas.getContext("2d"), size);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    }
+
+    function buildHangarScene() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0b0e12);
+      // Interior half-extents. Sized so the orbit camera (radius <= 26) stays
+      // well inside the walls at every azimuth.
+      const HW = 42, HD = 32, HH = 20;
+
+      // Floor: concrete with panel joints, a yellow centreline guiding out of
+      // the door, a parking box around the trestles and hazard stripes at the
+      // threshold. Painted once onto a single unrepeated canvas.
+      const floorTexture = makeHangarTexture(1024, (ctx, s) => {
+        ctx.fillStyle = "#33373d";
+        ctx.fillRect(0, 0, s, s);
+        for (let i = 0; i < 2600; i += 1) {
+          ctx.fillStyle = `rgba(${Math.random() > 0.5 ? "255,255,255" : "0,0,0"},${(Math.random() * 0.05).toFixed(3)})`;
+          ctx.fillRect(Math.random() * s, Math.random() * s, 2 + Math.random() * 3, 2 + Math.random() * 3);
+        }
+        ctx.strokeStyle = "rgba(12,14,16,0.55)";
+        ctx.lineWidth = 3;
+        for (let i = 0; i <= 8; i += 1) {
+          ctx.beginPath(); ctx.moveTo((s / 8) * i, 0); ctx.lineTo((s / 8) * i, s); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, (s / 8) * i); ctx.lineTo(s, (s / 8) * i); ctx.stroke();
+        }
+        // Tire scuffs along the taxi line.
+        for (let i = 0; i < 26; i += 1) {
+          const x = s * 0.5 + (Math.random() - 0.5) * s * 0.1;
+          const y = Math.random() * s;
+          ctx.strokeStyle = `rgba(10,10,12,${(0.06 + Math.random() * 0.1).toFixed(3)})`;
+          ctx.lineWidth = 5 + Math.random() * 7;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (Math.random() - 0.5) * 30, y + 60 + Math.random() * 90); ctx.stroke();
+        }
+        ctx.strokeStyle = "rgba(214,171,34,0.85)";
+        ctx.lineWidth = 7;
+        ctx.setLineDash([46, 26]);
+        ctx.beginPath(); ctx.moveTo(s / 2, 0); ctx.lineTo(s / 2, s); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.strokeRect(s * 0.32, s * 0.30, s * 0.36, s * 0.42);
+        // Hazard band at the door edge (canvas y=0 maps to the -z threshold).
+        for (let x = 0; x < s; x += 44) {
+          ctx.fillStyle = x % 88 === 0 ? "rgba(214,171,34,0.8)" : "rgba(20,20,22,0.8)";
+          ctx.beginPath();
+          ctx.moveTo(x, 0); ctx.lineTo(x + 22, 0); ctx.lineTo(x + 44, 26); ctx.lineTo(x + 22, 26);
+          ctx.closePath(); ctx.fill();
+        }
+      });
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(HW * 2, HD * 2),
+        new THREE.MeshLambertMaterial({ map: floorTexture })
       );
-      if (Math.abs(camera.fov - 42) > 0.01) {
-        camera.fov = 42;
-        currentCameraFov = 42;
-        camera.updateProjectionMatrix();
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      // Ribbed wall panels, tiled. One canvas serves every wall; each wall
+      // clones it so the repeat count can differ without repainting.
+      const wallTexture = makeHangarTexture(256, (ctx, s) => {
+        ctx.fillStyle = "#2b3037";
+        ctx.fillRect(0, 0, s, s);
+        for (let x = 0; x < s; x += 32) {
+          ctx.fillStyle = "#323841";
+          ctx.fillRect(x, 0, 14, s);
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.fillRect(x + 14, 0, 4, s);
+        }
+        ctx.fillStyle = "rgba(18,20,24,0.7)";
+        ctx.fillRect(0, s * 0.62, s, 10);
+      });
+      const makeWall = (width, height, x, y, z, rotY, repeatX) => {
+        const map = wallTexture.clone();
+        map.wrapS = map.wrapT = THREE.RepeatWrapping;
+        map.repeat.set(repeatX, 1);
+        map.needsUpdate = true;
+        const wall = new THREE.Mesh(
+          new THREE.PlaneGeometry(width, height),
+          new THREE.MeshLambertMaterial({ map })
+        );
+        wall.position.set(x, y, z);
+        wall.rotation.y = rotY;
+        scene.add(wall);
+      };
+      makeWall(HW * 2, HH, 0, HH / 2, HD, Math.PI, 10);          // back
+      makeWall(HD * 2, HH, -HW, HH / 2, 0, Math.PI / 2, 8);      // left
+      makeWall(HD * 2, HH, HW, HH / 2, 0, -Math.PI / 2, 8);      // right
+      // Front wall carries the door: a 42m x 15m opening flanked by two
+      // panels, with a header above.
+      makeWall(HW - 21, HH, -(21 + (HW - 21) / 2), HH / 2, -HD, 0, 3);
+      makeWall(HW - 21, HH, 21 + (HW - 21) / 2, HH / 2, -HD, 0, 3);
+      makeWall(42, HH - 15, 0, 15 + (HH - 15) / 2, -HD, 0, 5);
+
+      const ceiling = new THREE.Mesh(
+        new THREE.PlaneGeometry(HW * 2, HD * 2),
+        new THREE.MeshLambertMaterial({ color: 0x1e2126 })
+      );
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.y = HH;
+      scene.add(ceiling);
+
+      // Roof trusses: two chords and a few verticals per rib. Purely
+      // silhouette work - they exist so the ceiling reads as structure.
+      const trussMat = new THREE.MeshLambertMaterial({ color: 0x30343b });
+      for (const z of [-26, -13, 0, 13, 26]) {
+        const top = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 - 4, 0.45, 0.45), trussMat);
+        top.position.set(0, HH - 0.7, z);
+        scene.add(top);
+        const bottom = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 - 10, 0.35, 0.35), trussMat);
+        bottom.position.set(0, HH - 2.5, z);
+        scene.add(bottom);
+        for (const x of [-30, -15, 0, 15, 30]) {
+          const strut = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1.8, 0.28), trussMat);
+          strut.position.set(x, HH - 1.6, z);
+          scene.add(strut);
+        }
       }
-      camera.up.copy(WORLD_UP);
-      tmpV1.copy(player.position);
-      tmpV1.y += 1.2;
-      camera.lookAt(tmpV1);
-      world.skyGroup.position.copy(camera.position);
+
+      // Ceiling strip lights. MeshBasic: they are the light sources visually,
+      // the actual illumination comes from the directional rig below.
+      const stripMat = new THREE.MeshBasicMaterial({ color: 0xe8f0fa });
+      for (const x of [-12, 12]) {
+        for (const z of [-24, -12, 0, 12, 24]) {
+          const strip = new THREE.Mesh(new THREE.BoxGeometry(6, 0.18, 1.0), stripMat);
+          strip.position.set(x, HH - 1.3, z);
+          scene.add(strip);
+        }
+      }
+
+      // Daylight through the open door: a hot gradient panel just outside the
+      // opening, plus a faint additive veil inside the threshold so the
+      // opening blooms the way a bright exterior does against a dark interior.
+      const dayTexture = makeHangarTexture(256, (ctx, s) => {
+        const sky = ctx.createLinearGradient(0, 0, 0, s);
+        sky.addColorStop(0, "#cfe4f2");
+        sky.addColorStop(0.62, "#eef6f8");
+        sky.addColorStop(0.7, "#f7f3e2");
+        sky.addColorStop(1, "#d9d2b8");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, s, s);
+      });
+      const daylight = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 18),
+        new THREE.MeshBasicMaterial({ map: dayTexture })
+      );
+      daylight.position.set(0, 8, -HD - 2.5);
+      scene.add(daylight);
+      const veil = new THREE.Mesh(
+        new THREE.PlaneGeometry(46, 15.4),
+        new THREE.MeshBasicMaterial({
+          color: 0xf4f8ff, transparent: true, opacity: 0.16,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        })
+      );
+      veil.position.set(0, 7.6, -HD + 0.5);
+      scene.add(veil);
+
+      // Ground crew clutter. Low boxes, placed against the walls (outside the
+      // orbit band) except the scaffold, which is inside it on purpose.
+      const addBox = (w, h, d, x, z, color, y = h / 2, rotY = 0) => {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+        box.position.set(x, y, z);
+        box.rotation.y = rotY;
+        scene.add(box);
+      };
+      // Crate stacks against the rear corners.
+      addBox(3.0, 2.2, 2.4, -31, 15, 0x4d5348);
+      addBox(2.2, 1.6, 2.0, -28.4, 13.6, 0x565b4d, 0.8, 0.35);
+      addBox(2.0, 1.5, 1.8, -30.4, 15.2, 0x5e5749, 2.95, 0.12);
+      addBox(3.2, 2.4, 2.6, 30, 20, 0x4a4f52);
+      addBox(2.4, 1.7, 2.0, 28, 17.8, 0x555a4e, 0.85, -0.3);
+      // Fuel drums by the left wall.
+      for (let i = 0; i < 4; i += 1) {
+        const drum = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.5, 0.5, 1.15, 12),
+          new THREE.MeshLambertMaterial({ color: i % 2 ? 0x71443a : 0x515860 })
+        );
+        drum.position.set(-35 + (i % 2) * 1.15, 0.575, -5 + Math.floor(i / 2) * 1.2);
+        scene.add(drum);
+      }
+      // Maintenance scaffold off the nose-left, inside the orbit band so it
+      // sweeps the foreground once a revolution.
+      const scaffold = new THREE.Group();
+      const postMat = new THREE.MeshLambertMaterial({ color: 0xc9a22e });
+      for (const px of [-1.2, 1.2]) {
+        for (const pz of [-0.6, 0.6]) {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 4.6, 0.14), postMat);
+          post.position.set(px, 2.3, pz);
+          scaffold.add(post);
+        }
+      }
+      for (const py of [2.1, 4.2]) {
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.13, 1.4), new THREE.MeshLambertMaterial({ color: 0x6d6a5f }));
+        deck.position.set(0, py, 0);
+        scaffold.add(deck);
+      }
+      scaffold.position.set(-11, 0, -7);
+      scaffold.rotation.y = 0.5;
+      scene.add(scaffold);
+      // Tool cart and a generator set on the right.
+      addBox(1.15, 0.85, 0.7, 8, -12, 0x84413a);
+      addBox(1.0, 0.16, 0.6, 8, -12, 0x3a3e44, 0.95);
+      addBox(2.0, 1.3, 1.1, 12, 16, 0x585a46);
+
+      // Light rig: warm key from the ceiling grid, cool fill, a hard cool rim
+      // from the door so the airframe separates from the interior, and a
+      // hemisphere so undersides never go black. Same philosophy as the
+      // contact sheet's rig, tuned warmer because this room has tungsten
+      // strips and an open door rather than a neutral void.
+      scene.add(new THREE.HemisphereLight(0xa9b9cb, 0x453f34, 1.3));
+      const key = new THREE.DirectionalLight(0xffe6c0, 2.1);
+      key.position.set(-14, 18, 10);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0x9db8d6, 1.0);
+      fill.position.set(16, 9, 8);
+      scene.add(fill);
+      const rim = new THREE.DirectionalLight(0xeaf4ff, 1.6);
+      rim.position.set(0, 6, -28);
+      scene.add(rim);
+
+      hangarView.trestleMat = new THREE.MeshLambertMaterial({ color: 0xc9a22e });
+      hangarView.trestleBaseMat = new THREE.MeshLambertMaterial({ color: 0x8a6f1e });
+      hangarView.shadowTexture = makeHangarTexture(256, (ctx, s) => {
+        const grad = ctx.createRadialGradient(s / 2, s / 2, s * 0.05, s / 2, s / 2, s * 0.5);
+        grad.addColorStop(0, "rgba(0,0,0,0.85)");
+        grad.addColorStop(0.6, "rgba(0,0,0,0.45)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, s, s);
+      });
+      hangarView.scene = scene;
+      hangarView.camera = new THREE.PerspectiveCamera(
+        40, Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight), 0.5, 400);
+    }
+
+    // The parked display for one airframe: the model lifted onto two trestles
+    // sized and placed from its bounding box, over a soft blob shadow. Built
+    // once per id and cached (see hangarView.cache).
+    function hangarDisplayFor(id) {
+      let entry = hangarView.cache.get(id);
+      if (entry) return entry;
+      const spec = AIRCRAFT_TYPES[id];
+      const model = createAircraftModel(spec.theme);
+      const group = new THREE.Group();
+      group.add(model.group);
+      const bounds = new THREE.Box3().setFromObject(model.group);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      // Belly rests on the trestle tops, whatever hangs lowest on this
+      // airframe (stores included - a jack crew would mind, a menu doesn't).
+      model.group.position.y = HANGAR_TRESTLE_TOP - bounds.min.y;
+
+      const padW = THREE.MathUtils.clamp(size.x * 0.16, 1.6, 3.2);
+      for (const dz of [center.z - size.z * 0.22, center.z + size.z * 0.24]) {
+        const trestle = new THREE.Group();
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(padW, 0.16, 0.7), hangarView.trestleMat);
+        pad.position.y = HANGAR_TRESTLE_TOP - 0.08;
+        trestle.add(pad);
+        for (const side of [-1, 1]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, HANGAR_TRESTLE_TOP - 0.14, 0.5), hangarView.trestleMat);
+          leg.position.set(side * padW * 0.32, (HANGAR_TRESTLE_TOP - 0.14) / 2, 0);
+          leg.rotation.z = side * 0.16;
+          trestle.add(leg);
+        }
+        const base = new THREE.Mesh(new THREE.BoxGeometry(padW * 0.95, 0.14, 0.6), hangarView.trestleBaseMat);
+        base.position.y = 0.07;
+        trestle.add(base);
+        trestle.position.set(center.x, 0, dz);
+        group.add(trestle);
+      }
+
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({
+          map: hangarView.shadowTexture, transparent: true, opacity: 0.55, depthWrite: false
+        })
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.scale.set(size.x * 1.12, size.z * 1.02, 1);
+      shadow.position.set(center.x, 0.02, center.z);
+      group.add(shadow);
+
+      entry = {
+        group,
+        radius: Math.max(4, size.length() * 0.5),
+        lookY: HANGAR_TRESTLE_TOP + (center.y - bounds.min.y)
+      };
+      hangarView.cache.set(id, entry);
+      return entry;
+    }
+
+    // Runs instead of updateCamera while the select screen is up, on rawDt so
+    // the kill-cam timescale can't touch it. Keeps the old beauty-cam feel:
+    // slow orbit, gentle vertical drift, radius from the airframe's bounds so
+    // a bomber and a Gripen both fill the frame - clamped inside the walls.
+    function updateHangarView(rawDt) {
+      if (!hangarView.scene) buildHangarScene();
+      if (hangarView.displayedId !== selectedAircraftId) {
+        if (hangarView.displayed) hangarView.scene.remove(hangarView.displayed.group);
+        hangarView.displayed = hangarDisplayFor(selectedAircraftId);
+        hangarView.displayedId = selectedAircraftId;
+        hangarView.scene.add(hangarView.displayed.group);
+      }
+      hangarOrbitAngle += rawDt * 0.22;
+      const cam = hangarView.camera;
+      const aspect = Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight);
+      if (Math.abs(cam.aspect - aspect) > 0.001) {
+        cam.aspect = aspect;
+        cam.updateProjectionMatrix();
+      }
+      const entry = hangarView.displayed;
+      const radius = THREE.MathUtils.clamp(entry.radius * 2.9, 18, 28);
+      cam.position.set(
+        Math.sin(hangarOrbitAngle) * radius,
+        4.9 + Math.sin(hangarOrbitAngle * 0.6) * 1.7,
+        Math.cos(hangarOrbitAngle) * radius
+      );
+      cam.lookAt(0, entry.lookY + 0.4, 0);
     }
 
     function updateCamera(dt) {
@@ -29518,6 +32136,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         parts.push(flame);
         return flame;
       };
+
+      // Payload airframes are consulted BEFORE the chain below, and take the
+      // early exit when one answers. Nothing below is reachable for a
+      // registered variant and nothing below changed: addAircraftModel refuses
+      // any variant the chain already answers, so the two sets are disjoint by
+      // construction and this lookup can only ever catch a shape that would
+      // otherwise have fallen through to the F-22 in the trailing else.
+      //
+      // The builder gets the locals, not the finished model. It calls the same
+      // add / addWingPivot / addProp / addFlame helpers an inline branch calls,
+      // and the arrays those fill are assembled into the return shape here - so
+      // a payload airframe arrives downstream carrying exactly the fields
+      // updateAircraftFlash, disposeAircraftMaterials, updateWingSweep and the
+      // propeller spin read. It cannot forget one, because it never writes one.
+      const registeredModel = AIRCRAFT_MODELS[theme.variant];
+      if (registeredModel) {
+        registeredModel.build({
+          THREE,
+          theme,
+          // Shared geometry cache and the two surface builders, which is what
+          // an airframe with a planform of its own actually needs: `geometry`
+          // covers fuselage/nose/canopy/intake/nozzle/flame/panel and every
+          // existing wing, and extrudedSurface draws a new one.
+          geometry,
+          extrudedSurface,
+          verticalSurface,
+          makeAircraftMaterial,
+          // This model's own materials, already themed and already in
+          // standardMaterials - so anything painted with them flashes white on
+          // a hit and is disposed with the model.
+          primary, secondary, accent, canopy, dark, light, navL, navR,
+          flameMaterial,
+          // The four assemblers. Same signatures the inline branches use.
+          add, addWingPivot, addProp, addFlame
+        });
+        root.add(...parts);
+        return {
+          group: root,
+          flames,
+          wingPivots,
+          propSpinners,
+          standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
+          flameMaterial
+        };
+      }
 
       if (theme.variant === "viper") {
         // F-16: slim single-engine body, bubble canopy well forward, LERX
@@ -33046,10 +35709,21 @@ varying vec2 vOceanUv;`
   vec3 mapN = normalize(vec3(oceanSlope, 1.0));
   normal = normalize(tbn * mapN);
 #endif`
+          )
+          .replace(
+            "#include <roughnessmap_fragment>",
+            `#include <roughnessmap_fragment>
+  // Far-field specular AA. Past ~600m the normal-map glint aliases into
+  // scanline moire that flickers as the camera moves - mip filtering flattens
+  // the normals while the roughness stays tuned for near water, which is the
+  // classic sparkle recipe. Widening the lobe with distance keeps near water
+  // crisp and turns the far glint into one broad stable sheen; the 0.85 cap
+  // leaves a hint of sparkle inside the fade band.
+  roughnessFactor = mix(roughnessFactor, 1.0, 0.85 * smoothstep(600.0, 2200.0, length(vViewPosition)));`
           );
         oceanMaterial.userData.shader = shader;
       };
-      oceanMaterial.customProgramCacheKey = () => "sortie-ocean-v4-distance-branches";
+      oceanMaterial.customProgramCacheKey = () => "sortie-ocean-v5-far-roughness";
       const ocean = new THREE.Mesh(oceanGeometry, oceanMaterial);
       ocean.position.y = 0;
       // The plane rides with the camera (see updateWorld), so its own extent is
@@ -33479,15 +36153,20 @@ varying vec2 vOceanUv;`
           // raising the discs - lifting them reads as slabs floating on the sea
           // rather than as the water shoaling. Sand is pushed one step harder
           // than shallow so ocean < shallow < sand stays ordered.
+          // Only on the classic-depth fallback though: under reversed-Z the
+          // 0.25m/0.5m lift already resolves at every range, and GL applies the
+          // raw offset to window z - which reversed-Z flips - so the same
+          // negative factor would shove the discs BEHIND the ocean instead.
+          const classicDepth = !renderer.capabilities.reversedDepthBuffer;
           const sandMaterial = keepMaterial(new THREE.MeshBasicMaterial({
             color: decor.shore.sand, transparent: true, opacity: decor.shore.opacity * 0.72,
             depthWrite: false,
-            polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+            polygonOffset: classicDepth, polygonOffsetFactor: -2, polygonOffsetUnits: -2
           }));
           const shallowMaterial = keepMaterial(new THREE.MeshBasicMaterial({
             color: decor.shore.shallow, transparent: true, opacity: decor.shore.opacity * 0.32,
             depthWrite: false,
-            polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
+            polygonOffset: classicDepth, polygonOffsetFactor: -1, polygonOffsetUnits: -1
           }));
           for (const anchor of islandAnchors) {
             if (blocked(anchor.x, anchor.z)) continue;
