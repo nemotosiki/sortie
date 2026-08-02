@@ -4187,10 +4187,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         })
       }),
       // ---- Russian roster, second batch ------------------------------------
-      // All five are enemyOnly: they are registered here because ENEMY_TYPES
-      // derives HP, speed and turn rate from this table for every
-      // ENEMY_AI_PROFILES key, but none of them is in AIRCRAFT_ORDER, so the
-      // hangar never shows them and selectAircraft() rejects them.
+      // Written as enemy-only, but the Russian campaign has since claimed the
+      // fighters: everything here except tu95 is in AIRCRAFT_ORDER and flies
+      // from the rus hangar. Only tu95 stays enemy-only (and `enemyOnly` is
+      // documentation - nothing reads the field; AIRCRAFT_ORDER is the gate).
       //
       // HP follows the roster's existing ladder. 196 and 294 are exact missile
       // counts (2 and 3 rounds at 98 a hit); 165 and 135 sit inside the same
@@ -4430,7 +4430,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // A preset name resolves to its shared frozen descriptor; an inline entry is
     // normalised once, when MISSIONS is frozen, and never again.
     function normalizeWaveEntry(entry) {
-      if (typeof entry === "string") return WAVE_PRESETS[entry] || WAVE_PRESETS.air1;
+      // hasOwnProperty, not a bare index: a preset named "constructor" (or any
+      // Object.prototype key) would otherwise return the inherited function
+      // instead of falling back, and waveSizeOf would throw on it.
+      if (typeof entry === "string") {
+        return Object.prototype.hasOwnProperty.call(WAVE_PRESETS, entry)
+          ? WAVE_PRESETS[entry]
+          : WAVE_PRESETS.air1;
+      }
       const kind = entry.kind === "naval" ? "naval" : "air";
       return Object.freeze({
         kind,
@@ -5463,7 +5470,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // them is a fair fight rather than a puzzle.
       mig29: Object.freeze({
         behavior: "formation",
-        hitboxScale: 0.95,
+        // Back on the span-x-scale line the table's header commits to; the
+        // shipped 0.95 undercut it and gun rounds slipped past drawn wingtips.
+        hitboxScale: 1.06,
         patrolSpeedScale: 1.02,
         patrolPathScale: 1.0,
         engageRange: 950,
@@ -5505,7 +5514,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // and comes home. The player's problem is that it will not leave.
       su33: Object.freeze({
         behavior: "formation",
-        hitboxScale: 1.05,
+        // Span-x-scale line value; see mig29 above.
+        hitboxScale: 1.27,
         patrolSpeedScale: 0.95,
         patrolPathScale: 0.72,
         engageRange: 1080,
@@ -5544,7 +5554,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Evasion just under the Raptor's, accuracy just over it.
       su35: Object.freeze({
         behavior: "evasive",
-        hitboxScale: 0.96,
+        // Span-x-scale line value. The 0.96 was a straight copy of su57's
+        // number, but su57 draws at scale 0.88 and this airframe at 1.09 -
+        // the biggest deviation in the table, and the drawn wings sat almost
+        // entirely outside the hit sphere.
+        hitboxScale: 1.26,
         patrolSpeedScale: 1.06,
         patrolPathScale: 1.14,
         engageRange: 1080,
@@ -6303,7 +6317,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // turn - a cruise missile flies at a ship, it does not chase one. That is
     // what makes it defeatable by killing the LAUNCHER rather than the round:
     // 16 s between shots per attacker is the window the player is being given.
-    // 520 damage against the carrier's 4200 is eight hits to sink her.
+    // 520 damage against the carrier's 1040 is two hits to sink her.
     const ANTI_SHIP_MISSILE_PROFILE = Object.freeze({
       cooldownMin: 16.0,
       cooldownSpread: 6.0,
@@ -6420,10 +6434,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // walk: hull, AA, AA, VLS, VLS, CIWS.
         subsystems: Object.freeze([
           Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: -48 }) }),
-          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 19, z: 51 }) }),
+          // aa-aft sits where the aft gun actually FIRES from (aaMounts z=50,
+          // aaHeight 13) and ciws sits on the drawn hangar-roof drum (z=51) -
+          // the old pair had the lock boxes swapped off the hardware: "AA GUN"
+          // labelled the visible drum while the live CIWS floated as an
+          // invisible box over the empty deck at z=64.
+          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: 50 }) }),
           Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: -37 }) }),
           Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: 33 }) }),
-          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 0, y: 18, z: 64 }) })
+          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 0, y: 19.5, z: 51 }) })
         ]),
         radarColor: "#ffb46a",
         tracerColor: 0xffb04a,
@@ -6893,8 +6912,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hoverBand: Object.freeze([55, 115]),
         clearance: 28,
         // Read by countEnemiesTargetingPlayer for the "you are being aimed at"
-        // audio cue. Matches the rocket's reach and its launch cone.
-        attackRange: 1500,
+        // audio cue. Matches the rocket's actual reach (ENEMY_MISSILE_PROFILES
+        // .hind.range = 1300); the old 1500 rang a 200m-wide band of warning
+        // in which the Hind could never actually fire.
+        attackRange: 1300,
         aimThreshold: 0.55,
         // Main and tail disc, rad/s. Never zero - a stopped rotor reads as a
         // static model rather than as an aircraft.
@@ -9200,7 +9221,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // WHICH bomber stream to defend costs something.
         //
         // Russian airframes only, per the faction split: MiG-21/23/29 escorts
-        // and Su-27 for the heavy element, Tu-95 for the bombers themselves.
+        // and Su-35 for the heavy element, Tu-95 for the bombers themselves.
         sequence: [
           // First stream. Already committed when the player arrives - the
           // opening shot of the mission is bombers over a lit city.
@@ -9230,7 +9251,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             types: ["su35", "su35"], tgt: false, band: 1, label: "TOP COVER",
             concurrent: true, role: "line", delay: 55,
             radio: [
-              { speaker: "command", text: "全機、高高度に上位掩護だ。Su-27——こいつらは本気で来る。", id: "city-top-cover" }
+              { speaker: "command", text: "全機、高高度に上位掩護だ。Su-35——こいつらは本気で来る。", id: "city-top-cover" }
             ]
           },
           // Third stream. The heaviest cover in the mission arrives with it,
@@ -28727,7 +28748,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         },
         forceConfirmMission: () => {
           confirmMissionSelection();
-          return gameState === STATE_READY;
+          // The flow gained a briefing stop after this hook was written; the
+          // old STATE_READY-only check reported every successful confirm as a
+          // failure and sent probes chasing a campaign bug that wasn't there.
+          return gameState === STATE_BRIEFING || gameState === STATE_READY;
         },
         clearMissionRecords: () => {
           for (const key of Object.keys(missionRecords)) delete missionRecords[key];
@@ -34029,8 +34053,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // height wherever the mesh is FLAT on top: a plateau's cap sits at the full
     // `height` while `mountain.h` is 0.92 of it. That is 2.7m on the coastal
     // plain and 7.4m on the night base - an installation 6m tall absorbs it,
-    // a 3m vehicle is buried by it. So vehicles ride this sampler and nothing
-    // already on the board changes.
+    // a 3m vehicle is buried by it. Vehicles, installations, the friendly
+    // base and the floodlights all ride this sampler; the clamped one above
+    // stays for the collision contract it was written for.
     function surfaceTopAt(x, z) {
       surfaceSamples += 1;
       let height = 0;
@@ -34181,7 +34206,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const sprite = new THREE.Sprite(material);
       const scale = 30 + Math.random() * 15;
       sprite.scale.set(scale, scale, 1);
-      sprite.position.set(x, surfaceHeightAt(x, z) + 8, z);
+      sprite.position.set(x, surfaceTopAt(x, z) + 8, z);
       scene.add(sprite);
       missionProps.push({ node: sprite, material, scale, seed: Math.random() * Math.PI * 2 });
     }
@@ -34303,11 +34328,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ]) {
         const wx = config.x + lx * cos + lz * sin;
         const wz = config.z - lx * sin + lz * cos;
-        const h = surfaceHeightAt(wx, wz);
+        // Unclamped, like the installations: the clamped sampler undercuts a
+        // flat plateau by 8% of its height, and stacked with the 1.5m seam
+        // allowance below it sank the m01 strip 3.6m into the cap.
+        const h = surfaceTopAt(wx, wz);
         if (h < baseY) baseY = h;
         if (h > highest) highest = h;
       }
-      if (!Number.isFinite(baseY)) baseY = surfaceHeightAt(config.x, config.z);
+      if (!Number.isFinite(baseY)) baseY = surfaceTopAt(config.x, config.z);
       // Sunk a little into the ground so no seam of daylight shows under the
       // strip where the plateau top is not perfectly level.
       const deckY = baseY - 1.5;
@@ -36056,7 +36084,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // beam instead of about the world's X axis. Installations never pitch,
       // so their order is left alone.
       if (spec.mobile) root.rotation.order = "YXZ";
-      root.position.set(x, spec.mobile ? surfaceTopAt(x, z) : surfaceHeightAt(x, z), z);
+      // Installations ride the unclamped sampler too: the 0.92 summit clamp
+      // buried the night base's flat-top batteries 7.4m and the coastal SAM
+      // 2.7m - exactly the loss surfaceTopAt documents. Slopes are identical
+      // under both samplers, so nothing off a plateau moves.
+      root.position.set(x, surfaceTopAt(x, z), z);
       root.rotation.y = headingRad;
       root.userData.enemyType = typeKey;
 

@@ -62,3 +62,21 @@
 - 見送り(理由付き): forceSelectMissionの状態ガード強化=並走モデルバッチ班のプローブAPI互換を
   夜間中に変えない。STABILITY_MIN/SPAN拡幅+brakeSpeed/stallEntry表修正=飛行感が変わる
   バランス隣接のためユーザー判断待ち(所見はfindings_raw.mdに保存)
+
+### Batch 5 — データ/配置正確性(23:3x適用、スモーク緑)
+- [S2] 設置物の埋まり根治: spawnGroundUnitの設置物経路+spawnFriendlyBase+投光器を
+  surfaceTopAt(無クランプ)へ。**m-night実測: 全11基 y=84.64(旧)→92.00(天面ぴったり)**。
+  m-convoy SAM 2.72m/m01滑走路3.58m/m-city市民塔3.42mも同根治
+- [S2] hitboxScaleの直線則乖離3機を是正: mig29 0.95→1.06 / su33 1.05→1.27 / su35 0.96→1.26
+  (su35はsu57からのコピペ痕16/21値。可視翼の外を弾が素通りしていた)
+- [S2] イージスsubsystem座標: aa-aftを実射点(0,13,50)へ、ciwsを描画ドラム(0,19.5,51)へ
+  (旧: ドラムに"AA GUN"ラベル+生きたCIWSは空甲板z=64の不可視箱)
+- [S2] Hindの偽警告帯200m: attackRange 1500→1300(ミサイル実射程と一致)
+- [S3] forceConfirmMissionの戻り値契約が古い(briefing遷移追加後もSTATE_READYのみ)→成功を
+  Falseと誤報告。★露編スイープ「全部m01起動」の真相=プローブのforceCampaign誤用+この誤報告の
+  合わせ技(ゲーム本体の露編は無罪)。プローブをforceCampaignCursor経由に修正し露編20本再走中
+- [S3] m-cityのTOP COVER無線/コメント「Su-27」→実スポーンのSu-35へ
+- [S3] normalizeWaveEntryのプリセット解決にhasOwnProperty(prototypeキー事故防止)
+- [S3] コメント正誤2件: 対艦ミサイル「4200/8発」→実1040/2発、露ロースター「All five are
+  enemyOnly」→実態(tu95のみ)
+- m-convoyの旧スイープcerr=2はSwiftShader環境警告と判明(ゲームバグではない)
