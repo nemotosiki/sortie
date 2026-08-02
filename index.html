@@ -39897,9 +39897,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function spawnShip(position, headingRad, slot, typeKey, idBase = 6) {
+      // A fleet entry naming a hull that is not registered used to throw on the
+      // first `spec.` read, and because animate() has already re-armed rAF the
+      // exception then repeated every frame - a frozen picture rather than an
+      // error anyone could act on. The aircraft, ground and heli spawners all
+      // guard this way already; the hulls were the one gap.
+      const spec = SHIP_TYPES[typeKey];
+      if (!spec) {
+        console.warn(`[mission] unknown ship type "${typeKey}" in a naval wave - hull skipped`);
+        return null;
+      }
       enemySerial += 1;
       const id = idBase + slot + 1;
-      const spec = SHIP_TYPES[typeKey];
       const root = new THREE.Group();
       root.position.set(position.x, 0, position.z);
       root.rotation.y = headingRad;
@@ -44507,6 +44516,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         saveCheckpoint();
         spawnMissionWave(mission.waves[missionWaveIndex]);
       } else if (kills >= mission.totalTargets) {
+        if (mission.hasOutro) startOutro();
+        else completeMission(true);
+      } else {
+        // Nothing designated is alive, nothing designated is left to spawn, and
+        // yet the tally is short: a target counted by the table never made it
+        // onto the board (an unregistered ground type, a delayed concurrent
+        // entry the queue discarded, a hull spawn that refused). Without this
+        // the sortie hung here forever, re-firing "ALL TARGETS DESTROYED" every
+        // 1.35s with an empty sky and no way out but flying out of the arena.
+        // The player cleared everything that existed, so the sortie is a win -
+        // and the table error is reported rather than silently absorbed.
+        console.warn(
+          `[mission] ${mission.key}: ${mission.totalTargets} designated targets declared but only `
+          + `${kills} could ever be reached - completing anyway. Check the wave/groundUnits table.`
+        );
         if (mission.hasOutro) startOutro();
         else completeMission(true);
       }
