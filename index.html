@@ -5227,9 +5227,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hitboxScale: 0.55,
         patrolSpeedScale: 1.08,
         patrolPathScale: 1.3,
+        // A drone flies like a machine and hunts like one too - which made it
+        // the smartest pursuer in the game: 55 deg/s of tracking (nothing
+        // else exceeds 49) with the closure to blow straight past the player.
+        // The nerf is to the BRAIN, not the airframe: the same agility still
+        // powers the jink, but the chase is flown at 30 deg/s - below every
+        // fighter - with less than half the closure, and its station is held
+        // fifty metres further back. It arrives late, tracks lazily, and
+        // slides wide when the player turns; what it keeps is being hard to
+        // hit, which was always its job.
+        pursuitTurnScale: 0.55,
+        pursuitBonusScale: 0.45,
         engageRange: 1040,
         disengageRange: 1660,
-        pursuitBack: 86,
+        pursuitBack: 136,
         verticalBias: 14,
         verticalAmplitude: 42,
         verticalFrequency: 1.9,
@@ -5784,10 +5795,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             role: air.role,
             hp: air.maxHealth,
             patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
-            pursuitBonus: Math.round((air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE),
+            // The two optional scales split "what the airframe can do" from
+            // "how well this thing flies a chase". The UAV needs its full
+            // agility for the jink and none of it for the six-o'clock camp:
+            // scaling turnRateDeg itself would dull both.
+            pursuitBonus: Math.round(
+              (air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE * (ai.pursuitBonusScale ?? 1)
+            ),
             maxSpeed: air.boostSpeed,
             patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
-            pursuitTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR)
+            pursuitTurn: THREE.MathUtils.degToRad(
+              air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR * (ai.pursuitTurnScale ?? 1)
+            )
           })];
         })
       ));
