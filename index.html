@@ -38301,7 +38301,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (let i = 1; i <= 8; i += 1) {
         const t = tLow + ((tHigh - tLow) * i) / 8;
         ballisticPoint(origin, velocity, t, tmpBallistic);
-        if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) {
+        // surfaceTopAt, not the collision-clamped sampler: installations, the
+        // friendly base and every vehicle stand on the unclamped mesh top, and
+        // a plateau's cap is 8% above the clamp. Predicting against the lower
+        // surface put the CCIP marker under the deck the target sits on and
+        // carried the solution long by the distance the round falls through
+        // that gap.
+        if (tmpBallistic.y > surfaceTopAt(tmpBallistic.x, tmpBallistic.z)) {
           low = t;
           continue;
         }
@@ -38309,7 +38315,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (let k = 0; k < 16; k += 1) {
           const mid = (low + high) * 0.5;
           ballisticPoint(origin, velocity, mid, tmpBallistic);
-          if (tmpBallistic.y > surfaceHeightAt(tmpBallistic.x, tmpBallistic.z)) low = mid;
+          if (tmpBallistic.y > surfaceTopAt(tmpBallistic.x, tmpBallistic.z)) low = mid;
           else high = mid;
         }
         ballisticPoint(origin, velocity, high, out);
@@ -38371,7 +38377,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         }
 
-        if (!struck && tmpV1.y > surfaceHeightAt(tmpV1.x, tmpV1.z)) {
+        if (!struck && tmpV1.y > surfaceTopAt(tmpV1.x, tmpV1.z)) {
           bomb.mesh.position.copy(tmpV1);
           // Nose tips over toward the velocity vector as it falls.
           tmpV2.copy(bomb.velocity);
@@ -38393,7 +38399,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           for (let k = 0; k < 14; k += 1) {
             const mid = (low + high) * 0.5;
             ballisticPoint(bomb.origin, bomb.velocity, mid, tmpV2);
-            if (tmpV2.y > surfaceHeightAt(tmpV2.x, tmpV2.z)) low = mid;
+            if (tmpV2.y > surfaceTopAt(tmpV2.x, tmpV2.z)) low = mid;
             else high = mid;
           }
           ballisticPoint(bomb.origin, bomb.velocity, high, tmpV1);
@@ -38407,7 +38413,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function detonateBomb(bomb, position) {
       bombImpact.copy(position);
       const weapon = bomb.weapon;
-      const ground = surfaceHeightAt(bombImpact.x, bombImpact.z);
+      const ground = surfaceTopAt(bombImpact.x, bombImpact.z);
       const water = ground <= 0.01 && bombImpact.y <= 1;
 
       createExplosion(bombImpact, water ? 0xbfe6ff : 0xffb95a, 2.2);
