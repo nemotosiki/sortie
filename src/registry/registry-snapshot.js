@@ -38,6 +38,7 @@ export function createRegistrySnapshot({
   AIRCRAFT_MODELS,
   SHIP_MODELS = {},
   GROUND_MODELS = {},
+  HELI_MODELS = {},
   MISSIONS
 }) {
   return {
@@ -81,6 +82,10 @@ export function createRegistrySnapshot({
     // And again for the ground units, which are { kind, build } like the ships.
     GROUND_MODELS: Object.fromEntries(
       Object.keys(GROUND_MODELS).sort().map((kind) => [kind, ["build"]])
+    ),
+    // And the gunships, same { kind, build } shape again.
+    HELI_MODELS: Object.fromEntries(
+      Object.keys(HELI_MODELS).sort().map((kind) => [kind, ["build"]])
     ),
     MISSIONS: Object.fromEntries(
       MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)])
