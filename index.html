@@ -34617,7 +34617,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const center = size / 2;
           const radius = size * 0.42;
           tmpV2.set(-lastRadarForward.z, 0, lastRadarForward.x).normalize();
-          return friendlies.filter((f) => f.alive).map((friendly) => {
+          return friendlies
+            .filter((f) => f.alive && !(f.retired && !isFriendlyShip(f)))
+            .map((friendly) => {
             tmpV3.copy(friendly.group.position).sub(player.position);
             const rightDistance = tmpV3.dot(tmpV2);
             const forwardDistance = tmpV3.dot(lastRadarForward);
@@ -47227,8 +47229,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (let i = 0; i < friendlies.length; i += 1) {
         const friendly = friendlies[i];
         // `retired` is a transport that crossed the far edge: alive, saved,
-        // and no longer in the area, so it stops being drawn.
-        if (!friendly.alive || friendly.retired) continue;
+        // and no longer in the area, so it stops being drawn. A retired SHIP is
+        // the opposite - retireFriendly keeps it visible on purpose, because a
+        // beach with nothing on it is the picture of having failed - so it
+        // keeps its marker too.
+        if (!friendly.alive || (friendly.retired && !isFriendlyShip(friendly))) continue;
         liveKeys.add(i);
         let marker = friendlyMarkerElements.get(i);
         if (!marker) {
@@ -48161,7 +48166,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // against the contacts' white and the designated targets' red, and no
       // ring or blink, because a friendly is never selected or locked.
       for (const friendly of friendlies) {
-        if (!friendly.alive || friendly.retired) continue;
+        // Same rule as the HUD markers: a retired transport has left, a retired
+        // ship is aground in front of the player and still worth a blip.
+        if (!friendly.alive || (friendly.retired && !isFriendlyShip(friendly))) continue;
         tmpV3.copy(friendly.group.position).sub(player.position);
         const rightDistance = tmpV3.dot(tmpV2);
         const forwardDistance = tmpV3.dot(lastRadarForward);
