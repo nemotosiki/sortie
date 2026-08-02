@@ -38857,6 +38857,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
 
+      // And so are the ones on the player's side. The loop above only ever
+      // looked at `enemies`, so the escorted carrier and the landing ships -
+      // the largest hulls in the game, and the ones the player flies closest
+      // to - were the only solid-looking things that could be passed through.
+      for (const friendly of friendlies) {
+        if (!isFriendlyShip(friendly)) continue;
+        if (!friendly.alive && friendly.wreckTimer <= 0) continue;
+        const box = friendly.kind === "carrier"
+          ? FRIENDLY_CARRIER_SPEC.crash
+          : FRIENDLY_SHIP_SPEC.crash;
+        if (!box) continue;
+        forwardOf(friendly.group, tmpV2);
+        tmpV3.copy(player.position).sub(friendly.group.position);
+        const along = tmpV3.x * tmpV2.x + tmpV3.z * tmpV2.z;
+        const side = tmpV3.x * -tmpV2.z + tmpV3.z * tmpV2.x;
+        if (Math.abs(along) < box.halfLen && Math.abs(side) < box.halfBeam &&
+            player.position.y < friendly.group.position.y + box.top) {
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+          break;
+        }
+      }
+
       gunCooldown = Math.max(0, gunCooldown - dt);
       if ((keys.has("Space") || gamepadInput.gun) && gunCooldown <= 0) {
         fireGun();
@@ -42098,7 +42120,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       cruiseSpeed: 9,
       turnRate: THREE.MathUtils.degToRad(1.2),
       sternOffset: 162,
-      bowOffset: 168
+      bowOffset: 168,
+      // The same hull the enemy carrier is flown into. A ship is solid because
+      // of its steel, not because of whose flag it wears - and m03 starts the
+      // player off INDEPENDENCE's bow, which made a 330m carrier the easiest
+      // thing in the game to fly through.
+      crash: SHIP_TYPES.carrier.crash
     });
 
     // The escorted airlifter. The C-17 hull the enemy transport already uses,
