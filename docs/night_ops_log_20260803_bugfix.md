@@ -88,3 +88,20 @@
   弾倉が無誘導弾に溶けた→clearMultiLock追加
 - [S2] SP.W斉射が全弾同じ翼端から出ていた(spawn毎のレール反転がindex偶奇と同位相で相殺)→
   トリガ毎反転(flipSpwRailSide)へ。**実測: 2連射でx=+4.2/-4.2の左右交互を確認**
+
+### Batch 7 — 露編出撃不能+ワールド装飾(00:1x適用、スモーク緑)
+- [S1級] **露キャンペーンが新規プロファイルで出撃不能**: キャンペーン切替の機体初期化が
+  ロスター先頭(su37=未所持)に落とし、LAUNCHが購入確認フローに吸われて詰み。米編は先頭=
+  スターターf16で偶然隠れていた。→所持機優先(新規ならスターターmig21)へ。
+  **実測: r05が新規状態でmig21起動・state=playing**(露編スイープの「ready止まり」の真因)
+- [S2] 島装飾の回転無視: islandAnchorsにspinを追加し、浅瀬/砂リング・植樹・harbour村を
+  島の実フットプリント(rotateY後の楕円)に整列(リングが斜面を切り裂き反対側が海に浮いていた)
+- [S2] 夜市街onCapが軸平行判定(plateauのヨー回転無視で最大~200mズレ)→terrainFloorAtと
+  同じ回転変換へ
+- [S2] disposeWorldがInstancedMeshのinstanceMatrixバッファを解放せず(foliage/rocks/floes/
+  city blocksがマップ切替毎にリーク)→traverseでdispose。**全8プリセット×2周で
+  geometries/textures/programs=34/11/15完全不動を実測**
+- [S2] harbour村がsand bar島だと空中に浮く(実頂面0.32h vs 設置0.9h)→lighthouseと同じ除外
+- [S3] 装飾島カメラプロキシ半径1.75r<実外縁1.78r→1.85r
+- [S3] buildMountainGeometryの死に頂点カラー(シェーダはvertexColors未使用)を削除、
+  山毎の無駄VBOを排除+ヘッダコメント正誤

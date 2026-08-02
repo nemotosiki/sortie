@@ -44332,7 +44332,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function ensureAircraftInCampaign() {
       const roster = campaignAircraft();
       if (roster.includes(selectedAircraftId)) return selectedAircraftId;
-      selectedAircraftId = roster[0];
+      // Land on a jet the player can actually FLY. roster[0] happened to be
+      // the free starter on the American side, which hid that the Russian
+      // roster leads with an unowned Su-37: LAUNCH fell into the purchase-
+      // confirm flow and a fresh profile could not sortie at all.
+      selectedAircraftId = roster.find((id) => ownsAircraft(id)) ?? roster[0];
       rebuildPlayerModel(selectedAircraftId);
       window.__game.selectedAircraft = selectedAircraftId;
       return selectedAircraftId;
@@ -46217,13 +46221,20 @@ varying vec2 vOceanUv;`
         // real child meshes. Shape 1's sand spit is the widest at about 1.65r.
         cameraSurfaces.push({
           x, z,
-          r: radius * (shape === 1 ? 1.75 : 1.25),
+          // 1.85, not 1.75: the sand spit's true outer edge is centre 0.95r
+          // plus its own flared 0.826r = 1.78r, and the old proxy left a thin
+          // ring where the camera raycast was skipped and clipped inside.
+          r: radius * (shape === 1 ? 1.85 : 1.25),
           maxHeight: height * 1.3,
           mesh: island
         });
         // Handed to the decoration pass so shore rings and props can find the
         // islands without re-deriving their placement.
-        islandAnchors.push({ x, z, radius, height, squash, shape });
+        // `spin` rides along because the island's ellipse is ROTATED in world
+        // space (every mesh above gets rotateY(baseSpin) after its squash):
+        // a decorator that applies squash without the spin draws its ring or
+        // scatter on an ellipse up to 90 degrees off the actual footprint.
+        islandAnchors.push({ x, z, radius, height, squash, shape, spin: baseSpin });
         return island;
       };
 
@@ -46402,6 +46413,10 @@ varying vec2 vOceanUv;`
             const shallow = new THREE.Mesh(ringGeometry, shallowMaterial);
             const shallowR = foot * (decor.shore.width + 0.5);
             shallow.scale.set(shallowR, 1, shallowR * anchor.squash);
+            // Same yaw as the island's own meshes, or the squashed ring lies
+            // across the footprint instead of around it - sawing through the
+            // hillside on one flank and floating on open sea on the other.
+            shallow.rotation.y = anchor.spin || 0;
             shallow.position.set(anchor.x, 0.25, anchor.z);
             shallow.renderOrder = 1;
             addRoot(shallow);
@@ -46409,6 +46424,7 @@ varying vec2 vOceanUv;`
             const sand = new THREE.Mesh(ringGeometry, sandMaterial);
             const sandR = foot * decor.shore.width;
             sand.scale.set(sandR, 1, sandR * anchor.squash);
+            sand.rotation.y = anchor.spin || 0;
             sand.position.set(anchor.x, 0.5, anchor.z);
             sand.renderOrder = 2;
             addRoot(sand);
@@ -46435,13 +46451,19 @@ varying vec2 vOceanUv;`
             const baseY = anchor.shape === 1
               ? anchor.height * 0.3 * 0.95
               : anchor.height * (anchor.shape === 3 ? 0.95 : 0.9);
+            // The island's world-space yaw, applied to the squashed offset the
+            // same way rotateY composes after scale on the meshes themselves.
+            const spinCos = Math.cos(anchor.spin || 0);
+            const spinSin = Math.sin(anchor.spin || 0);
             for (let t = 0; t < count; t += 1) {
               // Sqrt keeps the scatter area-uniform instead of centre-heavy.
               const rr = Math.sqrt(decorRng()) * spread;
               const theta = decorRng() * Math.PI * 2;
+              const ox = Math.cos(theta) * anchor.radius * rr;
+              const oz = Math.sin(theta) * anchor.radius * rr * anchor.squash;
               spots.push({
-                x: anchor.x + Math.cos(theta) * anchor.radius * rr,
-                z: anchor.z + Math.sin(theta) * anchor.radius * rr * anchor.squash,
+                x: anchor.x + ox * spinCos + oz * spinSin,
+                z: anchor.z - ox * spinSin + oz * spinCos,
                 y: baseY,
                 h: decor.trees.height[0] + decorRng() * (decor.trees.height[1] - decor.trees.height[0]),
                 spin: decorRng() * Math.PI
@@ -46558,6 +46580,10 @@ varying vec2 vOceanUv;`
           let host = null;
           for (const anchor of islandAnchors) {
             if (blocked(anchor.x, anchor.z)) continue;
+            // Never a sand bar: its real top is ~0.32x height, and the
+            // village is planted at 0.9x - on a bar the huts hung 20-60m in
+            // the air over the beach. Same exclusion the lighthouse makes.
+            if (anchor.shape === 1) continue;
             if (!host || anchor.radius > host.radius) host = anchor;
           }
           if (host) {
@@ -46594,6 +46620,9 @@ varying vec2 vOceanUv;`
               window_.rotation.y = spin;
               village.add(window_);
             }
+            // The huts' offsets are squashed in the island's local frame, so
+            // the group wears the island's yaw the same way its meshes do.
+            village.rotation.y = host.spin || 0;
             village.position.set(host.x, host.height * 0.9, host.z);
             addRoot(village);
           }
@@ -46751,9 +46780,19 @@ varying vec2 vOceanUv;`
           // A lot is built only if it is inside the district ring AND inside
           // the flat cap. The ellipse test is what keeps the waterfront blocks
           // off the plateau's slope.
+          // Evaluated in the plateau's OWN frame: the mesh is yawed by a
+          // random rotation.y, so an axis-aligned test drifted up to ~200m off
+          // the real cap on some seeds - blocks standing on the slope on one
+          // side, bare flat ground on the other. Same transform terrainFloorAt
+          // uses off the same record.
+          const capRot = plateauRecord ? plateauRecord.rot || 0 : 0;
+          const capCos = Math.cos(capRot);
+          const capSin = Math.sin(capRot);
           const onCap = (x, z) => {
-            const ex = (x - cx) / capX;
-            const ez = (z - cz) / capZ;
+            const dxc = x - cx;
+            const dzc = z - cz;
+            const ex = (dxc * capCos - dzc * capSin) / capX;
+            const ez = (dxc * capSin + dzc * capCos) / capZ;
             return ex * ex + ez * ez <= 1;
           };
 
@@ -47039,7 +47078,16 @@ varying vec2 vOceanUv;`
     // renderer.info.memory must return to its baseline after this.
     function disposeWorld(target) {
       if (!target) return false;
-      for (const node of target.roots) scene.remove(node);
+      for (const node of target.roots) {
+        // InstancedMesh carries its instanceMatrix as a mesh-level GPU buffer
+        // that geometry.dispose() never touches - the foliage, rocks, floes
+        // and city blocks each leaked one per map swap (invisible to
+        // renderer.info.memory, which only counts geometries).
+        node.traverse((child) => {
+          if (child.isInstancedMesh) child.dispose();
+        });
+        scene.remove(node);
+      }
       for (const item of target.geometries) item.dispose();
       for (const item of target.materials) item.dispose();
       for (const item of target.textures) item.dispose();
@@ -47095,9 +47143,11 @@ varying vec2 vOceanUv;`
     }
 
     // Cone displaced by angular harmonics - reads as a rocky volcanic island.
-    // Vertex colors band by height using the map palette: shore, scrub, rock,
-    // then the peak color above the snow line. `topRadius` near 1 turns the
-    // cone into a flat-topped plateau (the night map's base island).
+    // The colour banding (shore, scrub, rock, snow) is entirely the terrain
+    // shader's height/slope blend; this geometry carries no colour data.
+    // `topRadius` near 1 turns the cone into a flat-topped plateau (the night
+    // map's base island). `snowy` is unused here and kept for the call sites,
+    // which pass it on to the material choice.
     function buildMountainGeometry(rng, snowy, shape) {
       const geo = new THREE.CylinderGeometry(shape.topRadius, 1, 1, 16, 5, false);
       geo.translate(0, 0.5, 0);
@@ -47120,24 +47170,10 @@ varying vec2 vOceanUv;`
           position.setZ(i, z * displaced);
         }
       }
-      const colors = new Float32Array(position.count * 3);
-      const snowLine = shape.snowLine;
-      const scrubLine = snowLine * 0.5;
-      const low = new THREE.Color(shape.palette.low);
-      const mid = new THREE.Color(shape.palette.mid);
-      const rock = new THREE.Color(shape.palette.rock);
-      const peak = new THREE.Color(snowy ? shape.palette.snow : shape.palette.peak);
-      const scratch = new THREE.Color();
-      for (let i = 0; i < position.count; i += 1) {
-        const t = THREE.MathUtils.clamp(position.getY(i), 0, 1);
-        if (t < scrubLine) scratch.copy(low).lerp(mid, t / scrubLine);
-        else if (t < snowLine) scratch.copy(mid).lerp(rock, (t - scrubLine) / (snowLine - scrubLine));
-        else scratch.copy(rock).lerp(peak, (t - snowLine) / (1 - snowLine));
-        colors[i * 3] = scratch.r;
-        colors[i * 3 + 1] = scratch.g;
-        colors[i * 3 + 2] = scratch.b;
-      }
-      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      // No vertex colours. The terrain material never sets vertexColors and
+      // its shader derives every band from vTerrainHeight/vTerrainSlope, so
+      // the per-vertex Color loop this function used to run built a VBO that
+      // was uploaded for every mountain and read by nothing.
       geo.computeVertexNormals();
       return geo;
     }
