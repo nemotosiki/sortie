@@ -751,16 +751,28 @@
       background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
     }
 
-    /* Below the horizon the rungs are dashed, above them solid. Real HUDs do
-       this so a glance tells you which side of level you are on without
-       reading a number - which matters most when inverted, where the labels
-       are upside down anyway. */
-    .pitchMark.below {
-      background:
-        repeating-linear-gradient(90deg, rgba(83, 255, 92, 0.64) 0 9px, transparent 9px 17px);
-      -webkit-mask-image: linear-gradient(90deg, transparent, #000 20%, #000 44%, transparent 44%, transparent 56%, #000 56%, #000 80%, transparent);
-      mask-image: linear-gradient(90deg, transparent, #000 20%, #000 44%, transparent 44%, transparent 56%, #000 56%, #000 80%, transparent);
+    /* Which side of level a rung is on is shown by which way its END TICKS
+       point - up toward the horizon on a climb rung, down on a dive rung. That
+       is how the series draws it, and it survives being read upside down.
+       Dashing the dive half was the earlier attempt and it was wrong twice
+       over: on a green HUD a broken line reads as a fault, and it left the
+       ladder looking like two different instruments. Both halves are solid. */
+
+    /* The ticks: a short stub at each inboard end of the bar, turned down on
+       the dive rungs. Drawn on the bar's own children so they inherit the
+       colour and the missile-alert override for free. */
+    .pitchTick {
+      position: absolute;
+      top: 0;
+      width: 1px;
+      height: 6px;
+      background: currentColor;
+      opacity: 0.64;
     }
+
+    .pitchTick.l { left: 26px; }
+    .pitchTick.r { right: 26px; }
+    .pitchMark.dive .pitchTick { top: -5px; }
 
     .pitchMark.hidden,
     .horizonLine.hidden { display: none; }
@@ -1406,13 +1418,6 @@
       background: linear-gradient(90deg, transparent, rgba(255, 74, 85, 0.64) 20%, rgba(255, 74, 85, 0.64) 44%, transparent 44%, transparent 56%, rgba(255, 74, 85, 0.64) 56%, rgba(255, 74, 85, 0.64) 80%, transparent);
     }
 
-    /* The dashed below-horizon rungs paint their own background, so the rule
-       above does not reach them - without this twin they stay green while the
-       rest of the canopy goes red. */
-    body.missileAlert .pitchMark.below {
-      background:
-        repeating-linear-gradient(90deg, rgba(255, 74, 85, 0.64) 0 9px, transparent 9px 17px);
-    }
 
     body.missileAlert #reticlePipper { box-shadow: 0 0 5px rgba(255, 74, 85, 0.95); }
     body.missileAlert #silhouetteBody { fill: rgba(255, 74, 85, 0.16); }
@@ -20546,7 +20551,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             rungs: pitchRungNodes.map((r) => ({
               deg: r.deg,
               hidden: r.el.classList.contains("hidden"),
-              dashed: r.el.classList.contains("below"),
+              dive: r.el.classList.contains("dive"),
+              ticks: r.el.querySelectorAll(".pitchTick").length,
               label: r.el.dataset.label,
               drawn: r.el.classList.contains("hidden") ? null : rect(r.el),
               // The authored slot, before the strip's rotation. getBoundingClientRect
@@ -31738,7 +31744,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (let i = 0; i < pitchRungNodes.length; i += 1) {
           const rung = pitchRungNodes[i];
           placePitchElement(rung.el, pitchCam, rung.deg, focal, frameHeight);
-          rung.el.classList.toggle("below", rung.deg < 0);
+          rung.el.classList.toggle("dive", rung.deg < 0);
         }
         return;
       }
@@ -31760,13 +31766,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // feature of the scenery.
       const pitchDeg = THREE.MathUtils.radToDeg(pitchCam);
       const slide = pitchDeg * FIXED_LADDER_PX_PER_DEG;
-      // How far from the centre a rung may sit before it is off the instrument.
-      const reach = (PITCH_RUNG_DEGREES[0] + 8) * FIXED_LADDER_PX_PER_DEG;
+      // Culled against the FRAME, not against the ladder's own centre. The
+      // whole strip slides with the nose, so a reach measured from screen
+      // centre throws away the entire dive half the moment you climb - which
+      // is what left a one-sided ladder reading 5 at the top and 30 at the
+      // bottom with nothing above the boresight at all.
+      const cull = frameHeight * 0.75;
       const placeFixed = (el, deg) => {
-        // Same shape as the conformal placement - offset of this rung from the
-        // boresight - just on the instrument's scale rather than the world's.
+        // MINUS deg: screen y grows downward, so the climb rungs (+deg) have to
+        // go UP the frame. The other sign drew the ladder inverted - the 30
+        // rung at the bottom - which is the wrong way round on an instrument
+        // whose whole job is telling you which way up you are.
         const offset = slide - deg * FIXED_LADDER_PX_PER_DEG;
-        if (Math.abs(offset) > reach) {
+        if (Math.abs(offset) > cull) {
           el.classList.add("hidden");
           return;
         }
@@ -31777,12 +31789,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (let i = 0; i < pitchRungNodes.length; i += 1) {
         const rung = pitchRungNodes[i];
         placeFixed(rung.el, rung.deg);
-        rung.el.classList.toggle("below", rung.deg < 0);
+        // Dive rungs carry their ticks downward; both halves stay solid. The
+        // series draws the split by which way the end ticks point, not by
+        // dashing one side - dashes read as "signal lost" on a green HUD.
+        rung.el.classList.toggle("dive", rung.deg < 0);
         // The labels are FIXED on this ladder. They belong to the rung, not to
         // the slot - a rung marked 20 is the 20-degree rung wherever it has
-        // slid to. Rewriting them per frame was the previous attempt, and it
-        // made the numbers dance while the scale stood still: precisely
-        // backwards.
+        // slid to. Rewriting them per frame was an earlier attempt, and it made
+        // the numbers dance while the scale stood still: precisely backwards.
         const text = String(Math.abs(rung.deg));
         if (rung.el.dataset.label !== text) rung.el.dataset.label = text;
       }
@@ -32169,6 +32183,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // below the horizon line - printing "-10" as well was a third way of
         // saying it, and it was the one that was wrong when inverted.
         rung.dataset.label = String(Math.abs(deg));
+        // End ticks, one per inboard end. Which way they point is the climb /
+        // dive split, set per frame by the .dive class.
+        const tickL = document.createElement("span");
+        tickL.className = "pitchTick l";
+        const tickR = document.createElement("span");
+        tickR.className = "pitchTick r";
+        rung.appendChild(tickL);
+        rung.appendChild(tickR);
         ui.pitchLadder.appendChild(rung);
         pitchRungNodes.push({ el: rung, deg });
       }
