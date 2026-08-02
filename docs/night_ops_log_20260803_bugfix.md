@@ -33,3 +33,12 @@
 - [S3] damageFriendlyがguard非activeでも台帳を汚す→activeガード
 - スモーク: m01/m-escort起動+pageerror0+置換+ペナルティ実証(scratchpad/smoke_batch1.py)。
   bearingはプローブ未露出のためコード検証(headingRad規約と消費側の両照合)
+
+### Batch 3 — UI/起動+DESTROYED除去(ユーザー指示、23:2x適用、スモーク緑)
+- [指示] キル時の「DESTROYED」表記を全廃: ポップアップは「+点数 · 機体名」のみ(span 12px化)、
+  キル毎の「TARGET n · ○○ DESTROYED」バナーも廃止(進行系のALL TARGETS DESTROYED等は温存)。
+  実機で popup="+1000 · Tu-95"・バナー無し・error 0 を確認
+- [S2] 起動時のハンガー画面フラッシュ: startScreenに初期hidden+bodyへdata-game-state静的スタンプ
+- [S2] 雲の中でミッション終了→ハンガーが白ベールで覆われたまま: 非playing時はveil目標0で減衰
+- [S3] #statusPanel .hudVal同一詳細度の死に定義(min-width:52px側)を削除(見た目不変)
+- [S3] #radarLabelOld死にセレクタ削除

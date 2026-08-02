@@ -451,11 +451,6 @@
       letter-spacing: 0.08em;
     }
 
-    #statusPanel .hudVal {
-      min-width: 52px;
-      text-align: right;
-    }
-
     /* The selected weapon, marked the way the reference marks it: the caret and
        the row it points at both go amber, and nothing moves. */
     #statusPanel .hudRow.wpnActive .hudName,
@@ -587,15 +582,6 @@
 
     #radarLabel {
       display: none;
-    }
-
-    #radarLabelOld {
-      position: absolute;
-      left: 10px;
-      top: 8px;
-      font-size: 9px;
-      letter-spacing: 0.18em;
-      color: var(--hud-dim);
     }
 
     /* The aircraft symbol. Positioned from JS in SCREEN pixels onto the gun
@@ -1242,18 +1228,10 @@
       will-change: left, top, transform, opacity;
     }
 
-    .combatPopup strong {
-      display: block;
-      font-size: 18px;
-      font-style: italic;
-      letter-spacing: 0.16em;
-    }
-
     .combatPopup span {
       display: block;
-      margin-top: 2px;
       color: #fff;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.12em;
     }
@@ -2285,7 +2263,11 @@
   }
   </script>
 </head>
-<body>
+<!-- Stamped statically with the boot state: until the module resolves its CDN
+     import and setState() runs, an unstamped body matched none of the
+     data-game-state blackout rules, so the raw HUD (and the one screen that
+     shipped without `hidden`) flashed on slow connections. -->
+<body data-game-state="campaignSelect">
   <div id="gameRoot" aria-hidden="true"></div>
 
   <div id="hud" aria-hidden="true">
@@ -2527,7 +2509,7 @@
     </div>
   </section>
 
-  <section id="startScreen" class="screen menuScreen hangarScreen">
+  <section id="startScreen" class="screen menuScreen hangarScreen hidden">
     <div class="menuFrame">
       <header class="menuHeader"><h1 class="menuTitle">SELECT AIRCRAFT</h1><span class="menuHeaderRule"></span><span class="menuMissionTag" id="hangarWallet">000,000 CR</span><span class="menuMissionTag" id="hangarMissionTag">01 FIRST CONTACT</span></header>
       <div class="menuLayout">
@@ -34987,17 +34969,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playTone(760, 0.12, 0.08, "square", 0.06);
       if (lock.targetId === enemy.id) resetLock();
       if (preferredTargetId === enemy.id) preferredTargetId = null;
-      // "TARGET n DESTROYED" is a report to the player about the player's own
-      // shot. The wingman gets one radio line for its kills and nothing else.
-      if (!byWingman) {
-        showBanner(
-          enemy.subsystem
-            ? `${enemyDisplayName(enemy)} DESTROYED`
-            : `TARGET ${enemy.id} · ${enemyDisplayName(enemy)} DESTROYED`,
-          1.1,
-          "success"
-        );
-      }
+      // No per-kill banner. The "TARGET n DESTROYED" strip was cut on the
+      // user's call (2026-08-02): the reference games confirm a kill with the
+      // explosion and the score popup, and the banner channel stays free for
+      // mission-flow messages (WAVE CLEAR, CHECKPOINT, retreats).
       if (enemy.type === "carrier") startAceKillCam(enemy);
       if (STRIKE_AIR_TYPES.has(enemy.type) && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
@@ -36282,7 +36257,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const dist = Math.sqrt(dx * dx + dy * dy * 3.2 + dz * dz);
         if (dist < volume.r) veil = Math.max(veil, 1 - dist / volume.r);
       }
-      const target = THREE.MathUtils.clamp(veil * 1.5, 0, 0.86);
+      // Outside of flight the veil can only decay: the world keeps updating
+      // under the menus, and a sortie that ENDED inside a cloud used to leave
+      // the hangar wrapped in a stuck white overlay (nothing moved the camera
+      // out, so the lerp target never fell).
+      const target = gameState === STATE_PLAYING
+        ? THREE.MathUtils.clamp(veil * 1.5, 0, 0.86)
+        : 0;
       cloudVeilLevel = THREE.MathUtils.lerp(cloudVeilLevel, target, damping(0.0012, dt));
       ui.cloudVeil.style.opacity = cloudVeilLevel < 0.01 ? "0" : cloudVeilLevel.toFixed(3);
     }
@@ -38431,11 +38412,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       const element = document.createElement("div");
       element.className = "combatPopup";
-      const title = document.createElement("strong");
-      title.textContent = "DESTROYED";
+      // Score and airframe only - the big "DESTROYED" word was cut on the
+      // user's call (2026-08-02): the explosion, the radio and the score line
+      // already say it, and the reference games don't stamp a word per kill.
       const detail = document.createElement("span");
       detail.textContent = `+${points} · ${label}`;
-      element.append(title, detail);
+      element.append(detail);
       ui.combatPopups.appendChild(element);
       combatPopups.push({
         element,
