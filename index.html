@@ -693,12 +693,20 @@
        cancelling rule - the earlier global scale broke it by 0.18 of a half
        frame and needed the reciprocal to undo.
 
-       Pulled in to 29%, not further: the ladder's 13-mark window is ~120px
-       wide either side of centre, and at 33.5% the tapes landed on top of it.
-       This clears it with a margin at 1280 and widens on bigger frames, since
-       both are percentages of the same width. */
-    body[data-camera="cockpit"] #flightData { left: 29%; }
-    body[data-camera="cockpit"] #altData { right: 29%; }
+       Anchored a fixed distance from the CENTRE, not at a percentage of the
+       frame. The thing they have to clear is the ladder, which is a fixed
+       number of pixels wide - so a percentage put them 129px clear at 1920 and
+       overlapping the numbers at 1280. calc() from 50% holds the cluster
+       together at every width, which is what makes it read as one instrument
+       the way the reference does.
+
+       239px, not the ~100 the geometry suggests: the anchor is the PANEL's
+       outer edge, but the tape's scale column sits 139px inboard of it (the
+       SPEED/ALT box and the big number are outboard). Measured rather than
+       reasoned - anchoring on the panel put the columns 34px past centre, on
+       top of each other. 239 = 100 of clearance + that 139. */
+    body[data-camera="cockpit"] #flightData { left: calc(50% - 264px); }
+    body[data-camera="cockpit"] #altData { right: calc(50% - 264px); }
 
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
@@ -740,20 +748,31 @@
 
     /* `top` is written by updatePitchLadder every frame - the horizon is just
        the zero-degree rung and is placed by the same formula as the others. */
+    /* The zero rung, and it has to READ as one. It used to be pinned to
+       left/right 28% - 44% of the whole frame - which made a full-width beam
+       running through the ladder that looked like a separate instrument. Same
+       geometry as .pitchMark now, only wider by a rung's worth so level still
+       reads at a glance. */
     .horizonLine {
       position: absolute;
-      left: 28%;
-      right: 28%;
+      left: 50%;
+      width: 210px;
       top: 50%;
       height: 1px;
-      transform: translateY(-50%);
+      transform: translate(-50%, -50%);
       background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.75) 14%, rgba(83, 255, 92, 0.75) 43%, transparent 43%, transparent 57%, rgba(83, 255, 92, 0.75) 57%, rgba(83, 255, 92, 0.75) 86%, transparent);
     }
 
     .pitchMark {
       position: absolute;
       left: 50%;
-      width: 120px;
+      /* Longer than a tick, shorter than the frame: the series draws these as
+         real horizon references, but they have to share the middle with the
+         SPEED and ALT columns the cockpit brings inboard. 190px was tried and
+         left only 13px of air at 1280x720; 150 keeps the bars substantial and
+         buys the room to bring the tapes closer, which is what makes the
+         cluster read as one instrument. */
+      width: 150px;
       height: 1px;
       transform: translate(-50%, -50%);
       background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
@@ -778,8 +797,8 @@
       opacity: 0.64;
     }
 
-    .pitchTick.l { left: 26px; }
-    .pitchTick.r { right: 26px; }
+    .pitchTick.l { left: 33px; }
+    .pitchTick.r { right: 33px; }
     .pitchMark.dive .pitchTick { top: -5px; }
 
     .pitchMark.hidden,
@@ -1200,37 +1219,6 @@
     #targetDirectionArrow.locked #targetDirectionLabel {
       color: #ff6a76;
       text-shadow: 0 0 7px rgba(255, 54, 77, 0.95);
-    }
-
-    #combatPopups {
-      position: absolute;
-      inset: 0;
-      overflow: hidden;
-      pointer-events: none;
-      z-index: 6;
-    }
-
-    .combatPopup {
-      position: absolute;
-      min-width: 150px;
-      padding: 5px 12px 6px;
-      transform: translate(-50%, -50%);
-      border-left: 2px solid rgba(255, 236, 128, 0.88);
-      border-right: 2px solid rgba(255, 236, 128, 0.88);
-      background: linear-gradient(90deg, transparent, rgba(7, 18, 27, 0.82) 18%, rgba(7, 18, 27, 0.82) 82%, transparent);
-      color: #fff5a8;
-      text-align: center;
-      text-shadow: 0 0 10px rgba(255, 204, 73, 0.92);
-      pointer-events: none;
-      will-change: left, top, transform, opacity;
-    }
-
-    .combatPopup span {
-      display: block;
-      color: #fff;
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
     }
 
     #missionBanner {
@@ -2382,7 +2370,6 @@
 
     <div id="enemyMarkers"></div>
     <div id="baseMarker"><span id="baseMarkerLabel">ALLIED AIRBASE</span></div>
-    <div id="combatPopups"></div>
     <div id="hitConfirm">HIT</div>
 
     <div id="targetBox">
@@ -2677,7 +2664,6 @@
     const MAX_SPARK_PARTICLES = 300;
     const MAX_DEBRIS_PARTICLES = 180;
     const MAX_SMOKE_PARTICLES = 320;
-    const MAX_COMBAT_POPUPS = 12;
     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
     const STALL_SINK_RATE = 44;
     let PITCH_RATE = THREE.MathUtils.degToRad(58);
@@ -32662,7 +32648,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemyMarkers: document.getElementById("enemyMarkers"),
       baseMarker: document.getElementById("baseMarker"),
       baseMarkerLabel: document.getElementById("baseMarkerLabel"),
-      combatPopups: document.getElementById("combatPopups"),
       hitConfirm: document.getElementById("hitConfirm"),
       targetBox: document.getElementById("targetBox"),
       targetBoxTgt: document.getElementById("targetBoxTgt"),
@@ -32979,7 +32964,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // The airfield a strike mission is defending, when the mission has one.
     // Null on every other sortie, and every reader checks for that.
     let friendlyBase = null;
-    const combatPopups = [];
     const enemyMarkerElements = new Map();
     const enemyMarkerScreenState = [];
     // Friendly markers keep their own map, keyed by array index. They share no
@@ -33666,7 +33650,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         activeDebrisParticles: 0,
         activeSmokeParticles: 0,
         activeAudioSources: 0,
-        activeCombatPopups: 0,
         activeEffects: 0,
         particleCapacity: MAX_SPARK_PARTICLES + MAX_DEBRIS_PARTICLES + MAX_SMOKE_PARTICLES,
         lowHealthSmokeActive: false,
@@ -44144,9 +44127,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           highscore = score;
           saveHighscore();
         }
-        // Display name, not the raw airframe label: a named pilot's kill is
-        // worth reading as "Su-37 VULTURE", which is what the HUD tag says too.
-        createDestroyedPopup(enemy.group.position, enemyDisplayName(enemy), killScore);
       }
       playSfx("explosion", 0.75, 0.9 + Math.random() * 0.2);
       playTone(150, 0.18, 0.1, "sawtooth");
@@ -45515,7 +45495,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateEnemyHudMarkers(simDt);
       updateTargetBox();
       updateCcip();
-      updateCombatPopups(dt);
     }
 
     function showBanner(text, duration, tone = "") {
@@ -46621,7 +46600,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.debug.activeParticles =
         sparkParticlePool.activeCount + debrisParticlePool.activeCount + smokeParticlePool.activeCount;
       hook.debug.activeAudioSources = audioSystem.activeSources.size;
-      hook.debug.activeCombatPopups = combatPopups.length;
       hook.debug.activeEffects = effects.length;
       hook.debug.lowHealthSmokeActive = health < PLAYER_MAX_HEALTH * 0.55 && smokeParticlePool.activeCount > 0;
       hook.debug.fearStageReached = fearStageReached;
@@ -47122,7 +47100,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       effects.length = 0;
       clearParticlePools();
-      clearCombatPopups();
       stopActiveAudioSources();
       damageSmokeTimer = 0;
 
@@ -47591,62 +47568,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           material.dispose();
         }
       });
-    }
-
-    function createDestroyedPopup(position, label, points) {
-      while (combatPopups.length >= MAX_COMBAT_POPUPS) {
-        const oldest = combatPopups.shift();
-        oldest?.element.remove();
-      }
-
-      const element = document.createElement("div");
-      element.className = "combatPopup";
-      // Score and airframe only - the big "DESTROYED" word was cut on the
-      // user's call (2026-08-02): the explosion, the radio and the score line
-      // already say it, and the reference games don't stamp a word per kill.
-      const detail = document.createElement("span");
-      detail.textContent = `+${points} · ${label}`;
-      element.append(detail);
-      ui.combatPopups.appendChild(element);
-      combatPopups.push({
-        element,
-        position: position.clone(),
-        age: 0,
-        duration: 1.35
-      });
-    }
-
-    function updateCombatPopups(dt) {
-      for (let index = combatPopups.length - 1; index >= 0; index -= 1) {
-        const popup = combatPopups[index];
-        popup.age += dt;
-        if (popup.age >= popup.duration) {
-          popup.element.remove();
-          combatPopups.splice(index, 1);
-          continue;
-        }
-
-        tmpV6.copy(popup.position).applyMatrix4(camera.matrixWorldInverse);
-        tmpV7.copy(popup.position).project(camera);
-        if (tmpV6.z >= -0.1 || tmpV7.z < -1 || tmpV7.z > 1) {
-          popup.element.style.opacity = "0";
-          continue;
-        }
-
-        const progress = popup.age / popup.duration;
-        const x = (tmpV7.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
-        popup.element.style.left = `${x}px`;
-        popup.element.style.top = `${y}px`;
-        popup.element.style.opacity = String(Math.sin(Math.PI * Math.min(1, progress * 1.08)));
-        popup.element.style.transform =
-          `translate(-50%, calc(-50% - ${progress * 58}px)) scale(${1 + progress * 0.16})`;
-      }
-    }
-
-    function clearCombatPopups() {
-      for (const popup of combatPopups) popup.element.remove();
-      combatPopups.length = 0;
     }
 
     function updatePlayerDamageSmoke(dt) {
