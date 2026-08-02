@@ -32396,8 +32396,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const guardPerfect = !guardState.active
         || (guardState.lost === 0 && (guardState.worstIntegrity ?? guardIntegrity()) > 0.75);
       if (!guardPerfect && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
+      // Board-based, like destroyFriendly's remaining count. `lost` is the
+      // banked record and survives a checkpoint restore while `total` is the
+      // freshly respawned convoy, so comparing them capped the rank at B for a
+      // sortie that still flew two of its three transports home.
       const guardWiped = guardState.active && guardState.total > 0
-        && guardState.lost >= guardState.total;
+        && guardedFriendlies().every((friendly) => !friendly.alive);
       if (guardWiped && RANK_ORDER[rank] > RANK_ORDER.B) rank = "B";
 
       // A sortie that had to be restarted from a checkpoint is not a flawless
@@ -37389,6 +37393,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       checkpoint.guardPenalty = guardState.penalty;
       checkpoint.guardFailed = guardState.failed;
       checkpoint.guardWorstIntegrity = guardState.worstIntegrity ?? 1;
+      // One-shot facts about this sortie. startMission clears them and the
+      // restore never put them back, so an ace killed before the checkpoint
+      // was reported alive in the debrief ("he got into the cloud and...") and
+      // the fear-stage lines re-fired from the bottom on the restored kills.
+      checkpoint.aceDestroyed = aceDestroyed;
+      checkpoint.fearStageReached = fearStageReached;
+      checkpoint.bomberFirstKillFired = bomberFirstKillFired;
       // The optional-objective ledger and the ground kills are banked progress
       // too: marks survive a resumed sortie by contract, and the dead
       // installations must not come back alive when the board is rebuilt
@@ -37459,6 +37470,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spwHits = at.spwHits;
       gunShots = at.gunShots;
       bombsDropped = at.bombsDropped;
+      aceDestroyed = Boolean(at.aceDestroyed);
+      fearStageReached = at.fearStageReached || 0;
+      bomberFirstKillFired = Boolean(at.bomberFirstKillFired);
 
       // Guard. spawnMissionFriendlies has already put the whole convoy back in
       // the air and armGuardObjective has zeroed its counters, and that is the
@@ -41649,6 +41663,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function damageFriendly(friendly, amount) {
       if (!friendly || !friendly.alive || !friendly.vulnerable || friendly.retired) return;
       if (gameState !== STATE_PLAYING) return;
+      // The same gate applyPlayerDamage has, for the same reason. A surviving
+      // escort or CAP keeps fighting through the ACCOMPLISHED band by design -
+      // and could strafe the last transport during it, turning a won sortie
+      // into MISSION FAILED with no record written. The outro is decided too.
+      if (outcomePending.active || outro.active) return;
       friendly.hp -= amount;
       friendly.hitFlash = 0.12;
       // Ledger writes only while a guard objective owns the ledger - a
