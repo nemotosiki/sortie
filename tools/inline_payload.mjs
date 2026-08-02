@@ -125,13 +125,33 @@ let html = fs.readFileSync(INDEX, "utf8");
 if (html.includes("\r")) fail("index.html contains CR bytes; the working copy must be LF-only");
 if (!html.includes(BEGIN) || !html.includes(END)) fail("index.html has no @PAYLOADS:BEGIN/END markers");
 
+// Exactly one marker line each, matched as a WHOLE line. The splice point is
+// found with indexOf, which takes the FIRST occurrence - and payloads quote
+// this spec in their comments, so one payload pasting the marker text into a
+// comment would move the insertion point into the middle of somebody else's
+// registration. The result can still parse, which is the dangerous part.
+function assertSoleMarkerLine(marker, label) {
+  const hits = html.split("\n").filter((line) => line.trim() === marker.trim()).length;
+  if (hits !== 1) {
+    fail(`expected exactly one @PAYLOADS:${label} marker line, found ${hits}. `
+      + "A payload quoting the marker in a comment breaks the splice point.");
+  }
+}
+assertSoleMarkerLine(BEGIN, "BEGIN");
+assertSoleMarkerLine(END, "END");
+
 const inserted = [];
 for (const file of files) {
   const abs = path.resolve(file);
   if (!fs.existsSync(abs)) fail(`${file}: no such file`);
   const name = path.basename(abs).replace(/\.(payload\.)?m?js$/, "");
   const tag = `// @payload:${name}`;
-  if (html.includes(tag)) fail(`${name} is already spliced into index.html (marker "${tag}"); nothing was written`);
+  // Line-suffix match, not `includes`: the marker runs to end of line, so a
+  // substring test makes any spliced name that is a PREFIX of this one
+  // ("ground_tel" against "ground_telemetry") read as a duplicate and lock a
+  // legitimate payload out permanently.
+  const alreadySpliced = html.split("\n").some((line) => line.trimEnd().endsWith(tag));
+  if (alreadySpliced) fail(`${name} is already spliced into index.html (marker "${tag}"); nothing was written`);
 
   const source = fs.readFileSync(abs, "utf8").replace(/\r\n/g, "\n");
   const register = extractRegisterSource(source, file);

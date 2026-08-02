@@ -190,6 +190,18 @@ const losses = diffLosses(baseline, snapshot);
 const gains = countGains(baseline, snapshot);
 
 if (update) {
+  // Losses are LISTED before they are blessed. inline_payload signs off by
+  // telling the operator to run `--update`, so this is the command people type
+  // out of habit right after a merge - the one moment a truncation is most
+  // likely and least visible. A count alone ("-3 losses accepted") reads like
+  // a statistic; the names read like a warning.
+  if (losses.length) {
+    console.error(`registry_gate: --update is about to ACCEPT ${losses.length} disappearance(s):`);
+    for (const loss of losses.slice(0, 60)) console.error(`  ${loss}`);
+    if (losses.length > 60) console.error(`  ... and ${losses.length - 60} more`);
+    console.error("");
+    console.error("If any of those were not deliberate, restore them and re-run without --update.");
+  }
   fs.writeFileSync(SNAPSHOT, `${JSON.stringify(snapshot, null, 1)}\n`);
   console.log(`registry_gate: snapshot updated (+${gains.entries} entries, +${gains.fields} fields, -${losses.length} losses accepted)`);
   process.exit(0);
