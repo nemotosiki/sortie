@@ -9909,9 +9909,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // installations (samSite, aaGun, ...) live in SHIP_TYPES' sibling table
     // GROUND_TYPES and are built by createGroundModel, which this hook does
     // not reach. Registering a ship model for a ground key would be accepted
-    // here and then never consulted, so payloads should not do it.
+    // here and then never consulted; ctx.addGroundModel and GROUND_MODELS
+    // below are the hook that does reach them.
     const INLINE_SHIP_KINDS = new Set([
       "aegis", "frigate", "missileBoat", "landingShip", "carrier"
+    ]);
+
+    // Installation and vehicle geometry contributed by payloads, keyed by the
+    // GROUND_TYPES key. createGroundModel consults this BEFORE its own if/else
+    // chain, on exactly the terms SHIP_MODELS is consulted: a registered kind
+    // adds a unit, it never replaces one. See ctx.addGroundModel.
+    //
+    // A ground entry is { kind, build }, the same pair a ship entry is - no
+    // silhouette here either, for the same reason: the HUD draws a ground unit
+    // as a blip and a lock box, neither of which is per-model.
+    const GROUND_MODELS = {};
+
+    // Every kind createGroundModel's own if/else answers, including the
+    // "bunker" its trailing else covers. Same job and same hand-kept discipline
+    // as INLINE_SHIP_KINDS: the chain is a chain, so a new inline unit belongs
+    // here in the same edit or a payload will be allowed to shadow it.
+    //
+    // Note the two branches that answer for a PAIR of kinds - tank/adTank and
+    // trainLoco/trainFlak/trainCar - are listed one key at a time, because what
+    // is being rejected is a key, not a branch.
+    const INLINE_GROUND_KINDS = new Set([
+      "samSite", "aaGun", "radarSite", "fuelTank", "bunker",
+      "tank", "adTank", "trainLoco", "trainFlak", "trainCar"
     ]);
 
     // Handed to every payload's default export. Deliberately the only surface a
@@ -10119,6 +10143,53 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         SHIP_MODELS[kind] = entry;
         return entry;
       },
+      // Geometry for a ground installation or vehicle, keyed by its
+      // GROUND_TYPES key. The land counterpart of addShipModel and deliberately
+      // the same shape:
+      //
+      //   ctx.addGroundType("mobileSam", { ...spec });
+      //   ctx.addGroundModel("mobileSam", { build(env) { ... } });
+      //
+      // `build(env)` runs inside createGroundModel with that function's own
+      // locals handed in - the shared geometry cache, this unit's four themed
+      // materials plus `markings`, and the `add` assembler. There is no
+      // `friendly` here, unlike the ships: every ground unit in the game is
+      // hostile, so createGroundModel has only ever painted one livery.
+      //
+      // It builds into `parts` through `add` and returns EITHER nothing or an
+      // object. The one field read off that object is `dish`: a THREE.Group
+      // the payload has already parented into the model itself, which
+      // updateGroundUnit spins on Y at the type's `dishSpin` rate for as long
+      // as the unit is alive. A build with no rotating part returns nothing and
+      // `dish` stays null, which is what every installation without a radar
+      // already is. Everything else in the return shape - the group, the
+      // standard material list the hit flash walks, the dispose contract - is
+      // assembled by createGroundModel around the build, so a registered unit
+      // cannot forget a field because it never writes one.
+      //
+      // Add-only on both fronts, like every registry above: a kind already
+      // registered and a kind the inline chain already answers are both
+      // refused.
+      addGroundModel(kind, def) {
+        if (typeof kind !== "string" || !kind) {
+          throw new Error("[payload] addGroundModel: kind must be a non-empty string");
+        }
+        if (Object.prototype.hasOwnProperty.call(GROUND_MODELS, kind)) {
+          throw new Error(`[payload] addGroundModel: duplicate kind "${kind}" - registration is add-only`);
+        }
+        if (!def || typeof def !== "object") {
+          throw new Error(`[payload] addGroundModel("${kind}"): definition must be an object`);
+        }
+        if (typeof def.build !== "function") {
+          throw new Error(`[payload] addGroundModel("${kind}"): build must be a function`);
+        }
+        if (INLINE_GROUND_KINDS.has(kind)) {
+          throw new Error(`[payload] addGroundModel("${kind}"): an inline ground unit already uses that kind - registration is add-only`);
+        }
+        const entry = Object.freeze({ kind, build: def.build });
+        GROUND_MODELS[kind] = entry;
+        return entry;
+      },
       // Friendlies a mission fields: a wingman, an airbase, a carrier, ships to
       // guard. Queued rather than written, because FRIENDLY_DEPLOYMENTS is
       // declared thousands of lines below this object and is still in its
@@ -10201,6 +10272,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(WORLD_DECORATORS);
       Object.freeze(AIRCRAFT_MODELS);
       Object.freeze(SHIP_MODELS);
+      Object.freeze(GROUND_MODELS);
       Object.freeze(MISSIONS);
       Object.freeze(payloadContext);
     }
@@ -10226,6 +10298,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         WORLD_DECORATORS,
         AIRCRAFT_MODELS,
         SHIP_MODELS,
+        GROUND_MODELS,
         MISSIONS
       });
     }
@@ -18457,6 +18530,1795 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "ship_cargoShip"
     ); // @payload:ship_cargoShip
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        const truck = GROUND_TYPES.tank;
+        if (!truck) throw new Error("[tel] expected the tank ground template");
+
+        // The TEL is unarmed against aircraft - it is the thing you race to kill, not
+        // a thing that shoots back - so it is spread from `tank`, the mobile entry
+        // that already carries `aa: null` and the proven vehicle contract, rather
+        // than from adTank. Only the identity and the size numbers are overridden.
+        //
+        // BALANCE TODO: placeholder. hp, hitRadius and every mobile/colour value is
+        // the tank's, spread through unchanged. A 19 m launcher on a highway chassis
+        // should end up slower and softer than an MBT, but that is a tuning pass and
+        // not this delivery.
+        ctx.addGroundType("tel", {
+          ...truck,
+          key: "tel",
+          label: "TEL",
+          role: "Mobile Ballistic Missile Launcher",
+          // Geometry-derived, so the lock box and the crash volume match what is
+          // drawn: 19 m long, 5.5 m wide over the wheels, 4.9 m to the top of the
+          // canister. Everything else above is the template's.
+          hitRadius: 22,
+          crash: { halfLen: 9.5, halfBeam: 2.8, top: 5 },
+          hitBox: { x: 6, y: 7, z: 20 },
+          smokeHeight: 5
+        });
+
+        ctx.addGroundModel("tel", {
+          build(env) {
+            const { geometry, olive, steel, dark, light, add } = env;
+
+            // Built nose-along -Z, which is the forward the route heading drives, and
+            // to real metres: the chassis runs z = -9.5 .. +9.5.
+            //
+            // Three things have to read from 2 km up, and the model spends its parts
+            // on those and nothing else:
+            //   1. the canister - a 2.2 m tube lying down the whole length of the
+            //      vehicle with a domed cap on the nose. It is the unit.
+            //   2. eight axles of wheels, which is what says "this is not a tank".
+            //   3. the split cab, a driving compartment on each side of the tube.
+
+            // ---- Running gear ---------------------------------------------------
+            // Eight axles: four forward under the cab pair, four aft under the launch
+            // end, with the classic Topol gap amidships that separates the two
+            // groups. Wheels are 1.5 m tall and set OUTBOARD of the frame so the
+            // count is legible from directly above, which is where this is seen from.
+            const AXLES = [-8.3, -6.5, -4.7, -2.9, 2.6, 4.4, 6.2, 8.0];
+            for (const z of AXLES) {
+              for (const side of [-1, 1]) {
+                // A cylinder laid on its side, so its axis runs across the vehicle.
+                add(geometry.shipCylinder, dark, side * 1.95, 0.78, z,
+                  0.78, 0.62, 0.78, 0, 0, Math.PI / 2);
+              }
+              // Axle beam bridging the pair, so the underside is not a gap.
+              add(geometry.panel, steel, 0, 0.8, z, 3.9, 0.32, 0.5);
+            }
+
+            // ---- Chassis --------------------------------------------------------
+            // Deep box frame the full 19 m. Narrower than the wheel track and only
+            // as tall as it needs to be, so the running gear stays visible under it.
+            add(geometry.panel, olive, 0, 1.75, 0, 2.9, 1.5, 19);
+            // Rear jacking/blast pad under the launch end - the outrigger deck the
+            // vehicle sits on to fire, and the reason the tail reads as heavy.
+            add(geometry.panel, steel, 0, 1.1, 8.1, 3.8, 0.8, 3.4);
+
+            // ---- Canister -------------------------------------------------------
+            // THE feature, and it owns the vehicle: a 2.2 m tube running 17 m from
+            // z = -8.4 to z = +8.6, i.e. almost the entire chassis. Its centreline is
+            // at 3.65 m: high enough that its full 2.2 m diameter clears the chassis
+            // deck and the aft equipment, so the tube reads as ONE unbroken run in
+            // profile rather than as three segments between obstructions, and low
+            // enough that it is still nested between the two cabs.
+            add(geometry.shipCylinder, light, 0, 3.65, 0.1,
+              1.1, 8.5, 1.1, Math.PI / 2);
+            // Reinforcing bands. Four of them break up a 17 m untextured tube and
+            // are what make it read as a container rather than as a pipe.
+            for (const z of [-5.8, -1.9, 2.0, 5.9]) {
+              add(geometry.shipCylinder, steel, 0, 3.65, z,
+                1.2, 0.45, 1.2, Math.PI / 2);
+            }
+            // Front lid: a collar, then a shallow dome standing proud on the very
+            // nose of the tube. This is the end that opens, and it is deliberately
+            // the lightest, roundest thing on the model.
+            add(geometry.shipCylinder, steel, 0, 3.65, -8.6,
+              1.24, 0.55, 1.24, Math.PI / 2);
+            add(geometry.shipOctPlate, light, 0, 3.65, -9.1,
+              1.16, 0.6, 1.16, Math.PI / 2);
+            add(geometry.shipOctPlate, light, 0, 3.65, -9.5,
+              0.78, 0.4, 0.78, Math.PI / 2);
+            // Blast/exhaust ring on the aft end.
+            add(geometry.shipCylinder, dark, 0, 3.65, 8.7,
+              1.18, 0.7, 1.18, Math.PI / 2);
+            // Cradle saddles carrying the tube off the chassis, one over each wheel
+            // group so the load path is visible. Their tops are held at 2.55 m, the
+            // underside of the tube, so they support it without cutting into it.
+            for (const z of [-5.6, 5.6]) {
+              add(geometry.panel, olive, 0, 2.2, z, 2.7, 0.8, 2.2);
+            }
+
+            // ---- Split cab ------------------------------------------------------
+            // The other identifier: a driving compartment on EACH side of the
+            // canister rather than one cab across the nose, because the tube runs
+            // through where a cab would be. Each is a tall box set outboard of the
+            // tube and pushed right forward to z = -7.6, so the pair BRACKETS the
+            // canister's domed nose instead of hiding behind it - that gap between
+            // them, with the lid sitting in it, is the whole silhouette read.
+            // Roofs stop at 4.47 m, just under the canister crown at 4.75 m, so the
+            // tube stays the top line.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, olive, side * 2.0, 2.9, -7.6, 1.7, 2.8, 3.6);
+              // Sloped windscreen, dark, on the forward face.
+              add(geometry.panel, dark, side * 2.0, 3.4, -9.35, 1.5, 1.7, 0.5, -0.3);
+              // Side glazing, so each half reads as a cab and not as a crate.
+              add(geometry.panel, dark, side * 2.85, 3.6, -7.8, 0.12, 1.2, 2.4);
+              // Roof cap - a thin lighter lid that separates the cab from the tube
+              // behind it when both are seen against the ground from above.
+              add(geometry.panel, steel, side * 2.0, 4.35, -7.6, 1.8, 0.24, 3.7);
+            }
+            // Bumper tying the two cabs together under the canister nose.
+            add(geometry.panel, dark, 0, 1.6, -9.6, 4.4, 0.9, 0.6);
+
+            // ---- Aft equipment --------------------------------------------------
+            // Launch control / power unit boxes flanking the tube on the rear deck.
+            // Kept outboard of the tube's 1.1 m radius and capped at its underside,
+            // so the launch end is busy without hiding any of the canister.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, olive, side * 2.0, 2.05, 7.2, 1.5, 1.1, 3.2);
+            }
+
+            // Nothing on this vehicle rotates, so no `dish` is returned.
+          }
+        });
+      },
+      "ground_tel"
+    ); // @payload:ground_tel
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // adTank is the template rather than samSite because this is a WHEELED,
+        // MOVING, radar-carrying vehicle: the spread brings across the full ground
+        // schema plus the three optional fields this unit actually needs to be what
+        // it is - `mobile` (it drives), `dishSpin` (it has a radar to spin) and the
+        // `aaMounts`/`aaHeight` pair the tracer origin is measured from.
+        const adTank = GROUND_TYPES.adTank;
+        if (!adTank) throw new Error("[ground-laserTruck] expected GROUND_TYPES.adTank as the template");
+
+        // ===========================================================================
+        // 1. GROUND_TYPES entry
+        // ===========================================================================
+        //
+        // BALANCE TODO: placeholder. Every combat number here - hp, the whole `aa`
+        // block, `mobile`, aaMounts/aaHeight, dishSpin - is the AD TANK's, carried
+        // over unexamined through the spread. Nothing about a laser has been costed:
+        // a directed-energy mount that intercepts missiles is a different threat
+        // model from a 600m autocannon (no travel time, no ammunition, but it can
+        // only serve one target at a time), and the numbers that express that are a
+        // balance pass' deliverable, not this file's. What IS authored here is the
+        // dimensions - the hitbox, the crash box and the radius are measured off the
+        // model below and are correct for a 12m truck.
+        ctx.addGroundType("laserTruck", {
+          ...adTank,
+          key: "laserTruck",
+          label: "LASER AAV",
+          role: "Anti-Air Laser Vehicle",
+
+          // --- Dimensions: authored for this hull, 12m overall ----------------------
+          // The model runs z -6..+6 at 2.9m half-beam over the wheel arches, with the
+          // turret roof at y 4.1 and the radar plate topping out near y 4.6.
+          hitRadius: 16,
+          // `top` is the collision ceiling, so it is the turret roof (4.2) and not
+          // the radar plate - the AD TANK does the same, taking its 4 off the turret
+          // and not off its dish. Flying through the sensor is intended; flying
+          // through the truck is not.
+          crash: Object.freeze({ halfLen: 6.2, halfBeam: 3.0, top: 4.2 }),
+          hitBox: Object.freeze({ x: 7, y: 6, z: 13 }),
+          // A wheeled truck is a softer target than a tracked AD gun and burns
+          // taller when it goes: it is a fuel-and-electronics vehicle, not armour.
+          smokeHeight: 4.5,
+
+          // BALANCE TODO: placeholder - inherited from adTank, restated only so the
+          // values are visible at the call site instead of implied by the spread.
+          hp: adTank.hp,                 // 90 (one missile)
+          aa: adTank.aa,                 // range 600 / damage 7 / maxHitChance 0.15
+          aaMounts: adTank.aaMounts,
+          // The emitter aperture sits at y 3.5 on this model rather than the AD
+          // TANK's 4.6 gun line, so the tracer leaves the optics box rather than the
+          // empty air above it. A dimension, not a balance number.
+          aaHeight: 3.5,
+          // Faster than the search radar's 0.6, same as the AD TANK's tracker: this
+          // one is following a missile, and the sweep is the tell the truck is live.
+          dishSpin: adTank.dishSpin,     // 1.4
+          // Wheels on a road surface: quicker than a tracked chassis, and the reason
+          // it is drawn as a truck at all.
+          mobile: Object.freeze({ speed: 17, turnRate: adTank.mobile.turnRate }),
+
+          // The accent colour of the whole unit - the lens below is painted in it, so
+          // the blip on the radar and the glow on the model are the same colour.
+          radarColor: "#7fe6ff",
+          tracerColor: adTank.tracerColor,
+          explosionColor: adTank.explosionColor
+        });
+
+        // ===========================================================================
+        // 2. Geometry
+        // ===========================================================================
+        ctx.addGroundModel("laserTruck", {
+          build(env) {
+            const { THREE, geometry, makeAircraftMaterial,
+                    steel, olive, dark, light, extraMaterials, add, addRoot } = env;
+
+            // The one material this model makes for itself: the emitter aperture.
+            // Unlit and additive so it stays bright against the olive at every one of
+            // the preview's four light angles and reads as something SHINING rather
+            // than as a pale blue plate. Pushed into `extraMaterials` or it leaks
+            // with every truck that is destroyed.
+            const lensGlow = new THREE.MeshBasicMaterial({
+              color: 0x8ceeff,
+              transparent: true,
+              opacity: 0.95,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false
+            });
+            extraMaterials.push(lensGlow);
+            // The housing the aperture sits in - a dark cyan-tinted ring so the lit
+            // disc has a rim to sit against instead of floating on a grey box face.
+            const lensRing = makeAircraftMaterial(0x1c4a58, 0.5, 0.4);
+            extraMaterials.push(lensRing);
+
+            // --- Chassis -------------------------------------------------------------
+            // Built nose-along -Z, which is the forward the route heading drives, the
+            // same convention the tank and the train cars use.
+            //
+            // 12m overall (z -6..+6) on a 5.6m-wide hull. The armoured body is ONE
+            // continuous box from the nose to the tail - a wheeled AFV, not a tractor
+            // and a trailer - and the cab is a raised step on the front third of it
+            // rather than a separate cabin with air behind it. Getting this wrong is
+            // the one mistake that makes an 8x8 read as two vehicles from the side.
+            // Lower hull: full-length armoured body, z -5.6..+5.8.
+            add(geometry.panel, olive, 0, 1.55, 0.1, 5.4, 1.7, 11.4);
+            // Sloped lower side skirts, port and starboard - the flank angle that
+            // says "armoured" and catches a different light than the flat deck.
+            add(geometry.panel, olive, -2.72, 1.5, 0.1, 0.5, 1.5, 11.0, 0, 0, 0.26);
+            add(geometry.panel, olive, 2.72, 1.5, 0.1, 0.5, 1.5, 11.0, 0, 0, -0.26);
+            // Cargo deck: the flat bed the turret stands on, over the rear half.
+            // Narrower than the hull (4.2 against 5.4) so a strip of olive body shows
+            // down both sides of it from directly above - a full-width steel deck
+            // turns the whole rear of the vehicle into one grey rectangle in the TOP
+            // view and the hull stops reading as a hull.
+            add(geometry.panel, steel, 0, 2.5, 2.3, 4.2, 0.35, 6.8);
+            // Deck sill down each flank - the lip that keeps the bed from reading as
+            // a painted rectangle on top of the hull from a shallow angle. In the
+            // hull's OWN olive, deliberately: a pale sill running the whole length of
+            // the bed is the brightest thing on the vehicle from the side and from
+            // astern, and it competes with the aperture - which is the one mark that
+            // is allowed to win the eye on this unit.
+            add(geometry.panel, olive, -2.15, 2.72, 2.3, 0.34, 0.55, 6.8);
+            add(geometry.panel, olive, 2.15, 2.72, 2.3, 0.34, 0.55, 6.8);
+            // Stowage: generator and coolant packs at the tail, which is what a laser
+            // vehicle carries instead of ready rounds. Aft of the turret so they do
+            // not crowd the aperture, in the hull's own olive with a narrow dark
+            // grille slot on the tail face rather than a black end panel.
+            add(geometry.panel, olive, -1.2, 3.1, 4.9, 1.7, 0.9, 1.9);
+            add(geometry.panel, olive, 1.2, 3.1, 4.9, 1.7, 0.9, 1.9);
+            add(geometry.panel, dark, -1.2, 3.1, 5.87, 1.3, 0.34, 0.18);
+            add(geometry.panel, dark, 1.2, 3.1, 5.87, 1.3, 0.34, 0.18);
+            // Tail plate, flush with the hull's aft face rather than hung off it -
+            // set any further aft and it reads as a separate slab floating behind
+            // the truck in the SIDE view.
+            add(geometry.panel, dark, 0, 2.0, 5.72, 4.8, 1.3, 0.3);
+
+            // --- Cab -----------------------------------------------------------------
+            // Armoured forward cab: a raised crew step on the front of the same hull,
+            // with a sloped glacis and a dark windscreen band. Its roof at y 3.9 sits
+            // a clear metre below the turret roof, so the vehicle steps DOWN from cab
+            // to deck and back UP into the mount - the profile that reads as a truck.
+            add(geometry.panel, olive, 0, 3.0, -3.9, 5.0, 1.5, 3.4);
+            // Sloped glacis over the front axle.
+            add(geometry.panel, olive, 0, 2.85, -5.7, 4.9, 2.0, 1.8, -0.62);
+            // Windscreen: dark band across the cab front, canted back.
+            add(geometry.panel, dark, 0, 3.35, -5.42, 4.1, 1.0, 0.4, -0.32);
+            // Cab roof lip and a small hatch, so the roof is not one flat grey face
+            // from directly above. Inset rather than overhanging the full 5.4m body:
+            // a pale plate wider than the cab is the brightest surface on the whole
+            // vehicle from astern and pulls the eye off the mount.
+            add(geometry.panel, olive, 0, 3.82, -3.9, 4.8, 0.3, 3.4);
+            add(geometry.panel, dark, -1.2, 4.08, -3.3, 1.4, 0.3, 1.3);
+            // Side vision blocks on the cab flanks. Small - a door-sized black
+            // rectangle down the whole cab side reads as an open hole in the armour
+            // from the SIDE view, which is the one cell where the cab is the subject.
+            add(geometry.panel, dark, -2.52, 3.25, -4.4, 0.14, 0.6, 1.1);
+            add(geometry.panel, dark, 2.52, 3.25, -4.4, 0.14, 0.6, 1.1);
+            // Bumper and light clusters on the nose.
+            add(geometry.panel, dark, 0, 1.5, -5.95, 4.8, 0.6, 0.7);
+            add(geometry.panel, light, -1.95, 2.15, -6.05, 0.6, 0.5, 0.3);
+            add(geometry.panel, light, 1.95, 2.15, -6.05, 0.6, 0.5, 0.3);
+
+            // --- Running gear: EIGHT wheels ------------------------------------------
+            // Four axles a side, in the 8x8 grouping the vehicle class actually uses:
+            // a steering pair close together up front under the cab, then a driven
+            // pair close together at the back under the deck, with a clear gap
+            // amidships. Even spacing would read as a train of rollers; the 2+2
+            // grouping is what says "eight-wheeler" from above.
+            //
+            // Wheels are cylinders laid on their side (rz = PI/2 rolls the cylinder
+            // axis from +y onto +x, across the vehicle), 0.85 radius on a 0.62 tread,
+            // with a light hub plate so the wheel has a centre and does not read as a
+            // black lozenge.
+            //
+            // The hub sits at x +/-2.95, which is 0.25 PROUD of the hull's 2.7
+            // half-beam. That overhang is the whole reason the axle count is legible
+            // from directly above: wheels tucked inside the body line are invisible
+            // in the TOP cell and the unit reads as a tracked box.
+            for (const side of [-1, 1]) {
+              for (const axleZ of [-4.5, -2.7, 2.2, 4.0]) {
+                add(geometry.shipCylinder, dark, side * 2.95, 0.85, axleZ,
+                  0.85, 0.62, 0.85, 0, 0, Math.PI / 2);
+                add(geometry.shipCylinder, steel, side * 3.28, 0.85, axleZ,
+                  0.4, 0.14, 0.4, 0, 0, Math.PI / 2);
+              }
+              // Mudguard arches over each axle pair. Set INBOARD of the hubs (x 2.72
+              // against the wheel's 2.95) and narrow, so from directly above they
+              // read as a fender line with the tyres showing outside it rather than
+              // as a lid that hides the running gear - which is the whole point of
+              // drawing eight wheels.
+              add(geometry.panel, olive, side * 2.72, 1.9, -3.6, 0.42, 0.3, 4.6);
+              add(geometry.panel, olive, side * 2.72, 1.9, 3.1, 0.42, 0.3, 4.4);
+            }
+
+            // --- Turret: the pivot, and the reason this file exists -------------------
+            // Everything that traverses hangs off ONE group so the whole mount turns
+            // together - the optics box, the aperture, the radar. Built as a Group
+            // (add() only makes meshes) and parented through addRoot, then handed
+            // back as `dish`: a pivot that is not parented is a turret that is
+            // nowhere, and one that is not returned is a turret that never moves.
+            // Base at y 2.68 - the top face of the cargo deck - and z 1.9, far enough
+            // aft of the cab roof that the mount can traverse a full circle without
+            // the optics box visually clipping the crew compartment.
+            const turret = new THREE.Group();
+            turret.position.set(0, 2.68, 1.9);
+            addRoot(turret);
+
+            const put = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+              const m = new THREE.Mesh(geo, material);
+              m.position.set(x, y, z);
+              m.scale.set(sx, sy, sz);
+              m.rotation.set(rx, ry, rz);
+              turret.add(m);
+              return m;
+            };
+
+            // Traverse ring the mount sits on - a low drum on the deck, which is what
+            // makes the box above it read as a turret rather than as freight.
+            put(geometry.shipCylinder, steel, 0, 0.3, 0, 1.5, 0.35, 1.5);
+            // Optics box: the main housing, wider than tall, its front face at
+            // z -1.55 where the aperture goes. Deliberately a clean slab - all the
+            // visual interest on this unit is meant to be the lens.
+            put(geometry.panel, steel, 0, 1.35, 0, 2.9, 1.7, 3.1);
+            // Roof cap and side radiator panels: three boxes, enough to keep the
+            // housing from being an untextured cube at any of the four preview
+            // angles, and no more.
+            //
+            // The cap is STEEL and narrow, not a dark full-width lid. From directly
+            // above the mount is the only part of this vehicle the camera sees in
+            // full, and a dark plate covering its roof turns the turret into a black
+            // rectangle that reads as an open hatch in the deck rather than as a
+            // housing standing on it. Light roof, dark seams: the opposite way round.
+            put(geometry.panel, steel, 0, 2.3, 0.2, 2.5, 0.3, 2.5);
+            put(geometry.panel, dark, 0, 2.47, 0.2, 0.5, 0.14, 2.4);
+            put(geometry.panel, dark, -1.52, 1.35, 0.5, 0.22, 1.2, 2.0);
+            put(geometry.panel, dark, 1.52, 1.35, 0.5, 0.22, 1.2, 2.0);
+
+            // THE APERTURE. A large emitter lens filling most of the box's front
+            // face: a dark surround ring, then the glowing disc proud of it, then a
+            // faint halo plate a touch further forward so the glow has a bloom
+            // instead of a hard edge.
+            //
+            // shipOctPlate is a squat cylinder about its own +y, so rx = PI/2 stands
+            // the disc up to FACE forward along -z. Without that rotation the lens
+            // lies flat on top of the box like a table top and the unit's one
+            // identity mark is invisible from every angle that matters.
+            put(geometry.shipCylinder, lensRing, 0, 1.35, -1.5, 1.28, 0.22, 1.28, Math.PI / 2);
+            put(geometry.shipOctPlate, lensGlow, 0, 1.35, -1.72, 1.02, 0.12, 1.02, Math.PI / 2);
+            put(geometry.shipOctPlate, lensGlow, 0, 1.35, -1.86, 0.66, 0.1, 0.66, Math.PI / 2);
+            // Two short beam-director rails flanking the aperture, so the emitter
+            // reads as aimed at something rather than as a porthole. Steel, and low
+            // enough not to break the roof line: drawn dark and tall they frame the
+            // lens with two black bars, and the three together read from above as a
+            // slot cut in the housing instead of as hardware bolted to its face.
+            put(geometry.panel, steel, -1.08, 1.7, -1.25, 0.24, 0.24, 1.5);
+            put(geometry.panel, steel, 1.08, 1.7, -1.25, 0.24, 0.24, 1.5);
+
+            // Small tracking radar on the back of the mount, canted up. It turns with
+            // the turret rather than on a pivot of its own: one rotating assembly is
+            // what the `dish` contract gives, and a laser that is not looking where
+            // its tracker is looking would be the wrong read anyway.
+            //
+            // Deliberately SMALL - 1.05 across against the AD TANK's 2.6 - and kept
+            // low on a short post. It is a supporting mark, and a plate any larger
+            // than this is the tallest, palest thing on the vehicle and steals the
+            // silhouette from the aperture, which is the part that has to read first.
+            put(geometry.panel, steel, 0, 2.45, 1.3, 0.3, 0.55, 0.3);
+            put(geometry.shipOctPlate, light, 0, 2.92, 1.42, 1.05, 0.18, 1.05, -0.95);
+            put(geometry.panel, dark, 0, 2.74, 1.16, 0.4, 0.16, 0.6, -0.95);
+
+            // `dish` is the only field read off this return. The spec's dishSpin 1.4
+            // turns the whole mount on Y for as long as the truck is alive.
+            return { dish: turret };
+          }
+        });
+      },
+      "ground_laserTruck"
+    ); // @payload:ground_laserTruck
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // `radarSite` is the spread source the brief asks for and it is also the
+        // right one on behaviour: `aa: null`, so like the search radar this thing
+        // never shoots back. It is a sensor, and clearing it is a SEAD errand.
+        const radarSite = GROUND_TYPES.radarSite;
+        if (!radarSite) {
+          throw new Error("[othRadar] expected the radarSite ground template to exist");
+        }
+
+        ctx.addGroundType("othRadar", {
+          ...radarSite,
+          key: "othRadar",
+          label: "OTH RADAR",
+          role: "Over-the-Horizon Radar Array",
+          // BALANCE TODO: placeholder. hp is the search radar's 70 multiplied out to
+          // structure scale by eye only - no pass has been made on how many rounds a
+          // landmark-class target should be worth, and `radarColor` / `tracerColor` /
+          // `explosionColor` / `smokeHeight` are radarSite's numbers verbatim.
+          hp: 220,
+          // Dimensions, and only these, are authored. Measured off the model below:
+          // the face spans x -40..+40 (80 m) and y 0..35, the back trusses put the
+          // deepest structure at z +12.6, and the compound sits out to z -14.
+          // hitRadius is the plan half-diagonal of that footprint, rounded up.
+          hitRadius: 48,
+          crash: Object.freeze({ halfLen: 16, halfBeam: 41, top: 35 }),
+          hitBox: Object.freeze({ x: 82, y: 36, z: 30 }),
+          // BALANCE TODO: placeholder. Radar site's 7, on a structure five times the
+          // height - the column should probably rise from the compound rather than
+          // from the array's centre.
+          smokeHeight: radarSite.smokeHeight,
+          // No `dishSpin`, and the build returns no `dish`: a backscatter curtain is
+          // a fixed aperture. It does not sweep, it is steered electrically, and a
+          // rotating part anywhere on it would be a lie about how it works. The
+          // caption reading DISH no is the correct result for this unit.
+          dishSpin: undefined,
+          aa: null
+        });
+
+        ctx.addGroundModel("othRadar", {
+          build(env) {
+            const { geometry, steel, olive, dark, light, markings, add } = env;
+
+            // Face plane and lattice extent. Every number below is derived from
+            // these five so the grid stays square when any of them is retuned.
+            const HALF_W = 40;        // face spans x -40..+40 = the brief's 80 m
+            const BASE_Y = 5.4;       // bottom stringer: the curtain is held clear of
+                                      // the ground, which is most of why it reads as
+                                      // an aperture rather than a fence
+            const TOP_Y = 33;         // top stringer, crown trim to 35
+            const FACE_Z = 0;         // the curtain plane
+            const BAYS = 8;           // 8 bays => 9 masts on 10 m centres
+            const ROWS = 6;           // 6 courses => 7 stringers
+            const MAST_STEP = (HALF_W * 2) / BAYS;
+            const ROW_STEP = (TOP_Y - BASE_Y) / ROWS;
+
+            // ---- Ground works ------------------------------------------------------
+            // A concrete strip under the whole footprint. Wide enough that the back
+            // trusses land on it too, which is what visually ties the two structures
+            // into one installation from directly above.
+            // Spans z -17 to +19: the transformer fence at -15 and the truss feet at
+            // +13 both land inside it with a margin.
+            add(geometry.panel, olive, 0, 0.4, 1, 88, 0.8, 36);
+            // Nine pile caps, one under each mast. Cheap (nine boxes) and they do the
+            // single most important job in the top-down view: they turn a floating
+            // grid into something anchored to the pad.
+            for (let i = 0; i <= BAYS; i += 1) {
+              const x = -HALF_W + i * MAST_STEP;
+              add(geometry.panel, steel, x, 1.5, FACE_Z, 3.4, 2.2, 4.6);
+            }
+
+            // ---- THE LATTICE (the feature) ----------------------------------------
+            // The curtain is built as three passes over the same rectangle so the
+            // crossing pattern is regular: uprights, then stringers, then one
+            // diagonal per bay. Members are 0.55-0.7 m thick against 10 m bays, i.e.
+            // about 6% fill - open enough that the background shows through at every
+            // preview angle, which is the test this shape has to pass.
+
+            // Verticals. The two outer masts are doubled in section because the edges
+            // of a curtain array are its towers, and a lattice with no defined edge
+            // reads as a torn piece of mesh.
+            for (let i = 0; i <= BAYS; i += 1) {
+              const x = -HALF_W + i * MAST_STEP;
+              const edge = i === 0 || i === BAYS;
+              const gauge = edge ? 1.4 : 0.5;
+              add(geometry.panel, steel, x, (BASE_Y + TOP_Y) / 2 + 0.5,
+                FACE_Z, gauge, TOP_Y - BASE_Y + 3.6, gauge);
+              // Each edge tower is a box column, not a stick: a second leg set back
+              // at z +2.2 with rungs between, so the ends have real thickness when
+              // the array is viewed from three-quarters.
+              if (edge) {
+                add(geometry.panel, steel, x, (BASE_Y + TOP_Y) / 2 + 0.5,
+                  FACE_Z + 2.2, 1.5, TOP_Y - BASE_Y + 3.6, 1.5);
+                for (let r = 0; r <= ROWS; r += 1) {
+                  add(geometry.panel, steel, x, BASE_Y + r * ROW_STEP,
+                    FACE_Z + 1.1, 1.2, 0.5, 3.2);
+                }
+              }
+            }
+
+            // Horizontals. Full width, one per course, sitting just forward of the
+            // masts so the two sets visibly cross rather than co-planing into a
+            // single grey sheet.
+            for (let r = 0; r <= ROWS; r += 1) {
+              const y = BASE_Y + r * ROW_STEP;
+              add(geometry.panel, steel, 0, y, FACE_Z - 0.6, HALF_W * 2, 0.46, 0.46);
+            }
+
+            // Diagonals, on a CHECKERBOARD of bays rather than in every one. This is
+            // the pass that makes the grid look ENGINEERED - a plain square mesh
+            // reads as a fence, and a herringbone of braces reads as a truss wall -
+            // but bracing all 48 bays closed the curtain up into a solid billboard,
+            // which is exactly the failure this unit exists to avoid. Half the bays,
+            // alternating like a chessboard, gives the same herringbone read at a
+            // glance while leaving every other bay a clean open square to see sky
+            // through. Each brace is a stringer-length stick rotated about z to span
+            // its bay corner to corner; the angle is the bay's own aspect, so it
+            // lands on the intersections instead of near them.
+            const braceLen = Math.hypot(MAST_STEP, ROW_STEP);
+            const braceAngle = Math.atan2(ROW_STEP, MAST_STEP);
+            for (let r = 0; r < ROWS; r += 1) {
+              for (let i = 0; i < BAYS; i += 1) {
+                if ((r + i) % 2 !== 0) continue;
+                add(geometry.panel, steel,
+                  -HALF_W + (i + 0.5) * MAST_STEP,
+                  BASE_Y + (r + 0.5) * ROW_STEP,
+                  FACE_Z + 0.7,
+                  braceLen, 0.42, 0.42,
+                  // Mirrored about the centreline rather than run one way across the
+                  // whole face. A single direction let the braces on adjacent
+                  // courses line up end to end into two 80 m zigzags reading as one
+                  // giant X over the array; flipping at x 0 breaks the chain and
+                  // gives the symmetric herringbone a real antenna curtain has.
+                  0, 0, (i < BAYS / 2 ? 1 : -1) * braceAngle);
+              }
+            }
+
+            // Feed line: the horizontal cage slung under the bottom stringer that
+            // carries the array's own transmission line in to the compound. Painted
+            // dark so it draws a line across the base of the curtain and stops the
+            // lattice from appearing to hover.
+            add(geometry.panel, dark, 0, BASE_Y - 1.6, FACE_Z - 1.2, HALF_W * 2 - 4, 1.1, 1.6);
+            for (let i = 0; i < 9; i += 1) {
+              add(geometry.panel, dark, -36 + i * 9, BASE_Y - 0.7, FACE_Z - 1.2, 0.4, 1.8, 0.4);
+            }
+
+            // Crown trim. A capping beam plus obstruction lights - the top edge of a
+            // structure this tall is the part a pilot sees against the sky, and the
+            // white markings are the only unlit paint on the unit.
+            add(geometry.panel, light, 0, TOP_Y + 1.9, FACE_Z, HALF_W * 2 + 1.6, 0.7, 1.4);
+            for (const x of [-40, -20, 0, 20, 40]) {
+              add(geometry.panel, markings, x, TOP_Y + 2.7, FACE_Z, 0.9, 0.9, 0.9);
+            }
+
+            // ---- BACK TRUSS ROW ----------------------------------------------------
+            // Five raking A-frames, one every 20 m. Each frame is a pair of legs
+            // meeting high on the face - a rear leg raking back to a foot at z +13,
+            // and a near-vertical front leg - joined by three rungs and a diagonal.
+            // Edge-on this row IS the unit, so the legs are deliberately heavier
+            // gauge (0.9) than the lattice members they brace.
+            //
+            // The legs are drawn by SPAN rather than by eye. `strut` takes the two
+            // endpoints in the frame's own z-y plane, puts the box at their midpoint,
+            // scales Y to the true length and rotates about X by the span's own
+            // angle - which is the only way a raked member lands on both of the
+            // points it is supposed to connect. Rotating a centred box by a guessed
+            // angle (the first cut here) swings both ends off the structure.
+            const strut = (x, z0, y0, z1, y1, gauge, material) => {
+              const dz = z1 - z0;
+              const dy = y1 - y0;
+              return add(geometry.panel, material, x, (y0 + y1) / 2, (z0 + z1) / 2,
+                gauge, Math.hypot(dz, dy), gauge, Math.atan2(dz, dy));
+            };
+            const TRUSS_HEAD_Y = 29.5;   // where both legs meet the face
+            const TRUSS_FOOT_Z = 13;     // how far the rake reaches back
+            for (let t = 0; t <= 4; t += 1) {
+              const x = -HALF_W + t * (HALF_W / 2);
+              // Rear leg: pad at z +13 up to the face just under the crown.
+              strut(x, TRUSS_FOOT_Z, 1.2, 1.6, TRUSS_HEAD_Y, 0.9, steel);
+              // Front leg: near-vertical, standing on the face's own pile line and
+              // taking the curtain's weight straight down.
+              strut(x, 2.6, 1.2, 1.2, TRUSS_HEAD_Y, 0.85, steel);
+              // Rungs between the two legs. Their z spans are interpolated off the
+              // same two lines, so they shorten as the frame closes - which is what
+              // makes it read as a triangle rather than a ladder. Only two, and both
+              // low: near the apex the legs are already touching, and a rung up there
+              // is a lump on the join rather than a member.
+              for (const f of [0.24, 0.52]) {
+                const rearZ = TRUSS_FOOT_Z + (1.6 - TRUSS_FOOT_Z) * f;
+                const frontZ = 2.6 + (1.2 - 2.6) * f;
+                const y = 1.2 + (TRUSS_HEAD_Y - 1.2) * f;
+                add(geometry.panel, steel, x, y, (rearZ + frontZ) / 2,
+                  0.6, 0.6, Math.abs(rearZ - frontZ) + 0.6);
+              }
+              // One long diagonal across the frame, foot to head, same herringbone
+              // logic as the curtain's braces.
+              strut(x, TRUSS_FOOT_Z - 0.6, 8, 2.2, 24, 0.55, steel);
+              // Foot block where the rake lands on the pad.
+              add(geometry.panel, dark, x, 1.2, TRUSS_FOOT_Z, 2.6, 2.4, 3.2);
+            }
+            // Three longitudinal ties running the width of the truss row, which is
+            // what turns five separate frames into one braced structure from above.
+            // Their z values are read off the rear-leg line at the height each sits
+            // at, so a tie touches every frame it crosses.
+            for (const [ty, tz] of [[24, 3.6], [16, 7.3], [8, 10.9]]) {
+              add(geometry.panel, steel, 0, ty, tz, HALF_W * 2, 0.55, 0.55);
+            }
+
+            // ---- COMPOUND ----------------------------------------------------------
+            // Four transmitter containers in a row out front, each a 12 x 4 m box on
+            // a plinth with a ribbed roof and a door - drawn at real ISO-shelter
+            // proportions so the eye has something it knows the size of.
+            for (let c = 0; c < 4; c += 1) {
+              const cx = -27 + c * 18;
+              add(geometry.panel, olive, cx, 2.1, -8.6, 12.4, 3.8, 4.4);
+              add(geometry.panel, steel, cx, 4.2, -8.6, 13, 0.5, 4.8, 0.05);
+              add(geometry.panel, dark, cx - 5, 1.8, -10.9, 1.6, 2.8, 0.4);
+              // Roof plant: one air-handling hood per shelter, the detail that keeps
+              // the row from reading as four identical bricks from directly above.
+              add(geometry.panel, dark, cx + 3.4, 4.9, -8, 2.4, 1.2, 2.4);
+            }
+            // Transformer bank off the port end: three cylinders behind a low fence,
+            // outboard of the shelter row so it does not sit inside the cable run.
+            for (let i = 0; i < 3; i += 1) {
+              add(geometry.shipCylinder, light, -40 + i * 3.6, 2.3, -12.6, 1.3, 4.6, 1.3);
+            }
+            add(geometry.panel, dark, -36.4, 1.6, -15, 13, 3, 0.3);
+            // Cable gallery: the raised trunking run linking the shelters back to the
+            // feed line under the array. It is the one part that crosses between the
+            // two halves of the compound, and without it the containers look parked
+            // rather than connected.
+            add(geometry.panel, dark, 0, 3.4, -4.6, 62, 0.9, 1.2);
+            for (const gx of [-27, -9, 9, 27]) {
+              add(geometry.panel, dark, gx, 2.4, -4.6, 0.5, 3, 0.5);
+              // Spur off the trunk into the shelter behind it, so the run visibly
+              // terminates at hardware rather than stopping in mid-air.
+              add(geometry.panel, dark, gx, 3.4, -6.2, 0.5, 0.5, 4);
+            }
+
+            // No return value at all: nothing on this unit rotates. See the spec's
+            // `dishSpin` note above.
+          }
+        });
+      },
+      "ground_othRadar"
+    ); // @payload:ground_othRadar
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // ---------------------------------------------------------------------------
+        // 1. Spec
+        // ---------------------------------------------------------------------------
+        // radarSite is the template rather than adTank because this vehicle does not
+        // shoot: radarSite is the existing unarmed sensor entry (aa: null) and it
+        // already carries dishSpin, which the roof dish below needs. Only label /
+        // role / dimensions / HP are authored. Every combat number is inherited.
+        //
+        // BALANCE TODO: placeholder - hp, hitRadius, crash, smokeHeight, radarColor,
+        // tracerColor, explosionColor and dishSpin are radarSite's values, unreviewed
+        // for this unit. M12/M32 owns the real pass.
+        ctx.addGroundType("ewVehicle", {
+          ...GROUND_TYPES.radarSite,
+          key: "ewVehicle",
+          label: "EW VEHICLE",
+          role: "Electronic Warfare Command Vehicle",
+          // BALANCE TODO: placeholder (radarSite's 70).
+          hp: 70,
+          // Dimensions are the one thing that is NOT inherited: radarSite is a square
+          // 12 m installation and this is a 10 m long, ~3.2 m wide wheeled vehicle
+          // whose mast makes it 16 m tall. hitBox follows the model - x across the
+          // hull, z along it, y up to the mast head - so the lock box contains the
+          // mast instead of stopping at the roof.
+          hitRadius: 20,
+          crash: { halfLen: 5.2, halfBeam: 2.4, top: 16 },
+          hitBox: { x: 7, y: 17, z: 13 },
+          // BALANCE TODO: placeholder (radarSite's 7).
+          smokeHeight: 7
+        });
+
+        // ---------------------------------------------------------------------------
+        // 2. Model
+        // ---------------------------------------------------------------------------
+        // Built nose-along -Z and to real metres, the same frame every inline ground
+        // branch uses: 10 m hull (z -5 .. +5), 3.2 m over the tyres, 8 wheels on four
+        // axles. Part density is deliberately in the band the existing vehicles sit
+        // in (adTank 13, trainLoco 17) - the mast and its antennas are where the
+        // budget goes, and the chassis is built the way the tank chassis is built
+        // (two runs of boxes, a sloped nose plate, one stowage box) rather than being
+        // detailed for its own sake.
+        ctx.addGroundModel("ewVehicle", {
+          build(env) {
+            const { THREE, geometry, steel, olive, dark, light, add, addRoot } = env;
+
+            // ---- Chassis ---------------------------------------------------------
+            // Eight wheels: four axles at +/-1.55 across, spaced 2.2 m apart with the
+            // pair-gap in the middle that an 8x8 armoured car actually has (two
+            // forward axles close together, two aft). A wheel is one squashed
+            // cylinder laid on its side, which is what reads as a tyre at range.
+            for (const side of [-1, 1]) {
+              for (const z of [-3.5, -1.5, 1.6, 3.6]) {
+                add(geometry.shipCylinder, dark, side * 1.55, 0.85, z,
+                  0.85, 0.5, 0.85, 0, 0, Math.PI / 2);
+              }
+            }
+            // Hull floor / axle box tying the wheels together, so the vehicle does not
+            // read as a body hovering over eight discs.
+            add(geometry.panel, dark, 0, 0.95, 0, 2.6, 0.7, 9);
+
+            // Armoured body: a flat-sided box 10 m long with a sloped bow plate. The
+            // sides are vertical and the roof is flat because the roof is a working
+            // deck here - it carries the mast, the dish and the whips.
+            add(geometry.panel, olive, 0, 2.15, 0.2, 3.2, 2.1, 9.4);
+            add(geometry.panel, olive, 0, 2.0, -4.9, 3.1, 2.2, 1.9, -0.5);
+            // Cab: stepped down and forward of the equipment box, with a dark band
+            // for the windscreen so the front end is identifiable from the front 3/4.
+            add(geometry.panel, olive, 0, 3.15, -3.2, 3.0, 1.5, 3.0);
+            add(geometry.panel, dark, 0, 3.35, -4.65, 2.5, 0.95, 0.35, -0.22);
+            // Equipment shelter over the rear two thirds - the operators' box. This
+            // is the surface the mast is bolted to.
+            add(geometry.panel, olive, 0, 3.55, 1.6, 3.3, 2.4, 6.4);
+            add(geometry.panel, steel, 0, 4.85, 1.6, 3.5, 0.3, 6.6);
+            // Rear door and a generator/AC box on the flank: the two details that keep
+            // the shelter from reading as a plain crate from behind and from the side.
+            add(geometry.panel, dark, 0, 3.3, 4.85, 1.9, 1.9, 0.3);
+            add(geometry.panel, dark, -1.85, 3.1, 2.6, 0.5, 1.2, 2.6);
+
+            // ---- Telescopic mast (the identifier) --------------------------------
+            // Erected, four visible stages tapering as they go up (0.85 -> 0.62 ->
+            // 0.44 -> 0.30 across), carrying the head to 14.6 m and the crossbar to
+            // 14.7 m against a 3.2 m hull. That is 4.5x the hull height and 1.5x the
+            // vehicle's own 10 m length - the brief's floor is 1.5x, and clearing it
+            // by height alone was not enough: the mast also has to beat the tallest
+            // thing already on the ground (the armoured locomotive, ~9 m) by a margin
+            // the player reads instantly.
+            //
+            // Stages are separate boxes with visible steps rather than one tall box
+            // because the step is what says "telescopic" instead of "pole".
+            add(geometry.panel, steel, 0, 5.4, 1.6, 0.85, 3.0, 0.85);
+            add(geometry.panel, light, 0, 8.2, 1.6, 0.62, 3.0, 0.62);
+            add(geometry.panel, steel, 0, 11.0, 1.6, 0.44, 3.0, 0.44);
+            add(geometry.panel, light, 0, 13.4, 1.6, 0.3, 2.4, 0.3);
+            // Guy struts off the base of the mast down to the shelter roof, fore and
+            // aft. A mast this tall with nothing bracing it looks like it fell out of
+            // the model. They run from y 5.0 (roof) to y 6.6 (mast), so both ends are
+            // on something rather than in the air.
+            add(geometry.panel, dark, 0, 5.55, 0.55, 0.18, 0.18, 2.1, 0.75);
+            add(geometry.panel, dark, 0, 5.55, 2.65, 0.18, 0.18, 2.1, -0.75);
+
+            // Mast head: a horizontal crossbar carrying a pair of dipole elements per
+            // side. This is the second half of the silhouette - a bare mast is a
+            // flagpole, a mast with a crossbar is an antenna.
+            add(geometry.panel, dark, 0, 14.7, 1.6, 7.2, 0.28, 0.28);
+            for (const side of [-1, 1]) {
+              add(geometry.panel, light, side * 2.4, 15.4, 1.6, 0.2, 1.5, 0.2);
+              add(geometry.panel, light, side * 3.4, 15.2, 1.6, 0.18, 1.1, 0.18);
+              // Short down-leads back to the bar, so the elements read as wired to it.
+              add(geometry.panel, dark, side * 2.9, 14.7, 1.6, 1.2, 0.16, 0.16);
+            }
+
+            // ---- Log-periodic whips ----------------------------------------------
+            // Four raked whips off the roof corners, splayed outward. They are what
+            // fills the space between the hull and the mast head, and their rake is
+            // what makes the roof read as crowded rather than as a box with a pole.
+            for (const side of [-1, 1]) {
+              for (const z of [-1.0, 4.3]) {
+                add(geometry.shipCylinder, light, side * 1.5, 6.9, z,
+                  0.09, 4.0, 0.09, 0, 0, side * 0.3);
+              }
+            }
+            // Two more whips off the rear face of the shelter, raked back and shorter
+            // than the four above - a log-periodic fit is a set of UNEQUAL elements,
+            // and antennas cut to one length read as a fence. Raked aft rather than
+            // stood upright so they clear the mast in the side and top views instead
+            // of hiding behind it.
+            for (const side of [-1, 1]) {
+              add(geometry.shipCylinder, light, side * 1.4, 5.9, 4.7,
+                0.08, 2.6, 0.08, 0.5, 0, side * 0.12);
+            }
+
+            // ---- Parabolic dish --------------------------------------------------
+            // One steerable dish, canted up on its own pivot. Same construction as the
+            // search radar's: an octagonal plate on a Group handed back as `dish`, so
+            // updateGroundUnit sweeps it while the vehicle is alive and it stops dead
+            // when the vehicle is not.
+            //
+            // It sits on the CAB roof, forward of everything else, rather than on the
+            // shelter roof with the mast. Two attempts at putting it aft with the
+            // antenna farm both ended with the plate reading as a pale blob behind the
+            // mast in three of the four views: the mast, the guy struts and the whips
+            // all occupy that airspace, and a dish is only legible against empty sky.
+            // The cab roof is the one clear platform on the vehicle.
+            const dishPivot = new THREE.Group();
+            dishPivot.position.set(0, 4.6, -3.2);
+            // The plate and its feed live on a tilted sub-group so the boom really is
+            // normal to the dish face. Tilting three meshes separately, as an inline
+            // branch does when it has only a plate, leaves the feed off-axis.
+            const face = new THREE.Group();
+            face.rotation.x = -0.7;
+            dishPivot.add(face);
+            const plate = new THREE.Mesh(geometry.shipOctPlate, light);
+            plate.scale.set(1.9, 0.3, 1.9);
+            face.add(plate);
+            // Short pedestal under the plate, down onto the cab roof, so the dish
+            // stands on the vehicle instead of floating an antenna's width above it.
+            const pedestal = new THREE.Mesh(geometry.shipCylinder, steel);
+            pedestal.scale.set(0.42, 1.0, 0.42);
+            pedestal.position.set(0, -0.55, 0);
+            dishPivot.add(pedestal);
+            // Feed horn on its boom, standing off the face of the dish. Two parts, and
+            // without them the plate reads as a table rather than as a dish.
+            //
+            // The boom is kept SHORT and the horn deliberately fat: a thin rod a dish
+            // radius long, seen from the side, reads as an elevated gun barrel, and
+            // this unit must not look like it shoots - it is the one ground unit in
+            // the game whose whole identity is that it does not.
+            const boom = new THREE.Mesh(geometry.panel, dark);
+            boom.scale.set(0.14, 0.95, 0.14);
+            boom.position.set(0, 0.6, 0);
+            face.add(boom);
+            const horn = new THREE.Mesh(geometry.shipCylinder, steel);
+            horn.scale.set(0.5, 0.5, 0.5);
+            horn.position.set(0, 1.15, 0);
+            face.add(horn);
+            addRoot(dishPivot);
+
+            return { dish: dishPivot };
+          }
+        });
+      },
+      "ground_ewVehicle"
+    ); // @payload:ground_ewVehicle
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+        const tank = GROUND_TYPES.tank;
+        if (!tank) {
+          throw new Error("[bridgeLayer] expected the tank template to exist");
+        }
+
+        // BALANCE TODO: placeholder. Every combat number here is the MBT's, spread in
+        // unchanged - hp, hitRadius, smokeHeight, mobile.speed, mobile.turnRate and
+        // the colours. Only identity and the dimensions the bigger silhouette forces
+        // (crash / hitBox) are authored below. An unarmoured-topped engineer vehicle
+        // hauling a steel span should not plausibly take the same two missiles a main
+        // battle tank does, and it should be slower; the numbers do not say that yet.
+        //
+        // `tank` is the right template for an unarmed unit specifically because its
+        // `aa` is already null - MBTs are deliberately not in this game's list of
+        // things that shoot at aircraft - so spreading it disarms by construction
+        // rather than by overriding a live weapon block.
+        ctx.addGroundType("bridgeLayer", {
+          ...tank,
+          key: "bridgeLayer",
+          label: "BRIDGE LAYER",
+          role: "Armoured Vehicle-Launched Bridge",
+          // Wider and much taller than the donor. `crash.top` is where a crashing
+          // aircraft is stopped, so it is measured to the raised ramp ends of the
+          // folded span (y ~7.4) rather than to the bare deck the tank's 3.2 refers
+          // to, and halfBeam covers the span's overhang rather than the tracks.
+          crash: Object.freeze({ halfLen: 9.6, halfBeam: 5, top: 7.6 }),
+          // x = span width plus rails, y = ground to apex, z = the full folded span,
+          // which overhangs the hull at both ends and is what the player is aiming at.
+          hitBox: Object.freeze({ x: 11, y: 9, z: 20 }),
+          // Ranged off the longer object rather than off the chassis: between the
+          // tank's 18 and the trainLoco-class targets.
+          hitRadius: 21
+        });
+
+        ctx.addGroundModel("bridgeLayer", {
+          build(env) {
+            const { geometry, steel, olive, dark, light, add } = env;
+
+            // ---- Chassis -------------------------------------------------------
+            // Deliberately the inline `tank` branch's running gear and hull, at the
+            // same offsets, so the two vehicles read as one army's chassis. What is
+            // NOT copied is the turret: the deck above y 3 is left clear for the span.
+            add(geometry.panel, dark, -3.4, 1, 0, 1.7, 2, 12.4);
+            add(geometry.panel, dark, 3.4, 1, 0, 1.7, 2, 12.4);
+            add(geometry.panel, steel, -3.4, 0.55, 0, 1.9, 0.7, 11);
+            add(geometry.panel, steel, 3.4, 0.55, 0, 1.9, 0.7, 11);
+            add(geometry.panel, olive, 0, 1.9, 0, 7.2, 1.9, 12);
+            // Sloped glacis over the nose, same rake as the tank's.
+            add(geometry.panel, olive, 0, 2.3, -5.4, 7, 2.4, 3.4, -0.62);
+            // Low crew cupola pushed off the centreline to the left, which is where
+            // the driver sits once the turret ring is gone - and the detail that
+            // stops the bare deck from reading as an unfinished tank.
+            add(geometry.panel, steel, -1.9, 3.3, -3.1, 2.4, 1.2, 2.8);
+            add(geometry.panel, dark, -1.9, 4.0, -3.1, 2.0, 0.36, 2.4);
+
+            // ---- Launch cradle --------------------------------------------------
+            // The span does not sit on the deck, it sits on a low frame with the
+            // pivot at the rear. Two bearing blocks either side of the hull centre
+            // plus a rear kingpost, which is what gives the V something to hinge on.
+            add(geometry.panel, steel, 0, 3.2, 1.2, 5.6, 1.0, 7.6);
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 2.4, 4.2, 3.0, 0.8, 1.6, 3.2);
+            }
+            // Hydraulic rams running up from the rear bearings to the hinge, one per
+            // side, raked forward and set OUTBOARD of the cradle blocks so they are
+            // silhouetted in the gap between deck and span rather than buried in it.
+            // That gap is what keeps the vehicle from reading as one solid mass.
+            for (const side of [-1, 1]) {
+              add(geometry.shipCylinder, steel, side * 3.0, 4.3, 2.2, 0.3, 2.4, 0.3, -0.55);
+            }
+            // Rear spade / stabiliser blade, dropped at the tail. Every launcher has
+            // one, and it is the read that the back of this vehicle is the working end.
+            add(geometry.panel, dark, 0, 1.9, 6.6, 6.2, 2.4, 0.7, 0.28);
+
+            // ---- Folded scissors span (the identity) -----------------------------
+            // Two halves hinged at the CENTRE and folded UPWARD: the hinge is the low
+            // point at z 0, and both halves rise away from it so the ends are the
+            // high corners. That is the shape - an upward, shallow V - and getting it
+            // the other way round (ends drooping off a high apex) is the one mistake
+            // that turns this vehicle into a tank wearing a roof. Every AVLB carries
+            // its folded span exactly this way, hinge down on the deck and the two
+            // ramp ends cocked up over the nose and the tail.
+            //
+            // The rake is 0.19 rad (~11deg) - shallow on purpose, because a steep
+            // fold reads as a launched ramp and this has to read as a carried load.
+            //
+            // Each half is the same pieces: a pair of treadways, an outboard guide
+            // rail on each, and a girder under each. The rails are why this is a
+            // bridge and not a slab: they are the outermost thing on the vehicle, so
+            // the span overhangs the tracks from every angle.
+            const HALF_LEN = 9.6;     // each folded half, z
+            const HALF_BEAM = 4.7;    // span half-width - wider than the hull's 3.6
+            const HINGE_Y = 5.4;      // the LOW point, sitting down on the cradle
+            const RAKE = 0.21;
+            const MID_Z = HALF_LEN * 0.5;
+            // Each half's centre sits above the hinge by the rise its own rake makes
+            // over half its length, so the two halves meet exactly at the hinge.
+            const MID_Y = HINGE_Y + Math.sin(RAKE) * MID_Z;
+            // The deck is TWO TREADWAYS with a gap down the middle, not one plate.
+            // That gap is doing real work: it is why the top-down view shows a pair
+            // of ladders with the tracks visible between them instead of a slab that
+            // hides the whole vehicle, and it is what a real scissors span looks like.
+            const TREAD_W = 2.1;
+            const TREAD_X = HALF_BEAM - TREAD_W * 0.5 - 0.25;
+
+            for (const end of [-1, 1]) {
+              const cz = end * MID_Z;
+              // rx sign: the +z half must tip its far end UP, which is a negative
+              // rotation about x, so the rake is applied as -end * RAKE throughout.
+              const rake = -end * RAKE;
+              for (const side of [-1, 1]) {
+                // Treadway deck.
+                add(geometry.panel, olive, side * TREAD_X, MID_Y, cz,
+                  TREAD_W, 0.45, HALF_LEN, rake);
+                // Guide rail standing proud along the OUTBOARD edge of each treadway.
+                // These are the outermost thing on the vehicle, so they are what makes
+                // the span read as wider than the hull from every angle.
+                add(geometry.panel, steel, side * (HALF_BEAM - 0.3), MID_Y + 0.5, cz,
+                  0.6, 0.85, HALF_LEN, rake);
+                // Underside box girder per treadway - what stops the span reading as
+                // a flat board in the side view.
+                add(geometry.panel, dark, side * TREAD_X, MID_Y - 0.6, cz,
+                  1.3, 0.9, HALF_LEN - 1.2, rake);
+              }
+              // Cross-brace tying the two treadways together near the raised end,
+              // and the blunt ramp lip on the very tip of the span.
+              const tipY = MID_Y + Math.sin(RAKE) * MID_Z * 0.85;
+              add(geometry.panel, dark, 0, tipY, end * (HALF_LEN - 1.6),
+                HALF_BEAM * 2 - 1.6, 0.4, 1.0, rake);
+              add(geometry.panel, light, 0, tipY + 0.05, end * (HALF_LEN - 0.4),
+                HALF_BEAM * 2 - 0.9, 0.42, 1.4, rake);
+            }
+            // The hinge itself, at the LOW centre of the V: a crossbeam joining the
+            // two halves plus a knuckle either side. This is the pinch point the
+            // whole span folds about, and it sits down on the cradle.
+            add(geometry.panel, steel, 0, HINGE_Y - 0.35, 0, HALF_BEAM * 2 + 0.3, 0.7, 1.6);
+            for (const side of [-1, 1]) {
+              add(geometry.shipCylinder, dark, side * (HALF_BEAM - 0.2), HINGE_Y - 0.35, 0,
+                0.45, 1.1, 0.45, 0, 0, Math.PI / 2);
+            }
+
+            // No `dish`: nothing on an engineer vehicle rotates, and the spec carries
+            // no dishSpin. Returning nothing is the contract for that.
+          }
+        });
+      },
+      "ground_bridgeLayer"
+    ); // @payload:ground_bridgeLayer
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        const truckTemplate = GROUND_TYPES.tank;
+        if (!truckTemplate) {
+          throw new Error("[dataVault] expected the existing `tank` template");
+        }
+
+        // -------------------------------------------------------------------------
+        // 1. Spec
+        // -------------------------------------------------------------------------
+        // Spread from `tank`, which is the only complete schema in GROUND_TYPES that
+        // is BOTH mobile and `aa: null`. That combination is the whole requirement:
+        // the vault truck drives a route and never shoots back, so the template has
+        // to be an unarmed vehicle rather than fuelTank (static) or adTank (armed).
+        // Only identity, dimensions and durability are overridden below.
+        ctx.addGroundType("dataVault", {
+          ...truckTemplate,
+          key: "dataVault",
+          label: "DATA VAULT",
+          role: "Credential Transport Truck",
+
+          // BALANCE TODO: placeholder. 130 is "two missiles and a bit" - above the
+          // MBT's 110 because the payload is a hardened safe rather than a crew
+          // compartment, and the escort side of the mission needs the truck to
+          // survive a stray hit rather than pop on the first one. Not tuned against
+          // any authored mission; revisit when M31 exists.
+          hp: 130,
+
+          // Measured off the build below, not guessed: the drawn envelope is
+          // x -2.05..2.05, y 0..5.9, z -7.09..6.91 - 14.0 m long, 3.6 m across the
+          // body (4.1 m over the mirrors), 5.9 m to the top of the roof placard,
+          // wheels sitting exactly on y=0 like the tank's tracks do.
+          //
+          // hitBox is rounded outward from that envelope the way the other vehicles'
+          // are; hitRadius is half the plan diagonal, rounded up.
+          hitRadius: 19,
+          hitBox: { x: 8, y: 8, z: 14 },
+          crash: { halfLen: 7, halfBeam: 3.6, top: 5.9 },
+          smokeHeight: 5.5,
+
+          // BALANCE TODO: placeholder. Unarmed by inheritance - the courier's whole
+          // defence is its escort, and giving it a gun would make the escort
+          // pointless.
+          aa: null,
+
+          // BALANCE TODO: placeholder. Slower and less nimble than the MBT it is
+          // spread from: a loaded 14 m armoured truck. Values are eyeballed against
+          // convoyTruck (19) and mlrs (12), not measured against a route.
+          mobile: {
+            speed: 13,
+            turnRate: truckTemplate.mobile.turnRate * 0.85
+          },
+
+          // BALANCE TODO: placeholder. Warm amber on the radar so a protect-this
+          // contact is not the same colour as the things shooting at it.
+          radarColor: "#ffd089",
+          tracerColor: 0xffb06a,
+          explosionColor: 0xffa348
+        });
+
+        // -------------------------------------------------------------------------
+        // 2. Geometry
+        // -------------------------------------------------------------------------
+        // Built nose-along -Z, which is the forward the baked route heading drives -
+        // same convention as the inline tank and train cars.
+        //
+        // The silhouette has to say "sealed box on wheels" from a kilometre up, and
+        // three things do all of that work: a cab that is visibly SMALLER than what
+        // it is towing, a container that is windowless and ribbed all the way round,
+        // and a hazard stripe that wraps the whole body. Everything else is running
+        // gear.
+        ctx.addGroundModel("dataVault", {
+          build(env) {
+            const { geometry, makeAircraftMaterial, steel, dark, light, markings,
+                    extraMaterials, add } = env;
+
+            // Two materials of its own, because the brief is a body DARKER than the
+            // surrounding units plus one warning accent, and the four themed
+            // standards have no colour in that range - `dark` is the near-black used
+            // for shadow gaps, and painting a 14 m body in it would lose the panel
+            // reads. Both go into extraMaterials or they leak with the model.
+            const hullPaint = makeAircraftMaterial(0x3c4249, 0.28, 0.7);
+            const hazard = makeAircraftMaterial(0xd9a13a, 0.2, 0.68);
+            extraMaterials.push(hullPaint, hazard);
+
+            // ---- Running gear --------------------------------------------------
+            // Chassis rails the whole 14 m, then three axles: one under the cab and a
+            // tandem pair under the container, which is where the mass is. A plain
+            // band per side reads as wheels once the truck is moving, the same trick
+            // the tank's road wheels use, and costs two boxes instead of twelve.
+            // Everything here is kept INBOARD of the 3.4 m body: a chassis that
+            // overhangs the bodywork reads as a flatbed trailer from above, which is
+            // the opposite of what this unit is.
+            add(geometry.panel, dark, 0, 1.4, 0.3, 2.6, 1.0, 12.8);
+            add(geometry.panel, dark, -1.5, 0.9, -3.9, 0.65, 1.8, 2.5);
+            add(geometry.panel, dark, 1.5, 0.9, -3.9, 0.65, 1.8, 2.5);
+            add(geometry.panel, dark, -1.5, 0.9, 3.3, 0.65, 1.8, 5.4);
+            add(geometry.panel, dark, 1.5, 0.9, 3.3, 0.65, 1.8, 5.4);
+
+            // ---- Cab -----------------------------------------------------------
+            // Deliberately short (3.6 m of the 14) and lower than the container, so
+            // the box is what the eye lands on. Armoured: a slab front with a small
+            // slit windscreen rather than a glasshouse. Pushed back until it touches
+            // the vault's front face - a visible gap between cab and load makes the
+            // two read as two separate vehicles.
+            add(geometry.panel, hullPaint, 0, 2.9, -4.65, 3.3, 2.9, 3.9);
+            // Deck plate bridging the cab to the vault's front face, so the two read
+            // as one vehicle carrying a load rather than as a truck parked in front
+            // of a box.
+            add(geometry.panel, hullPaint, 0, 1.95, -2.5, 3.1, 0.6, 1.6);
+            add(geometry.panel, hullPaint, 0, 3.65, -6.3, 3.1, 1.9, 1.0, 0.34);
+            add(geometry.panel, dark, 0, 3.9, -6.4, 2.4, 0.55, 0.45, 0.34);
+            // Bumper and grille.
+            add(geometry.panel, steel, 0, 1.7, -6.5, 3.2, 0.9, 0.45);
+            add(geometry.panel, dark, 0, 2.5, -6.5, 2.3, 0.9, 0.3);
+            // Exhaust stack up the back of the cab, and mirrors - three cheap parts
+            // that say "truck" rather than "APC". The mirrors are the only thing on
+            // the vehicle outboard of the body, and they are 0.2 m of it per side.
+            add(geometry.shipCylinder, dark, -1.45, 4.6, -3.1, 0.15, 2.6, 0.15);
+            add(geometry.panel, dark, -1.8, 3.9, -5.9, 0.5, 0.45, 0.12);
+            add(geometry.panel, dark, 1.8, 3.9, -5.9, 0.5, 0.45, 0.12);
+
+            // ---- Vault container ------------------------------------------------
+            // THE unit. A sealed armoured safe on the bed: 9 m long, full width,
+            // taller than the cab, and it has no windows anywhere - the only
+            // openings modelled are a locked rear hatch and two small vents.
+            //
+            // The walls are the OUTERMOST surface and the ribs are shallow strips
+            // laid on them (0.06-0.1 m proud). An earlier pass had the ribs standing
+            // 0.3 m off the skin, and a box behind deep vertical posts stops reading
+            // as sealed at all - it reads as an open gondola with stanchions.
+            // Bed frame, inset behind the container walls and in the body colour: a
+            // bright slab wider than the box turns the load into a pallet on a
+            // flatbed, which is the read this unit must not have.
+            add(geometry.panel, hullPaint, 0, 1.95, 2.2, 3.2, 0.6, 8.4);
+            add(geometry.panel, hullPaint, 0, 3.85, 2.2, 3.4, 3.4, 8.6);
+            // Corner posts, in the body colour rather than bare steel. Two rounds of
+            // previews said the same thing: any bright vertical member standing off
+            // this box turns the flank into a cage and the walls into the gaps
+            // between bars. The posts have to be part of the WALL, so they are the
+            // hull colour and only 0.05 m proud.
+            for (const sx of [-1, 1]) {
+              for (const sz of [-1, 1]) {
+                add(geometry.panel, hullPaint, sx * 1.74, 3.85, 2.2 + sz * 4.06, 0.16, 3.44, 0.5);
+              }
+            }
+            // Reinforcing ribs: three hoops, each a thin strip over the roof and one
+            // down each flank. Thin in Z (0.24 m) as well as shallow, because the
+            // face the camera sees on a flank rib is its Z-facing side, and a deep
+            // rib shows a wide bright band there whatever its thickness.
+            for (const rib of [-2.4, 0, 2.4]) {
+              add(geometry.panel, steel, 0, 5.62, 2.2 + rib, 3.42, 0.12, 0.24);
+              add(geometry.panel, steel, -1.73, 3.85, 2.2 + rib, 0.08, 3.4, 0.24);
+              add(geometry.panel, steel, 1.73, 3.85, 2.2 + rib, 0.08, 3.4, 0.24);
+            }
+            // Roof cap, slightly proud of the walls so the top edge catches light.
+            add(geometry.panel, hullPaint, 0, 5.58, 2.2, 3.5, 0.36, 8.7);
+
+            // Rear face: a locked double hatch, set into a bright steel surround with
+            // a central lock pillar, a lock housing and hinge straps. This is the
+            // only way into the box, so it is the one part of the container that is
+            // not blank - and it is drawn in STEEL against the dark body because a
+            // dark hatch on a dark wall is invisible from the rear, which is the
+            // angle a strike runs in from.
+            add(geometry.panel, steel, 0, 3.55, 6.54, 2.8, 3.2, 0.12);
+            add(geometry.panel, dark, 0, 3.55, 6.62, 2.5, 2.9, 0.1);
+            add(geometry.panel, steel, 0, 3.55, 6.68, 0.22, 2.9, 0.16);
+            add(geometry.panel, steel, 0, 3.55, 6.72, 0.9, 0.75, 0.2);
+            add(geometry.panel, hazard, 0, 3.55, 6.84, 0.36, 0.36, 0.14);
+            for (const sy of [-1, 1]) {
+              add(geometry.panel, steel, -1.0, 3.55 + sy * 1.1, 6.68, 0.45, 0.2, 0.16);
+              add(geometry.panel, steel, 1.0, 3.55 + sy * 1.1, 6.68, 0.45, 0.2, 0.16);
+            }
+            // The only other openings: two small louvred vents high on the left
+            // flank. Deliberately TINY and dark. A previous pass framed them in the
+            // light material to make them legible and they immediately read as
+            // windows, which is the one thing this container must never have - so
+            // they are a shallow steel bezel around a dark slot, at a size (0.3 m
+            // tall) no glazing would be, and they are allowed to disappear at range.
+            for (const vz of [0.6, 4.2]) {
+              add(geometry.panel, steel, -1.75, 5.05, vz, 0.06, 0.34, 0.7);
+              add(geometry.panel, dark, -1.79, 5.05, vz, 0.05, 0.2, 0.56);
+            }
+
+            // ---- Warning band ---------------------------------------------------
+            // One hazard stripe wrapped round the container plus a bumper stripe on
+            // the cab, so the truck is identifiable as marked special cargo from any
+            // of the four approaches. On the flanks and the front it runs at mid
+            // height, which keeps it clear of the roof cap (an earlier pass had it
+            // tucked under the cap, where it read as roof trim rather than as a
+            // marking on the body). At the back it steps up over the hatch surround
+            // instead of cutting through it. Every strip sits proud of the rib
+            // strips so it is never z-fighting and is never chopped into segments.
+            add(geometry.panel, hazard, -1.79, 3.85, 2.2, 0.08, 0.55, 8.6);
+            add(geometry.panel, hazard, 1.79, 3.85, 2.2, 0.08, 0.55, 8.6);
+            add(geometry.panel, hazard, 0, 5.32, 6.56, 3.44, 0.4, 0.08);
+            add(geometry.panel, hazard, 0, 3.85, -2.14, 3.44, 0.55, 0.08);
+            add(geometry.panel, hazard, 0, 1.72, -6.76, 3.1, 0.45, 0.08);
+            // Roof placard, in the unlit marking white - the single thing that is
+            // legible from directly overhead, which is the angle the player attacks
+            // or escorts this from.
+            add(geometry.panel, markings, 0, 5.78, 3.2, 1.4, 0.06, 2.6);
+            add(geometry.panel, light, 0, 5.78, 0.0, 2.2, 0.06, 0.5);
+
+            // No rotating part on this unit: it carries data, not a radar. The build
+            // returns nothing, which leaves `dish` null exactly as every other
+            // unarmed installation already is.
+          }
+        });
+      },
+      "ground_dataVault"
+    ); // @payload:ground_dataVault
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+        const trainCar = GROUND_TYPES.trainCar;
+        if (!trainCar) {
+          throw new Error("[civilRescue] trainCar ground type is not registered");
+        }
+
+        // === 1. GROUND_TYPES 登録 ================================================
+        //
+        // 土台は trainCar。理由は GROUND_TYPES の中で「非武装(aa:null) かつ mobile を
+        // 持つ」唯一のエントリだから。撃ってこないユニットは撃ってこないエントリから
+        // 派生させるのが安全で、aa を null に上書きし忘れる事故が構造的に起きない。
+        // （tank も aa:null だが mobile 15/28 の戦車。民間車の速度帯とは無関係。）
+        //
+        // 上書きするのは label / role / 寸法 / HP と、道路を走る速度だけ。
+        // 残りの戦闘性能値（tracerColor / explosionColor / smokeHeight 等）は
+        // spread のまま＝ BALANCE TODO: placeholder。
+
+        ctx.addGroundType("ambulance", {
+          ...trainCar,
+          key: "ambulance",
+          label: "AMBULANCE",
+          role: "Civil Medical Vehicle",
+          // BALANCE TODO: placeholder. 撃つ対象ではないので HP は
+          // 「流れ弾一発で消えない」以上の意味を持たない。trainCar の 98
+          // （＝標準ミサイル1発）は軍用貨車の値なので、非装甲の民間バン相当に
+          // 落として 30 を仮置き。
+          hp: 30,
+          // --- 寸法: 全長6m --------------------------------------------------
+          // モデルの実寸に一致させる。車体は z -3.0 .. +3.0、全幅 2.3m（ミラー含め
+          // 2.5m）、屋根の天面 y=2.75、警光灯の頂点 y=2.95。
+          hitRadius: 8,
+          crash: Object.freeze({ halfLen: 3, halfBeam: 1.2, top: 2.8 }),
+          hitBox: Object.freeze({ x: 2.5, y: 2.9, z: 6 }),
+          // BALANCE TODO: placeholder. 煙柱の高さ。車高2.9mに合わせて trainCar の 5 から下げた。
+          smokeHeight: 3,
+          // 非武装。trainCar から引き継いだ aa:null をそのまま明示しておく
+          // （spread 元が変わっても撃たない側に倒れるようにするための冗長記述）。
+          aa: null,
+          // BALANCE TODO: placeholder. 道路を流れる民間車。軍用車列(tank 15 / adTank 13)
+          // よりやや速い程度で、追い越さない値に置いた。turnRate は trainCar の
+          // 120deg/s（レール用の巨大値）だと交差点でコマのように回るので、
+          // 道路車両の帯（tank 28 / mobileSam 26）に合わせる。
+          mobile: Object.freeze({ speed: 18, turnRate: (Math.PI / 180) * 30 }),
+          // レーダー上のブリップ色。軍用のオレンジ系(#ffc47a)の中で
+          // 「白い点＝撃つな」が読めるようにする（hospitalShip と同じ規約）。
+          radarColor: "#eaf4ff"
+        });
+
+        ctx.addGroundType("evacBus", {
+          ...trainCar,
+          key: "evacBus",
+          label: "EVAC BUS",
+          role: "Civil Evacuation Bus",
+          // BALANCE TODO: placeholder. 救急車より大きいだけの非装甲車体。
+          // 「うっかり一発では消えない」程度に 45 を仮置き。
+          hp: 45,
+          // --- 寸法: 全長12m -------------------------------------------------
+          // 車体は z -6.0 .. +6.0、全幅 2.55m、屋根の天面 y=3.35、
+          // 屋根の白布パネルの天面 y=3.45。
+          hitRadius: 13,
+          crash: Object.freeze({ halfLen: 6, halfBeam: 1.3, top: 3.4 }),
+          hitBox: Object.freeze({ x: 2.6, y: 3.5, z: 12 }),
+          // BALANCE TODO: placeholder. 車高3.5mに合わせた煙柱高さ。
+          smokeHeight: 4,
+          aa: null,
+          // BALANCE TODO: placeholder. 満載の大型バス。救急車より遅い。
+          mobile: Object.freeze({ speed: 14, turnRate: (Math.PI / 180) * 22 }),
+          radarColor: "#eaf4ff"
+        });
+
+        // === 2. 救急車のジオメトリ ================================================
+        ctx.addGroundModel("ambulance", {
+          build(env) {
+            const { THREE, geometry, add, makeAircraftMaterial, extraMaterials, dark, steel } = env;
+
+            // 白い車体。既存の light(0xd6dde2, 0.3, 0.45) は金属寄りで、夜のマップだと
+            // 灰色に沈む。metalness=0 の完全拡散にし、emissive を色の 0.30 倍まで
+            // 持ち上げて自照させる（makeAircraftMaterial の既定は 0.045 倍）。
+            // baseEmissive も一緒に直さないと、被弾フラッシュから戻るときに
+            // updateAircraftFlash が既定値へ書き戻して暗くなる。
+            const white = makeAircraftMaterial(0xfbfdfe, 0.0, 0.92);
+            white.emissive.setHex(0xfbfdfe).multiplyScalar(0.3);
+            white.userData.baseEmissive = white.emissive.clone();
+            extraMaterials.push(white);
+            // 赤十字は unlit。夜間でも必ず赤いまま出る＝識別要件そのもの。
+            const red = new THREE.MeshBasicMaterial({ color: 0xd42a24 });
+            extraMaterials.push(red);
+            // 窓ガラス。白車体との明度差で「バンである」ことを作る唯一の要素なので
+            // dark より少しだけ青寄りにして、白の中で帯として読ませる。
+            const glass = makeAircraftMaterial(0x2a3b46, 0.55, 0.3);
+            extraMaterials.push(glass);
+            // 屋根の警光灯。赤十字と同じ unlit で、真上から見たときの点として効く。
+            const beacon = new THREE.MeshBasicMaterial({ color: 0xff5a3c });
+            extraMaterials.push(beacon);
+
+            // --- 車体 (全長6m: 鼻 z=-3.0 .. 尻 z=+3.0) -------------------------
+            // ボンネットのある短い鼻 + 背の高い箱型患者室、という「バン型救急車」の
+            // 二段シルエット。真横から見たときの段差がそのまま識別点になる。
+            // キャブ+箱: z -1.35 .. +3.0（中心 +0.825 / 長さ 4.35）、車高 y 0.85..2.75
+            add(geometry.panel, white, 0, 1.8, 0.825, 2.3, 1.9, 4.35);
+            // ボンネット: z -3.0 .. -1.3（中心 -2.15 / 長さ 1.7）、低く前へ突き出す。
+            // 1周目は箱との間に隙間が空いて「白い煉瓦が前に浮いている」ように見えた
+            // ので、後端を箱の前面 -1.35 に 0.05m 差し込んで必ず接触させる。
+            add(geometry.panel, white, 0, 1.4, -2.15, 2.2, 1.1, 1.7);
+            // 下回り（シャシ）。ここだけ暗くして車体が宙に浮かないようにする。
+            // 1周目は z=+2.9 まで伸ばしていて後輪を半分飲み込んでいたので、
+            // 前後の車輪の内側 (z -1.4..+1.3) に収める。
+            add(geometry.panel, dark, 0, 0.72, -0.05, 2.15, 0.5, 2.7);
+
+            // --- 窓 -------------------------------------------------------------
+            // フロントガラス。ボンネット天面 (y=1.95) と屋根 (y=2.75) の間の
+            // 高さ 0.8m の窓。2周目は 0.95 の高さを -0.28 傾けて貼ったせいで、
+            // 屋根の上へ突き出し前へ庇のように張り出す「黒い鉤」になった。
+            // 高さを段差ぴったりの 0.76 に落とし、傾きも -0.1 に抑えて面内へ収める。
+            add(geometry.panel, glass, 0, 2.35, -1.39, 2.06, 0.76, 0.16, -0.1);
+            // 運転席のサイドウィンドウ（左右）。フロントガラスの直後に接して置く
+            // ので、キャブの窓が前面から側面へ回り込む一続きの帯として読める
+            // （2周目は白を挟んで離れていて、側面に開いた穴に見えた）。
+            // 患者室側には窓を入れない——側面は赤十字のための白い面として空ける。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, glass, side * 1.17, 2.35, -0.87, 0.12, 0.76, 0.9);
+            }
+
+            // --- ★側面の赤十字（最重要） ---------------------------------------
+            // 患者室の白い側面 (z -0.2..+3.0、y 0.85..2.75) の中央に、
+            // 高さ1.6mの十字。車体側面 x=±1.15 の 0.06m 外へ出して z-fighting を回避。
+            for (const side of [-1, 1]) {
+              const x = side * 1.21;
+              add(geometry.panel, red, x, 1.75, 1.4, 0.1, 1.6, 0.54);
+              add(geometry.panel, red, x, 1.75, 1.4, 0.1, 0.54, 1.6);
+            }
+            // 後面（観音扉側 z=+3.0）にも1つ。後方から入っても識別できる。
+            add(geometry.panel, red, 0, 1.75, 3.06, 1.4, 0.46, 0.1);
+            add(geometry.panel, red, 0, 1.75, 3.06, 0.46, 1.4, 0.1);
+
+            // --- ★屋根の赤十字 -------------------------------------------------
+            // 上空からの識別はこれが担う。屋根天面 y=2.75 の直上 y=2.79 に薄板で置く。
+            // 1周目は z=+0.9 に置いていて、真上から見ると十字が車体後半に寄り、
+            // 前半が真っ白に空いていた。屋根 (z -1.35..+3.0) の中心 z=+0.85 に
+            // 置きつつ十字を大きくして、屋根の面をきちんと占有させる。
+            add(geometry.panel, red, 0, 2.79, 0.85, 0.78, 0.08, 2.9);
+            add(geometry.panel, red, 0, 2.79, 0.85, 2.16, 0.08, 0.95);
+
+            // --- 屋根の警光灯 ---------------------------------------------------
+            // 屋根の最前端（フロントガラスの直上）に1本の細いバー。
+            // 上からも横からも赤い点として出る。
+            add(geometry.panel, beacon, 0, 2.86, -1.0, 1.6, 0.22, 0.4);
+
+            // --- 車輪 (4輪) -----------------------------------------------------
+            // shipCylinder を Z 軸回りに 90° 倒すと軸が X（車軸方向）になる。
+            // 半径0.45 → 下端がちょうど y=0（接地）。前輪はボンネットの下、
+            // 後輪は患者室の後端寄りに置いてホイールベースを 3.7m 取る。
+            for (const side of [-1, 1]) {
+              for (const z of [-1.9, 1.8]) {
+                add(geometry.shipCylinder, dark, side * 1.08, 0.45, z,
+                  0.45, 0.34, 0.45, 0, 0, Math.PI / 2);
+              }
+            }
+            // バンパー2本。鼻先と尻に付けて、真横のシルエットに前後の終端を作る。
+            add(geometry.panel, steel, 0, 0.85, -3.02, 2.2, 0.42, 0.24);
+            add(geometry.panel, steel, 0, 0.85, 3.02, 2.2, 0.42, 0.24);
+            // 返り値なし＝ dish なし。この車に回るものは何もない。
+          }
+        });
+
+        // === 3. 避難バスのジオメトリ ==============================================
+        ctx.addGroundModel("evacBus", {
+          build(env) {
+            const { THREE, geometry, add, makeAircraftMaterial, extraMaterials, dark, steel } = env;
+
+            // 明色の車体。救急車の純白とは変えて淡いクリーム（スクールバス/避難バスの
+            // 色。真横に並べたとき2種が別車と分かる）。夜間でも沈まないよう
+            // metalness=0 + emissive 底上げは同じ扱いにする。
+            const cream = makeAircraftMaterial(0xf2e7c4, 0.0, 0.9);
+            cream.emissive.setHex(0xf2e7c4).multiplyScalar(0.28);
+            cream.userData.baseEmissive = cream.emissive.clone();
+            extraMaterials.push(cream);
+            // ★屋根の白布パネル（白旗の記号）。unlit の純白なので、上空から見たとき
+            // クリームの車体の上で最も明るい面になる＝これが上からの識別点。
+            const cloth = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            extraMaterials.push(cloth);
+            // 窓。バスに見えるかどうかはほぼ窓列で決まるので、車体との明度差を
+            // 大きく取る（軍用トラックの幌には連続窓が無い）。
+            const glass = makeAircraftMaterial(0x2a3b46, 0.55, 0.3);
+            extraMaterials.push(glass);
+
+            // --- 車体 (全長12m: 鼻 z=-6.0 .. 尻 z=+6.0) ------------------------
+            // 前面が切り立った箱型（キャブオーバー型の大型バス）。ボンネットは
+            // 作らない——鼻から尻まで一本の直方体であること自体がバスの記号。
+            // 車体 y 0.95..3.35、幅 2.55。
+            add(geometry.panel, cream, 0, 2.15, 0, 2.55, 2.4, 12);
+            // シャシ / スカート。暗い帯を床下に通して、車体が浮かないようにする。
+            add(geometry.panel, dark, 0, 0.8, 0, 2.4, 0.6, 11.6);
+            // 屋根の縁（雨樋）。クリーム＋白布の間に細い暗線を入れて、
+            // 白布パネルが車体に溶けないようにする。1周目は y=3.3 に置いて高さ 0.2 も
+            // あり、真横から見ると「黒い屋根ラインの上に白いものが乗っている」に
+            // 見えて布が読めなかった。屋根天面 3.35 のすぐ下へ薄く下げる。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 1.28, 3.24, 0, 0.08, 0.14, 11.8);
+            }
+
+            // --- ★窓列 ---------------------------------------------------------
+            // 側面に長い連続窓を1本ずつ。上下位置は座席の目線高 y=2.55。
+            // 前扉のぶん前端を少し空けて z -4.2 .. +5.4（中心 +0.6 / 長さ 9.6）。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, glass, side * 1.29, 2.55, 0.6, 0.1, 1.1, 9.6);
+              // 窓割りの柱。連続窓が「ただの黒い帯」に見えないよう、
+              // 一定間隔でクリームの細柱を立てる（4本／片側）。
+              // 2周目は柱 (x=±1.31) をガラス (x=±1.29) より内側に置いてしまい、
+              // ガラスの陰に完全に隠れて窓が1本の黒帯にしか見えなかった。
+              // 柱を確実にガラスより外へ出し、幅も太くして影で読ませる。
+              for (let i = 0; i < 4; i += 1) {
+                add(geometry.panel, cream, side * 1.35, 2.55, -3.0 + i * 2.4, 0.12, 1.18, 0.26);
+              }
+            }
+            // フロントガラス（大型・ほぼ垂直）。バスの顔はこれ。
+            add(geometry.panel, glass, 0, 2.5, -6.03, 2.35, 1.5, 0.12, 0.06);
+            // 後面窓。
+            add(geometry.panel, glass, 0, 2.6, 6.03, 2.1, 1.0, 0.12);
+            // 前扉（右側面前寄り）。暗い縦長の板で、乗降口＝民間車の記号。
+            add(geometry.panel, dark, 1.29, 2.0, -4.9, 0.1, 2.1, 1.1);
+
+            // --- ★屋根の白布パネル（白旗の記号・最重要） -----------------------
+            // 屋根天面 y=3.35 の直上に、大きな白布を2枚ロープで留めた形。
+            // 上空から見て「クリームの長物の背に真っ白な2枚」が読めるサイズにする
+            // （細かい布を何枚も並べると、2km上空からは屋根が白く塗り潰れただけに
+            //  見えて "留めてある布" に読めない。大きく2枚が正解）。
+            // 1周目は屋根に 0.14 厚で寝かせただけで、真横からは白が全く見えず
+            // 「屋根が明るいバス」にしかならなかった。厚みを 0.34 に増やして
+            // 屋根から明確に持ち上げ、幅も車体幅いっぱい (2.5) まで広げて
+            // 側面からも白い帯として稜線に出るようにする。
+            // 幅は 2.2（車体 2.55 に対し片側 0.17 のクリーム余白）。3周目に 2.5 まで
+            // 広げたら真上から屋根がほぼ白一色になり「白く塗った屋根」に見えたので、
+            // 縁のクリームを必ず残して「載せた布」に読ませる。
+            for (const z of [-2.8, 2.8]) {
+              add(geometry.panel, cloth, 0, 3.5, z, 2.2, 0.34, 4.4);
+            }
+            // 布を留めるロープ／押さえ桟。1周目は布の上に浮いた黒い棒に見えたので、
+            // 布と同じ高さで布を「またぐ」位置に置き、さらに車体幅より外へ 0.1 出して
+            // 側面へ垂れ下がる端を作る＝後から掛けて縛った布に読ませる。
+            for (const z of [-4.7, -0.9, 0.9, 4.7]) {
+              add(geometry.panel, dark, 0, 3.5, z, 2.66, 0.4, 0.16);
+            }
+
+            // --- 車輪 (6輪: 前1軸 + 後ダブルタイヤ1軸) ----------------------------
+            // 大型バスの後輪はダブルタイヤ。1周目は z=3.2/4.5 と離しすぎて
+            // 3軸のトラックに見えたので、隣接させて1つの太い後輪として読ませる。
+            // 半径0.55 → 下端が y=0（接地）。
+            for (const side of [-1, 1]) {
+              for (const z of [-4.1, 3.55, 4.25]) {
+                add(geometry.shipCylinder, dark, side * 1.18, 0.55, z,
+                  0.55, 0.3, 0.55, 0, 0, Math.PI / 2);
+              }
+            }
+            // バンパー。
+            add(geometry.panel, steel, 0, 1.0, -6.05, 2.5, 0.5, 0.28);
+            add(geometry.panel, steel, 0, 1.0, 6.05, 2.5, 0.5, 0.28);
+            // 返り値なし＝ dish なし。武装もレーダーも無い。
+          }
+        });
+      },
+      "ground_civilRescue"
+    ); // @payload:ground_civilRescue
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // A substation neither shoots nor moves, so the template has to be an
+        // emplaced entry whose `aa` is already null - spreading one of those disarms
+        // by construction rather than by overriding a live weapon block. `fuelTank`
+        // is the closest match in kind: a fixed industrial installation whose value
+        // is what it stores and distributes, not what it can do to an aircraft.
+        const depot = GROUND_TYPES.fuelTank;
+        if (!depot) throw new Error("[substation] expected the fuelTank ground template");
+
+        // BALANCE TODO: placeholder. Every combat number below is the fuel depot's,
+        // spread in unchanged - hp 50, aa null, smokeHeight, the chain cook-off
+        // block, and all three colours. A 50 m switchyard full of steel and oil is
+        // not obviously the same two-strafing-passes proposition a row of fuel
+        // bunkers is, and the `chain` radius it inherits (90 m / 55 dmg) was authored
+        // for tank farms stored shoulder to shoulder, not for a fenced plot with one
+        // neighbour. Both want a tuning pass; neither is this delivery.
+        //
+        // Only identity and the dimensions the much larger silhouette forces are
+        // authored here.
+        ctx.addGroundType("substation", {
+          ...depot,
+          key: "substation",
+          label: "SUBSTATION",
+          role: "Power Distribution Substation",
+          // Geometry-derived so the lock box and the crash volume match what is
+          // drawn. The site is 50 m square at the fence, but the thing an aircraft
+          // can actually hit is the fenced yard's contents: 35 m of gantry across,
+          // 23 m to the top of the pylon.
+          hitRadius: 32,
+          crash: Object.freeze({ halfLen: 18, halfBeam: 18, top: 23 }),
+          hitBox: Object.freeze({ x: 36, y: 24, z: 34 }),
+          smokeHeight: 9
+        });
+
+        ctx.addGroundModel("substation", {
+          build(env) {
+            const { geometry, steel, olive, dark, light, add } = env;
+
+            // ---- Site ------------------------------------------------------------
+            // Graded gravel plot, 50 x 50, sitting just clear of the terrain. This is
+            // the footprint the fence encloses and it is what gives the unit its
+            // area from directly above.
+            add(geometry.panel, olive, 0, 0.25, 0, 50, 0.5, 50);
+            // Concrete apron under the transformer row - lighter and raised, so the
+            // switchyard proper is visibly a hard-standing inside a wider plot. Kept
+            // to the row itself rather than to the whole yard: an apron that covered
+            // the plot turned the top-down view into one pale rectangle.
+            add(geometry.panel, steel, 0, 0.6, 2.5, 38, 0.7, 13);
+            // Access road from the gate, running up the east side of the yard and
+            // turning in behind the gantry. Drawn in `steel` rather than `dark`: at
+            // this size a black band reads as a hole punched through the site from
+            // directly above, which is exactly what the first draft did.
+            add(geometry.panel, steel, 17, 0.6, 8, 6, 0.55, 34);
+            add(geometry.panel, steel, 4, 0.6, -14, 32, 0.55, 5);
+
+            // ---- Transformers ----------------------------------------------------
+            // THE feature. Three of them in a row on the apron, each an oil tank with
+            // a radiator bank down its back and three bushings standing on the roof.
+            //
+            // The bushings are painted `light` (the pale grey-white the models use
+            // for radar plates and wingtip stores) against `dark` tanks, and they are
+            // the only tall pale objects on the site. That value contrast is doing
+            // the identification at range, so they are drawn generously: 2.4 m of
+            // column plus a wider skirt, standing 5.4 m above the tank roof.
+            const BAYS = [-13, 0, 13];
+            const XZ = 2.5;
+            for (const bay of BAYS) {
+              // Plinth. Every transformer sits in its own bunded concrete cell.
+              add(geometry.panel, steel, bay, 1.0, XZ, 9.4, 1.2, 8.2);
+              // Oil tank: the body of the machine, 8 x 5.6 x 5.4 tall.
+              add(geometry.panel, dark, bay, 4.3, XZ, 8, 5.0, 5.6);
+              // Tank roof cap, slightly overhanging, so the top edge catches the key
+              // light and the box does not read flat from above.
+              add(geometry.panel, steel, bay, 6.7, XZ, 8.4, 0.55, 6.0);
+              // Radiator bank: cooling fins hung off the south face. Four thick
+              // vertical slabs is what breaks a plain box into a transformer, and
+              // four is where the read stops improving - six cost six more meshes
+              // per machine and looked identical from every distance this is seen at.
+              for (let fin = 0; fin < 4; fin += 1) {
+                add(geometry.panel, steel, bay - 2.7 + fin * 1.8, 4.1, XZ + 3.6,
+                  0.5, 4.0, 2.6);
+              }
+              // Conservator drum along the top of the tank - the horizontal cylinder
+              // every oil-filled transformer carries above its radiators.
+              add(geometry.shipCylinder, steel, bay, 6.9, XZ + 2.9, 0.75, 6.8, 0.75,
+                0, 0, Math.PI / 2);
+
+              // Bushings. Three per machine, one per phase, spaced across the roof.
+              // These are the tallest things on the transformer and the only pale
+              // vertical objects at this end of the yard, so they are drawn long -
+              // 6.4 m of column above a 6.7 m roof, reaching y 13.3, well clear of
+              // the tank so the row of nine stalks is unmistakable from any angle.
+              // Three meshes per bushing, not five. The column and the terminal cap
+              // are the read; a base flange and a second shed ring were invisible
+              // behind the tank's own roof cap from every angle and cost six more
+              // meshes per machine.
+              for (const phase of [-2.7, 0, 2.7]) {
+                // The porcelain column itself.
+                add(geometry.shipCylinder, light, bay + phase, 10.0, XZ - 0.6, 0.46, 6.6, 0.46);
+                // One wider shed ring at mid height, which is what makes a bushing
+                // read as an insulator rather than as a pipe.
+                add(geometry.shipCylinder, light, bay + phase, 10.0, XZ - 0.6, 0.86, 0.6, 0.86);
+                // Terminal cap on top.
+                add(geometry.shipCylinder, dark, bay + phase, 13.4, XZ - 0.6, 0.58, 0.8, 0.58);
+              }
+            }
+
+            // ---- Portal gantry ---------------------------------------------------
+            // The switchyard's overhead busbar structure: two lattice legs at
+            // x = +/-17 carrying a head beam 16.4 m up, spanning the whole yard
+            // behind the transformer row. Lattice is faked the way the ships fake
+            // railings - a slender leg with visible cross bracing rather than a solid
+            // post - so it reads as open steel from a distance.
+            //
+            // Deliberately built out of few, LARGE pieces. The reference for part
+            // budget here is the carrier, which is the biggest object in this game
+            // and is 30 meshes; a lattice tower drawn strut-by-strut buys nothing at
+            // the range a ground unit is ever seen from and costs more than the whole
+            // rest of the roster put together.
+            const GZ = -7;
+            const GANTRY_TOP = 16.4;
+            for (const side of [-1, 1]) {
+              const legX = side * 17;
+              // Two corner posts per leg, fore and aft, so the leg has depth rather
+              // than being a single flat pole.
+              for (const post of [-1.5, 1.5]) {
+                add(geometry.panel, steel, legX, GANTRY_TOP / 2, GZ + post,
+                  0.6, GANTRY_TOP, 0.6);
+              }
+              // Cross bracing between the posts, alternating diagonals up the leg -
+              // this is what makes the leg read as lattice rather than as a column.
+              for (let rung = 0; rung < 4; rung += 1) {
+                const y = 3.0 + rung * 4.0;
+                add(geometry.panel, steel, legX, y, GZ, 0.46, 0.36, 4.4,
+                  (rung % 2 === 0 ? 0.66 : -0.66));
+              }
+              // Footing block.
+              add(geometry.panel, steel, legX, 0.9, GZ, 2.8, 1.4, 4.4);
+            }
+            // Head beam across the top, and a second chord below it with diagonal
+            // bracing between - the beam is a truss, not a bar. It spans the full
+            // 34 m between the legs, the widest single line on the site.
+            add(geometry.panel, steel, 0, GANTRY_TOP, GZ, 35, 0.6, 0.7);
+            add(geometry.panel, steel, 0, 14.4, GZ, 35, 0.55, 0.6);
+            for (let bay = 0; bay < 6; bay += 1) {
+              add(geometry.panel, steel, -14 + bay * 5.6, 15.4, GZ, 6.2, 0.34, 0.44,
+                0, 0, (bay % 2 === 0 ? 0.36 : -0.36));
+            }
+            // A second, lower busbar beam behind the portal, carried on the same
+            // legs. Two horizontal lines at different heights is what a switchyard
+            // looks like from the side.
+            add(geometry.panel, steel, 0, 10.6, GZ - 2.6, 34, 0.5, 0.55);
+            // Hanging insulator strings under the head beam, one per phase over each
+            // transformer bay. Pale, like the bushings, so the gantry line and the
+            // machines below it read as the same electrical system.
+            for (const bay of BAYS) {
+              for (const phase of [-2.7, 0, 2.7]) {
+                add(geometry.shipCylinder, light, bay + phase, 13.0, GZ, 0.34, 3.0, 0.34);
+              }
+            }
+            // Disconnect switches between the gantry and the machines: one plinth and
+            // one blade bar on three posts per bay - the low, repeated hardware that
+            // fills the middle of a real yard without becoming its own model.
+            for (const bay of BAYS) {
+              for (const phase of [-2.7, 0, 2.7]) {
+                add(geometry.shipCylinder, light, bay + phase, 3.4, GZ + 4.2, 0.34, 4.6, 0.34);
+              }
+              add(geometry.panel, steel, bay, 5.9, GZ + 4.2, 6.4, 0.4, 0.5);
+              add(geometry.panel, steel, bay, 1.0, GZ + 4.2, 7.2, 1.0, 1.8);
+            }
+
+            // ---- Incoming transmission pylon -------------------------------------
+            // One small lattice tower on the far edge, the tallest thing on the site
+            // at 22 m. Four splayed legs converging to a narrow waist, three
+            // crossarms, and a peak - the standard suspension-tower profile.
+            // The base is deliberately WIDE - 4.2 m half-width against a 22 m height -
+            // because a narrow tower at this scale reads as a ladder, which is what
+            // the first draft did. The taper from that base to a 1.4 m waist at y 10
+            // is the whole silhouette.
+            // Pushed right back to the fence line: at z -17 its 14 m bottom crossarm
+            // and the gantry's head beam were only 10 m apart and the two structures
+            // read as one confused mass of steel from three of the four views.
+            const pylonZ = -20.5;
+            const PYL_BASE = 4.2;
+            const PYL_WAIST = 1.4;
+            const PYL_KNEE = 10.0;
+            for (const cornerX of [-1, 1]) {
+              for (const cornerZ of [-1, 1]) {
+                // Splayed lower leg, drawn by placing the bar at the MIDPOINT of the
+                // splayed run and tilting it by the run's own angle, so the foot
+                // lands on PYL_BASE and the head lands on PYL_WAIST exactly.
+                const mid = (PYL_BASE + PYL_WAIST) / 2;
+                const lean = Math.atan2(PYL_BASE - PYL_WAIST, PYL_KNEE);
+                const legLen = Math.hypot(PYL_BASE - PYL_WAIST, PYL_KNEE);
+                // Signs: a positive rz tips the bar's head toward -x, and a positive
+                // rx tips it toward +z, so the head of the +x/-z leg needs rz +lean
+                // and rx +lean to come INWARD. Getting either backwards splays the
+                // tower the wrong way and it stops reading as a pylon at all.
+                add(geometry.panel, steel, cornerX * mid, PYL_KNEE / 2, pylonZ + cornerZ * mid,
+                  0.5, legLen, 0.5, -cornerZ * lean, 0, cornerX * lean);
+                // Upper shaft: parallel, from the waist to under the peak.
+                add(geometry.panel, steel, cornerX * PYL_WAIST, 15.6, pylonZ + cornerZ * PYL_WAIST,
+                  0.42, 11.6, 0.42);
+              }
+            }
+            // Belt bracing, three tiers, at whatever width the legs have reached
+            // there. Two meshes per tier - one belt across the south face and one
+            // diagonal over it - rather than a full ring of four plus a diagonal: the
+            // north face of the tower is never the side being looked at when the
+            // south face is, so the ring's other three sides were paying for nothing.
+            for (const belt of [{ y: 2.4, half: 3.6 }, { y: 6.4, half: 2.4 },
+              { y: 12.0, half: PYL_WAIST }]) {
+              add(geometry.panel, steel, 0, belt.y, pylonZ + belt.half,
+                belt.half * 2, 0.32, 0.36);
+              add(geometry.panel, steel, 0, belt.y, pylonZ - belt.half,
+                belt.half * 2, 0.32, 0.36);
+              // Diagonal over the tier, so the tower is visibly latticed rather than
+              // four posts and some rings. Length and angle are solved from the tier
+              // itself (2*half wide, 2 m tall) instead of being guessed - a fixed
+              // 0.6 rad on the widest tier threw a 7 m beam right out past the fence
+              // in the first draft.
+              const braceLen = Math.hypot(belt.half * 2, 2.0);
+              add(geometry.panel, steel, 0, belt.y + 1.0, pylonZ + belt.half,
+                braceLen, 0.26, 0.3, 0, 0, Math.atan2(2.0, belt.half * 2));
+            }
+            // Crossarms: three tiers, widest at the bottom, each hung with a pale
+            // insulator string at its tip. Nothing says "power line" like this stack,
+            // and it has to be WIDE - the bottom arm spans 14 m, half the yard - or
+            // the tower stops reading as a transmission structure from above.
+            const ARMS = [
+              { y: 12.6, half: 7.0 },
+              { y: 16.4, half: 5.6 },
+              { y: 20.0, half: 4.0 }
+            ];
+            for (const arm of ARMS) {
+              add(geometry.panel, steel, 0, arm.y, pylonZ, arm.half * 2, 0.5, 0.6);
+              for (const tip of [-1, 1]) {
+                // Diagonal tie from the mast head down to the arm tip. This one brace
+                // does the kingpost's job too, so the arm reads as a truss on four
+                // meshes a tier instead of eight.
+                add(geometry.panel, steel, tip * arm.half * 0.55, arm.y + 0.9, pylonZ,
+                  arm.half * 1.25, 0.3, 0.34, 0, 0, tip * 0.26);
+                // Suspension insulator string hanging under the tip.
+                add(geometry.shipCylinder, light, tip * arm.half, arm.y - 1.4, pylonZ,
+                  0.32, 2.6, 0.32);
+              }
+            }
+            // Peak above the top crossarm, carrying the earth wire.
+            add(geometry.panel, steel, 0, 21.4, pylonZ, 1.8, 2.8, 1.8);
+            add(geometry.panel, steel, 0, 23.0, pylonZ, 0.4, 1.4, 0.4);
+
+            // ---- Ancillaries -----------------------------------------------------
+            // Control/switchgear house on the east side of the yard. Small, low and
+            // ordinary on purpose: it is the one part of the site that looks like a
+            // building, and it makes the electrical hardware around it read as big.
+            add(geometry.panel, light, -16, 2.6, 14, 9, 4.6, 8);
+            add(geometry.panel, steel, -16, 5.1, 14, 9.6, 0.55, 8.6, 0, 0, 0.05);
+            add(geometry.panel, dark, -16, 2.0, 18.2, 1.8, 3.2, 0.4);
+            // Cable trench running from the house to the transformer row.
+            add(geometry.panel, dark, -16, 0.9, 8, 2.6, 0.5, 6);
+            // Line surge arresters on the east apron, so the yard has something on
+            // both sides of its centre line. Two pale posts on one plinth each.
+            for (const z of [11, 15]) {
+              add(geometry.panel, steel, 6, 0.9, z, 3.4, 1.0, 3.4);
+              add(geometry.shipCylinder, light, 6, 2.8, z, 0.42, 3.0, 0.42);
+            }
+            // Standby generator shed and an oil bund just inside the gate. The south
+            // third of the plot was bare from directly above without them, and an
+            // empty third of a 50 m site reads as an unfinished model.
+            add(geometry.panel, light, -6, 2.0, 20, 8, 3.4, 6);
+            add(geometry.panel, steel, -6, 3.9, 20, 8.6, 0.5, 6.6);
+            add(geometry.shipCylinder, dark, -6, 4.9, 18.4, 0.5, 2.2, 0.5);
+            add(geometry.shipCylinder, steel, 1, 1.7, 21, 1.8, 2.4, 1.8);
+            add(geometry.panel, steel, 1, 0.85, 21, 6, 0.9, 4);
+
+            // ---- Perimeter fence -------------------------------------------------
+            // 50 m square, 2.6 m of mesh on posts. Drawn as four thin slabs plus
+            // corner posts and a gate gap on the south side - the outline is what
+            // makes the whole plot read as one installation from directly above,
+            // so it matters more than its own detail does.
+            const HALF = 25;
+            for (const side of [-1, 1]) {
+              // East/west runs, full length.
+              add(geometry.panel, steel, side * HALF, 1.6, 0, 0.25, 2.4, HALF * 2);
+              // North run, full. South run, split either side of a 6 m gate.
+              add(geometry.panel, steel, 0, 1.6, side * HALF, HALF * 2, 2.4, 0.25);
+            }
+            // Gate: two leaves standing in the south fence, drawn darker so the
+            // opening is visible rather than being a gap in a line.
+            for (const leaf of [-1, 1]) {
+              add(geometry.panel, dark, leaf * 3.2, 1.7, HALF, 5.6, 2.6, 0.35);
+            }
+            // Corner posts, taller than the run, which is what keeps a thin fence
+            // from disappearing at range.
+            for (const cornerX of [-1, 1]) {
+              for (const cornerZ of [-1, 1]) {
+                add(geometry.panel, steel, cornerX * HALF, 1.9, cornerZ * HALF, 0.6, 3.4, 0.6);
+              }
+            }
+
+            // Nothing on a substation rotates, so no `dish` is returned.
+          }
+        });
+      },
+      "ground_substation"
+    ); // @payload:ground_substation
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -19592,6 +21454,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // HUD standard - a 10-degree-only ladder leaves 600px gaps at true world
     // scale and reads as two lonely bars rather than as a scale. Finer than 5
     // is transport practice and just clutters.
+    const PITCH_RUNG_STEP = 5;
+    const PITCH_RUNG_MAX = 30;
     const PITCH_RUNG_DEGREES = [30, 25, 20, 15, 10, 5, -5, -10, -15, -20, -25, -30];
     const pitchRungNodes = [];
 
@@ -21417,7 +23281,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // `?modelPreview=<aircraftId>` swaps the whole boot for a contact sheet of
     // one airframe; `?modelPreview=ship:<kind>` does the same for one hull out
-    // of SHIP_TYPES. Read once, here, so the value cannot change under anything
+    // of SHIP_TYPES, and `?modelPreview=ground:<kind>` for one unit out of
+    // GROUND_TYPES. Read once, here, so the value cannot change under anything
     // downstream: null on a normal load, which is the only state every line
     // below has ever seen.
     const MODEL_PREVIEW_ID = new URLSearchParams(location.search).get("modelPreview");
@@ -21670,22 +23535,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // renderer, the one WebGL context and the one colour pipeline the game
     // itself uses - a model that looks right here looks the same in the air.
     //
-    // Two subjects, told apart by the `ship:` prefix and nothing else, so the
-    // aircraft form is byte-for-byte the URL it always was:
-    //   ?modelPreview=tu22m3        an AIRCRAFT_TYPES id
-    //   ?modelPreview=ship:aegis    a SHIP_TYPES key
+    // Three subjects, told apart by a prefix and nothing else, so the aircraft
+    // form is byte-for-byte the URL it always was:
+    //   ?modelPreview=tu22m3          an AIRCRAFT_TYPES id
+    //   ?modelPreview=ship:aegis      a SHIP_TYPES key
+    //   ?modelPreview=ground:samSite  a GROUND_TYPES key
     // Ships are drawn in their ENEMY livery (createShipModel's `friendly`
     // false), which is the paint every hull is authored against and the one
-    // the player sees on all but the escorted few.
+    // the player sees on all but the escorted few. Ground units have only ever
+    // had the one livery, so there is nothing to choose there.
     function renderModelPreview(previewId) {
       const isShip = previewId.startsWith("ship:");
+      const isGround = previewId.startsWith("ground:");
       // `subjectKey`, not `key` - the three-point rig below already owns that
       // name for its key light.
-      const subjectKey = isShip ? previewId.slice(5) : previewId;
-      const table = isShip ? SHIP_TYPES : AIRCRAFT_TYPES;
+      const subjectKey = isShip
+        ? previewId.slice(5)
+        : (isGround ? previewId.slice(7) : previewId);
+      const table = isShip ? SHIP_TYPES : (isGround ? GROUND_TYPES : AIRCRAFT_TYPES);
       const spec = subjectKey ? table[subjectKey] : undefined;
       if (!spec) {
-        const noun = isShip ? "ship kind" : "aircraft id";
+        const noun = isShip ? "ship kind" : (isGround ? "ground kind" : "aircraft id");
         const known = Object.keys(table).join(", ");
         console.error(`[modelPreview] unknown ${noun} "${subjectKey}". Known: ${known}`);
         document.body.innerHTML =
@@ -21706,7 +23576,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // every pool, and none of that belongs on a contact sheet.
       const previewScene = new THREE.Scene();
       previewScene.background = new THREE.Color(0x2a2f36);
-      const model = isShip ? createShipModel(subjectKey, false) : createAircraftModel(spec.theme);
+      const model = isShip
+        ? createShipModel(subjectKey, false)
+        : (isGround ? createGroundModel(subjectKey) : createAircraftModel(spec.theme));
       previewScene.add(model.group);
 
       // Three-point rig: key high off the front-left, fill low from the right to
@@ -21752,8 +23624,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       caption.style.cssText =
         "position:absolute;left:12px;top:10px;color:#9fd0ef;font-size:14px;letter-spacing:0.08em";
       // Aircraft carry a `variant` (the geometry key) and a sweep list; ships
-      // carry neither, so the caption is assembled per subject rather than
-      // formatted once with blanks in it.
+      // and ground units carry neither, so the caption is assembled per subject
+      // rather than formatted once with blanks in it.
       //
       // PIVOTS is the swing-wing count, and it is on the sheet because it is
       // the one thing about a variable-geometry airframe a screenshot cannot
@@ -21762,14 +23634,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // symptom; PIVOTS 2 is the proof it is driven.
       const fromPayload = isShip
         ? Boolean(SHIP_MODELS[subjectKey])
-        : Boolean(AIRCRAFT_MODELS[spec.theme.variant]);
+        : (isGround
+          ? Boolean(GROUND_MODELS[subjectKey])
+          : Boolean(AIRCRAFT_MODELS[spec.theme.variant]));
       const parts = model.group.children.length;
-      caption.textContent = isShip
-        ? `${spec.label}  ·  ship:${subjectKey}  ·  PARTS ${parts}` +
-          `${fromPayload ? "  ·  PAYLOAD MODEL" : ""}`
-        : `${spec.label}  ·  id=${subjectKey}  ·  variant=${spec.theme.variant}` +
-          `  ·  PARTS ${parts}  ·  PIVOTS ${model.wingPivots.length}` +
-          `${fromPayload ? "  ·  PAYLOAD MODEL" : ""}`;
+      const payloadTag = fromPayload ? "  ·  PAYLOAD MODEL" : "";
+      if (isShip) {
+        caption.textContent =
+          `${spec.label}  ·  ship:${subjectKey}  ·  PARTS ${parts}${payloadTag}`;
+      } else if (isGround) {
+        // DISH is the ground unit's PIVOTS: a radar that is modelled but not
+        // handed back as `dish` looks perfect in a screenshot and never turns
+        // in play, and this line is the only place that difference shows.
+        caption.textContent =
+          `${spec.label}  ·  ground:${subjectKey}  ·  PARTS ${parts}` +
+          `  ·  DISH ${model.dish ? "yes" : "no"}${payloadTag}`;
+      } else {
+        caption.textContent =
+          `${spec.label}  ·  id=${subjectKey}  ·  variant=${spec.theme.variant}` +
+          `  ·  PARTS ${parts}  ·  PIVOTS ${model.wingPivots.length}${payloadTag}`;
+      }
       labelLayer.appendChild(caption);
       document.body.appendChild(labelLayer);
 
@@ -21823,18 +23707,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       window.addEventListener("resize", drawPreview);
       // Something for a screenshot harness to wait on, and for a human to poke
       // at from the console.
-      // `subject` says which of the two shapes the rest of this object is in:
-      // a ship has no variant and no moving parts, so those three fields are
-      // null / 0 rather than absent, and a harness can read them unconditionally.
+      // `subject` says which of the three shapes the rest of this object is in:
+      // only an aircraft has a variant and moving parts, so those three fields
+      // are null / 0 rather than absent, and a harness can read them
+      // unconditionally. `dish` is the ground counterpart and is false for the
+      // other two, which have no such pivot.
+      const isAircraft = !isShip && !isGround;
       window.__MODEL_PREVIEW__ = {
-        subject: isShip ? "ship" : "aircraft",
+        subject: isShip ? "ship" : (isGround ? "ground" : "aircraft"),
         id: previewId,
         key: subjectKey,
-        variant: isShip ? null : spec.theme.variant,
+        variant: isAircraft ? spec.theme.variant : null,
         fromPayload,
         parts,
-        wingPivots: isShip ? 0 : model.wingPivots.length,
-        propSpinners: isShip ? 0 : model.propSpinners.length,
+        wingPivots: isAircraft ? model.wingPivots.length : 0,
+        propSpinners: isAircraft ? model.propSpinners.length : 0,
+        dish: isGround ? Boolean(model.dish) : false,
         redraw: drawPreview
       };
     }
@@ -31749,56 +33637,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
-      // AC4-7: the ladder MOVES like a ladder - the rungs slide up and down
-      // with the nose and the numbers on them are fixed, exactly as on the real
-      // instrument. What does not move is the ladder's ANCHOR: the scale stays
-      // wrapped around the middle of the screen instead of being towed away by
-      // the world, so the instrument is always where you are already looking.
+      // AC4-7: the LADDER IS ANCHORED ON THE PIPPER. It never leaves the
+      // middle of the canopy at any attitude - dive, climb, inverted, the scale
+      // is always right there around the boresight. The rung that sits on the
+      // pipper is the current pitch, and the numbers count outward from it.
       //
-      // The difference from the conformal ladder is only the SCALE, and that is
-      // the whole trick. Conformal uses focal*tan(), which is the world's own
-      // angular scale, so at 20 degrees nose-up the strip has slid 600px and
-      // the ladder has left the frame. Here the scale is a fixed, gentle
-      // px/deg, so the same 20 degrees slides it about a hundred pixels: the
-      // ladder reads the same, keeps the same rung under the boresight, and
-      // simply does not run away. It rolls with the horizon and translates with
-      // the pitch, but it stays an instrument on the glass rather than a
-      // feature of the scenery.
+      // This is the part I kept getting wrong. Both earlier attempts translated
+      // the whole strip with the nose - gently rather than at world scale, but
+      // still translating - and translating is exactly the thing that puts the
+      // scale somewhere other than where you are looking. In the reference the
+      // aircraft is in a steep dive and the rungs are still stacked tight
+      // around the pipper; only the HORIZON BAR has travelled, because the
+      // horizon is a real place in the world and has to be where it really is.
+      //
+      // So: rungs are pinned to fixed slots and RELABELLED from the current
+      // pitch, and the horizon bar alone is placed by attitude. The reading
+      // moves, the instrument does not.
       const pitchDeg = THREE.MathUtils.radToDeg(pitchCam);
-      const slide = pitchDeg * FIXED_LADDER_PX_PER_DEG;
-      // Culled against the FRAME, not against the ladder's own centre. The
-      // whole strip slides with the nose, so a reach measured from screen
-      // centre throws away the entire dive half the moment you climb - which
-      // is what left a one-sided ladder reading 5 at the top and 30 at the
-      // bottom with nothing above the boresight at all.
-      const cull = frameHeight * 0.75;
-      const placeFixed = (el, deg) => {
-        // MINUS deg: screen y grows downward, so the climb rungs (+deg) have to
-        // go UP the frame. The other sign drew the ladder inverted - the 30
-        // rung at the bottom - which is the wrong way round on an instrument
-        // whose whole job is telling you which way up you are.
-        const offset = slide - deg * FIXED_LADDER_PX_PER_DEG;
-        if (Math.abs(offset) > cull) {
-          el.classList.add("hidden");
-          return;
-        }
-        el.classList.remove("hidden");
-        el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
-      };
-      placeFixed(ui.horizonLine, 0);
+      // Quantised to the rung step so the labels tick over cleanly instead of
+      // churning every frame.
+      const centreDeg = Math.round(pitchDeg / PITCH_RUNG_STEP) * PITCH_RUNG_STEP;
       for (let i = 0; i < pitchRungNodes.length; i += 1) {
         const rung = pitchRungNodes[i];
-        placeFixed(rung.el, rung.deg);
-        // Dive rungs carry their ticks downward; both halves stay solid. The
-        // series draws the split by which way the end ticks point, not by
-        // dashing one side - dashes read as "signal lost" on a green HUD.
-        rung.el.classList.toggle("dive", rung.deg < 0);
-        // The labels are FIXED on this ladder. They belong to the rung, not to
-        // the slot - a rung marked 20 is the 20-degree rung wherever it has
-        // slid to. Rewriting them per frame was an earlier attempt, and it made
-        // the numbers dance while the scale stood still: precisely backwards.
-        const text = String(Math.abs(rung.deg));
+        // MINUS: screen y grows downward, so the rung above the pipper is the
+        // higher pitch. Fixed slot - this never changes with attitude.
+        const offset = -rung.deg * FIXED_LADDER_PX_PER_DEG;
+        const value = centreDeg + rung.deg;
+        rung.el.classList.remove("hidden");
+        rung.el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
+        // Ticks point toward level: down when this rung is above the horizon,
+        // up when below. Read off the VALUE, since the slot no longer says it.
+        rung.el.classList.toggle("dive", value < 0);
+        const text = String(Math.abs(value));
         if (rung.el.dataset.label !== text) rung.el.dataset.label = text;
+      }
+      // The horizon bar is the one honest position on this instrument: level is
+      // `pitchDeg` of scale below the boresight. It hides once level is off the
+      // ladder, rather than being pinned to an end where it would claim the
+      // horizon is somewhere it is not.
+      const horizonOffset = pitchDeg * FIXED_LADDER_PX_PER_DEG;
+      const horizonReach = (PITCH_RUNG_MAX + PITCH_RUNG_STEP) * FIXED_LADDER_PX_PER_DEG;
+      if (Math.abs(horizonOffset) > horizonReach) {
+        ui.horizonLine.classList.add("hidden");
+      } else {
+        ui.horizonLine.classList.remove("hidden");
+        ui.horizonLine.style.top = `calc(50% + ${horizonOffset.toFixed(2)}px)`;
       }
     }
 
@@ -35602,6 +37485,62 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         parts.push(m);
         return m;
       };
+
+      // Payload units are consulted BEFORE the chain below, and take the early
+      // exit when one answers. Nothing below is reachable for a registered kind
+      // and nothing below changed: addGroundModel refuses any kind the chain
+      // already answers, so the two sets are disjoint by construction and this
+      // lookup can only ever catch a unit that would otherwise have fallen
+      // through to the bunker in the trailing else.
+      //
+      // The builder gets the locals, not the finished model, exactly as
+      // createShipModel hands them over: the same `add` every inline branch
+      // calls and the same four themed materials, so a payload unit takes the
+      // hit flash and is disposed with the rest without writing a line about
+      // either. A material made inside build() and not pushed into
+      // `extraMaterials` is the one way it can leak.
+      //
+      // `dish` is the single field read back off the build, and it is optional:
+      // a build that returns nothing leaves it null, which is what every
+      // installation without a rotating part already is. When it IS returned it
+      // must be an object the build has already parented into the model (into
+      // `root` via `addRoot`, or under a mesh `add` returned) - this only takes
+      // the reference so updateGroundUnit can spin it. Returning a pivot that
+      // was never parented gives a unit whose radar is nowhere.
+      const registeredGround = GROUND_MODELS[kind];
+      if (registeredGround) {
+        // Pivots are the reason this exists at all, and a pivot is a Group, not
+        // a Mesh - so it cannot go through `add`, which only makes meshes and
+        // only into `parts`. `addRoot` is the one way a payload can put a
+        // pre-assembled subtree on the model.
+        const addRoot = (object3d) => {
+          root.add(object3d);
+          return object3d;
+        };
+        const result = registeredGround.build({
+          THREE,
+          kind,
+          geometry,
+          makeAircraftMaterial,
+          // This unit's own materials, already in standardMaterials, so
+          // anything painted with them flashes white on a hit and is disposed
+          // with the model.
+          steel, olive, dark, light, markings,
+          extraMaterials,
+          add,
+          addRoot
+        });
+        if (result && result.dish) dish = result.dish;
+        root.add(...parts);
+        return {
+          group: root,
+          flames: [],
+          standardMaterials: [steel, olive, dark, light],
+          flameMaterial: markings,
+          extraMaterials,
+          dish
+        };
+      }
 
       if (kind === "samSite") {
         // Concrete pad, turntable, a canted four-cell canister pack and the

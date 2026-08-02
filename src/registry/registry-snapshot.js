@@ -37,6 +37,7 @@ export function createRegistrySnapshot({
   WORLD_DECORATORS,
   AIRCRAFT_MODELS,
   SHIP_MODELS = {},
+  GROUND_MODELS = {},
   MISSIONS
 }) {
   return {
@@ -76,6 +77,10 @@ export function createRegistrySnapshot({
     // and the only thing that can be lost is the registration itself.
     SHIP_MODELS: Object.fromEntries(
       Object.keys(SHIP_MODELS).sort().map((kind) => [kind, ["build"]])
+    ),
+    // And again for the ground units, which are { kind, build } like the ships.
+    GROUND_MODELS: Object.fromEntries(
+      Object.keys(GROUND_MODELS).sort().map((kind) => [kind, ["build"]])
     ),
     MISSIONS: Object.fromEntries(
       MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)])
