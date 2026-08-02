@@ -16255,6 +16255,39 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             contacts
           };
         },
+        // The loiter, measured. Distance from the patrol station is the claim
+        // the carrot steering makes - a patroller holds a ring sized to its
+        // turn radius instead of wandering kilometres off - and no other
+        // probe reports it.
+        patrolProbe: () => enemies.filter((enemy) => enemy.alive && !enemy.surface && !enemy.heli && !enemy.subsystem).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          mode: enemy.mode,
+          speed: Number(enemy.speed.toFixed(1)),
+          stationRange: enemy.patrolCenter ? Math.hypot(
+            enemy.group.position.x - enemy.patrolCenter.x,
+            enemy.group.position.z - enemy.patrolCenter.z
+          ) : null,
+          turnRadius: Number((enemy.speed / Math.max(enemy.spec.patrolTurn, 0.05)).toFixed(0)),
+          arenaRange: Math.hypot(
+            enemy.group.position.x - battleArea.centerX,
+            enemy.group.position.z - battleArea.centerZ
+          ),
+          strike: Boolean(enemy.strikeTarget),
+          hunt: Boolean(enemy.hunt),
+          aimKind: enemy.aimKind || null,
+          y: Number(enemy.group.position.y.toFixed(0)),
+          floor: Number(terrainFloorAt(enemy.group.position).toFixed(0)),
+          x: Number(enemy.group.position.x.toFixed(0)),
+          z: Number(enemy.group.position.z.toFixed(0)),
+          stationX: enemy.patrolCenter ? Number(enemy.patrolCenter.x.toFixed(0)) : null,
+          stationZ: enemy.patrolCenter ? Number(enemy.patrolCenter.z.toFixed(0)) : null,
+          sense: enemy.patrolSense,
+          patrolTurnDeg: Number(THREE.MathUtils.radToDeg(enemy.spec.patrolTurn).toFixed(2)),
+          // Followers hold station on their leader's ring, not their own -
+          // a bound on stationRange has to know which claim it is testing.
+          formation: Boolean(enemy.formationActive)
+        })),
         stabilityProbe: () => ({
           pitchRate: THREE.MathUtils.radToDeg(playerPitchRate),
           yawRate: THREE.MathUtils.radToDeg(playerYawRate),
@@ -21193,6 +21226,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         patrolOrigin.clone().add(new THREE.Vector3((-210 + slot * 130) * patrolScale, 65, 310 * patrolScale))
       ];
       for (const waypoint of waypoints) waypoint.y = Math.max(90, waypoint.y);
+      // Loiter geometry, derived from the authored circuit. The circuit's
+      // centroid is the station; its spread only matters if it is wider than
+      // the ring the airframe can actually fly (it never is today, but a
+      // future wide circuit would win).
+      const patrolCenter = new THREE.Vector3();
+      for (const waypoint of waypoints) patrolCenter.add(waypoint);
+      patrolCenter.multiplyScalar(1 / waypoints.length);
+      let patrolRadius = 0;
+      for (const waypoint of waypoints) {
+        patrolRadius = Math.max(patrolRadius, Math.hypot(waypoint.x - patrolCenter.x, waypoint.z - patrolCenter.z));
+      }
+      // The whole loiter must fit inside the battle area: the steady ring is
+      // ~1.3 turn radii and the one-off comeback hairpin reaches ~2, so the
+      // station is pulled inward until 2.1 radii of air fit between it and
+      // the line. Measured, not guessed - see patrol_sim.
+      const loiterReach = Math.max(patrolRadius, (spec.patrolSpeed / Math.max(spec.patrolTurn, 0.05)) * 2.1) + 300;
+      const stationInset = battleArea.radius - loiterReach;
+      const stationDx = patrolCenter.x - battleArea.centerX;
+      const stationDz = patrolCenter.z - battleArea.centerZ;
+      const stationDist = Math.hypot(stationDx, stationDz);
+      if (stationInset > 0 && stationDist > stationInset) {
+        const pull = stationInset / stationDist;
+        patrolCenter.x = battleArea.centerX + stationDx * pull;
+        patrolCenter.z = battleArea.centerZ + stationDz * pull;
+      }
 
       const formationLeaderId = idBase + 1;
       enemies.push({
@@ -21256,6 +21314,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         acePostStallLineFired: false,
         waypoints,
         waypointIndex: 0,
+        patrolCenter,
+        patrolRadius,
+        // One orbit direction per wave, so a formation loiters as a flight
+        // instead of scissoring through itself on opposite rings.
+        patrolSense: wave % 2 === 0 ? -1 : 1,
         // Set below for bombers when the mission is defending an airfield.
         strikeTarget: null,
         bombRunFired: false,
@@ -24101,7 +24164,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : null;
 
         let targetPoint;
+        enemy.aimKind = "";
         if (enemy.mode === "break") {
+          enemy.aimKind = "break";
           // Perpendicular to the missile's line of sight plus a vertical jink:
           // two axes for the seeker to chase at once, neither of them predictable
           // from the geometry it had when it was launched.
@@ -24113,6 +24178,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // extension, which buys the round a long straight tail chase to settle
           // its aim on. The break is a turn, and only a turn.
         } else if (enemy.huntRef) {
+          enemy.aimKind = "hunt";
           // The hunt run. Above pursuit in this chain on purpose: an aircraft
           // that came for the convoy does not care where the player is, and
           // that is the whole readable difference between a TGT in these two
@@ -24137,6 +24203,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
+          enemy.aimKind = "pursuit";
           targetPoint = enemy.targetPoint.copy(player.position)
             .addScaledVector(tmpV5, -spec.pursuitBack)
             .addScaledVector(WORLD_UP, spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude);
@@ -24178,6 +24245,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             enemy.perceivedPlayerSpeed + spec.pursuitBonus
           );
         } else if (spec.behavior === "formation" && leader) {
+          enemy.aimKind = "formation";
           forwardOf(leader.group, tmpV8);
           rightOf(leader.group, tmpV3);
           targetPoint = enemy.formationPoint.copy(leader.group.position)
@@ -24187,6 +24255,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.targetSpeed = Math.min(spec.maxSpeed, leader.speed + 3);
           enemy.formationActive = true;
         } else if (enemy.strikeTarget) {
+          enemy.aimKind = "strike";
           // A bomber on a strike run flies the line, and only the line. No
           // patrol circuit, no evasion, no reaction to being shot at - the
           // pressure on the player is that it simply keeps going.
@@ -24196,26 +24265,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // 70% of cruise, which is what makes the intercept window a window.
           enemy.targetSpeed = spec.patrolSpeed * STRIKE_RUN_SPEED_SCALE;
         } else {
-          targetPoint = enemy.waypoints[enemy.waypointIndex];
-          if (enemy.group.position.distanceToSquared(targetPoint) < 85 * 85) {
-            enemy.waypointIndex = (enemy.waypointIndex + 1) % enemy.waypoints.length;
-            targetPoint = enemy.waypoints[enemy.waypointIndex];
-          }
+          // Carrot loiter about the patrol station. The old waypoint chase
+          // was unflyable: every airframe's turn radius exceeded the whole
+          // authored circuit, so pure pursuit of the current waypoint
+          // settled into a permanent orbit TWO turn radii wide around it -
+          // kilometres off station at full cruise, and straight over the
+          // battle-area line for a wave near the edge. Chasing a point on
+          // the ring a fixed arc AHEAD of the aircraft's own bearing is
+          // stable at any turn rate, because the carrot only advances as
+          // the aircraft does; the ring is sized to the airframe, so an
+          // F-22 holds a tight CAP circle and a Foxhound a wide one.
+          enemy.aimKind = "loiter";
+          const loiterTurnRadius = Math.max(60, enemy.speed / Math.max(spec.patrolTurn, 0.05));
+          const loiterRadius = Math.max(enemy.patrolRadius, loiterTurnRadius * 1.25);
+          const loiterBearing = Math.atan2(
+            enemy.group.position.x - enemy.patrolCenter.x,
+            enemy.group.position.z - enemy.patrolCenter.z
+          ) + enemy.patrolSense * 0.75;
+          targetPoint = enemy.targetPoint.set(
+            enemy.patrolCenter.x + Math.sin(loiterBearing) * loiterRadius,
+            enemy.patrolCenter.y,
+            enemy.patrolCenter.z + Math.cos(loiterBearing) * loiterRadius
+          );
           enemy.targetSpeed = spec.patrolSpeed + (enemy.wave - 1) * 7;
         }
 
-        // A player-driven chase may not strand a live objective outside the
-        // mission arena. Once a pursuing/breaking fighter crosses the authored
-        // radius, its temporary aim point becomes the arena centre until it is
-        // back inside. Authored patrol, strike and hunt routes retain their exact
-        // old behaviour.
+        // No live aircraft may sit outside the mission arena, whatever drove
+        // it there - a chase, a break, or a loiter transient. Past the
+        // authored radius its aim point becomes the arena centre until it is
+        // back inside, and the comeback is flown at the pursuit rate so the
+        // excursion stays a moment rather than a tour. Authored strike and
+        // hunt routes keep their exact old behaviour - their targets are
+        // inside by construction.
         const arenaDx = enemy.group.position.x - battleArea.centerX;
         const arenaDz = enemy.group.position.z - battleArea.centerZ;
+        let arenaReturn = false;
         if (
           !enemy.huntRef && !enemy.strikeTarget &&
-          (enemy.mode === "pursuit" || enemy.mode === "break") &&
           arenaDx * arenaDx + arenaDz * arenaDz > battleArea.radius * battleArea.radius
         ) {
+          arenaReturn = true;
+          enemy.aimKind = "arena";
           targetPoint = enemy.targetPoint.set(
             battleArea.centerX,
             Math.max(enemy.group.position.y, 260),
@@ -24235,6 +24325,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const floorHeight = terrainFloorAt(enemy.group.position);
         const projectedAltitude = enemy.group.position.y + tmpV8.y * enemy.speed * 1.8;
         if (projectedAltitude < floorHeight + 120 || enemy.group.position.y < floorHeight + 70) {
+          enemy.aimKind = "terrain";
           targetPoint = enemy.safeTarget.copy(enemy.group.position);
           targetPoint.x += tmpV8.x * 260;
           targetPoint.z += tmpV8.z * 260;
@@ -24246,7 +24337,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           tmpV4.normalize();
           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
           // A break is flown at the pursuit rate - hard, but still the airframe's.
-          const turnRate = enemy.mode === "patrol" ? spec.patrolTurn : spec.pursuitTurn;
+          const turnRate = enemy.mode === "patrol" && !arenaReturn ? spec.patrolTurn : spec.pursuitTurn;
           enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
           enemy.group.quaternion.normalize();
         }
