@@ -17800,6 +17800,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // is transport practice and just clutters.
     const PITCH_RUNG_DEGREES = [30, 25, 20, 15, 10, 5, -5, -10, -15, -20, -25, -30];
     const pitchRungNodes = [];
+
+    // Two ladders, and the difference is whether the instrument SITS STILL.
+    //
+    //   "conformal" - the real-aeroplane one. The horizon line lies on the
+    //     actual horizon and the N-degree rung on the point N degrees above
+    //     it, so the ladder slides up and down the frame as the nose moves.
+    //     True to a real HUD and to AC3, which drew its ladder this way.
+    //
+    //   "fixed" - the AC4-through-7 one, and the default here. The ladder is
+    //     furniture: it rolls, but it never translates. The scale stays put in
+    //     the middle of the canopy and the READING changes - which rung is at
+    //     the boresight is the current pitch. Easier to fly a game on, because
+    //     the middle of the screen stops moving while you are aiming at it.
+    //
+    // Kept both rather than replacing one: the conformal ladder is the correct
+    // instrument and there is no reason to throw it away, so it stays as the
+    // F-4's - a 1960s airframe carrying the older style is the right place for
+    // it, and it gives the hangar a reason to matter beyond the flight model.
+    const CONFORMAL_LADDER_AIRCRAFT = new Set(["f4"]);
     // Shown at most once per page load: it is a one-time piece of information,
     // and a banner that keeps reappearing reads as a fault.
     let audioHintShown = false;
@@ -18726,6 +18745,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const horizonHidden = ui.horizonLine.classList.contains("hidden");
           return {
             shown: !ui.pitchViewport.classList.contains("hidden"),
+            style: CONFORMAL_LADDER_AIRCRAFT.has(selectedAircraftId) ? "conformal" : "fixed",
+            aircraft: selectedAircraftId,
             cameraFov: currentCameraFov,
             frame: { w, h },
             drawnTiltDeg: ladderTilt(),
@@ -18739,6 +18760,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               dashed: r.el.classList.contains("below"),
               label: r.el.dataset.label,
               drawn: r.el.classList.contains("hidden") ? null : rect(r.el),
+              // The authored slot, before the strip's rotation. getBoundingClientRect
+              // returns the AXIS-ALIGNED box of a rotated element, so it shifts with
+              // bank even when the element has not moved - useless for asking "did
+              // this rung stay put?".
+              slotTop: r.el.style.top,
               truth: truthRung(r.deg)
             }))
           };
@@ -29880,14 +29906,68 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // was settled against the projected true horizon, not reasoned out.
       ui.pitchLadder.style.transform = `translate(-50%, -50%) rotate(${rollCam}rad)`;
 
-      placePitchElement(ui.horizonLine, pitchCam, 0, focal, frameHeight);
+      if (CONFORMAL_LADDER_AIRCRAFT.has(selectedAircraftId)) {
+        // Conformal: the scale is pinned to the world and slides past the frame.
+        placePitchElement(ui.horizonLine, pitchCam, 0, focal, frameHeight);
+        for (let i = 0; i < pitchRungNodes.length; i += 1) {
+          const rung = pitchRungNodes[i];
+          placePitchElement(rung.el, pitchCam, rung.deg, focal, frameHeight);
+          rung.el.classList.toggle("below", rung.deg < 0);
+        }
+        return;
+      }
+
+      // AC4-7: the ladder MOVES like a ladder - the rungs slide up and down
+      // with the nose and the numbers on them are fixed, exactly as on the real
+      // instrument. What does not move is the ladder's ANCHOR: the scale stays
+      // wrapped around the middle of the screen instead of being towed away by
+      // the world, so the instrument is always where you are already looking.
+      //
+      // The difference from the conformal ladder is only the SCALE, and that is
+      // the whole trick. Conformal uses focal*tan(), which is the world's own
+      // angular scale, so at 20 degrees nose-up the strip has slid 600px and
+      // the ladder has left the frame. Here the scale is a fixed, gentle
+      // px/deg, so the same 20 degrees slides it about a hundred pixels: the
+      // ladder reads the same, keeps the same rung under the boresight, and
+      // simply does not run away. It rolls with the horizon and translates with
+      // the pitch, but it stays an instrument on the glass rather than a
+      // feature of the scenery.
+      const pitchDeg = THREE.MathUtils.radToDeg(pitchCam);
+      const slide = pitchDeg * FIXED_LADDER_PX_PER_DEG;
+      // How far from the centre a rung may sit before it is off the instrument.
+      const reach = (PITCH_RUNG_DEGREES[0] + 8) * FIXED_LADDER_PX_PER_DEG;
+      const placeFixed = (el, deg) => {
+        // Same shape as the conformal placement - offset of this rung from the
+        // boresight - just on the instrument's scale rather than the world's.
+        const offset = slide - deg * FIXED_LADDER_PX_PER_DEG;
+        if (Math.abs(offset) > reach) {
+          el.classList.add("hidden");
+          return;
+        }
+        el.classList.remove("hidden");
+        el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
+      };
+      placeFixed(ui.horizonLine, 0);
       for (let i = 0; i < pitchRungNodes.length; i += 1) {
         const rung = pitchRungNodes[i];
-        placePitchElement(rung.el, pitchCam, rung.deg, focal, frameHeight);
-        // Solid above the horizon, dashed below.
+        placeFixed(rung.el, rung.deg);
         rung.el.classList.toggle("below", rung.deg < 0);
+        // The labels are FIXED on this ladder. They belong to the rung, not to
+        // the slot - a rung marked 20 is the 20-degree rung wherever it has
+        // slid to. Rewriting them per frame was the previous attempt, and it
+        // made the numbers dance while the scale stood still: precisely
+        // backwards.
+        const text = String(Math.abs(rung.deg));
+        if (rung.el.dataset.label !== text) rung.el.dataset.label = text;
       }
     }
+
+    // Rung spacing for the FIXED (AC4-7) ladder, in pixels per degree of the
+    // scale. Not derived from the FOV, deliberately: this ladder is furniture,
+    // not a window onto the world, so it must not resize when the FOV breathes
+    // under boost. Chosen so +-30 degrees spans a comfortable part of the
+    // canopy without reaching the tapes.
+    const FIXED_LADDER_PX_PER_DEG = 5.2;
 
     // Where a line `deg` degrees above the horizon falls, in pixels along the
     // ladder's axis from the boresight. tan(), not the small-angle focal*angle:
