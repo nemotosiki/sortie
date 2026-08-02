@@ -1246,6 +1246,9 @@
 
     #missionBanner.danger { color: var(--danger); }
     #missionBanner.success { color: #fff6a0; }
+    /* An unguided launch is not a failure and not a kill - amber, the same
+       shade the hangar warns in. */
+    #missionBanner.warn { color: #ff9a3c; }
 
     /* Full-width outcome band (MISSION START / ACCOMPLISHED / FAILED). Lives
        outside #hud so it can also sit on top of the debrief screen (z 30) and
@@ -15345,12 +15348,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let bombsDropped = 0;
     let lastBombImpact = null;
     const bombsInFlight = [];
-    // 8AAM acquisition: one more target latched every multiLockTime, nearest
+    // 8AAM acquisition: the launcher works ONE target at a time, nearest
     // first, all inside the same cone the single lock uses. `grace` is how long
     // the cone has been empty: a salvo that reset the instant one contact slid
     // out could not be built while manoeuvring, because building it is exactly
     // when the cone is being swept across the formation.
-    const multiLock = { ids: [], timer: 0, grace: 0 };
+    // `timer` is dwell on `workingId` ONLY - the target the launcher is
+    // currently acquiring - and it resets the instant that target changes.
+    // It used to be a single global accumulator shared by every target that
+    // ever entered the cone, which meant a contact arriving after the timer
+    // had run up was latched on its FIRST FRAME: a fully guided round off a
+    // target that had never been locked at all. That is the "guided missile
+    // before the lock completes" bug.
+    const multiLock = { ids: [], timer: 0, grace: 0, workingId: null };
     const MULTI_LOCK_GRACE = 0.4;
     const BOMB_GRAVITY = 110;
     const BOMB_MAX_FLIGHT = 14;
@@ -16296,6 +16306,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             contacts
           };
         },
+        // Lock and launch state, plus what actually left the rail. The claim
+        // is "guidance is bought by a completed lock and by nothing else", and
+        // it can only be checked by reading the rounds in flight.
+        lockProbe: () => ({
+          locked: lock.locked,
+          progress: Number(lock.progress.toFixed(3)),
+          targetId: lock.targetId,
+          multi: {
+            ids: [...multiLock.ids],
+            workingId: multiLock.workingId,
+            timer: Number(multiLock.timer.toFixed(3))
+          },
+          inFlight: missilesInFlight.map((missile) => ({
+            spw: missile.spw || null,
+            guided: missile.targetId !== null,
+            targetId: missile.targetId
+          }))
+        }),
+        // Fires the selected weapon exactly as the trigger does, so a gate
+        // exercises the real launch path rather than a copy of it.
+        forceFire: () => fireWeapon(),
         // Collision geometry, measured at a point: the mesh skin the player
         // dies on and the analytic cone the enemy AI avoids.
         terrainProbe: (x, z) => ({
@@ -19499,17 +19530,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playerGun.fire();
     }
 
+    // The trigger always works. What a lock buys is GUIDANCE, not permission:
+    // with a completed lock the round is handed a target and homes; without
+    // one it leaves the rail ballistic and flies where the nose was pointing.
+    // The guidance kernel already treats a missing target as "fly straight"
+    // and its fuse test needs a target, so an unguided round needs no
+    // separate flight path and can never score a hit by accident.
     function launchMissile() {
-      if (gameState !== STATE_PLAYING || !lock.locked || missileCount <= 0) return false;
+      if (gameState !== STATE_PLAYING || missileCount <= 0) return false;
       if (loadedMissiles <= 0) {
         playTone(240, 0.07, 0.05, "square");
         return false;
       }
-      const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
-      if (!target) {
-        resetLock();
-        return false;
-      }
+      const target = lock.locked
+        ? (enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive) || null)
+        : null;
 
       playSfx("missile", 0.5);
 
@@ -19527,7 +19562,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       missilesInFlight.push({
         mesh: root,
-        targetId: target.id,
+        targetId: target ? target.id : null,
         speed: Math.max(playerSpeed + 120, 300),
         life: 0,
         trailTimer: 0,
@@ -19548,8 +19583,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         missileReloadTimers.push(MISSILE_RELOAD_TIME);
       }
       missilesLaunched += 1;
-      showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
-      resetLock();
+      if (target) {
+        showBanner(`FOX TWO · TARGET ${target.id} · ${target.label}`, 1.15);
+        resetLock();
+      } else {
+        showBanner("FOX TWO · UNGUIDED", 1.0, "warn");
+      }
       return true;
     }
 
@@ -19797,16 +19836,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function launchSpSingle() {
-      if (!lock.locked) return 0;
-      const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
-      if (!target) {
-        resetLock();
-        return 0;
-      }
+      // Same contract as the plain missile: the trigger always works, and the
+      // completed lock is what buys guidance.
+      const target = lock.locked
+        ? (enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive) || null)
+        : null;
       spawnSpMissile(target, 0);
       playSfx("missile", 0.5);
-      showBanner(`FOX THREE · ${PLAYER_SPW.label} · TARGET ${target.id}`, 1.15);
-      resetLock();
+      if (target) {
+        showBanner(`FOX THREE · ${PLAYER_SPW.label} · TARGET ${target.id}`, 1.15);
+        resetLock();
+      } else {
+        showBanner(`${PLAYER_SPW.label} · UNGUIDED`, 1.0, "warn");
+      }
       return 1;
     }
 
@@ -19824,7 +19866,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const target = enemies.find((enemy) => enemy.id === id && enemy.alive);
         if (target) targets.push(target);
       }
-      if (targets.length === 0) return 0;
+      if (targets.length === 0) {
+        // Nothing latched: one round leaves the rail unguided. A salvo is
+        // what the launcher earns by holding the cone - it is not what an
+        // unaimed trigger pull produces.
+        spawnSpMissile(null, 0);
+        playSfx("missile", 0.5);
+        showBanner(`${PLAYER_SPW.label} · UNGUIDED`, 1.0, "warn");
+        return 1;
+      }
       targets.forEach((target, index) => spawnSpMissile(target, index));
       playSfx("missile", 0.5);
       showBanner(`FOX THREE · ${PLAYER_SPW.label} · ${targets.length} TARGETS`, 1.3);
@@ -19852,7 +19902,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       missilesInFlight.push({
         mesh: root,
-        targetId: target.id,
+        targetId: target ? target.id : null,
         speed: Math.max(playerSpeed + 120, 300),
         maxSpeed: PLAYER_SPW.maxSpeed,
         turnRate: THREE.MathUtils.degToRad(PLAYER_SPW.turnRateDeg),
@@ -20743,22 +20793,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
       multiLock.grace = 0;
-      multiLock.timer += dt;
       eligible.sort((a, b) => a.distance - b.distance);
-      const step = weapon.multiLockTime || 0.45;
-      const count = Math.min(
-        weapon.multi,
-        eligible.length,
-        Math.floor(multiLock.timer / step)
-      );
-      multiLock.ids.length = 0;
-      for (let i = 0; i < count; i += 1) multiLock.ids.push(eligible[i].id);
+
+      // Latched targets survive only while they are still lockable. Dropping
+      // them here rather than rebuilding the list every frame is what makes a
+      // latch a thing that was EARNED and is then held.
+      const eligibleIds = new Set(eligible.map((entry) => entry.id));
+      for (let i = multiLock.ids.length - 1; i >= 0; i -= 1) {
+        if (!eligibleIds.has(multiLock.ids[i])) multiLock.ids.splice(i, 1);
+      }
+
+      if (multiLock.ids.length >= weapon.multi) {
+        multiLock.workingId = null;
+        multiLock.timer = 0;
+        return;
+      }
+
+      // Nearest target the launcher has not got yet. Changing target restarts
+      // the dwell from zero - no contact ever inherits another's lock time.
+      const next = eligible.find((entry) => !multiLock.ids.includes(entry.id));
+      if (!next) {
+        multiLock.workingId = null;
+        multiLock.timer = 0;
+        return;
+      }
+      if (multiLock.workingId !== next.id) {
+        multiLock.workingId = next.id;
+        multiLock.timer = 0;
+      }
+      multiLock.timer += dt;
+      // The first round of a salvo costs a full seeker lock - the same
+      // LOCK_TIME every single-shot weapon pays, and exactly what the HUD's
+      // LOCK% is counting out - and the launcher then rolls onto the rest at
+      // its own cadence. Before this a 4AAM latched its first target in
+      // 0.22s while the HUD still read LOCK 26%, which is what "it fires
+      // before the lock completes" looked like even when no dwell was being
+      // inherited.
+      const need = multiLock.ids.length === 0 ? LOCK_TIME : (weapon.multiLockTime || 0.45);
+      if (multiLock.timer >= need) {
+        multiLock.ids.push(next.id);
+        multiLock.workingId = null;
+        multiLock.timer = 0;
+      }
     }
 
     function clearMultiLock() {
       multiLock.ids.length = 0;
       multiLock.timer = 0;
       multiLock.grace = 0;
+      multiLock.workingId = null;
     }
 
     // Weapon select. Only the missile trigger is affected: gun and flares stay
