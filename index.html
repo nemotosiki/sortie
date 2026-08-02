@@ -296,6 +296,7 @@
     }
 
     .tapeRow.major::before { width: 10px; background: var(--hud); }
+    .tapeRow.hidden { visibility: hidden; }
     .tapeRow.major { color: var(--hud); }
 
     /* Heading strip */
@@ -23396,7 +23397,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // hull is gone. The gate only caps, it never promotes: a slow sortie that
       // earned a B keeps its B however well the convoy did.
       const guardPerfect = !guardState.active
-        || (guardState.lost === 0 && guardIntegrity() > 0.75);
+        || (guardState.lost === 0 && (guardState.worstIntegrity ?? guardIntegrity()) > 0.75);
       if (!guardPerfect && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
       const guardWiped = guardState.active && guardState.total > 0
         && guardState.lost >= guardState.total;
@@ -24214,6 +24215,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // mission needs to read is not a kill count but whether a specific thing was
     // done. Written to the mission record on completion; see recordMissionResult.
     let sortieMarks = {};
+    // Every ground unit killed this sortie, by id. The checkpoint banks it so
+    // a restore can re-kill exactly the installations the restored `kills`
+    // already paid for. Reset alongside sortieMarks in startMission.
+    let destroyedGroundIds = new Set();
 
     const radioController = createRadioController({
       panel: ui.radioPanel,
@@ -26647,6 +26652,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function startAceKillCam(enemy) {
+      // First kill owns the camera. A carrier and an ace dying inside one
+      // slow-mo window must not restart the timer and yank the focus away -
+      // the cinematic reads as one moment, not a chain of resets.
+      if (killCam.active) return;
       killCam.active = true;
       killCam.timer = KILLCAM_DURATION;
       killCam.enemyId = enemy.id;
@@ -27906,6 +27915,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       missileKills = 0;
       damageTaken = 0;
       sortieMarks = {};
+      destroyedGroundIds = new Set();
       // Zeroed before any spawner runs, so the field this sortie is ranked
       // against is this sortie's field and not the previous one's.
       rankStats.spawnedValue = 0;
@@ -28054,6 +28064,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       checkpoint.guardSaved = guardState.saved;
       checkpoint.guardPenalty = guardState.penalty;
       checkpoint.guardFailed = guardState.failed;
+      checkpoint.guardWorstIntegrity = guardState.worstIntegrity ?? 1;
+      // The optional-objective ledger and the ground kills are banked progress
+      // too: marks survive a resumed sortie by contract, and the dead
+      // installations must not come back alive when the board is rebuilt
+      // around the restored `kills`.
+      checkpoint.sortieMarks = { ...sortieMarks };
+      checkpoint.destroyedGroundIds = [...destroyedGroundIds];
     }
 
     // Every "go again" in the game funnels through here, so the keyboard, the
@@ -28124,13 +28141,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // intended half of it: in Ace Combat the thing you were escorting is alive
       // again when you come back to the checkpoint. What survives is the RECORD,
       // so the rank cap still knows a transport was lost getting this far.
+      //
+      // `saved` is deliberately NOT restored: it counts what the CURRENT
+      // board's hulls actually flew to safety, and the respawned convoy earns
+      // it again - restoring it double-counted every re-retire ("4/3 SAVED").
+      // `worstIntegrity` is the record the rank reads; live `integrity` is
+      // recomputed off the fresh board and stays a readout.
       if (guardState.active) {
         guardState.lost = at.guardLost;
         guardState.hits = at.guardHits;
-        guardState.saved = at.guardSaved;
         guardState.penalty = at.guardPenalty;
         guardState.failed = at.guardFailed;
         guardState.integrity = guardIntegrity();
+        guardState.worstIntegrity = Math.min(at.guardWorstIntegrity ?? 1, guardState.integrity);
       }
 
       // Take startMission's wave 1 back off the board. Ground units and
@@ -28145,6 +28168,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Mounts share their ship's materials, exactly as in clearMissionObjects.
         if (enemy.model) disposeAircraftMaterials(enemy.model);
         enemies.splice(i, 1);
+      }
+      // Ground units are the map, so startMission rebuilt them all alive - but
+      // the restored `kills` already counts the ones destroyed before the
+      // checkpoint. Take exactly those off the board again, silently: no
+      // score, no explosion, no radio. Ids are deterministic because
+      // spawnMissionGround walks the mission definition in order.
+      sortieMarks = { ...(at.sortieMarks || {}) };
+      destroyedGroundIds = new Set(at.destroyedGroundIds || []);
+      if (destroyedGroundIds.size > 0) {
+        for (let i = enemies.length - 1; i >= 0; i -= 1) {
+          const enemy = enemies[i];
+          if (!enemy.ground || !destroyedGroundIds.has(enemy.id)) continue;
+          scene.remove(enemy.group);
+          if (enemy.model) disposeAircraftMaterials(enemy.model);
+          enemies.splice(i, 1);
+        }
       }
       for (const marker of enemyMarkerElements.values()) marker.remove();
       enemyMarkerElements.clear();
@@ -32170,6 +32209,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       guardState.saved = 0;
       guardState.hits = 0;
       guardState.integrity = 1;
+      // The rank reads the worst integrity the sortie ever saw, not the live
+      // readout - a checkpoint respawns the hulls but not the record.
+      guardState.worstIntegrity = 1;
       guardState.lossPenalty = config.lossPenalty || 0;
       guardState.hitPenalty = config.hitPenalty || 0;
       guardState.penalty = 0;
@@ -32199,8 +32241,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gameState !== STATE_PLAYING) return;
       friendly.hp -= amount;
       friendly.hitFlash = 0.12;
-      guardState.hits += 1;
-      guardState.integrity = guardIntegrity();
+      // Ledger writes only while a guard objective owns the ledger - a
+      // vulnerable friendly outside any guard block must not dirty the state
+      // the checkpoint banks and the debrief reads.
+      if (guardState.active) {
+        guardState.hits += 1;
+        guardState.integrity = guardIntegrity();
+        guardState.worstIntegrity = Math.min(guardState.worstIntegrity ?? 1, guardState.integrity);
+      }
       // The carrier charges per hit: the sortie is scored on how much of the
       // ship is left, so every round that gets through has to cost something
       // even though the hull survives it.
@@ -32259,13 +32307,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!guardState.active) return;
       guardState.lost += 1;
       guardState.integrity = guardIntegrity();
+      guardState.worstIntegrity = Math.min(guardState.worstIntegrity ?? 1, guardState.integrity);
       const config = guardState.config || {};
-      const remaining = guardState.total - guardState.lost;
+      // Charged before the remaining-check: the final loss pays the same
+      // penalty as every other one. The fail banner below replaces the loss
+      // banner, never the charge.
+      if (config.lossPenalty) {
+        guardState.penalty += config.lossPenalty;
+        score = Math.max(0, score - config.lossPenalty);
+      }
+      // Counted off the board, not off the ledger. After a checkpoint restore
+      // the convoy is respawned alive while `lost` keeps the banked record, so
+      // total-minus-lost would end the objective over aircraft that are still
+      // visibly flying. Retired hulls keep `alive`, so the ones that made it
+      // out still count as survivors.
+      const remaining = guardedFriendlies().filter((other) => other.alive).length;
       if (remaining > 0) {
-        if (config.lossPenalty) {
-          guardState.penalty += config.lossPenalty;
-          score = Math.max(0, score - config.lossPenalty);
-        }
         showBanner(
           config.lossPenalty
             ? `${config.lossBanner || "FRIENDLY LOST"} · -${config.lossPenalty} PTS`
@@ -33206,7 +33263,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // concurrent naval entry is an escort screen riding in with the group
         // it screens - not a new wave the player has to clear.
         const lightHulls = wave.fleet.every((hull) => hull === "missileBoat");
-        if (wave.concurrent) showBanner(`${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
+        // A concurrent entry is usually a non-target escort screen - but a
+        // mission can author a concurrent PRIORITY target (a named ace riding
+        // in with the pack), and calling that "NON-TARGET" tells the player to
+        // ignore the one thing the sortie needs dead.
+        if (wave.concurrent) showBanner(isTgtEntry(wave) ? `${wave.label || "PRIORITY CONTACT"} · TARGET` : `${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
         else if (first) showBanner(lightHulls ? "WAVE 1 · SURFACE CONTACTS" : "WAVE 1 · ENEMY FLEET AHEAD", 2.2);
         else showBanner(`WAVE ${waveNumber} · ${lightHulls ? "SURFACE CONTACTS" : "ENEMY FLEET DETECTED"}`, 2.2, "danger");
         // A wave that fields anything other than WAVE_PRESETS.naval's exact
@@ -33252,7 +33313,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
         // A concurrent escort rides in on the wave it protects, so it announces
         // itself as a contact - not as a new wave the player has to clear.
-        if (wave.concurrent) showBanner(`${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
+        // Same TGT-aware banner as the naval branch: an authored concurrent
+        // target must not be announced as ignorable.
+        if (wave.concurrent) showBanner(isTgtEntry(wave) ? `${wave.label || "PRIORITY CONTACT"} · TARGET` : `${wave.label || "ESCORT"} · NON-TARGET`, 2.0);
         else if (first) showBanner("WAVE 1 · ENGAGE", 2.1);
         else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
         if (wave.radio) {
@@ -34817,6 +34880,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // rather than at mission end so it survives a sortie that is failed and
       // resumed: the shot was fired either way.
       if (enemy.mark) sortieMarks[enemy.mark] = (sortieMarks[enemy.mark] || 0) + 1;
+      // Banked for checkpoint restores: the board rebuild must know which
+      // installations this sortie already destroyed.
+      if (enemy.ground) destroyedGroundIds.add(enemy.id);
       let chainBlast = null;
       if (enemy.subsystem) {
         // A mount neither sinks nor leaves a hulk in the sky: it blows up where
@@ -35203,6 +35269,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         while (missionWaveIndex < mission.waves.length && mission.waves[missionWaveIndex].concurrent) {
           missionWaveIndex += 1;
         }
+        // A malformed table (payload missions can author trailing concurrent
+        // entries) can walk the cursor off the end with tgtRemaining still
+        // set; spawning `undefined` here used to take the frame loop down.
+        if (missionWaveIndex >= mission.waves.length) return;
         // Banked with the cursor already walked past the concurrent entries and
         // the next wave not yet spawned, which is the one moment that describes
         // "the wave that just cleared is done". A sortie shot down in what comes
@@ -36060,7 +36130,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const dx = player.position.x - battleArea.centerX;
       const dz = player.position.z - battleArea.centerZ;
       let distance = Math.hypot(dx, dz);
-      battleArea.bearing = Math.atan2(dx, dz);
+      // Same convention as headingRad (north = -Z), or the radar's home
+      // chevron mirrors north/south and sends the player the wrong way.
+      battleArea.bearing = Math.atan2(dx, -dz);
 
       const hardLimit = battleArea.radius + BATTLE_HARD_LIMIT_MARGIN;
       if (distance > hardLimit && distance > 0) {
@@ -37027,7 +37099,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const text = label || (tickDeg % 45 === 0 ? String(Math.round(tickDeg)) : "");
         if (tick.firstChild.textContent !== text) tick.firstChild.textContent = text;
       }
-      ui.headingValue.textContent = String(Math.round(headingDeg)).padStart(3, "0");
+      // Math.round pushes 359.5+ up to 360; a three-digit compass reads
+      // 000-359, so wrap after rounding.
+      ui.headingValue.textContent = String(Math.round(headingDeg) % 360).padStart(3, "0");
       ui.headingCardinal.textContent = CARDINAL_NAMES[Math.round(headingDeg / 45) % 8];
     }
 
@@ -37046,6 +37120,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const text = labelled ? String(rowValue) : "";
         if (row.firstChild.textContent !== text) row.firstChild.textContent = text;
         row.classList.toggle("major", labelled);
+        // Suppressing only the label left bare ticks marching below the zero
+        // line, reading as scale under the ground. visibility (not display)
+        // keeps the flex row's box so its siblings hold position.
+        row.classList.toggle("hidden", !visible);
       }
     }
 

@@ -187,10 +187,33 @@ export function createRadioController({
 
   function triggerLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null) {
     if (!RADIO_SPEAKERS[speakerId] || typeof text !== "string" || text.length === 0) return false;
+    // Substituted here, at the single entrance every caller shares. When only
+    // say() substituted, the mission tables' authored lines (which reach
+    // triggerLine directly) shipped a literal "{nickname}" to the panel.
+    const resolvedText = text.replace(/\{nickname\}/g, () => getPlayerNickname());
     const resolvedPriority = Number.isFinite(priority) ? Math.trunc(priority) : RADIO_PRIORITY.NORMAL;
-    const resolvedId = id ? String(id) : `${speakerId}:${text.slice(0, 24)}`;
+    const resolvedId = id ? String(id) : `${speakerId}:${resolvedText.slice(0, 24)}`;
     if ((lineReadyAt[resolvedId] || 0) > clock) return false;
     if (queue.some((request) => request.id === resolvedId)) return false;
+
+    const request = {
+      id: resolvedId,
+      speakerId,
+      text: resolvedText,
+      priority: resolvedPriority,
+      queuedAt: clock
+    };
+
+    // A line that outranks what is on screen starts immediately rather than
+    // waiting out the (now much longer) hold. Strictly greater-than, so equal
+    // priorities never pre-empt each other and FIFO order is preserved.
+    // Checked BEFORE the capacity eviction below: a pre-empting line never
+    // enters the queue, so it must not cost the queue its lowest waiter.
+    if (state.active && resolvedPriority > state.priority) {
+      clearActiveLine();
+      startLine(request);
+      return true;
+    }
 
     if (queue.length >= RADIO_QUEUE_MAX) {
       let worstIdx = 0;
@@ -199,23 +222,6 @@ export function createRadioController({
       }
       if (resolvedPriority <= queue[worstIdx].priority) return false;
       queue.splice(worstIdx, 1);
-    }
-
-    const request = {
-      id: resolvedId,
-      speakerId,
-      text,
-      priority: resolvedPriority,
-      queuedAt: clock
-    };
-
-    // A line that outranks what is on screen starts immediately rather than
-    // waiting out the (now much longer) hold. Strictly greater-than, so equal
-    // priorities never pre-empt each other and FIFO order is preserved.
-    if (state.active && resolvedPriority > state.priority) {
-      clearActiveLine();
-      startLine(request);
-      return true;
     }
 
     queue.push(request);
@@ -287,9 +293,9 @@ export function createRadioController({
   }
 
   function say(speaker, text, priority, id) {
-    if (typeof text !== "string") return false;
-    const resolvedText = text.replace(/\{nickname\}/g, () => getPlayerNickname());
-    return triggerLine(speaker, resolvedText, priority, id);
+    // Substitution lives in triggerLine now (the shared entrance), so this is
+    // a plain alias kept for its established call sites.
+    return triggerLine(speaker, text, priority, id);
   }
 
   function isIdle() {
