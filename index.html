@@ -16293,6 +16293,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             contacts
           };
         },
+        // The wingman's own flight, measured: mode, speed vs its airframe
+        // ceiling, station error and terrain clearance.
+        wingmanProbe: () => friendlies.filter((friendly) => friendly.kind === "wingman").map((friendly) => ({
+          mode: friendly.wingMode,
+          speed: Number(friendly.wingSpeed.toFixed(1)),
+          boost: friendly.wingBoost,
+          stationError: Number(friendly.wingStationError.toFixed(1)),
+          clearance: Number((friendly.group.position.y - surfaceHeightAt(
+            friendly.group.position.x, friendly.group.position.z
+          )).toFixed(1))
+        })),
         // The loiter, measured. Distance from the patrol station is the claim
         // the carrot steering makes - a patroller holds a ring sized to its
         // turn radius instead of wandering kilometres off - and no other
@@ -22455,6 +22466,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const WINGMAN_STATION_GAIN = 120;
     // Throttle response, slower than the turn - as an engine is.
     const WINGMAN_SPEED_K = 0.08;
+    // The wanted point is FILTERED (tau ~0.5s) before the nose ever chases
+    // it. A raw station is rigid - it swings instantly with the player's
+    // attitude, and the wingman tracking it reads as glued on; a raw stern
+    // point twitches with every jink of the target and the wingman chasing
+    // it reads as physically impossible. Filtered, a rolling player gets a
+    // wingman that lags the turn and cuts the corner to rejoin, and a
+    // jinking target gets flown as a pursuit curve.
+    const WINGMAN_AIM_K = 0.12;
+    // The wanted point is also held out of the ground (a station six metres
+    // under a deck-hugging player, or the stern of a target skimming a
+    // ridge, is not a place to fly at), and the nose gets the same 1.8s
+    // projected-altitude climb override the enemy AI flies. The old model
+    // had only the hard position clamp, so a low sortie dragged the wingman
+    // ALONG the clamp - visibly scraping the terrain.
+    const WINGMAN_TERRAIN_CLEARANCE = 60;
+    // Turn authority breathes with speed: full rate in the formation band,
+    // easing off toward boost, so a fast wingman turns like a jet rather
+    // than a missile. 320 is the top of the two airframes' cruise band.
+    const WINGMAN_TURN_REF_SPEED = 320;
+    const WINGMAN_TURN_FLOOR = 0.55;
     // Bank is computed from the turn, not authored: 1.45 rad of bank per rad/s
     // of yaw puts the wingman at exactly the 60 deg limit when it is pulling
     // its full 42 deg/s and at wings-level when it is going straight. 60 is the
@@ -22661,6 +22692,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // The airframe's own gun, at the fraction of it a wingman is allowed.
         // Cached because the airframe cannot change mid-sortie.
         wingCruise: spec.cruiseSpeed,
+        // The airframe's ceiling. Every throttle path below clamps to it -
+        // the wingman can fall behind a faster player and catch up later,
+        // but it can never fly faster than the jet it is.
+        wingBoost: spec.boostSpeed,
+        // The filtered wanted point - see WINGMAN_AIM_K.
+        wingAim: group.position.clone(),
+        // Last frame's station error, for the probe.
+        wingStationError: 0,
         wingGunDamage: spec.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
       };
       friendlies.push(friendly);
@@ -23388,14 +23427,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tmpV4.y += WINGMAN_OFFSET.up;
       }
 
+      // Hold the wanted point out of the ground, then filter it - see the
+      // WINGMAN_AIM_K and WINGMAN_TERRAIN_CLEARANCE notes for why both.
+      const wantedFloor = surfaceHeightAt(tmpV4.x, tmpV4.z) + WINGMAN_TERRAIN_CLEARANCE;
+      if (tmpV4.y < wantedFloor) tmpV4.y = wantedFloor;
+      friendly.wingAim.lerp(tmpV4, damping(WINGMAN_AIM_K, dt));
+      tmpV4.copy(friendly.wingAim);
+
       const position = friendly.group.position;
       forwardOf(friendly.group, tmpV7);
       // Direction to the wanted point, which is the ONLY thing the station is
       // used for: nothing here ever writes a position toward it.
       tmpV5.subVectors(tmpV4, position);
       const error = tmpV5.length();
+      friendly.wingStationError = error;
       if (error > 0.001) tmpV5.multiplyScalar(1 / error);
       else tmpV5.copy(tmpV7);
+
+      // Terrain avoidance, the same 1.8s projection the enemy AI flies: if
+      // the nose is carrying it toward the floor, the wanted direction
+      // becomes a climb straight ahead and the whole turn budget is spent
+      // on pulling up.
+      const lookAhead = friendly.wingSpeed * 1.8;
+      const aheadFloor = surfaceHeightAt(position.x + tmpV7.x * lookAhead, position.z + tmpV7.z * lookAhead);
+      const hereFloor = surfaceHeightAt(position.x, position.z);
+      if (position.y + tmpV7.y * lookAhead < aheadFloor + 90 || position.y < hereFloor + 50) {
+        tmpV5.set(tmpV7.x, Math.max(tmpV5.y, 0.9), tmpV7.z).normalize();
+      }
 
       // Keep-out. Inside WINGMAN_SEPARATION the wanted direction is blended
       // toward straight-away-from-the-player, hard enough at contact to win
@@ -23419,8 +23477,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (swing < Math.PI * 0.5) swing = 0;
         else upOf(friendly.group, tmpV8);
       }
+      const turnLimit = WINGMAN_MAX_TURN * THREE.MathUtils.clamp(
+        WINGMAN_TURN_REF_SPEED / Math.max(friendly.wingSpeed, 1),
+        WINGMAN_TURN_FLOOR,
+        1
+      );
       if (swing > 0) {
-        tmpQ1.setFromAxisAngle(tmpV8.normalize(), Math.min(swing, WINGMAN_MAX_TURN * dt));
+        tmpQ1.setFromAxisAngle(tmpV8.normalize(), Math.min(swing, turnLimit * dt));
         tmpV5.copy(tmpV7).applyQuaternion(tmpQ1).normalize();
       } else {
         tmpV5.copy(tmpV7);
@@ -23447,16 +23510,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       tmpQ1.setFromAxisAngle(LOCAL_FORWARD, friendly.wingBank);
       friendly.group.quaternion.multiply(tmpQ1).normalize();
 
-      // Throttle. Chasing needs its own airframe's cruise as a floor, because
-      // a player who has slowed to a crawl must not slow the pursuit with them.
-      const reference = friendly.wingMode === "engage"
-        ? Math.max(playerSpeed, friendly.wingCruise)
+      // Throttle. A chase runs on the TARGET's pace plus surplus, with its
+      // own cruise as the floor - never on the player's speed, which used
+      // to turn an F-16 wingman hypersonic once player boost speeds passed
+      // 700. Formation keeps the player reference, but in both modes the
+      // airframe's own boost is a hard ceiling: against a faster player it
+      // falls behind and catches up later, like an aircraft.
+      const reference = friendly.wingMode === "engage" && target
+        ? Math.max(target.speed + 60, friendly.wingCruise)
         : playerSpeed;
-      const speedWanted = reference * (1 + THREE.MathUtils.clamp(
-        (error - WINGMAN_STATION_SLOP) / WINGMAN_STATION_GAIN,
-        -WINGMAN_SPEED_BAND,
-        WINGMAN_SPEED_BAND
-      ));
+      const speedWanted = Math.min(
+        reference * (1 + THREE.MathUtils.clamp(
+          (error - WINGMAN_STATION_SLOP) / WINGMAN_STATION_GAIN,
+          -WINGMAN_SPEED_BAND,
+          WINGMAN_SPEED_BAND
+        )),
+        friendly.wingBoost
+      );
       friendly.wingSpeed = THREE.MathUtils.lerp(
         friendly.wingSpeed, speedWanted, damping(WINGMAN_SPEED_K, dt)
       );
