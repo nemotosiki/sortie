@@ -698,6 +698,17 @@
       z-index: 1;
     }
 
+    /* Cockpit only, and it exists to split the difference the last two rounds
+       bracketed: 28px between each rail and the ladder's numbers read as
+       pinched, 44px (the shared 24% position) as too wide. 325px from centre
+       lands at ~36px.
+
+       Third person keeps 24% untouched - out there the tapes have a wide empty
+       frame to sit in and nothing to crowd, so the only view that needs a
+       specific number is the one where the ladder is drawn. */
+    body[data-camera="cockpit"] #flightData { left: calc(50% - 325px); }
+    body[data-camera="cockpit"] #altData { right: calc(50% - 325px); }
+
     /* The SPEED and ALT columns sit alongside the ladder as one cluster, with
        their boxes and big numbers outboard - the AC layout. There is no longer
        a cockpit-only override: giving the panels a fixed width (the digit-drift
@@ -43376,14 +43387,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           );
         }
       } else if (originDistance > 1900) {
-        desiredHeading = Math.atan2(-enemy.group.position.x, enemy.group.position.z);
+        // Face (0,0): the direction is (-x, -z), so by the convention above the
+        // heading is atan2(x, z). The old atan2(-x, z) was its mirror in X -
+        // right only for a hull sitting near the Z axis, and 180 degrees wrong
+        // for one due east or west, which steered it further out instead of
+        // back. The landing branch above already writes the correct form.
+        desiredHeading = Math.atan2(enemy.group.position.x, enemy.group.position.z);
       } else {
         for (const mountain of world.mountains) {
           const dx = enemy.group.position.x - mountain.x;
           const dz = enemy.group.position.z - mountain.z;
           const clearance = mountain.r * 2.0 + 160;
           if (dx * dx + dz * dz < clearance * clearance) {
-            desiredHeading = Math.atan2(dx, -dz);
+            // (dx, dz) already points AWAY from the mountain, so the heading
+            // that faces it is atan2(-dx, -dz). The old atan2(dx, -dz) mirrored
+            // it in X: a hull east or west of the island turned INTO it and
+            // held that course until it ran aground.
+            desiredHeading = Math.atan2(-dx, -dz);
             break;
           }
         }
