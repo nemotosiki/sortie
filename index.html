@@ -34569,6 +34569,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
           return { retiring: flying.length, saved: guardState.saved };
         },
+        // The friendly half of airframeProbe. A propeller that is modelled but
+        // never driven looks right in a screenshot and is dead in the air, so
+        // the disc count and its current angle are what make that checkable.
+        friendlyAirframeProbe: () => friendlies.map((friendly) => ({
+          kind: friendly.kind,
+          label: friendly.label,
+          type: friendly.type ?? null,
+          alive: friendly.alive,
+          speed: Number((friendly.speed || 0).toFixed(1)),
+          propSpinners: friendly.model && friendly.model.propSpinners
+            ? friendly.model.propSpinners.length
+            : 0,
+          propRotation: friendly.model && friendly.model.propSpinners && friendly.model.propSpinners.length
+            ? Number(friendly.model.propSpinners[0].rotation.z.toFixed(4))
+            : null,
+          wingPivots: friendly.model && friendly.model.wingPivots
+            ? friendly.model.wingPivots.length
+            : 0
+        })),
         friendlyLeakProbe: () => ({
           friendlies: friendlies.length,
           // Anything here would be a friendly that had somehow reached the
@@ -42705,6 +42724,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             updateAircraftFlash(friendly.model, friendly.hitFlash);
           }
         }
+        // The same airframe animation the enemies get. Nothing here is about
+        // allegiance: a turboprop's discs turn and a swing-wing's pivots move
+        // because of what the aircraft IS. Both helpers return immediately on
+        // an empty array, so a friendly with neither pays one property read.
+        if (friendly.model) {
+          spinPropDiscs(friendly.model, friendly.speed || 0, dt);
+        }
         if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
         else if (friendly.kind === "ship") updateFriendlyShip(friendly, dt, time);
@@ -43696,13 +43722,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // base term carries an idling disc even at the bottom of the speed band.
     const PROP_SPIN_BASE = 11;
     const PROP_SPIN_PER_SPEED = 0.06;
-    function updateEnemyProps(enemy, dt) {
-      const spinners = enemy.model.propSpinners;
+    // Anything with discs turns them - the aircraft does not know or care which
+    // side it is flying for. Friendlies used to be left out entirely, so the
+    // escorted transports flew with painted-on propellers.
+    function spinPropDiscs(model, speed, dt) {
+      const spinners = model && model.propSpinners;
       if (!spinners || spinners.length === 0) return;
-      const rate = PROP_SPIN_BASE + enemy.speed * PROP_SPIN_PER_SPEED;
+      const rate = PROP_SPIN_BASE + speed * PROP_SPIN_PER_SPEED;
       for (const spinner of spinners) {
         spinner.rotation.z += rate * dt * (spinner.userData.spinDir || 1);
       }
+    }
+
+    function updateEnemyProps(enemy, dt) {
+      spinPropDiscs(enemy.model, enemy.speed, dt);
     }
 
     // Which friendly a hunting aircraft is flying at this frame, or null if
