@@ -35513,6 +35513,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gamepadInput.targetFocus = false;
       gamepadInput.targetLong = false;
       gamepadInput.targetId = null;
+      // The press latch goes with the hold state. Dropping only the hold left
+      // the pad mid-press: releasing the button afterwards read as a fresh
+      // short press and fired cycleTarget() on a sortie nobody had touched.
+      // The keyboard half already drops cameraKeyHold.pressed for this reason.
+      gamepadInput.previousTarget = false;
+      gamepadInput.targetPressedAt = 0;
       cameraFocusActive = false;
       cameraFocusTargetId = null;
       cameraFocusSource = null;
@@ -35520,7 +35526,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     window.addEventListener("blur", clearTransientInputs);
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) clearTransientInputs();
+      if (document.hidden) {
+        clearTransientInputs();
+        // The looping sounds are driven from animate(), which the browser stops
+        // for a hidden tab - but the AudioContext keeps running, so the engine
+        // roar and the lock drone held their last gain and played on until the
+        // player came back. Suspending the context freezes everything that is
+        // sounding; ensureAudio() resumes it on the way in.
+        const context = audioSystem.context;
+        if (context && context.state === "running") context.suspend().catch(() => {});
+      } else if (audioSystem.context && audioSystem.context.state === "suspended" && audioIsUnlocked()) {
+        audioSystem.context.resume().catch(() => {});
+      }
     });
     window.addEventListener("resize", resize);
     window.addEventListener("gamepadconnected", updateGamepadInput);
@@ -36591,6 +36608,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       audioSystem.engineSource = null;
       audioSystem.engineGain = null;
       if (!source) return;
+      // Ramped, not cut. The loop was stopped mid-waveform at whatever gain it
+      // was holding (up to 0.30 under boost), which is a step to zero - the
+      // click this file already warns about for the music bed. The references
+      // are dropped above, so nothing waits on the tail.
+      const context = audioSystem.context;
+      if (gain && context) {
+        try {
+          const now = context.currentTime;
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setTargetAtTime(0, now, 0.05);
+          source.stop(now + 0.25);
+          return;
+        } catch {
+          // Fall through to the immediate stop below.
+        }
+      }
       try {
         source.stop();
       } catch {
@@ -37317,6 +37350,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       gamepadInput.targetFocus = false;
       gamepadInput.targetLong = false;
       gamepadInput.targetId = null;
+      // Same latch, same reason as clearTransientInputs: launching with the
+      // button still held must not spend the release on a target cycle.
+      gamepadInput.previousTarget = false;
+      gamepadInput.targetPressedAt = 0;
       audioSystem.lockTimer = 0;
       audioSystem.threatTimer = 0;
       audioSystem.lastLocked = false;
@@ -40790,6 +40827,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         terrainMin: baseY,
         terrainMax: highest,
         label: config.label || "ALLIED AIRBASE",
+        // What is being defended, not just what it is called. The city
+        // deployment sets style:"city"; the warnings and the damage banner
+        // read it so they stop calling a bombed city "the base".
+        style: config.style || "airbase",
         failRadius: config.failRadius || 400,
         group,
         breached: false,
@@ -44370,13 +44411,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           tmpV9.y += enemy.spec.smokeHeight * 0.7;
           createExplosion(tmpV9, blast === 0 ? 0xffd35f : enemy.spec.explosionColor, blast === 0 ? 1.6 : 1.05);
         }
+        // Everything that was not a carrier or a missile boat used to be called
+        // an Aegis - so BEACHHEAD's five landing ships, every frigate and every
+        // payload hull (cruiser, arsenal, LHD, SSGN, hospital, cargo) all
+        // reported the wrong class. The hull's own label is the one thing that
+        // is always right, and the AA line only holds for hulls that carry AA.
         triggerRadioLine(
           "wingman",
           enemy.type === "carrier"
             ? "でかいぞ……空母、轟沈！ やったな{nickname}！"
             : (enemy.type === "missileBoat"
               ? "ミサイル艇、撃沈！ 一発で十分だ——次を探せ！"
-              : "イージス艦、沈黙！ 対空砲火が薄くなったぞ！"),
+              : (enemy.spec.aa
+                ? `${enemy.spec.label}、沈黙！ 対空砲火が薄くなったぞ！`
+                : `${enemy.spec.label}、撃沈を確認！`)),
           RADIO_PRIORITY.NORMAL,
           `ship-down-${enemy.id}`
         );
@@ -44581,8 +44629,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playSfx("explosion", 0.95, 0.68);
         playTone(52, 1.1, 0.2, "sawtooth");
         cameraShake = Math.min(1.8, cameraShake + 0.9);
-        showBanner(`BASE DAMAGED · -${BASE_BOMB_PENALTY} PTS`, 2.0, "danger");
-        radioSay("command", "基地被弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！",
+        // CITY LIGHTS defends a city, not an airfield: the HUD marker already
+        // reads SAINT VERDA while these lines said "base". The deployment knows
+        // which it is, so the wording follows it.
+        const struckLabel = friendlyBase.style === "city" ? "CITY" : "BASE";
+        const struckRadio = friendlyBase.style === "city"
+          ? "市街に着弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！"
+          : "基地被弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！";
+        showBanner(`${struckLabel} DAMAGED · -${BASE_BOMB_PENALTY} PTS`, 2.0, "danger");
+        radioSay("command", struckRadio,
           RADIO_PRIORITY.URGENT, `base-hit-${friendlyBase.hits}`);
 
         // Egress: hold the run heading and keep going, away from the field.
@@ -44599,7 +44654,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (closest >= 0) {
         if (closest < 1100 && !friendlyBase.warnedClose) {
           friendlyBase.warnedClose = true;
-          showBanner("WARNING · BOMBERS NEARING AIRBASE", 1.8, "danger");
+          showBanner(
+            friendlyBase.style === "city"
+              ? "WARNING · BOMBERS NEARING THE CITY"
+              : "WARNING · BOMBERS NEARING AIRBASE",
+            1.8,
+            "danger"
+          );
           radioSay("command", "爆撃機が基地に迫っている！ 投弾される前に落とせ！", RADIO_PRIORITY.URGENT, "base-warn-close");
         } else if (closest < 2600 && !friendlyBase.warnedFar) {
           friendlyBase.warnedFar = true;
@@ -47954,7 +48015,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function updatePlayerDamageSmoke(dt) {
-      if (gameState !== STATE_PLAYING || health >= PLAYER_MAX_HEALTH * 0.55 || !playerModel.group.visible) {
+      // `playerModel.group.visible` is the CAMERA's business - cockpit view
+      // hides the airframe on purpose - so reading it here meant a damaged jet
+      // trailed no smoke at all from the cockpit, and started smoking the
+      // instant the player switched to chase. Health is what decides this.
+      if (gameState !== STATE_PLAYING || health >= PLAYER_MAX_HEALTH * 0.55 || health <= 0) {
         damageSmokeTimer = 0;
         return;
       }
@@ -52062,10 +52127,14 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         const starGeometry = keepGeometry(new THREE.BufferGeometry());
         starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
         starGeometry.setAttribute("color", new THREE.BufferAttribute(starColors, 3));
+        // depthTest stays ON: the comment above promises the stars sit behind
+        // anything opaque, and with the test disabled they were drawn over the
+        // moon, the mountains and every aircraft above the horizon. The sky
+        // dome writes no depth, so nothing occludes them that should not.
         const stars = new THREE.Points(starGeometry, keepMaterial(new THREE.PointsMaterial({
           size: preset.stars.size, sizeAttenuation: false, vertexColors: true,
           transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending,
-          depthWrite: false, depthTest: false, fog: false
+          depthWrite: false, fog: false
         })));
         stars.renderOrder = -99;
         stars.frustumCulled = false;
