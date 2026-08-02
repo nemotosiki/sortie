@@ -15998,6 +15998,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           targetId: m.targetId ?? null,
           lost: Boolean(m.lost)
         })),
+        // Chase-camera sanity: the angle between where the camera is looking
+        // and where the aircraft actually is. Past ~60 the player is sliding
+        // off screen; past 90 the view has turned its back on the aircraft -
+        // the "camera flips 180 in a high-speed turn" bug in one number.
+        camGeometry: () => {
+          const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+          const toPlane = new THREE.Vector3().subVectors(player.position, camera.position);
+          const angleDeg = THREE.MathUtils.radToDeg(camFwd.angleTo(toPlane.normalize()));
+          return {
+            angleDeg: Number(angleDeg.toFixed(2)),
+            speed: Number(playerSpeed.toFixed(1)),
+            camToPlane: Number(camera.position.distanceTo(player.position).toFixed(1))
+          };
+        },
         // Loads an airframe's flight model and gun outright, skipping the
         // hangar. selectAircraft() only changes what is on display - the
         // loadout is applied at mission start - so a test that wants to read
@@ -25872,11 +25886,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : 0;
       const rigidW = cockpitRigidBlend;
 
+      // A first-order filter trailing a target that advects at flight speed
+      // carries a permanent v*tau offset along the velocity. At the old
+      // 460 m/s ceiling that was up to 61m of pleasant weight; at the new
+      // 833 the LOOK point's 110m of lag passed the 76m look distance, the
+      // aim point fell BEHIND the camera, and lookAt snapped the chase view
+      // 180 degrees in any hard high-speed turn. Feeding forward only the
+      // advection ABOVE the speed the filters were tuned at caps the lag at
+      // its old worst case - identical feel through the whole old envelope,
+      // and no geometry inversion above it. Taus are 1/-ln(k) of the two
+      // position/look damping constants below.
+      const advect = Math.max(0, playerSpeed - 460) * (1 - rigidW);
+      desiredPosition.addScaledVector(tmpV1, advect * 0.157);
+
       camera.position.lerp(desiredPosition,
         THREE.MathUtils.lerp(damping(0.0017, dt), 1, rigidW));
       keepCameraAboveSurface();
 
-      const desiredLook = tmpV5.copy(camera.position).addScaledVector(tmpV1, profile.look);
+      const desiredLook = tmpV5.copy(camera.position)
+        .addScaledVector(tmpV1, profile.look + advect * 0.132);
       if (focusTarget) {
         desiredLook.copy(focusTarget.group.position).addScaledVector(WORLD_UP, 1.8);
       }
