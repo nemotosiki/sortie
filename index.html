@@ -34577,7 +34577,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           label: friendly.label,
           type: friendly.type ?? null,
           alive: friendly.alive,
-          speed: Number((friendly.speed || 0).toFixed(1)),
+          speed: Number((friendly.wingSpeed ?? friendly.speed ?? 0).toFixed(1)),
           propSpinners: friendly.model && friendly.model.propSpinners
             ? friendly.model.propSpinners.length
             : 0,
@@ -42564,6 +42564,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!friendly.alive) return;
       friendly.alive = false;
       friendly.hp = 0;
+      // The hit flash decays in updateFriendlies' LIVING branch, so a hull that
+      // died mid-flash kept the white emissive for the whole of its fall (or
+      // its eleven-second sink). Enemies hide their model on death and never
+      // show this; a friendly wreck is watched all the way down.
+      friendly.hitFlash = 0;
+      if (friendly.model && friendly.model.standardMaterials) {
+        updateAircraftFlash(friendly.model, 0);
+      }
       // Three deaths, one per kind of hull. The transport flies down burning
       // for 5.5s; a landing ship settles into the water over the same 11s the
       // enemy hulls take; the carrier has none, because losing it ends the
@@ -42729,12 +42737,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // because of what the aircraft IS. Both helpers return immediately on
         // an empty array, so a friendly with neither pays one property read.
         if (friendly.model) {
-          spinPropDiscs(friendly.model, friendly.speed || 0, dt);
+          // The wingman keeps its airspeed in `wingSpeed`; every other friendly
+          // uses `speed`. Reading only one of them meant the wingman animated
+          // as though it were parked - which is the same "modelled but dead"
+          // failure the propellers had.
+          const airspeed = friendly.wingSpeed ?? friendly.speed ?? 0;
+          // Exhaust. The player's flame pulses and the enemies' do too; the
+          // friendlies' were frozen at the size they were built with, right
+          // beside the player's own for the whole sortie.
+          if (friendly.model.flames && friendly.model.flames.length > 0) {
+            const pulse = 1 + Math.sin(time * 12 + (friendly.seed || 0)) * 0.14;
+            for (const flame of friendly.model.flames) {
+              flame.scale.z = THREE.MathUtils.lerp(flame.scale.z, pulse, damping(0.002, dt));
+            }
+          }
+          spinPropDiscs(friendly.model, airspeed, dt);
           // deployFriendlies takes any registered airframe, so an escorted
           // flight can be a swing wing (F-14, Su-24M, Tu-22M3...). Cruise speed
           // is the band a friendly flies in, so it reads as wings-forward
           // transit rather than a jet frozen mid-configuration.
-          sweepWingPivots(friendly.model, ((friendly.speed || 0) - 120) / 200, dt);
+          sweepWingPivots(friendly.model, (airspeed - 120) / 200, dt);
         }
         if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
@@ -46463,6 +46485,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateFlightEffects(dt) {
       const playing = gameState === STATE_PLAYING;
       updateWingSweep(dt);
+      // Mirror of the friendly fix: nothing drove the player's discs either, so
+      // a propeller airframe added to the hangar roster would fly with them
+      // painted on. Every jet in the roster returns an empty array here.
+      spinPropDiscs(playerModel, gameState === STATE_PLAYING ? playerSpeed : 0, dt);
 
       // Wingtip vortex contrails while pulling hard or at full boost.
       if (playing && (currentGLoad > 0.95 || (boostActive && playerSpeed > BOOST_SPEED * 0.72))) {
