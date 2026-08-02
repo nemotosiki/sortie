@@ -1740,7 +1740,14 @@
       border: 1px solid rgba(110, 190, 255, 0.22);
       background: rgba(4, 13, 25, 0.72);
     }
-    .difficultyArrow { color: rgba(160, 200, 230, 0.55); font-size: 12px; }
+    .difficultyArrow {
+      color: rgba(160, 200, 230, 0.55);
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .difficultyArrow:hover,
+    .difficultyArrow:focus-visible { color: rgba(210, 235, 255, 0.95); outline: none; }
     .difficultyValue {
       font-size: 18px;
       letter-spacing: 0.16em;
@@ -2491,9 +2498,9 @@
           <div class="menuRankBig" id="briefingPar">—</div>
           <div class="menuRecordHeader">[ DIFFICULTY ]</div>
           <div class="difficultySelector" id="briefingDifficultyRow">
-            <span class="difficultyArrow">◀</span>
+            <span class="difficultyArrow" id="difficultyPrev" role="button" tabindex="0">◀</span>
             <span class="difficultyValue" id="briefingDifficultyValue">NORMAL</span>
-            <span class="difficultyArrow">▶</span>
+            <span class="difficultyArrow" id="difficultyNext" role="button" tabindex="0">▶</span>
           </div>
         </aside>
       </div>
@@ -2529,7 +2536,8 @@
         <span><span class="legendKey">↑↓ / D-PAD</span> 機体</span>
         <span><span class="legendKey">ENTER / ○</span> 出撃</span>
         <span><span class="legendKey">ESC / □</span> ミッション選択</span>
-        <span><span class="legendKey">SPACE</span>機銃 <span class="legendKey">ENTER</span>ミサイル <span class="legendKey">X</span>兵装切替 <span class="legendKey">F</span>フレア <span class="legendKey">C</span>カメラ <span class="legendKey">M</span>操作モード <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速</span>
+        <span><span class="legendKey">W/S</span>ピッチ <span class="legendKey">A/D</span>ロール <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速 <span class="legendKey">TAB</span>目標切替</span>
+        <span><span class="legendKey">SPACE</span>機銃 <span class="legendKey">ENTER</span>ミサイル <span class="legendKey">X</span>兵装切替 <span class="legendKey">F</span>フレア <span class="legendKey">C</span>カメラ <span class="legendKey">M</span>操作モード</span>
         <button id="startBtn" class="actionButton" type="button">LAUNCH</button>
       </footer>
     </div>
@@ -35343,6 +35351,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ensureAudio();
       confirmMissionSelection();
     });
+    // The arrows LOOK like controls, so they have to work like them. Before
+    // this the only way to change difficulty was the keyboard's left/right -
+    // a player who had clicked their way through the campaign card, the sortie
+    // list and the hangar found the one row that ignored the mouse.
+    for (const [id, delta] of [["difficultyPrev", -1], ["difficultyNext", 1]]) {
+      const arrow = document.getElementById(id);
+      if (!arrow) continue;
+      arrow.addEventListener("click", () => {
+        ensureAudio();
+        cycleDifficulty(delta);
+      });
+      arrow.addEventListener("keydown", (event) => {
+        if (event.code !== "Enter" && event.code !== "Space") return;
+        event.preventDefault();
+        ensureAudio();
+        cycleDifficulty(delta);
+      });
+    }
+
     ui.briefingNextBtn.addEventListener("click", () => {
       ensureAudio();
       advanceBriefing();
