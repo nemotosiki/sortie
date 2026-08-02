@@ -33637,51 +33637,49 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
-      // AC4-7: the LADDER IS ANCHORED ON THE PIPPER. It never leaves the
-      // middle of the canopy at any attitude - dive, climb, inverted, the scale
-      // is always right there around the boresight. The rung that sits on the
-      // pipper is the current pitch, and the numbers count outward from it.
+      // AC4-7. The LADDER SLIDES - it is a scale, and a scale has to travel
+      // past a fixed index to read anything. What is fixed is the PIPPER: the
+      // aircraft symbol sits at the middle of the canopy and never moves, and
+      // the rung that happens to be beside it is the current pitch.
       //
-      // This is the part I kept getting wrong. Both earlier attempts translated
-      // the whole strip with the nose - gently rather than at world scale, but
-      // still translating - and translating is exactly the thing that puts the
-      // scale somewhere other than where you are looking. In the reference the
-      // aircraft is in a steep dive and the rungs are still stacked tight
-      // around the pipper; only the HORIZON BAR has travelled, because the
-      // horizon is a real place in the world and has to be where it really is.
+      // Each rung keeps its own label for good. The 20 rung is the 20-degree
+      // rung wherever it has slid to, and level is always the rung marked 0.
+      // Pinning the rungs and rewriting the numbers instead - which is what the
+      // previous version did - makes a dial, not a ladder: the scale stands
+      // still, the digits churn, and the 20 rung ends up hidden behind the
+      // pipper it is supposed to be read against.
       //
-      // So: rungs are pinned to fixed slots and RELABELLED from the current
-      // pitch, and the horizon bar alone is placed by attitude. The reading
-      // moves, the instrument does not.
+      // The travel is on the INSTRUMENT's scale, a fixed px/deg, not on the
+      // world's focal*tan(). That is the whole difference from the conformal
+      // ladder: at 20 degrees nose-up this has moved about a hundred pixels
+      // rather than six hundred, so the scale is still around the pipper
+      // instead of somewhere off the top of the frame.
       const pitchDeg = THREE.MathUtils.radToDeg(pitchCam);
-      // Quantised to the rung step so the labels tick over cleanly instead of
-      // churning every frame.
-      const centreDeg = Math.round(pitchDeg / PITCH_RUNG_STEP) * PITCH_RUNG_STEP;
+      // Where the 0 rung - level - currently sits, measured from the pipper.
+      // Everything on the ladder hangs off this one number.
+      const ladderSlide = pitchDeg * FIXED_LADDER_PX_PER_DEG;
+      // Culled against the frame, not against the ladder's own middle: the
+      // whole strip travels, so a limit anchored at screen centre throws away
+      // the trailing half the moment you pitch.
+      const ladderCull = frameHeight * 0.75;
+      const placeLadder = (el, deg) => {
+        // MINUS deg: screen y grows downward, so the higher-pitch rungs go up.
+        const offset = ladderSlide - deg * FIXED_LADDER_PX_PER_DEG;
+        if (Math.abs(offset) > ladderCull) {
+          el.classList.add("hidden");
+          return;
+        }
+        el.classList.remove("hidden");
+        el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
+      };
+      placeLadder(ui.horizonLine, 0);
       for (let i = 0; i < pitchRungNodes.length; i += 1) {
         const rung = pitchRungNodes[i];
-        // MINUS: screen y grows downward, so the rung above the pipper is the
-        // higher pitch. Fixed slot - this never changes with attitude.
-        const offset = -rung.deg * FIXED_LADDER_PX_PER_DEG;
-        const value = centreDeg + rung.deg;
-        rung.el.classList.remove("hidden");
-        rung.el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
-        // Ticks point toward level: down when this rung is above the horizon,
-        // up when below. Read off the VALUE, since the slot no longer says it.
-        rung.el.classList.toggle("dive", value < 0);
-        const text = String(Math.abs(value));
+        placeLadder(rung.el, rung.deg);
+        // Ticks turn toward level - the label is fixed, so the slot says it.
+        rung.el.classList.toggle("dive", rung.deg < 0);
+        const text = String(Math.abs(rung.deg));
         if (rung.el.dataset.label !== text) rung.el.dataset.label = text;
-      }
-      // The horizon bar is the one honest position on this instrument: level is
-      // `pitchDeg` of scale below the boresight. It hides once level is off the
-      // ladder, rather than being pinned to an end where it would claim the
-      // horizon is somewhere it is not.
-      const horizonOffset = pitchDeg * FIXED_LADDER_PX_PER_DEG;
-      const horizonReach = (PITCH_RUNG_MAX + PITCH_RUNG_STEP) * FIXED_LADDER_PX_PER_DEG;
-      if (Math.abs(horizonOffset) > horizonReach) {
-        ui.horizonLine.classList.add("hidden");
-      } else {
-        ui.horizonLine.classList.remove("hidden");
-        ui.horizonLine.style.top = `calc(50% + ${horizonOffset.toFixed(2)}px)`;
       }
     }
 
