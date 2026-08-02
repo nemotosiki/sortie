@@ -2775,7 +2775,8 @@
     // spread would give, which is what makes buying up the list feel like
     // progress. The 0.10 floor keeps a weak airframe from costing nothing.
     const PRICE_WEIGHTS = Object.freeze({
-      speed: 0.20, mobility: 0.25, firepower: 0.25, defense: 0.15, stability: 0.15, ground: 0.10
+      // accel taken out of speed's old share now that it is its own bar.
+      speed: 0.14, accel: 0.06, mobility: 0.25, firepower: 0.25, defense: 0.15, stability: 0.15, ground: 0.10
     });
     const PRICE_CURVE = 1.6;
     const PRICE_FLOOR_FRACTION = 0.10;
@@ -3354,8 +3355,13 @@
         label: "LASM",
         kind: "aam",
         damage: 190,
-        turnRateDeg: 55,
-        maxSpeed: 430,
+        // 106 keeps the turn RADIUS at the 448m every terminal profile was
+        // tuned against: radius = v/omega, and the 2026-08-02 speed raise to
+        // 833 m/s would otherwise have doubled it - the round could no
+        // longer pull through its own dive and fell in the sea short of the
+        // hull.
+        turnRateDeg: 106,
+        maxSpeed: 833,
         life: 14,
         multi: 1,
         // Two tubes on a five-second clock - the standard missile's exact
@@ -3366,7 +3372,7 @@
         reload: 5,
         // XLAA-class standoff: the whole point is launching from outside the
         // fleet's SAM envelope, and 1600 sat inside the Aegis' 1700.
-        lockRange: 2000,
+        lockRange: 4000,
         // Ships only. The 4AGM owns the ground; the wave-top profile, the
         // CIWS immunity and the hull-sized fuse are all naval hardware.
         lockKind: "ship",
@@ -3384,12 +3390,12 @@
         kind: "aam",
         damage: 98,
         turnRateDeg: 90,
-        maxSpeed: 640,
+        maxSpeed: 833,
         life: 12,
         multi: 1,
         tubes: 2,
         reload: 8,
-        lockRange: 2000,
+        lockRange: 4000,
         lockKind: "air"
       }),
       // F-35C: the eight-target salvo cut down to four. Same acquisition path as
@@ -3414,13 +3420,13 @@
         kind: "aam",
         damage: 90,
         turnRateDeg: 190,
-        maxSpeed: 520,
+        maxSpeed: 556,
         life: 9.5,
         multi: 4,
         multiLockTime: 0.22,
         tubes: 4,
         reload: 8,
-        lockRange: null,
+        lockRange: 2000,
         lockKind: "air"
       }),
       // F-22: one trigger, up to eight targets, at 78 damage a round. Same 0.22 s
@@ -3433,13 +3439,13 @@
         kind: "aam",
         damage: 78,
         turnRateDeg: 48,
-        maxSpeed: 520,
+        maxSpeed: 556,
         life: 9.5,
         multi: 8,
         multiLockTime: 0.22,
         tubes: 8,
         reload: 12,
-        lockRange: null,
+        lockRange: 2000,
         lockKind: "air"
       }),
       // Gripen E: six targets to the 8AAM's eight and the 4AAM's four. The
@@ -3456,7 +3462,7 @@
         kind: "aam",
         damage: 84,
         turnRateDeg: 95,
-        maxSpeed: 520,
+        maxSpeed: 556,
         life: 9.5,
         multi: 6,
         // 0.22 は 4AAM/8AAM/4AGM と同じ刻み。ここだけ 0.45 のままだと 6 目標に
@@ -3465,7 +3471,7 @@
         multiLockTime: 0.22,
         tubes: 6,
         reload: 10,
-        lockRange: null,
+        lockRange: 2000,
         lockKind: "air"
       }),
       // F-4: free-fall bomb, no lock at all - the CCIP marker is the sight.
@@ -3503,7 +3509,7 @@
         kind: "aam",
         damage: 120,
         turnRateDeg: 120,
-        maxSpeed: 460,
+        maxSpeed: 556,
         life: 11,
         multi: 4,
         // 0.22 s a step for the same reason the 4AAM has it: 0.45 wanted all four
@@ -3515,7 +3521,7 @@
         // "4AGM that cannot shoot four" the report describes.
         tubes: 4,
         reload: 8,
-        lockRange: 1500,
+        lockRange: 2000,
         // Ground only - the LASM owns the water. The loft/top-attack profile
         // is built for batteries and armour, not hulls.
         lockKind: "ground",
@@ -3535,7 +3541,7 @@
         normalRollSpring: 38, rollRateLimitDeg: 138, turnRateDeg: 29,
         rollDamping: 9.6, stallWarnSpeed: 94, stallEntrySpeed: 82, stallAuthorityLoss: 0.7, structuralG: 3.0,
         gunDamage: 18, missileDamage: 98,
-        boostResponse: 0.55, brakeResponse: 0.52, cruiseResponse: 0.6,
+        boostResponse: 0.76, brakeResponse: 0.52, cruiseResponse: 0.6,
         missileCapacity: 20, maxHealth: 100,
         spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.3, tipZ: 3.3,
@@ -3570,7 +3576,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
         normalRollSpring: 44, rollRateLimitDeg: 150, turnRateDeg: 31,
         rollDamping: 11.0, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.52, structuralG: 2.9,
         gunDamage: 18, missileDamage: 98,
-        boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.53,
+        boostResponse: 0.80, brakeResponse: 0.46, cruiseResponse: 0.53,
         missileCapacity: 24, maxHealth: 115,
         spw: Object.freeze({ key: "aam6", capacity: 24 }),
         tipSpan: 6.6, tipZ: 2.5,
@@ -3598,7 +3604,7 @@ canopy: 0x9fe6ff, exhaust: 0x9fd8ff, scale: 0.92, variant: "gripen"
         normalRollSpring: 36, rollRateLimitDeg: 130, turnRateDeg: 28,
         rollDamping: 9.4, stallWarnSpeed: 96, stallEntrySpeed: 84, stallAuthorityLoss: 0.72, structuralG: 2.9,
         gunDamage: 18, missileDamage: 98,
-        boostResponse: 0.56, brakeResponse: 0.54, cruiseResponse: 0.62,
+        boostResponse: 0.82, brakeResponse: 0.54, cruiseResponse: 0.62,
         missileCapacity: 24, maxHealth: 95,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 8.1, tipZ: 3.1,
@@ -3624,7 +3630,7 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
         normalRollSpring: 42, rollRateLimitDeg: 145, turnRateDeg: 33,
         rollDamping: 11.8, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.5, structuralG: 3.15,
         gunDamage: 20, missileDamage: 98,
-        boostResponse: 0.52, brakeResponse: 0.5, cruiseResponse: 0.58,
+        boostResponse: 0.80, brakeResponse: 0.5, cruiseResponse: 0.58,
         missileCapacity: 24, maxHealth: 135,
         spw: Object.freeze({ key: "qaam", capacity: 4 }),
         tipSpan: 7.9, tipZ: 2.9,
@@ -3644,7 +3650,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.02, variant: "hornet"
         normalRollSpring: 43, rollRateLimitDeg: 157, turnRateDeg: 34,
         rollDamping: 11.4, stallWarnSpeed: 86, stallEntrySpeed: 74, stallAuthorityLoss: 0.55, structuralG: 3.1,
         gunDamage: 22, missileDamage: 98,
-        boostResponse: 0.48, brakeResponse: 0.48, cruiseResponse: 0.56,
+        boostResponse: 0.72, brakeResponse: 0.48, cruiseResponse: 0.56,
         missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 8.55, tipZ: 2.7,
@@ -3674,7 +3680,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.04, variant: "lancer"
         normalRollSpring: 41, rollRateLimitDeg: 143, turnRateDeg: 32,
         rollDamping: 10.9, stallWarnSpeed: 84, stallEntrySpeed: 72, stallAuthorityLoss: 0.6, structuralG: 3.05,
         gunDamage: 21, missileDamage: 98,
-        boostResponse: 0.5, brakeResponse: 0.49, cruiseResponse: 0.57,
+        boostResponse: 0.78, brakeResponse: 0.49, cruiseResponse: 0.57,
         missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 9.6, tipZ: 3.1,
@@ -3707,7 +3713,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         normalRollSpring: 26, rollRateLimitDeg: 94, turnRateDeg: 18,
         rollDamping: 8.2, stallWarnSpeed: 108, stallEntrySpeed: 96, stallAuthorityLoss: 0.8, structuralG: 2.5,
         gunDamage: 20, missileDamage: 98,
-        boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.66,
+        boostResponse: 0.72, brakeResponse: 0.6, cruiseResponse: 0.66,
         missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "xlaa", capacity: 16 }),
         tipSpan: 9.4, tipZ: 2.2,
@@ -3739,7 +3745,7 @@ canopy: 0x8fe0ff, exhaust: 0xbfd4ff, scale: 1.16, variant: "foxhound"
         normalRollSpring: 44, rollRateLimitDeg: 146, turnRateDeg: 33,
         rollDamping: 12.0, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.48, structuralG: 3.1,
         gunDamage: 21, missileDamage: 98,
-        boostResponse: 0.50, brakeResponse: 0.50, cruiseResponse: 0.56,
+        boostResponse: 0.82, brakeResponse: 0.50, cruiseResponse: 0.56,
         missileCapacity: 24, maxHealth: 165,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 7.6, tipZ: 2.8,
@@ -3766,7 +3772,7 @@ canopy: 0xc8b47a, exhaust: 0xa8d8ff, scale: 1.0, variant: "lightning"
         normalRollSpring: 46, rollRateLimitDeg: 165, turnRateDeg: 36,
         rollDamping: 12.6, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.44, structuralG: 3.3,
         gunDamage: 22, missileDamage: 98,
-        boostResponse: 0.47, brakeResponse: 0.47, cruiseResponse: 0.55,
+        boostResponse: 0.76, brakeResponse: 0.47, cruiseResponse: 0.55,
         missileCapacity: 28, maxHealth: 150,
         spw: Object.freeze({ key: "lasm", capacity: 16 }),
         tipSpan: 7.5, tipZ: 2.9,
@@ -3792,7 +3798,7 @@ canopy: 0x8fe0ff, exhaust: 0x9fd8ff, scale: 0.99, variant: "rafale"
         normalRollSpring: 45, rollRateLimitDeg: 161, turnRateDeg: 35,
         rollDamping: 12.8, stallWarnSpeed: 80, stallEntrySpeed: 68, stallAuthorityLoss: 0.46, structuralG: 3.3,
         gunDamage: 24, missileDamage: 98,
-        boostResponse: 0.45, brakeResponse: 0.46, cruiseResponse: 0.54,
+        boostResponse: 0.72, brakeResponse: 0.46, cruiseResponse: 0.54,
         missileCapacity: 28, maxHealth: 155,
         spw: Object.freeze({ key: "xlaa", capacity: 18 }),
         tipSpan: 7.8, tipZ: 2.7,
@@ -3830,7 +3836,7 @@ canopy: 0x8fe0ff, exhaust: 0xbfe4ff, scale: 1.03, variant: "typhoon"
         normalRollSpring: 52, rollRateLimitDeg: 190, turnRateDeg: 41,
         rollDamping: 9.5, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.40, structuralG: 3.35,
         gunDamage: 23, missileDamage: 98,
-        boostResponse: 0.46, brakeResponse: 0.46, cruiseResponse: 0.54,
+        boostResponse: 0.74, brakeResponse: 0.46, cruiseResponse: 0.54,
         missileCapacity: 24, maxHealth: 150,
         spw: Object.freeze({ key: "qaam", capacity: 5 }),
         tipSpan: 8.9, tipZ: 2.6,
@@ -3853,7 +3859,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.10, variant: "terminator"
         normalRollSpring: 27, rollRateLimitDeg: 100, turnRateDeg: 21,
         rollDamping: 7.5, stallWarnSpeed: 104, stallEntrySpeed: 92, stallAuthorityLoss: 0.88, structuralG: 2.6,
         gunDamage: 14, missileDamage: 98,
-        boostResponse: 0.66, brakeResponse: 0.62, cruiseResponse: 0.7,
+        boostResponse: 0.86, brakeResponse: 0.62, cruiseResponse: 0.7,
         missileCapacity: 16, maxHealth: 125,
         spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 9.1, tipZ: 2.4,
@@ -3924,7 +3930,7 @@ canopy: 0x9fd8e8, exhaust: 0xbfd9d0, scale: 1.06, variant: "hog"
         normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
         rollDamping: 13.2, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
         gunDamage: 26, missileDamage: 98,
-        boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
+        boostResponse: 0.70, brakeResponse: 0.44, cruiseResponse: 0.52,
         missileCapacity: 28, maxHealth: 200,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         tipSpan: 6.85, tipZ: 2.7,
@@ -4044,7 +4050,7 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         normalRollSpring: 34, rollRateLimitDeg: 132, turnRateDeg: 28,
         rollDamping: 8.4, stallWarnSpeed: 98, stallEntrySpeed: 86, stallAuthorityLoss: 0.78, structuralG: 2.8,
         gunDamage: 13, missileDamage: 98,
-        boostResponse: 0.62, brakeResponse: 0.58, cruiseResponse: 0.66,
+        boostResponse: 0.84, brakeResponse: 0.58, cruiseResponse: 0.66,
         // 98 = one missile, the only crewed airframe in the set at that mark
         // (the UAV is the other). This is what "weak early enemy" means here,
         // and it is a full step below the F-4's 125.
@@ -4067,7 +4073,7 @@ canopy: 0x8fe0ff, exhaust: 0xffb98a, scale: 0.74, variant: "fishbed"
         normalRollSpring: 40, rollRateLimitDeg: 146, turnRateDeg: 32,
         rollDamping: 10.6, stallWarnSpeed: 88, stallEntrySpeed: 76, stallAuthorityLoss: 0.58, structuralG: 3.05,
         gunDamage: 19, missileDamage: 98,
-        boostResponse: 0.53, brakeResponse: 0.52, cruiseResponse: 0.60,
+        boostResponse: 0.74, brakeResponse: 0.52, cruiseResponse: 0.60,
         // Every number sits between the F-16 and the F/A-18F: the enemy's
         // ordinary jet, with no weakness worth exploiting and no edge either.
         missileCapacity: 20, maxHealth: 135,
@@ -4093,7 +4099,7 @@ canopy: 0x8fe0ff, exhaust: 0xffc79a, scale: 0.95, variant: "fulcrum"
         // lets it loiter over a fleet instead of running intercepts.
         rollDamping: 11.9, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.50, structuralG: 3.15,
         gunDamage: 21, missileDamage: 98,
-        boostResponse: 0.49, brakeResponse: 0.49, cruiseResponse: 0.56,
+        boostResponse: 0.74, brakeResponse: 0.49, cruiseResponse: 0.56,
         missileCapacity: 24, maxHealth: 165,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 9.2, tipZ: 2.9,
@@ -4113,7 +4119,7 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
         normalRollSpring: 48, rollRateLimitDeg: 172, turnRateDeg: 37,
         rollDamping: 12.5, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.44, structuralG: 3.35,
         gunDamage: 24, missileDamage: 98,
-        boostResponse: 0.45, brakeResponse: 0.46, cruiseResponse: 0.54,
+        boostResponse: 0.74, brakeResponse: 0.46, cruiseResponse: 0.54,
         // 196 = 98 x 2 exactly: two missiles kill it and one never can. The
         // hardest enemy airframe short of the F-22's 200, which is what an
         // ace is supposed to feel like.
@@ -4157,7 +4163,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
         rollDamping: 13.2, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
         gunDamage: 26, missileDamage: 98,
-        boostResponse: 0.42, brakeResponse: 0.44, cruiseResponse: 0.52,
+        boostResponse: 0.70, brakeResponse: 0.44, cruiseResponse: 0.52,
         missileCapacity: 28, maxHealth: 200,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         tipSpan: 7.0, tipZ: 2.8,
@@ -4183,7 +4189,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         normalRollSpring: 56, rollRateLimitDeg: 205, turnRateDeg: 47,
         rollDamping: 6.8, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.45, structuralG: 3.9,
         gunDamage: 24, missileDamage: 98,
-        boostResponse: 0.46, brakeResponse: 0.4, cruiseResponse: 0.54,
+        boostResponse: 0.76, brakeResponse: 0.4, cruiseResponse: 0.54,
         missileCapacity: 24, maxHealth: 165,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         // Forward-swept: the geometric tip is AHEAD of the root, so tipZ is
@@ -4210,7 +4216,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         normalRollSpring: 30, rollRateLimitDeg: 112, turnRateDeg: 24,
         rollDamping: 8.2, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.84, structuralG: 2.7,
         gunDamage: 16, missileDamage: 98,
-        boostResponse: 0.62, brakeResponse: 0.6, cruiseResponse: 0.68,
+        boostResponse: 0.84, brakeResponse: 0.6, cruiseResponse: 0.68,
         missileCapacity: 20, maxHealth: 135,
         spw: Object.freeze({ key: "xlaa", capacity: 12 }),
         tipSpan: 7.4, tipZ: 2.6,
@@ -15233,7 +15239,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // would have taxed every ordinary shot in the game to buy that nothing, so
     // the break is paid for at the fuse instead - see proximityFuseFor().
     const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(190);
-    const MISSILE_MAX_SPEED = 520;
+    const MISSILE_MAX_SPEED = 556;
     const MISSILE_LIFE = 9.5;
     // Proximity fuse against an aircraft, and the one lever that makes a break
     // turn worth flying. No airframe in the table can drag the miss distance past
@@ -19200,7 +19206,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : 0;
       const brakeTargetSpeed = BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP * highGBrakeLoad;
       const targetSpeed = boost ? BOOST_SPEED : (brake ? brakeTargetSpeed : CRUISE_SPEED);
-      const speedResponse = boost
+      // Acceleration and deceleration are different machines: gaining speed
+      // is the ENGINE (boostResponse - the per-airframe acceleration stat,
+      // T/W-graded), losing it is drag or the airbrake. Keying on the mode
+      // instead of the direction let a jet recover from a brake at its
+      // cruise-settle rate, which was quicker than its own engine.
+      const speedResponse = targetSpeed > playerSpeed
         ? BOOST_SPEED_RESPONSE_K
         : (brake ? BRAKE_SPEED_RESPONSE_K : CRUISE_SPEED_RESPONSE_K);
       playerSpeed = THREE.MathUtils.lerp(playerSpeed, targetSpeed, damping(speedResponse, dt));
@@ -30737,10 +30748,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // than absolute - only computed once, on boot.
     function computeAircraftSpecBars() {
       const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
-      // SPEED covers both top end and how fast it gets there (smaller response
-      // constant = quicker), so a fast-but-sluggish jet doesn't read as best.
-      const speedScore = (spec) => spec.boostSpeed - spec.boostResponse * 320;
+      // SPEED is pure top end now that acceleration has its own bar - folding
+      // both into one number is exactly what hid the difference.
+      const speedScore = (spec) => spec.boostSpeed;
       const speeds = specs.map(speedScore);
+      // ACCEL: the engine. boostResponse is a damping base where larger is
+      // slower, so -ln maps it onto "bigger is quicker" linearly in 1/tau.
+      // Deceleration (brake/cruise settle) is deliberately not displayed.
+      const accelScore = (spec) => -Math.log(spec.boostResponse);
+      const accels = specs.map(accelScore);
       const armors = specs.map((spec) => spec.maxHealth);
       // MOBILITY: how quickly it can point somewhere else, across all four axes.
       // Each axis is divided by the fleet average first, otherwise roll (53-96
@@ -30796,6 +30812,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const spec of specs) {
         bars[spec.id] = {
           speed: statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100,
+          accel: statPercent(accelScore(spec), Math.min(...accels), Math.max(...accels)) / 100,
           mobility: statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100,
           stability: statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100,
           firepower: statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100,
@@ -30852,6 +30869,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const bars = (aircraftSpecBarCache || {})[spec.id] || {};
       const rows = [
         ["SPEED", "speed"],
+        ["ACCEL", "accel"],
         ["MOBILITY", "mobility"],
         ["STABILITY", "stability"],
         ["AIR-TO-AIR", "firepower"],
