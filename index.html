@@ -767,8 +767,11 @@
       transform: translate(-50%, -50%);
       /* Green while the seeker is still working, red the moment it locks -
          the AC read. Amber used to mean "acquiring", which put a warning
-         colour on the single most common state in the game. */
-      border: 1px solid #78ff9d;
+         colour on the single most common state in the game.
+         The frame takes currentColor rather than naming a colour of its own:
+         .locked only ever restated `color`, so a literal here stayed behind
+         when the lock came up and left a green frame around a red box. */
+      border: 1px solid currentColor;
       color: #78ff9d;
       filter: drop-shadow(0 0 6px rgba(65, 255, 126, 0.62));
       will-change: left, top;
@@ -797,6 +800,12 @@
       filter: drop-shadow(0 0 8px rgba(255, 68, 84, 0.95));
       animation: lockPulse 0.55s ease-in-out infinite alternate;
     }
+
+    /* The percentage and the bar exist to show a lock BEING taken. Once it is
+       taken the red pulsing frame says so on its own, and "LOCKED" plus a
+       full-width bar under it was the same fact printed three times. */
+    #targetBox.locked #lockLabel,
+    #targetBox.locked #lockMeter { display: none; }
 
     #lockLabel {
       position: absolute;
@@ -1070,23 +1079,13 @@
       opacity: 0.9;
     }
 
-    /* 8AAM multi-lock: every round in the salvo lights its own box, so the
-       player can count the shots before pulling the trigger. */
+    /* Multi-lock: every round in the salvo lights its own box red, so the
+       player can count the shots before pulling the trigger. The frames used
+       to be captioned "LOCK" as well; the colour already carries it, and on a
+       tight formation the captions stacked into each other. */
     .enemyMarker.multiLocked {
       opacity: 0.95;
       visibility: visible;
-    }
-
-    .enemyMarker.multiLocked::after {
-      content: "LOCK";
-      position: absolute;
-      left: 50%;
-      bottom: calc(100% + 3px);
-      transform: translateX(-50%);
-      color: currentColor;
-      font-size: 8px;
-      font-weight: 800;
-      letter-spacing: 0.14em;
     }
 
     /* CCIP: where an unguided bomb released this instant would land. */
