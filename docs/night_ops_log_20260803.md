@@ -36,3 +36,37 @@
 - スクリプトに**引き継ぎ条項**を追加（前任ドラフトは活かすか書き直し・検証は自分でやり直し・
   前任の残存http.serverはkillしてから立て直し）→ **Opus版W1起動**（task w0fy93kan、9体、
   `{model:'opus', effort:'high'}`）。spawn確認済み。以降W2-W4も全部Opus
+
+## 23:20-23:45 ★W1出荷完了（9/9、コミット3b6d9ad・push済み）
+
+- Opus並列9体が18分で全機一発完了（リトライ0・ドロップ0）。前任Fableドラフト6機は
+  引き継がれ、うち複数で前任の潜在バグ（geometry.panel=単位箱の寸法誤解等）をOpusが検出・是正
+- マージ: 9件inline全成功、gate `no losses (+36 entries=9機×4テーブルで整合)`→`--update`で
+  スナップショット再ベースライン込みコミット
+- 検収: 全9機の4面図を本番リポジトリ経由で撮影し目視合格（形状アイデンティティ3点全機クリア）
+- **W2起動済み**（task wkh4hwv3d、艦3+地上4=7体。commandVehicleは既存commandPost/mobileCommand
+  発見につき§3規定でスキップ=ロースターは27→26に）
+- 撮影の新しい罠2件: ①並走msedgeとのプロファイル競合→`--user-data-dir`分離で解決
+  ②bashの`\\${k}`エスケープでパス変数が展開されない→**スクショパスはスラッシュ区切りで書く**
+- 並走セッションは`1ba7b9f`(Batch2: デバッグフック修正系)をコミット。こちらのW1はその上に無衝突で着地
+
+## 23:43-00:00 ★W2出荷完了（7/7）+ 並走セッションの実害を検知（未介入）
+
+- Opus並列7体が19分で全機一発完了（リトライ0・ドロップ0）。補給艦/救難船/ROOT保管艦/
+  自律SAM/ROOT中継車/地雷除去車/移動病院車。7枚とも4面図検収合格
+- 移動指揮車(commandVehicle)は**既存のcommandPost/mobileCommandを発見しスキップ**（§3規定通り）→
+  ロースターは27→26ユニットへ
+- **★並走セッションの未コミット作業がページを壊している（こちらは無介入）**:
+  マージ直後のgateが `FAIL - could not read the registry snapshot` に転落。
+  切り分け手順=①index.htmlとsrc/registry/registry-snapshot.jsの**mtime静止を確認**(書き込み途中の
+  誤検知を除外) ②playwrightでコンソール捕捉 → `ReferenceError: Cannot access 'missionRecords'
+  before initialization`（TDZ） ③**ステージ済み版(HEAD+自分のW2ペイロードのみ)を隔離コピーで起動
+  → `hasSnapshot: true` で健全**と確認。つまり**HEADも自分の成果も無傷、壊れているのは相手の
+  未コミット作業ツリーだけ**。相手の担当領域なので**触らず、朝の申告リストへ**
+- 上記により§6-6の規定（相手が未コミットの間はスナップショットjsonを更新しない）を適用し、
+  W2は**tools/registry_snapshot.jsonを更新せずコミット**。gateの+14ドリフトは正常（lossesのみが
+  ブロッカー）。W1時点では相手がコミット済みだったので`--update`を実行済み
+- **再利用可能な検証レシピ**: 相手の編集と自分の成果が同居する作業ツリーでゲートが落ちたら、
+  `git show :index.html`（ステージ済み版）を隔離ディレクトリへ出してplaywrightで起動し、
+  `window.__REGISTRY_SNAPSHOT__`の有無で犯人を切り分ける。スクリプトは
+  scratchpad/model_batch3/isolate + /tmp/dbg3.mjs の形

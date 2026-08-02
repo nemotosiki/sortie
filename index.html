@@ -26274,6 +26274,2770 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "aircraft_keyDistributor"
     ); // @payload:aircraft_keyDistributor
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+
+        // The cargo ship is the template, not the Aegis: this is an unarmed auxiliary
+        // of almost exactly its size (200m LOA both), and it has already done the
+        // work of neutering the landing-ship flag and the gun block that the frigate
+        // and the Aegis carry live. Everything inherited through the spread is a
+        // placeholder - see the BALANCE TODO below.
+        const cargo = SHIP_TYPES.cargoShip;
+        if (!cargo) {
+          throw new Error("[ship-replenishOiler] SHIP_TYPES.cargoShip is the template and is missing");
+        }
+
+        ctx.addShipType("replenishOiler", {
+          ...cargo,
+          key: "replenishOiler",
+          surface: true,
+          // `landing` is already false on the cargo template, but it is restated
+          // here rather than inherited silently: a hull that steers itself at the
+          // nearest beach is a behaviour, not a paint job, and the one line that
+          // turns it on is worth being explicit about on every auxiliary that copies
+          // from another auxiliary.
+          landing: false,
+          label: "OILER",
+          role: "Replenishment Oiler",
+
+          // ---- Dimensions: 200m LOA, 26m beam -----------------------------------
+          // Same length as the cargo ship, so hitRadius/halflen/offsets are its
+          // numbers; beam is 6m finer, so the x extents come in with it. `top` is
+          // measured off the tallest SOLID mass a crashing aircraft can be stopped
+          // by - the gantry crossheads at y 46 - and not off the mast whip above the
+          // bridge, which an aeroplane goes through rather than into.
+          hitRadius: 92,
+          crash: Object.freeze({ halfLen: 100, halfBeam: 14, top: 46 }),
+          // x 62 is NOT the beam: the hose arms reach x +/-30 and the lock box has to
+          // contain the hardware the player can see. y 56 is waterline to masthead,
+          // z 200 the full LOA.
+          hitBox: Object.freeze({ x: 62, y: 56, z: 200 }),
+          sternOffset: 96,
+          bowOffset: 98,
+          blastSpread: 40,
+          smokeOffset: 74,   // the funnel is aft at z +88, so the burning is too
+          smokeHeight: 22,
+
+          // BALANCE TODO: placeholder. hp / cruiseSpeed / turnRate / sinkDepth /
+          // radarColor / tracerColor / explosionColor are the cargo ship's, inherited
+          // verbatim by the spread above and NOT tuned for this hull. A tanker full
+          // of fuel should plausibly be the most spectacular thing in the group to
+          // kill and the slowest to turn, but none of that is decided here - this
+          // file ships the shape.
+          // BALANCE TODO: placeholder. The disarm below is the cargo ship's exact
+          // structural disarm, inherited and restated: aaMounts empty, aa.tracers 0
+          // and aa.range 0 rather than deleted keys, because registryAdd derives its
+          // required-key set from the intersection of every SHIP_TYPES entry (all of
+          // which carry aaMounts / aaHeight / aa) and updateShip dereferences
+          // spec.aa.cooldownMin unconditionally every frame. `aa: undefined` is a
+          // crash, not a disarm. Whether a fleet oiler should carry a self-defence
+          // CIWS at all is a balance question and is not answered here.
+          aaMounts: Object.freeze([]),
+          aaHeight: 0,
+          aa: Object.freeze({ range: 0, cooldownMin: 9999, cooldownSpread: 0, damage: 0, maxHitChance: 0, tracers: 0 }),
+          // No subsystems, the cargo ship's choice for the same reason: there is no
+          // gun, no VLS and no CIWS on the model, so there is no hardware to lock,
+          // and an empty-but-present array would still put the hull into the NEXT
+          // walk as a parent with nothing under it. Absent = the pre-M9 path, which
+          // is the right one for a civilian-pattern target.
+          subsystems: undefined,
+          // Auxiliary grey-green on the radar rather than the freighter's warm white
+          // or the fleet's amber, so an oiler is separable from both at a glance.
+          radarColor: "#cfe0cd"
+        });
+
+        ctx.addShipModel("replenishOiler", {
+          build(env) {
+            const { geometry, add, friendly, makeAircraftMaterial,
+                    hull, deck, house, dark, light, olive2, markings,
+                    extraMaterials } = env;
+
+            // Sera grey is the brief, and the five themed materials supply all of it
+            // (hull grey / deck grey / house grey / shadow / white). One extra paint
+            // is made here and one only: the hazard band every fuel deck in the world
+            // wears, used on the tank tops and the hose-arm ends so the RAS gear
+            // reads as gear rather than as more grey pipework. It goes into
+            // extraMaterials or it leaks with every hull that sinks.
+            const hazard = makeAircraftMaterial(friendly ? 0xb8862f : 0xc9922f, 0.18, 0.8);
+            extraMaterials.push(hazard);
+
+            // =====================================================================
+            // 1. Hull - 200m x 26m, moderate freeboard
+            // =====================================================================
+            // Parallel body z -85..+85 (170m), which is the 0.85-of-length proportion
+            // the Aegis and the cargo ship both draw. Deck edge at y 11.
+            add(geometry.panel, hull, 0, 5.5, 0, 26, 11, 170);
+            // Boot topping at the waterline - the same dark stripe every hull here
+            // wears at its own scale, kept thin so the side does not read as twice
+            // as deep as it is.
+            add(geometry.panel, dark, 0, 0.8, 0, 26.6, 1.7, 171);
+            // Forward section, narrowing into the stem.
+            add(geometry.panel, hull, 0, 5.5, -91, 18, 11, 14);
+            // Raked merchant stem: a shallow wedge, not a combatant's knife.
+            // geometry.shipBow is a four-sided cone whose sx is a RADIUS, so a hull
+            // 18 wide at the shoulder wants sx 9 to meet it flush - the Aegis'
+            // calibration (19-wide hull, sx 9.5) at this beam.
+            add(geometry.shipBow, hull, 0, 5.5, -99, 9, 8, 11, -Math.PI / 2);
+            // Bulbous forefoot - the merchant tell the cargo ship also carries, and
+            // the only round thing on the hull proper.
+            add(geometry.shipCylinder, dark, 0, 1.8, -101, 2.4, 7, 2.4, 0, 0, Math.PI / 2);
+            // Squared transom.
+            add(geometry.panel, hull, 0, 5.5, 92, 23, 11, 16);
+            add(geometry.panel, dark, 0, 5.5, 99.4, 20, 9, 1.2);
+            // Sheer strake: one light band along the deck edge running the whole
+            // parallel body. It is what separates the hull side from the tank deck
+            // above it in the side elevation, where the two are otherwise one slab.
+            add(geometry.panel, light, -13.2, 10.4, 0, 0.7, 1.1, 168);
+            add(geometry.panel, light, 13.2, 10.4, 0, 0.7, 1.1, 168);
+
+            // =====================================================================
+            // 2. Weather deck and the fore/aft ends
+            // =====================================================================
+            const DECK_Y = 11.6;
+            add(geometry.panel, deck, 0, DECK_Y - 0.5, -2, 25, 1.2, 180);
+            // Forecastle: raised bow deck with mooring winches and a plain pole mast.
+            // Deliberately low and plain - everything the eye should be spending on
+            // this ship is spent amidships.
+            add(geometry.panel, deck, 0, 13.4, -88, 17, 2.6, 20);
+            add(geometry.shipCylinder, dark, -4.4, 15.8, -92, 1.3, 1.3, 1.3);
+            add(geometry.shipCylinder, dark, 4.4, 15.8, -92, 1.3, 1.3, 1.3);
+            add(geometry.shipCylinder, light, 0, 20, -83, 0.45, 9, 0.45);
+            // Breakwater across the deck abaft the forecastle: a low angled plate,
+            // the one thing forward of the rig allowed to stand on the tank deck.
+            add(geometry.panel, house, 0, 13.2, -76, 20, 1.8, 3, 0.34);
+
+            // =====================================================================
+            // 3. THE FUEL TANK DECK - identity 2
+            // =====================================================================
+            // Nine cylindrical deck tanks in three groups. Round on a deck of boxes
+            // is the read: the cargo ship's stack, the LST's vehicles and the
+            // arsenal's cell fields are all rectangular masses, so a row of drums
+            // cannot be confused with any of them from above or from the side.
+            //
+            // Group centres are chosen against the GANTRY table below, not
+            // separately: the towers stand at z -46 / 0 / +40 and each group of
+            // tanks fills the run BETWEEN two towers, so the profile alternates
+            // tower - tanks - tower - tanks - tower down the whole 150m rig deck and
+            // neither element ever sits inside the other.
+            //   tanks -66 -> -54   forward group, ahead of tower 1
+            //   tanks -32 -> -10   between towers 1 and 2
+            //   tanks  14 ->  30   between towers 2 and 3
+            // Pairs athwartships at x +/-6.6 where there is beam for it, singles on
+            // the centreline where the gantry legs (x +/-5.4) would foul a pair.
+            // 8.8m diameter standing 10m proud of an 11.6m deck. Sized off the
+            // gantry, not off the hull: a drum shorter than the winch houses at the
+            // foot of the towers disappeared under them in the side elevation, which
+            // is what the first render showed. At 10m the tank tops sit above the
+            // lower cross-brace of every portal and the row is legible from the beam.
+            const TANK_R = 4.4;
+            const TANK_H = 10;
+            const tank = (x, z, r = TANK_R, h = TANK_H) => {
+              // Body, then the hazard-painted crown and a small dark vent stack, so
+              // each drum reads as a pressure vessel and not as a bollard.
+              add(geometry.shipCylinder, house, x, DECK_Y + h / 2, z, r, h, r);
+              add(geometry.shipCylinder, hazard, x, DECK_Y + h + 0.35, z, r + 0.25, 0.7, r + 0.25);
+              add(geometry.shipCylinder, dark, x, DECK_Y + h + 2.2, z, 0.42, 3, 0.42);
+              // Girth band at mid height: one dark ring that stops the cylinder
+              // reading as a flat grey lozenge in the top-down view.
+              add(geometry.shipCylinder, dark, x, DECK_Y + h * 0.45, z, r + 0.15, 0.5, r + 0.15);
+            };
+            // Forward group: a pair and a centreline drum, all clear of tower 1.
+            tank(-6.6, -66);
+            tank(6.6, -66);
+            tank(0, -54, 4.2, 8.2);
+            // Midships group, the biggest run of open deck on the ship.
+            tank(-6.6, -30);
+            tank(6.6, -30);
+            tank(-6.6, -14);
+            tank(6.6, -14);
+            // After group, between towers 2 and 3.
+            tank(0, 16, 4.2, 8.2);
+            tank(0, 30, 4.2, 8.2);
+            // Pipe gallery: the trunk main running the length of the tank deck on
+            // both sides, feeding every tank and every tower. Two thin dark runs at
+            // deck level - cheap, and it is what ties the drums together into a
+            // system rather than nine separate objects standing on a plate.
+            add(geometry.panel, dark, -10.4, DECK_Y + 1.4, -20, 1.1, 1.1, 132);
+            add(geometry.panel, dark, 10.4, DECK_Y + 1.4, -20, 1.1, 1.1, 132);
+            // Athwartships cross-connects at each tower station, so the trunk mains
+            // visibly serve the rig.
+            for (const z of [-46, 0, 40]) {
+              add(geometry.panel, dark, 0, DECK_Y + 1.4, z, 21, 1.0, 1.0);
+            }
+
+            // =====================================================================
+            // 4. THE REPLENISHMENT GANTRY - identity 1, and the whole silhouette
+            // =====================================================================
+            // Three kingpost towers, each a PORTAL: two legs at x +/-5.4 rising off
+            // the deck to a crosshead, braced, with a horizontal hose arm cantilevered
+            // out over each beam from the crosshead height.
+            //
+            // The arms are the point. ARM_REACH 24 against a 13m half-beam means the
+            // arm head hangs 11m OUTBOARD of the ship's own side - which is what a
+            // rig alongside a receiving ship actually does, and which no other hull
+            // in this game does at all. In the top-down pane the six arms make a
+            // ladder across the plan; in the side elevation the three crossheads make
+            // the highest line on the ship. Both reads are deliberate and both are
+            // the reason the numbers below are not smaller.
+            //
+            // Heights are chosen against the aft bridge, not picked: the bridge block
+            // tops out at y 40 and its wheelhouse roof at 43.4, so a crosshead at
+            // y 44 with a topmast to 50 keeps the rig as the tallest thing on the
+            // ship by a clear margin. Getting that ordering backwards would make this
+            // hull read as the cargo ship, whose aft tower IS the tallest mass.
+            const LEG_X = 6.2;
+            const HEAD_Y = 44;              // crosshead centreline
+            const ARM_Y = 38;               // hose arms hang one level below the head
+            const ARM_REACH = 30;           // arm head x, against a 13m half-beam
+            const kingpost = (z, armSweep) => {
+              const legH = HEAD_Y - DECK_Y;
+              const legY = DECK_Y + legH / 2;
+              // Two legs, raked very slightly inboard so the portal tapers the way a
+              // real kingpost does instead of reading as two parallel sticks. 3.4m
+              // square section, not the 2.4 of the first pass: at the range the
+              // contact sheet frames a 200m hull, a 2.4m column is under two pixels
+              // and the three towers rendered as three whiskers.
+              add(geometry.panel, house, -LEG_X, legY, z, 3.4, legH, 4.6, 0, 0, -0.03);
+              add(geometry.panel, house, LEG_X, legY, z, 3.4, legH, 4.6, 0, 0, 0.03);
+              // Fore-and-aft raking struts, one pair per leg. These do no work in the
+              // plan view - they exist entirely for the SIDE elevation, which is the
+              // one pane where the hose arms are edge-on and therefore contribute
+              // nothing. Without them the first two passes drew three bare poles in
+              // profile and the rig, which is the identity, was invisible from the
+              // beam. Splayed +/-0.34 rad in Z so each tower reads as a tripod.
+              for (const dz of [-1, 1]) {
+                add(geometry.panel, house, -LEG_X, DECK_Y + legH * 0.46, z + dz * 5.6,
+                    2.2, legH * 0.94, 2.2, dz * 0.34);
+                add(geometry.panel, house, LEG_X, DECK_Y + legH * 0.46, z + dz * 5.6,
+                    2.2, legH * 0.94, 2.2, dz * 0.34);
+              }
+              // Cross-bracing: two bands low and high, plus a diagonal each side, so
+              // the portal reads as structure rather than as a gate.
+              add(geometry.panel, dark, 0, DECK_Y + legH * 0.34, z, 2 * LEG_X, 1.6, 1.8);
+              add(geometry.panel, dark, 0, DECK_Y + legH * 0.68, z, 2 * LEG_X, 1.6, 1.8);
+              add(geometry.panel, dark, 0, DECK_Y + legH * 0.51, z, 2 * LEG_X + 1.8, 1.1, 1.1, 0, 0, 0.55);
+              add(geometry.panel, dark, 0, DECK_Y + legH * 0.51, z, 2 * LEG_X + 1.8, 1.1, 1.1, 0, 0, -0.55);
+              // Crosshead: the beam across the top of the portal, and the block on
+              // it that the hose arms pivot from.
+              // Deep in Z (9m) as well as wide, so the crosshead is a slab in the
+              // side elevation rather than a line: from the beam this is the piece
+              // that says a tower is a structure.
+              add(geometry.panel, house, 0, HEAD_Y, z, 2 * LEG_X + 5.4, 3.4, 9);
+              add(geometry.panel, dark, 0, HEAD_Y + 2.3, z, 2 * LEG_X + 6, 1.1, 9.8);
+              // Topmast above the crosshead with a small nav plate, so the tower has
+              // a point rather than a flat lid.
+              add(geometry.shipCylinder, light, 0, HEAD_Y + 4.4, z, 0.42, 7, 0.42);
+              add(geometry.shipOctPlate, light, 0, HEAD_Y + 7.4, z, 1.3, 0.32, 1.3);
+
+              // The hose arms. One per beam, drawn as a horizontal box whose long
+              // axis is X, positioned so its INBOARD end sits on the crosshead
+              // (x +/-3) and its head reaches ARM_REACH. Centre is therefore the
+              // midpoint of that span, and the length is the difference - written as
+              // arithmetic rather than as two magic numbers so the arm cannot drift
+              // off the tower it hangs from, which is the failure the cargo ship's
+              // crane comment documents for its jib.
+              //
+              // `armSweep` rotates the pair about Y by a few degrees, alternating
+              // tower to tower. That is what keeps the three stations from reading as
+              // one extruded shape in the top-down pane: real rigs train their arms
+              // fore and aft of the beam, and a couple of degrees of difference is
+              // enough for the eye to count three separate towers.
+              const ROOT_X = 3.0;
+              const armLen = ARM_REACH - ROOT_X;
+              const armCx = (ARM_REACH + ROOT_X) / 2;
+              for (const side of [-1, 1]) {
+                // Arm proper: a lattice boom, drawn as a box with a thinner dark top
+                // chord over it (the cargo ship's trick, and for the same reason - a
+                // single stick reads as a pipe, two read as a truss).
+                //
+                // 2.8m section, not the 1.5 of the first pass. A 27m arm at 1.5m
+                // section is a hairline in every pane of the contact sheet: the first
+                // render put six of them on the ship and the top-down view showed
+                // four faint scratches. The arm is the identity, so it is drawn at
+                // the size the identity needs, which is roughly the section of a
+                // kingpost leg rather than of a handrail.
+                const arm = add(geometry.panel, light, side * armCx, ARM_Y, z, armLen, 2.8, 2.8);
+                arm.rotation.order = "YXZ";
+                arm.rotation.set(0, side * armSweep, 0);
+                const chord = add(geometry.panel, dark, side * armCx, ARM_Y + 2.2, z, armLen - 3, 1.1, 1.1);
+                chord.rotation.order = "YXZ";
+                chord.rotation.set(0, side * armSweep, 0);
+                // Kingpost stay: the diagonal from the crosshead down to the arm,
+                // which is what makes a cantilever 27m long look held up.
+                const stay = add(geometry.panel, dark,
+                                 side * (ROOT_X + armLen * 0.32), (ARM_Y + HEAD_Y + 2.3) / 2, z,
+                                 armLen * 0.72, 0.9, 0.9, 0, 0, side * 0.30);
+                stay.rotation.order = "YXZ";
+                stay.rotation.set(0, side * armSweep, -side * 0.30);
+                // Arm head: the hazard-painted receiving trolley at the outboard end,
+                // with the hose bight hanging plumb below it. This is the piece that
+                // says "fuel is passed HERE" and it is the only colour on the rig -
+                // six orange blocks standing 11m off the ship's own sides, which is
+                // the mark that survives at thumbnail size.
+                const head = add(geometry.panel, hazard, side * (ARM_REACH - 2.2), ARM_Y, z, 5.4, 4.2, 5);
+                head.rotation.order = "YXZ";
+                head.rotation.set(0, side * armSweep, 0);
+                const hose = add(geometry.shipCylinder, dark,
+                                 side * (ARM_REACH - 2.2), ARM_Y - 4.6, z, 0.9, 6.6, 0.9);
+                hose.rotation.order = "YXZ";
+                hose.rotation.set(0, side * armSweep, 0);
+              }
+              // Winch house at the foot of the portal, between the legs - the mass
+              // that stops the tower looking like it is standing on nothing. Kept
+              // LOW (4m, topping out at y 15.6) and narrower than the tank drums are
+              // tall: at the 5.2m of the previous pass it stood level with the tank
+              // crowns and the two masses merged into one grey band along the deck,
+              // which cost the tank row its separate read from the beam.
+              add(geometry.panel, house, 0, DECK_Y + 2, z, 2 * LEG_X + 1.6, 4, 7);
+              add(geometry.panel, dark, 0, DECK_Y + 4.3, z, 2 * LEG_X + 2.2, 0.9, 7.4);
+            };
+            // Three stations at z -46 / 0 / +40, sweeps alternating so the towers are
+            // countable from above. The z values are the ones the tank groups and the
+            // cross-connects above are written against.
+            // Sweeps are LARGE (0.2-0.3 rad, 11-17 degrees), not the 0.1 of the first
+            // passes. Two things buy that: the towers become countable from above,
+            // and - the reason it matters - a swept arm projects 5-8m in Z, so in the
+            // SIDE elevation the arm heads stand clear of their own towers instead of
+            // hiding behind them. Alternating the sign fans the rig fore and aft the
+            // way a real ship trains its stations to serve two receivers at once.
+            kingpost(-46, 0.26);
+            kingpost(0, -0.22);
+            kingpost(40, 0.30);
+
+            // Deck striping under the rig: one painted transfer lane down each side
+            // of the tank deck, marking where the hoses land. It also draws the
+            // 150m length of the rig deck as one continuous run in the top-down pane.
+            add(geometry.shipDeck, markings, -9.2, DECK_Y + 0.2, -3, 2.2, 150, 1, -Math.PI / 2);
+            add(geometry.shipDeck, markings, 9.2, DECK_Y + 0.2, -3, 2.2, 150, 1, -Math.PI / 2);
+
+            // =====================================================================
+            // 5. Aft superstructure - identity 3
+            // =====================================================================
+            // One block at z +72, five decks, DELIBERATELY shorter than the gantry:
+            // house roof at y 40 against the crossheads' 44 and the topmasts' 51.
+            // The cargo ship makes the opposite choice on purpose (its accommodation
+            // block tops its own cargo), and that inversion is what tells the two
+            // 200m auxiliaries apart in profile.
+            add(geometry.panel, house, 0, 25.8, 72, 15, 28.4, 20);
+            // Deck banding: five thin dark lines = five accommodation levels. Cheap,
+            // and it is what sells "tower" rather than "grey slab" at range.
+            for (let d = 0; d < 5; d += 1) {
+              add(geometry.panel, dark, 0, 15.4 + d * 5.2, 72, 15.4, 0.5, 20.4);
+            }
+            // Wheelhouse: wider than the block below and overhanging both sides, with
+            // a dark glazed strip across its front face. The overhang is what makes
+            // the stern legible from directly above.
+            add(geometry.panel, house, 0, 42, 69, 21, 4.4, 12);
+            add(geometry.panel, dark, 0, 42.4, 62.8, 20, 2.8, 1.2);
+            add(geometry.panel, dark, 0, 44.5, 69, 21.6, 0.9, 12.6);
+            // Bridge-wing consoles on the outboard tips.
+            add(geometry.panel, light, -10.3, 42, 69, 1.5, 1.7, 4.6);
+            add(geometry.panel, light, 10.3, 42, 69, 1.5, 1.7, 4.6);
+            // Mast above the wheelhouse: pole, nav plate, yard. Kept to y 55 so it is
+            // the only thing on the ship above the rig, and it is a whip - an
+            // aeroplane goes through it, which is why `crash.top` is measured off the
+            // crossheads instead.
+            add(geometry.shipCylinder, dark, 0, 50, 72, 0.55, 10, 0.55);
+            add(geometry.shipOctPlate, light, 0, 52.4, 72, 1.4, 0.34, 1.4);
+            add(geometry.panel, light, 0, 55, 72, 5.4, 0.4, 0.4);
+            // Funnel abaft the block with the dark cap band every line paints on and
+            // twin uptakes standing out of it.
+            add(geometry.panel, house, 0, 27, 88, 9, 20, 10);
+            add(geometry.panel, dark, 0, 36.4, 88, 9.6, 2.4, 10.6);
+            add(geometry.shipCylinder, dark, -2.2, 38.8, 88, 1.3, 2.4, 1.3);
+            add(geometry.shipCylinder, dark, 2.2, 38.8, 88, 1.3, 2.4, 1.3);
+            // Poop deck aft of the funnel: mooring gear and two lashed stores pallets
+            // in the vehicle olive, so the stern is not a blank plate.
+            add(geometry.panel, deck, 0, 11.8, 96, 21, 1.4, 12);
+            add(geometry.panel, olive2, -5.4, 13.8, 96, 4.6, 2.8, 8);
+            add(geometry.panel, olive2, 5.4, 13.8, 96, 4.6, 2.8, 8);
+            add(geometry.shipCylinder, dark, 0, 13.2, 100, 1.1, 1.3, 1.1);
+
+            // =====================================================================
+            // 6. Hull markings
+            // =====================================================================
+            // Draft marks and the load line disc - the civilian tells the cargo ship
+            // also carries, at this hull's own scale.
+            add(geometry.shockRing, markings, -13.2, 5.6, -12, 2.4, 2.4, 1, 0, -Math.PI / 2, 0);
+            add(geometry.shockRing, markings, 13.2, 5.6, -12, 2.4, 2.4, 1, 0, Math.PI / 2, 0);
+            add(geometry.panel, markings, -13.2, 5.6, -12, 0.35, 0.45, 11);
+            add(geometry.panel, markings, 13.2, 5.6, -12, 0.35, 0.45, 11);
+          }
+        });
+      },
+      "ship_replenishOiler"
+    ); // @payload:ship_replenishOiler
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+
+        // The frigate is the template rather than the carrier or the Aegis: at 135m
+        // it is the closest hull in the fleet by length, so everything the spread
+        // carries and this entry does not override (hp, cruiseSpeed, turnRate,
+        // colours) is at least in the right order of magnitude while it waits for a
+        // balance pass. It is a template for NUMBERS ONLY — the frigate's gun is
+        // explicitly deleted below, because this ship does not shoot.
+        const frigate = SHIP_TYPES.frigate;
+        if (!frigate) throw new Error("[ship-rescueVessel] SHIP_TYPES.frigate is the template and is missing");
+
+        // ---------------------------------------------------------------------------
+        // Hull geometry constants — shared by the SHIP_TYPES offsets and by build().
+        // Hull-local metres, bow at -Z, y measured up from the waterline.
+        //   stem tip        z -56      (bow wedge point)
+        //   hull box        z -38 .. +54, 18m beam, deck plane y 8.4
+        //   superstructure  z -30 .. -4, white, bridge roof y 24.6
+        //   crane pedestal  z +2,  boom tip out to starboard at x +17 / y 34
+        //   helideck        z +34 .. +56 centre z +42, pad surface y 10.6
+        // ---------------------------------------------------------------------------
+
+        ctx.addShipType("rescueVessel", {
+          ...frigate,
+          key: "rescueVessel",
+          surface: true,
+          label: "RESCUE",
+          role: "Rescue & Salvage Vessel",
+
+          // ---- Dimensions: 110m LOA, 18m beam -------------------------------------
+          // Read straight off the geometry build() draws, on the frigate's own
+          // conventions (hitBox.z = full length, crash.halfLen = half of it).
+          // The top of the crash box is 38 rather than the deck height because the
+          // crane's head sheave is the tallest hardware at y 36, and halfBeam is 11
+          // rather than the hull's 9 because the boom reaches out to x +20 — the
+          // hook is genuinely outboard of the rail and a box drawn to the hull alone
+          // would let an aircraft fly through it.
+          hitRadius: 58,
+          crash: Object.freeze({ halfLen: 55, halfBeam: 11, top: 38 }),
+          hitBox: Object.freeze({ x: 24, y: 42, z: 110 }),
+          sinkDepth: 22,
+          blastSpread: 24,
+          smokeOffset: -12,  // the funnel is in the forward superstructure, not aft
+          smokeHeight: 16,
+          sternOffset: 54,   // the transom face
+          bowOffset: 50,     // the stem head, where the raked slab and the wedge meet
+
+          // BALANCE TODO: placeholder. hp / cruiseSpeed / turnRate are inherited
+          // verbatim from the frigate by the spread above and have NOT been tuned.
+          // A 110m civilian salvage hull should almost certainly be slower than the
+          // fleet's fastest escort (frigate cruiseSpeed 15) and is not meant to be a
+          // worthwhile target at all, but none of that is decided here — this file
+          // ships the shape.
+
+          // ---- Disarmed, structurally ---------------------------------------------
+          // Same disarm the cargo ship and the hospital ship use, and for the same
+          // reason: `aa` cannot be deleted (updateShip dereferences spec.aa.cooldownMin
+          // every frame, so `aa: undefined` is a crash rather than a disarm), so it is
+          // neutered instead. tracers 0 makes aaFiringPoints' legacy loop produce zero
+          // mounts and shipAaBurst returns on the empty list; range 0 means it would
+          // have returned one branch earlier anyway. Nothing on the model draws a
+          // barrel and ENEMY_MISSILE_PROFILES has no rescueVessel entry, so no SAM.
+          aaMounts: Object.freeze([]),
+          aaHeight: 0,
+          aa: Object.freeze({ range: 0, cooldownMin: 9999, cooldownSpread: 0, damage: 0, maxHitChance: 0, tracers: 0 }),
+
+          // ---- Subsystems: none ---------------------------------------------------
+          // With no gun, no VLS and no CIWS there is no hardware on this model worth
+          // locking, so the hull itself is the only NEXT stop — which is exactly the
+          // read a neutral wants: the player who cycles onto it sees one box labelled
+          // RESCUE and nothing to pick apart. `subsystems` is not in the required set
+          // (the frigate and the missile boat both lack it), so clearing it is legal
+          // where deleting the gun keys is not.
+          subsystems: undefined,
+
+          // Rescue orange on the radar, distinct from the fleet's amber blips and
+          // from the hospital ship's near-white "#eaf4ff".
+          radarColor: "#ff9a4a",
+          tracerColor: 0xffb04a,      // inherited; nothing on this hull fires
+          explosionColor: 0xffa348
+        });
+
+        ctx.addShipModel("rescueVessel", {
+          build(env) {
+            const { geometry, add, friendly, makeAircraftMaterial,
+                    deck, house, dark, light, markings, extraMaterials } = env;
+
+            // The five themed materials are hull grey / deck grey / house grey /
+            // shadow / white, and none of them can supply high-visibility orange, so
+            // the two identity paints are made here and MUST go into extraMaterials
+            // or they leak with every hull that sinks (the payload contract's one
+            // documented leak path).
+            //
+            // Consequence: parts painted with these do NOT flash white on a hit, the
+            // same trade the cargo ship's containers make. The grey/white hardware
+            // under them still flashes, and this ship is not supposed to be shot at.
+            //
+            // Orange is emissive-boosted for the reason the hospital ship's white is:
+            // makeAircraftMaterial's default emissive is 0.045x the colour, which
+            // lets a saturated hue sink to brown under the night maps' weak ambient.
+            // "Visible at sea in bad light" is literally what the paint is for, so it
+            // gets 0.26x. baseEmissive must be updated with it, otherwise
+            // updateAircraftFlash writes the dim default back when a hit flash decays.
+            const orange = makeAircraftMaterial(friendly ? 0xff8a2b : 0xf07a1e, 0.05, 0.72);
+            orange.emissive.setHex(friendly ? 0xff8a2b : 0xf07a1e).multiplyScalar(0.26);
+            orange.userData.baseEmissive = orange.emissive.clone();
+            extraMaterials.push(orange);
+            // Superstructure white. Diffuse rather than metallic for the same
+            // night-legibility reason, one notch dimmer than the orange so the
+            // two-tone band has a clear boundary instead of two glowing slabs.
+            const white = makeAircraftMaterial(0xf3f7f9, 0.0, 0.9);
+            white.emissive.setHex(0xf3f7f9).multiplyScalar(0.2);
+            white.userData.baseEmissive = white.emissive.clone();
+            extraMaterials.push(white);
+
+            // =====================================================================
+            // 1. Hull — 110m, orange, beamy
+            // =====================================================================
+            // Core slab: 92m long, 18m beam, freeboard 8.4m (waterline y 0 to deck
+            // plane y 8.4). Runs z -38 to +54; it STOPS at the bow wedge's base so
+            // the wedge is the actual stem, the same construction the arsenal ship
+            // documents (a slab running past the wedge leaves a squared-off block
+            // with a triangle recessed in it).
+            add(geometry.panel, orange, 0, 4.2, 8, 18, 8.4, 92);
+            // Boot topping: the dark waterline band every hull here wears. Kept thin
+            // (1.6m of 8.4m freeboard) so it reads as a stripe and does not eat into
+            // the orange the identity depends on.
+            add(geometry.panel, dark, 0, 0.7, 8, 18.5, 1.6, 92.5);
+            // Bow wedge. geometry.shipBow is a FOUR-SIDED cone whose scale is a
+            // RADIUS, not a width: sx is the half-beam of its base and sy is its run
+            // along -Z once it is laid down by rx = -PI/2. The frigate calibrates it —
+            // a 15.8m hull carries sx 7.9, exactly half — so this 18m hull wants
+            // sx 9.0 to meet the slab flush. sy 18 puts the tip at z -56, and a
+            // salvage ship gets a BLUFF entry (18m of run on a 9m half-beam, 2:1)
+            // rather than the frigate's fine 16.6-on-7.9 knife: it is built to hold
+            // station in a sea, not to sprint.
+            //
+            // The wedge is the ONLY thing forward of z -38. Round 1 of this file also
+            // put a full-width orange box there "to back the cone up", which produced
+            // a squared-off orange shelf with a triangle recessed into it — exactly
+            // the failure the arsenal hull's comments warn about. The cone's own base
+            // sits at z -38 and meets the slab flush, so nothing else is needed.
+            //
+            // sz is NOT the hull's full height. Measured across the six hulls already
+            // in index.html the ratio is fixed: sx is exactly the half-beam on every
+            // one of them, and sz is about 0.5 of the hull-box height (aegis 5/9,
+            // frigate 4.2/7.5, hospital 11/22). Round 2 of this file used sz 8.4 —
+            // the FULL freeboard, i.e. a 16.8m tall cone on an 8.4m hull — and the
+            // stem came out as an arrowhead standing well above and below the
+            // topsides.
+            //
+            // Round 3 then showed the OTHER half of the problem: ConeGeometry(1,1,4)
+            // puts its four base vertices at local (0,+r),(+r,0),(0,-r),(-r,0), so
+            // after rx=-PI/2 the section is a DIAMOND standing on a corner — it is
+            // full beam only on the centreline of its height, and it tapers to a
+            // point at the deck line. A wedge alone therefore leaves a triangular
+            // void under the forecastle and reads in profile as a spike below the
+            // sheer. The fix is the two-piece stem every blunt-bowed hull here uses:
+            // a SHORT wedge for the underwater entry, plus a raked slab above it that
+            // carries the topsides forward to the stem head.
+            add(geometry.shipBow, orange, 0, 3.4, -44, 9.0, 12, 3.4, -Math.PI / 2);
+            // Second wedge, up at the sheer and NARROWER (sx 6.4 against the hull's
+            // 9), tucked into the top of the raked slab. It is what turns the stem
+            // from a brick into a point: the slab alone gave the front three-quarter
+            // a flat square nose (round 5), because a raked box is still a box when
+            // you look at its corner. Two wedges stacked - one at the waterline, one
+            // at the deck edge - taper the bow in plan at both heights the eye reads.
+            add(geometry.shipBow, orange, 0, 8.0, -45, 6.4, 12, 2.8, -Math.PI / 2);
+            // Raked stem: a full-height orange slab from the hull box out to z -50,
+            // tipped forward about X so its top edge overhangs its foot. The rake is
+            // SMALL (-0.16, about 9 degrees). Round 4 used -0.32 and stacked a second
+            // raked bulwark on top of it, and the two overhangs compounded into a
+            // duck-bill hanging several metres past the stem in profile. One modest
+            // rake on the slab, with the bulwark above it kept vertical, gives the
+            // flare without the beak.
+            add(geometry.panel, orange, 0, 5.0, -42.0, 17.4, 9.2, 9, -0.16);
+            // Flared forecastle bulwark: a solid orange rail round the foredeck,
+            // carried forward to the stem head so the front quarter view shows one
+            // continuous orange sheer instead of a rail that stops in mid-air (which
+            // is what round 3 showed). Vertical, and stopping at z -46 — just inboard
+            // of the stem slab's own top edge, so the bulwark never becomes the
+            // ship's foremost point.
+            add(geometry.panel, orange, -8.6, 10.6, -28, 1.0, 4.4, 28);
+            add(geometry.panel, orange, 8.6, 10.6, -28, 1.0, 4.4, 28);
+            add(geometry.panel, orange, 0, 10.6, -41.5, 16, 4.4, 1.2);
+            // Transom: flat cut stern under the helideck.
+            add(geometry.panel, orange, 0, 4.2, 52, 17, 8.4, 6);
+            add(geometry.panel, dark, 0, 4.6, 55.3, 15, 6.4, 1.0);
+
+            // =====================================================================
+            // 2. Working deck
+            // =====================================================================
+            // Flush deck plane at y 8.4, deliberately DARK against the orange sides:
+            // a salvage ship's after deck is bare steel, and the contrast is what
+            // makes the orange read as HULL SIDES rather than as a solid orange brick
+            // from above. (The hospital ship goes the other way and keeps its deck
+            // near-white; that difference is itself part of the separation.)
+            add(geometry.panel, deck, 0, 8.7, 10, 17.4, 0.7, 94);
+            // Deck edge coaming, low and dark, so the working deck reads as set into
+            // a bulwark instead of floating on top of the hull.
+            add(geometry.panel, dark, -8.5, 9.4, 14, 0.9, 1.4, 84);
+            add(geometry.panel, dark, 8.5, 9.4, 14, 0.9, 1.4, 84);
+            // Deck cargo the crane is there to move: two lashed-down containers and a
+            // rescue-boat cradle on the port side, forward of the crane. Small enough
+            // not to compete with the boom, but they stop the working deck from being
+            // 40m of nothing and they explain the crane.
+            add(geometry.panel, dark, -4.4, 10.6, -6, 5.0, 3.6, 11);
+            add(geometry.panel, white, 5.0, 10.4, -8, 3.6, 3.2, 8);
+            // Fast rescue boat on its davit, starboard side forward — an orange hull
+            // in a cradle, canted. The one small orange object above the deck line,
+            // which ties the topsides back to the hull colour.
+            add(geometry.panel, dark, 7.6, 10.4, 14, 1.6, 3.4, 9);
+            add(geometry.panel, orange, 8.4, 12.6, 14, 2.6, 2.0, 8, 0, 0, -0.12);
+
+            // =====================================================================
+            // 3. Forward superstructure — WHITE, and only here
+            // =====================================================================
+            // Set forward (z -30..-4) so the after half of the ship is clear for the
+            // crane and the pad. That is the offshore-vessel layout and the opposite
+            // of the hospital ship, whose block sits amidships and runs 150m.
+            // Three tiers, stepped back, topping out at y 24.6 — about a fifth of the
+            // hull length, so the ship stays low and wide rather than tower-like.
+            add(geometry.panel, white, 0, 12.6, -17, 16, 8.4, 26);
+            add(geometry.panel, white, 0, 19.2, -20, 13, 4.8, 18);
+            add(geometry.panel, white, 0, 23.4, -22, 10, 3.6, 12);
+            // Bridge windows: one dark band wrapping the front and the two forward
+            // corners of the top tier. A rescue ship's bridge overlooks its own bow,
+            // so the glass is the front face, not a slit.
+            add(geometry.panel, dark, 0, 23.8, -28.1, 9.6, 2.4, 0.5, -0.18);
+            add(geometry.panel, dark, -5.1, 23.8, -24, 0.5, 2.4, 8);
+            add(geometry.panel, dark, 5.1, 23.8, -24, 0.5, 2.4, 8);
+            // Tier roof edges, dark, so white-on-white steps read without relying on
+            // shadow. Thin strakes only — a full plate would black out the roofs from
+            // directly above and cost the white/orange two-tone its top half.
+            add(geometry.panel, dark, 0, 16.9, -17, 16.3, 0.5, 26.3);
+            add(geometry.panel, dark, 0, 21.7, -20, 13.3, 0.5, 18.3);
+            // Mast on the bridge roof: a short pole with a search radar plate and a
+            // whip, kept to y 33 so it does not out-reach the crane boom (y 34).
+            add(geometry.shipCylinder, dark, 0, 27.6, -20, 0.34, 4.8, 0.34);
+            add(geometry.shipOctPlate, light, 0, 30.4, -20, 2.4, 0.4, 2.4);
+            add(geometry.shipCylinder, dark, 0, 32.0, -20, 0.2, 3.2, 0.2);
+            // Funnel pair, low, flanking the after face of tier 1 — smokeOffset -12
+            // above is pinned to these.
+            add(geometry.panel, white, -4.6, 18.6, -8, 3.2, 5.2, 5);
+            add(geometry.panel, white, 4.6, 18.6, -8, 3.2, 5.2, 5);
+            add(geometry.panel, dark, -4.6, 21.4, -8, 3.5, 0.9, 5.3);
+            add(geometry.panel, dark, 4.6, 21.4, -8, 3.5, 0.9, 5.3);
+            // Two searchlights on the bridge wings, pointed outboard-forward: the
+            // small hardware that says "this ship looks for people at night".
+            add(geometry.shipCylinder, light, -6.6, 18.0, -28, 0.9, 1.0, 0.9, Math.PI / 2, 0, 0);
+            add(geometry.shipCylinder, light, 6.6, 18.0, -28, 0.9, 1.0, 0.9, Math.PI / 2, 0, 0);
+
+            // =====================================================================
+            // 4. The crane — the tallest thing aboard
+            // =====================================================================
+            // Pedestal on the centreline at z +2, immediately abaft the deck house,
+            // so the boom's arc covers the whole working deck and the helideck edge.
+            // A 7m drum standing 9m above the deck: heavy enough to look like it
+            // could lift, and the base of the diagonal that follows.
+            add(geometry.shipCylinder, house, 0, 13.4, 2, 3.5, 9.2, 3.5);
+            add(geometry.shipCylinder, dark, 0, 18.3, 2, 3.8, 0.7, 3.8);
+            // Slewing house on top — a proper machinery box, not a cap: 7m wide and
+            // 8m long, so the crane has a mass at its root and the boom looks like it
+            // is hinged off something rather than glued to a pole.
+            add(geometry.panel, house, 0, 21.0, 2, 7.0, 5.0, 8.0);
+            add(geometry.panel, dark, 0, 23.7, 2, 7.4, 0.6, 8.4);
+            // The A-frame the boom pivots against. Its legs are splayed FORE AND AFT
+            // (one raked forward, one aft) rather than athwartships, which is the one
+            // arrangement that gives the crane an outline in the pure side view — the
+            // view that looks straight down the boom's own axis and therefore cannot
+            // see the arm at all. Rounds 2-4 splayed them across the beam and the
+            // side view showed a plain vertical post that read as a mast.
+            add(geometry.panel, house, 0, 27.4, -1.6, 2.6, 9.6, 1.4, -0.26, 0, 0);
+            add(geometry.panel, house, 0, 27.4, 6.0, 2.6, 9.6, 1.4, 0.26, 0, 0);
+            // Head beam bridging the two legs, and a cross brace halfway down: the
+            // triangle is what makes it an A-frame instead of two poles.
+            add(geometry.panel, dark, 0, 32.0, 2.2, 3.4, 1.4, 3.0);
+            add(geometry.panel, dark, 0, 26.6, 2.2, 2.0, 0.7, 7.6);
+            //
+            // ---- The boom ---------------------------------------------------------
+            // Root at (x 0, y 23) on the slew house, tip at (x 20, y 36) out over the
+            // STARBOARD rail: a boom lying along the centreline is invisible in the
+            // top-down view (it hides inside the ship's own outline), and the plan
+            // view showing an arm reaching off the side of the hull is the whole
+            // point of the feature.
+            //
+            // SIGN: `add` applies rotation.set(rx, ry, rz) with no ordering trick, so
+            // rz is a roll about +Z and a POSITIVE rz swings the box's +x end UP.
+            // Round 1 used rz -0.70 with segment centres computed for an upward lean,
+            // which laid the boom flat across the deck and buried it in the hull —
+            // the arm was simply not there in any of the four views.
+            //
+            // ELEVATION + SLEW. Round 5's boom lay entirely in the X-Y plane, and the
+            // pure SIDE view looks straight down that plane's normal: the arm was
+            // unmistakable in the front three-quarter and the top-down and reduced to
+            // a stub in the side, where the crane went on reading as a mast. A real
+            // ship's crane is almost never square to the beam, so the fix is also the
+            // realistic one — slew it 34 degrees aft as well as elevating it, and the
+            // boom then has extent along all three axes and cannot be edge-on to any
+            // of the four camera positions.
+            //
+            // `add` calls rotation.set(rx, ry, rz), i.e. three.js' default XYZ Euler
+            // order, which composes as Rx*Ry*Rz — so rz elevates the box's +x axis
+            // first and ry then yaws the already-elevated arm about the vertical.
+            // With rz 0.576 and ry -0.6 the unit +x axis lands on
+            // (0.692, 0.545, 0.474), and every centre below is root + t*that, so no
+            // piece can drift off the line:
+            //   root (0, 23, 2)   t=0
+            //   tip  (16.6, 36.1, 13.4)   t=24
+            // The tip is 16.6m outboard of the centreline on an 18m beam — 7.6m past
+            // the starboard rail — and 11m aft of the pedestal, which is the diagonal
+            // the plan view needs and the profile the side view needs.
+            //
+            // Both spans are painted `light` (near-white) rather than `house` grey:
+            // the boom has to win the contrast fight against the white superstructure
+            // behind it as well as against the dark deck below.
+            const boomEl = 0.576;
+            const boomYaw = -0.6;
+            // Inboard heel section — thick, t 0 -> 8.
+            add(geometry.panel, light, 2.77, 25.18, 3.89, 9.6, 2.6, 2.6, 0, boomYaw, boomEl);
+            // Main span — t 8 -> 24, one piece so it has no seams.
+            add(geometry.panel, light, 11.07, 31.71, 9.58, 17.6, 1.9, 1.9, 0, boomYaw, boomEl);
+            // Head sheave block at the tip.
+            add(geometry.panel, dark, 16.61, 36.07, 13.36, 2.6, 2.6, 2.6, 0, boomYaw, boomEl);
+            // Lattice cross-bracing: five short struts spaced along the span, each
+            // centred on the boom line and rolled off it, so the arm reads as an open
+            // truss rather than a solid bar at mid range.
+            const braceAt = [
+              [2.77, 25.18, 3.89], [5.54, 27.36, 5.79], [8.31, 29.54, 7.68],
+              [11.07, 31.71, 9.58], [13.84, 33.89, 11.47]
+            ];
+            braceAt.forEach((p, i) => {
+              add(geometry.panel, dark, p[0], p[1], p[2],
+                  3.2, 0.5, 0.5, 0, boomYaw, boomEl + (i % 2 ? 1.05 : -1.05));
+            });
+            // Backstay pendant from the A-frame head (0, 32, 2.2) out to the boom's
+            // mid-span: the taut line that tells the eye the arm carries its weight.
+            add(geometry.panel, dark, 5.5, 31.9, 5.9, 12.4, 0.4, 0.4, 0, -0.62, 0.0);
+            // Hook block on its fall, hanging free off the tip. The fall is a thin
+            // vertical bar down to y 17, so the hook reads as "raised and stowed"
+            // rather than as a spike through the sea, and because the tip is 7.6m
+            // outboard of the rail the whole thing hangs over open water — which is
+            // the read that says "this ship lifts people out of the sea".
+            add(geometry.panel, dark, 16.61, 27.0, 13.36, 0.32, 18.0, 0.32);
+            add(geometry.panel, dark, 16.61, 17.4, 13.36, 1.6, 2.6, 1.6);
+            // Counterweight slab aft of the slew house — small, dark, and it balances
+            // the boom visually so the crane does not look bolted on.
+            add(geometry.panel, dark, -4.0, 21.4, 3.0, 4.4, 3.4, 4.0);
+
+            // =====================================================================
+            // 5. Helideck aft — a raised platform with a painted H
+            // =====================================================================
+            // Pad plane at y 13.2, i.e. 4.8m above the working deck, standing on four
+            // stanchions and overhanging the transom: an offshore helideck is a
+            // separate structure cantilevered off the stern, not a painted rectangle
+            // on the main deck. Centre z +42, 20m wide x 24m long, so it covers the
+            // after fifth of the 110m hull and is the widest flat thing aboard —
+            // wider than the 18m hull, which is what makes it read as a PAD from
+            // above instead of as more deck.
+            //
+            // The 4.8m of air under it is the point. Round 2 had the pad only 2.2m
+            // up, which put its edge level with the deck coaming and made the whole
+            // stern read as one flat grey extension of the working deck in profile —
+            // the helideck vanished in the two views that matter for identification
+            // at range. Lifted clear, the side view shows a dark slab standing on
+            // legs above an orange stern, which is unmistakable.
+            add(geometry.panel, deck, 0, 12.9, 42, 20, 0.9, 24);
+            // Orange perimeter band round the pad's edge, 0.4m proud of it on all
+            // four sides. Two jobs: it ties the pad back to the hull's identity
+            // colour (so the after third is not a grey slab on an orange ship), and
+            // in the side and rear views it draws the pad's outline against the dark
+            // deck, which is the difference between "a platform" and "a smudge".
+            add(geometry.panel, orange, -10.0, 13.0, 42, 1.0, 1.2, 24.8);
+            add(geometry.panel, orange, 10.0, 13.0, 42, 1.0, 1.2, 24.8);
+            add(geometry.panel, orange, 0, 13.0, 53.8, 20.8, 1.2, 1.0);
+            add(geometry.panel, orange, 0, 13.0, 30.2, 20.8, 1.2, 1.0);
+            // Stanchions under the four corners, plus the two amidships legs a
+            // cantilever this size needs.
+            for (const sx of [-8.2, 8.2]) {
+              for (const sz of [32, 42, 52]) {
+                add(geometry.shipCylinder, house, sx, 10.9, sz, 0.55, 4.4, 0.55);
+              }
+            }
+            // Safety net skirt: a thin dark lip round three sides of the pad, canted
+            // down and outboard. The overhang is what separates a helideck from a
+            // helipad in one glance.
+            add(geometry.panel, dark, -10.4, 12.6, 42, 2.0, 0.35, 24, 0, 0, 0.42);
+            add(geometry.panel, dark, 10.4, 12.6, 42, 2.0, 0.35, 24, 0, 0, -0.42);
+            add(geometry.panel, dark, 0, 12.6, 54.4, 20, 0.35, 2.0, -0.42);
+            // The landing circle, painted with the same shockRing every flight deck
+            // in the game uses, laid flat on the pad.
+            add(geometry.shockRing, markings, 0, 13.35, 42, 7.4, 7.4, 1, -Math.PI / 2);
+            // ---- The H ------------------------------------------------------------
+            // Drawn as three painted bars rather than a texture: at this size a decal
+            // canvas would cost a material, a texture and a dispose contract for
+            // something three boxes do exactly. Each bar is a flat plate 0.28m proud
+            // of the pad (above the ring at 10.75 so it wins the z-fight), and the
+            // proportions are the real marking's — two uprights 8m long, a crossbar
+            // 5.2m spanning between them at half height.
+            //
+            // The H is oriented so its uprights run FORE AND AFT, which is how a real
+            // helideck paints it (the pilot approaches over the stern), and which is
+            // also the orientation that survives the top-down preview view.
+            add(geometry.panel, markings, -2.6, 13.5, 42, 1.5, 0.3, 8.0);
+            add(geometry.panel, markings, 2.6, 13.5, 42, 1.5, 0.3, 8.0);
+            add(geometry.panel, markings, 0, 13.5, 42, 5.2, 0.3, 1.5);
+            // Perimeter lighting: four small white plates at the pad corners, the
+            // last hardware that says "aviation" from directly above.
+            for (const sx of [-9.2, 9.2]) {
+              for (const sz of [33, 51]) {
+                add(geometry.panel, light, sx, 13.5, sz, 1.0, 0.3, 1.0);
+              }
+            }
+
+            // =====================================================================
+            // 6. Livery details
+            // =====================================================================
+            // White sheer stripe along the top of the orange topsides, running the
+            // full length of the hull box. It is what turns "an orange ship" into the
+            // SAR two-tone: orange below, thin white line, white above.
+            add(geometry.panel, white, -9.15, 7.6, 8, 0.3, 1.4, 92);
+            add(geometry.panel, white, 9.15, 7.6, 8, 0.3, 1.4, 92);
+            // Diagonal high-visibility flash on each bow, the international rescue
+            // marking: one broad white slash raked across the orange forward
+            // topsides, set 0.2m proud of the side so it never z-fights.
+            //
+            // Two parallel slashes rather than one: a single plate rotated about X
+            // came out reading as a "7" against the sheer stripe above it (rounds 2
+            // and 3), because the stripe supplied a horizontal bar the slash then
+            // hung off. A pair of thinner strokes cannot make that letter, and the
+            // doubled diagonal is closer to the real marking anyway. Height 6.4
+            // against the 8.4m topsides keeps both ends of each slash on the orange.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, white, side * 9.25, 4.2, -30, 0.3, 6.4, 2.4, 0.5);
+              add(geometry.panel, white, side * 9.25, 4.2, -24, 0.3, 6.4, 2.4, 0.5);
+            }
+            // Hull name band aft on each side — a dark plate standing in for
+            // lettering. Small; the point is that the eye finds SOMETHING between the
+            // white sheer stripe and the boot topping so the orange slab has scale.
+            add(geometry.panel, dark, -9.2, 5.6, 34, 0.3, 1.6, 14);
+            add(geometry.panel, dark, 9.2, 5.6, 34, 0.3, 1.6, 14);
+          }
+        });
+      },
+      "ship_rescueVessel"
+    ); // @payload:ship_rescueVessel
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+
+        // The cargoShip is the template rather than the aegis: this hull is a
+        // freighter that has been militarised, so it should inherit a freighter's
+        // handling, a freighter's (empty) gun fit and a freighter's absent
+        // subsystems, not a destroyer's. Every combat number rides in on the spread
+        // and none of it has been tuned here - see the BALANCE TODO below.
+        const cargo = SHIP_TYPES.cargoShip;
+        if (!cargo) {
+          throw new Error("[ship-rootVaultShip] SHIP_TYPES.cargoShip is the template and is missing");
+        }
+
+        // ---------------------------------------------------------------------------
+        // Hull geometry constants, shared by the SHIP_TYPES box below and by build().
+        // These are not independent numbers: each is written against the line of
+        // build() that draws the hardware it measures, and both places say so.
+        //   deck plane        y 14.0     (weather deck, high merchant freeboard)
+        //   citadel           z -8 +/-22, x +/-15, y 14 -> 50   (the strongroom)
+        //   forward radome    z -74, y 25.5, r 6.4
+        //   aft radome        z  66, y 25.5, r 6.4
+        //   bridge crown      z  98, y 14 -> 44                 (aft accommodation)
+        //   funnel cap        z 112, y 46
+        // ---------------------------------------------------------------------------
+
+        ctx.addShipType("rootVaultShip", {
+          ...cargo,
+          key: "rootVaultShip",
+          surface: true,
+          label: "VAULT",
+          role: "Mobile Key Vault",
+
+          // ---- Dimensions: 250m LOA, 38m beam -------------------------------------
+          // Measured off the hull this file draws, on the fleet's own conventions:
+          // hitBox.z is the full LOA, crash.halfLen is half of it, and the stern/bow
+          // offsets are where the wake and the bow spray pin. The cargoShip's 200m
+          // numbers (hitRadius 92, halfLen 100, hitBox.z 200) scale by 1.25 to this
+          // hull's length, and the arsenal's 250m numbers (hitRadius 128, halfLen
+          // 124, hitBox.z 252) are the independent check that they land right.
+          hitRadius: 118,
+          // `top` is where a crashing aircraft is stopped, so it is measured off the
+          // tallest SOLID mass drawn - the citadel crown at y 58, which stands above
+          // the aft bridge (44) and the radome caps (42). The mast above the bridge
+          // runs to y 60 and is deliberately excluded, for the same reason the
+          // cargoShip excludes its crane booms: an aeroplane goes through a pole,
+          // not into it.
+          crash: Object.freeze({ halfLen: 125, halfBeam: 20, top: 58 }),
+          // y 66 is waterline to masthead; z 250 is the full LOA; x 40 is the beam
+          // plus the bridge-wing overhang.
+          hitBox: Object.freeze({ x: 40, y: 66, z: 250 }),
+          sternOffset: 121,
+          bowOffset: 123,
+          blastSpread: 46,
+          smokeOffset: 108,  // the funnel is aft with the accommodation block
+          smokeHeight: 26,
+
+          // BALANCE TODO: placeholder. hp / cruiseSpeed / turnRate / sinkDepth and
+          // the whole disarmed gun block (aaMounts [] / aaHeight 0 / aa range 0) are
+          // the cargoShip's, inherited verbatim by the spread above and NOT tuned for
+          // this hull. A 250m armoured vault ship should almost certainly be far
+          // tougher and slower than a 200m freighter, and it is an open question
+          // whether it should stay unarmed at all - none of that is decided here.
+          // This file ships the shape.
+          // BALANCE TODO: placeholder - `landing` is cleared for the same reason the
+          // cargoShip clears it (the flag would steer the hull at the nearest beach),
+          // and `subsystems` stays undefined, which keeps this hull on the pre-M9
+          // lock path with nothing lockable on it. If the citadel is ever meant to be
+          // a destroyable objective it wants a subsystem entry at { 0, 32, -8 } -
+          // the centre of the block build() draws - but that is a mission decision.
+          landing: false,
+          subsystems: undefined,
+
+          // Cold institutional blue-white on the radar rather than the cargoShip's
+          // merchant orange-white, so a vault in a convoy is separable from the
+          // freighters it hides among.
+          radarColor: "#cfe2ff",
+          // BALANCE TODO: placeholder - inherited tracer/explosion colours. Nothing
+          // on this hull fires, so tracerColor is dead weight carried by the spread.
+          tracerColor: cargo.tracerColor,
+          explosionColor: cargo.explosionColor
+        });
+
+        ctx.addShipModel("rootVaultShip", {
+          build(env) {
+            const { geometry, add, friendly, makeAircraftMaterial,
+                    hull, deck, house, dark, light, markings, extraMaterials } = env;
+
+            // Two authored materials, both of which MUST go into extraMaterials or
+            // they leak with every hull that sinks (the one leak path a payload hull
+            // has). Neither can come from the five themed materials: those are hull
+            // grey / deck grey / house grey / shadow / white, and this ship needs a
+            // near-black for the vault plating and a hot amber for the slit glow.
+            //
+            // Consequence of being extra rather than standard: neither flashes white
+            // on a hit. For the slits that is correct - a light source does not
+            // flash - and for the vault plate it is the price of having a colour no
+            // themed material offers.
+            const vaultPlate = makeAircraftMaterial(friendly ? 0x1a222e : 0x20242a, 0.42, 0.5);
+            extraMaterials.push(vaultPlate);
+            // The slit glow. MeshBasicMaterial via makeAircraftMaterial would still
+            // take lighting, so this is deliberately built as an emissive-looking
+            // standard material with a bright base and low roughness; the `markings`
+            // material (unlit MeshBasicMaterial, near-white) does the actual glowing
+            // strips, and this one is the warm surround that sells them as apertures
+            // rather than as painted lines.
+            const slitSurround = makeAircraftMaterial(friendly ? 0x2b6ea8 : 0xb8791f, 0.1, 0.35);
+            extraMaterials.push(slitSurround);
+
+            // =====================================================================
+            // 1. Hull - 250m x 38m, dark, high freeboard
+            // =====================================================================
+            // Painted in `dark`, not `hull`. Every other surface unit in the game is
+            // grey; this one is the black hull, and that is a third of the "not a
+            // cargoShip" read on its own. `hull` is still used, sparingly, for the
+            // raised forecastle and the transom so the black is not a flat void.
+            //
+            // Core slab z -108..+118 = 226m of parallel body on a 250m LOA, 38m
+            // beam, 14m of freeboard (deck edge y 14, same as the cargoShip's 13 at
+            // its own smaller scale). The slab STOPS at the bow wedge's base rather
+            // than running out to the stem, which is the lesson the arsenal's header
+            // records: run it further and the wedge sits inside the slab and the ship
+            // ends in a squared block with a triangle recessed in it.
+            add(geometry.panel, dark, 0, 7, 5, 38, 14, 226);
+            // Boot topping at the waterline. Kept thin and in `hull` grey: on a black
+            // hull the usual dark stripe is invisible, so the band has to be LIGHTER
+            // than the plating rather than darker. This is the one place the standard
+            // scheme is inverted, and it is what stops the hull reading as a
+            // silhouette cut out of the sea.
+            add(geometry.panel, hull, 0, 1.1, 5, 38.6, 2.2, 227);
+            // Raked stem: a shallow merchant wedge, not a combatant's knife.
+            // geometry.shipBow is a four-sided cone whose scale is a RADIUS: sx is
+            // the half-beam of its base. The aegis calibrates it - a 19m hull carries
+            // sx 9.5, exactly half - so a 38m hull wants sx 19 to meet the slab
+            // flush. sy 17 is the -Z run (stem lands at z -125 = the LOA) and sz 14
+            // matches the freeboard so the wedge is the full depth of the hull side.
+            add(geometry.shipBow, dark, 0, 7, -116, 19, 17, 14, -Math.PI / 2);
+            // Bulbous bow at the forefoot, the one genuinely round thing below the
+            // waterline and the merchant tell this hull keeps from its ancestry.
+            add(geometry.shipCylinder, hull, 0, 2.6, -122, 3.2, 9, 3.2, 0, 0, Math.PI / 2);
+            // Squared transom.
+            add(geometry.panel, dark, 0, 7, 118, 34, 14, 14);
+            add(geometry.panel, hull, 0, 7, 124.4, 30, 11, 1.4);
+            // Hull-side armour belt: a raised strake running the length of the
+            // parallel body at deck-edge height. On a black hull this is the only
+            // thing that gives the side a horizon line in profile, and it is the
+            // structural cue that the plating is thick.
+            add(geometry.panel, hull, -19.2, 11.4, 5, 1.6, 2.2, 214);
+            add(geometry.panel, hull, 19.2, 11.4, 5, 1.6, 2.2, 214);
+
+            // =====================================================================
+            // 2. Weather deck
+            // =====================================================================
+            add(geometry.panel, deck, 0, 14.4, 2, 36, 1.2, 216);
+            // Deck-edge coaming down both sides, so what stands on the deck reads as
+            // set into it rather than balanced on a plate.
+            add(geometry.panel, dark, -17.4, 15.6, 2, 1.6, 2.4, 214);
+            add(geometry.panel, dark, 17.4, 15.6, 2, 1.6, 2.4, 214);
+            // Raised forecastle with mooring gear and a plain pole mast, in `hull`
+            // grey so the bow end is not a black void. The forecastle deck ends at
+            // z -100 and the stem at -125, so nothing here overhangs the wedge.
+            add(geometry.panel, hull, 0, 16.6, -106, 26, 3.2, 22);
+            add(geometry.shipCylinder, dark, -6, 19.4, -111, 1.6, 1.6, 1.6);
+            add(geometry.shipCylinder, dark, 6, 19.4, -111, 1.6, 1.6, 1.6);
+            add(geometry.shipCylinder, light, 0, 25, -100, 0.6, 12, 0.6);
+
+            // =====================================================================
+            // 3. THE CITADEL - the identity
+            // =====================================================================
+            // One monolithic strongroom amidships, z -30..+14 (44m long), x +/-15
+            // (30m wide in a 38m beam, so it very nearly fills the deck), standing
+            // from the deck at y 14 to a flat crown at y 50. 36m tall on a 250m hull.
+            //
+            // The proportions are chosen against the cargoShip's peak container bay,
+            // which tops out at y 41.4 over a 34m x 26m footprint of small
+            // multicoloured boxes. This is ONE box, taller than that peak, and it is
+            // near-black. The two hulls cannot be confused from above, from the side
+            // or in silhouette, which is the requirement.
+            // Grown in the third pass. At 44m long and topping out at y 50 the block
+            // was the tallest thing on the ship but not the DOMINANT one: in the side
+            // elevation the enlarged radomes (cap y 42) and the aft block plus funnel
+            // read as three comparable masses, and a fortress that is merely the
+            // biggest of several deck structures is not a fortress. 56m of length and
+            // a crown at y 58 puts the citadel a clear head above everything else and
+            // makes it a fifth of the whole hull.
+            const CIT_Z = -8;
+            const CIT_LEN = 56;
+            const CIT_HALF_W = 16;
+            const CIT_BASE = 14;
+            const CIT_TOP = 58;
+            const CIT_H = CIT_TOP - CIT_BASE;             // 36
+            const CIT_MID = CIT_BASE + CIT_H / 2;         // 32
+
+            // A plinth one metre proud of the block on every face, so the tower
+            // stands ON something instead of growing out of the deck. Drawn first so
+            // the block's own faces win the depth fight where they overlap.
+            add(geometry.panel, house, 0, 15.6, CIT_Z, CIT_HALF_W * 2 + 4, 3.2, CIT_LEN + 4);
+            // The block itself.
+            add(geometry.panel, vaultPlate, 0, CIT_MID, CIT_Z, CIT_HALF_W * 2, CIT_H, CIT_LEN);
+            // Corner buttresses: four narrow full-height pilasters at the block's
+            // corners, in `house` grey. They break the flanks into panels, which is
+            // what makes a 30x44x36 box read as ARMOUR rather than as a shipping
+            // container blown up to twenty times its size. Without them the earlier
+            // read was "one very large crate".
+            for (const sx of [-1, 1]) {
+              for (const sz of [-1, 1]) {
+                add(geometry.panel, house,
+                    sx * (CIT_HALF_W - 0.4), CIT_MID, CIT_Z + sz * (CIT_LEN / 2 - 1.4),
+                    3.4, CIT_H - 1.5, 3.4);
+              }
+            }
+            // Crown: a heavy overhanging cap slab plus a dark inner deck, so the top
+            // of the tower is a defined edge from directly above - the angle the
+            // player spends most of a strafing run at.
+            add(geometry.panel, house, 0, CIT_TOP + 0.9, CIT_Z, CIT_HALF_W * 2 + 5, 1.8, CIT_LEN + 5);
+            add(geometry.panel, dark, 0, CIT_TOP + 2.4, CIT_Z, CIT_HALF_W * 2 - 3, 1.2, CIT_LEN - 3);
+
+            // ---- The glowing slits ----------------------------------------------
+            // Four ranks of narrow apertures down both flanks and across the forward
+            // face. Each aperture is TWO meshes: a recessed warm surround in
+            // `slitSurround` and a thinner white bar in `markings` laid on top of it.
+            // `markings` is the hull's unlit MeshBasicMaterial - it takes no shading
+            // from the preview's key light and none from the map's sun - so the bar
+            // is exactly as bright at 4km as it is at 400m, which is the whole reason
+            // the glow survives at thumbnail size. The surround does take light, and
+            // that difference is what makes the pair read as depth rather than as a
+            // decal.
+            //
+            // FIVE ranks at y 21 / 27.5 / 34 / 40.5 / 47, evenly spread over the
+            // block's 44m between the plinth and the crown with clearance at both
+            // ends. Four ranks were right for the 36m block of the first two passes;
+            // keeping four on a 44m block would have stretched the spacing until the
+            // flank read as a few stripes on a wall rather than as a stack of
+            // apertures, so the rank COUNT grows with the height and the 6.5m pitch
+            // stays where it was.
+            const SLIT_YS = [21, 27.5, 34, 40.5, 47];
+            for (const y of SLIT_YS) {
+              for (const sx of [-1, 1]) {
+                // Flank rank. Set 0.25m OUTBOARD of the block's own face at
+                // CIT_HALF_W so the strips are not z-fighting with the plating they
+                // sit on. Length 44 against the block's 56 leaves the buttressed
+                // corners clear at both ends.
+                add(geometry.panel, slitSurround, sx * (CIT_HALF_W + 0.25), y, CIT_Z, 0.7, 2.2, 44);
+                add(geometry.panel, markings, sx * (CIT_HALF_W + 0.55), y, CIT_Z, 0.5, 1.1, 43);
+              }
+              // Forward face rank, on the bow-facing end of the block at z -36.
+              // Shorter (25 of the 32m width) so the corner pilasters stay solid.
+              add(geometry.panel, slitSurround, 0, y, CIT_Z - CIT_LEN / 2 - 0.25, 25, 2.2, 0.7);
+              add(geometry.panel, markings, 0, y, CIT_Z - CIT_LEN / 2 - 0.55, 24, 1.1, 0.5);
+            }
+            // One vertical slit up the centreline of the forward face, crossing all
+            // four ranks. This is the vault-door line: it is what turns four
+            // horizontal bands into a face with a middle, and it reads from dead
+            // ahead where the horizontal ranks foreshorten to nothing.
+            add(geometry.panel, slitSurround, 0, CIT_MID, CIT_Z - CIT_LEN / 2 - 0.25, 3.4, CIT_H - 6, 0.7);
+            add(geometry.panel, markings, 0, CIT_MID, CIT_Z - CIT_LEN / 2 - 0.55, 1.6, CIT_H - 7, 0.5);
+            // Crown lighting. The first pass put four small plates at the cap corners
+            // and the plan view showed a blank black lid: from directly above, the
+            // flank and bow slit ranks all foreshorten to nothing, so the entire
+            // identity vanished in the one view where this ship is a rectangle and
+            // the cargoShip is a rectangle. The fix is to put the glow ON the top
+            // face as a shape, not as four dots.
+            //
+            // A cross of glowing seams down the crown's centrelines - one running
+            // fore-and-aft the length of the block, one athwartships across its
+            // width - which is the vault-door split read from above and the thing
+            // that separates this deck plan from a container bay at a glance.
+            add(geometry.panel, slitSurround, 0, CIT_TOP + 2.9, CIT_Z, 3.6, 1.1, CIT_LEN - 4);
+            add(geometry.panel, markings, 0, CIT_TOP + 3.3, CIT_Z, 1.8, 0.6, CIT_LEN - 5);
+            add(geometry.panel, slitSurround, 0, CIT_TOP + 2.9, CIT_Z, CIT_HALF_W * 2 - 4, 1.1, 3.6);
+            add(geometry.panel, markings, 0, CIT_TOP + 3.3, CIT_Z, CIT_HALF_W * 2 - 5, 0.6, 1.8);
+            // Four corner beacons on the cap, enlarged from the 2.2 plates of the
+            // first pass which were below the size a plan view resolves at all.
+            for (const sx of [-1, 1]) {
+              for (const sz of [-1, 1]) {
+                add(geometry.shipOctPlate, markings,
+                    sx * 11.5, CIT_TOP + 3.1, CIT_Z + sz * 16.5, 3.4, 0.5, 3.4);
+              }
+            }
+
+            // =====================================================================
+            // 4. The radome pair
+            // =====================================================================
+            // Fore at z -74 and aft at z +66, both on the centreline, both the same
+            // size. geometry.shipCylinder is the only round primitive the ship set
+            // offers, so a "dome" is built as a short fat drum with a narrower drum
+            // capping it - which from any distance is a radome, and up close is
+            // honest about being made of two cylinders.
+            //
+            // The pair is what makes this hull scan as equipment-carrying rather than
+            // cargo-carrying: a freighter has nothing spherical above its deck, and
+            // one radome could be a mast fitting while two matched ones bracketing
+            // the citadel are obviously a system.
+            // Sized up substantially from the first pass, which drew a 6.4m dome on a
+            // 5m pedestal: at that scale, against a 36m citadel and a 30m aft block,
+            // both domes read as deck tanks sitting in the coaming rather than as
+            // radar. A radome has to be a LANDMARK on the deck to be an identity
+            // feature, so the dome is now 9m in radius on a 13m tower - 31m to the
+            // cap, which is two thirds of the citadel's height and taller than
+            // anything else on the weather deck.
+            const radome = (z) => {
+              // Lattice-free tower: a tapered two-stage pedestal that lifts the dome
+              // clear of the deck edge, so it is a sphere on a stalk in profile
+              // instead of a lump on a plate.
+              add(geometry.panel, house, 0, 18.5, z, 13, 7, 13);
+              add(geometry.panel, house, 0, 24.5, z, 9.5, 6, 9.5);
+              // Skirt, equator drum, shoulder, cap - four stacked cylinders of
+              // decreasing radius, which is as close to a hemisphere as this
+              // geometry set gets, and enough steps that the profile curves.
+              add(geometry.shipCylinder, house, 0, 28.4, z, 9, 3, 9);
+              add(geometry.shipCylinder, light, 0, 32.4, z, 9, 6, 9);
+              add(geometry.shipCylinder, light, 0, 36.6, z, 6.6, 3, 6.6);
+              add(geometry.shipCylinder, light, 0, 39.2, z, 3.6, 2.6, 3.6);
+              add(geometry.shipCylinder, light, 0, 41, z, 1.6, 1.6, 1.6);
+              // Dark seam bands round the drum, so it reads as a panelled radome
+              // rather than as a plain white can. Two bands, not one: a single band
+              // at the waist looked like a join between two separate objects.
+              add(geometry.shipCylinder, dark, 0, 30.2, z, 9.2, 0.7, 9.2);
+              add(geometry.shipCylinder, dark, 0, 34.6, z, 9.2, 0.7, 9.2);
+            };
+            radome(-74);
+            radome(66);
+
+            // =====================================================================
+            // 5. Demoted container heritage - two low bays
+            // =====================================================================
+            // The hull keeps its box-boat ancestry, but quietly: two SHORT bays of
+            // TWO tiers each, one colour apiece, forward at z -50 and aft at z +40.
+            // The cargoShip's signature is four bays of three to five tiers in three
+            // interleaved colours; two flat two-tier blocks in single tones is
+            // recognisably the same kind of cargo and unmistakably not the same read.
+            //
+            // The colours are muted rather than merchant-bright, because a vault ship
+            // painting its deck cargo in shipping-line livery would undo the dark
+            // hull it just bought.
+            const boxColors = friendly ? [0x3d5670, 0x4a5c50] : [0x4a5364, 0x55604f];
+            const crates = boxColors.map((color) => {
+              const m = makeAircraftMaterial(color, 0.14, 0.88);
+              extraMaterials.push(m);
+              return m;
+            });
+            const TIER = 5.2;
+            const DECK_Y = 15.0;
+            // bay z centre, half-length, colour index. Both are clear of the citadel
+            // (which runs z -36..+20 after the third pass grew it) and of the radomes
+            // (z -74 and +66, each 13m wide on its pylon), which is why the centres
+            // are -52 and +42 and both bays are short:
+            //   fwd bay  -52 +/-8 = -60..-44   radome pylon ends at -67.5, citadel at -36
+            //   aft bay   42 +/-8 =  34.. 50   citadel ends at 20, radome pylon at 59.5
+            const BAYS = [
+              { z: -52, half: 8, color: 0 },
+              { z: 42, half: 8, color: 1 }
+            ];
+            for (const bay of BAYS) {
+              // Lashing bridge at the foot: a dark band tying the bay to the deck.
+              add(geometry.panel, dark, 0, DECK_Y + 0.8, bay.z, 28, 1.6, bay.half * 2 + 1);
+              for (let t = 0; t < 2; t += 1) {
+                // Three rows across, as on the cargoShip, so the pitch reads as
+                // container-sized against a hull whose beam the player already knows.
+                for (let c = 0; c < 3; c += 1) {
+                  add(geometry.panel, crates[bay.color],
+                      (c - 1) * 9, DECK_Y + 1.6 + t * TIER + (TIER - 0.4) / 2, bay.z,
+                      8.4, TIER - 0.4, bay.half * 2);
+                }
+              }
+            }
+
+            // =====================================================================
+            // 6. Aft accommodation block and funnel
+            // =====================================================================
+            // The merchant layout the hull was born with, kept because it is what
+            // says which end is the stern - and deliberately made SHORTER than the
+            // citadel (crown y 44 against the vault's 50) so nothing out-reads the
+            // strongroom. On the cargoShip the aft tower is the tallest thing afloat;
+            // here it is the second tallest, and that inversion is itself part of the
+            // difference between the two hulls.
+            add(geometry.panel, house, 0, 29, 98, 18, 30, 22);
+            // Deck banding: five thin dark lines = five accommodation levels.
+            for (let d = 0; d < 5; d += 1) {
+              add(geometry.panel, dark, 0, 18 + d * 5.2, 98, 18.4, 0.5, 22.4);
+            }
+            // Bridge deck, overhanging both sides, with a glazed strip across the
+            // front face looking forward down the ship at the citadel.
+            add(geometry.panel, house, 0, 46.5, 96, 26, 5, 14);
+            add(geometry.panel, dark, 0, 47, 88.8, 25, 3.2, 1.2);
+            add(geometry.panel, dark, 0, 49.3, 96, 26.6, 1, 14.6);
+            // Bridge-wing consoles on the outboard tips.
+            add(geometry.panel, light, -12.8, 46.5, 96, 1.6, 1.8, 5);
+            add(geometry.panel, light, 12.8, 46.5, 96, 1.6, 1.8, 5);
+            // Mast: pole, one navigation plate, a yard. Tallest point on the ship at
+            // y 60, and excluded from crash.top for the reason the box records.
+            add(geometry.shipCylinder, dark, 0, 55, 98, 0.6, 12, 0.6);
+            add(geometry.shipOctPlate, light, 0, 57.4, 98, 1.6, 0.4, 1.6);
+            add(geometry.panel, light, 0, 60, 98, 6.5, 0.4, 0.4);
+            // Funnel abaft the block, with the dark cap band and twin uptakes.
+            add(geometry.panel, house, 0, 31, 112, 11, 26, 12);
+            add(geometry.panel, dark, 0, 43.4, 112, 11.6, 2.6, 12.6);
+            add(geometry.shipCylinder, dark, -2.6, 46, 112, 1.5, 2.6, 1.5);
+            add(geometry.shipCylinder, dark, 2.6, 46, 112, 1.5, 2.6, 1.5);
+
+            // =====================================================================
+            // 7. Hull markings
+            // =====================================================================
+            // Draft marks and a load line disc amidships - the civilian tell the hull
+            // has not repainted over, and on black plating the white is the only
+            // thing that gives the mid-hull side any scale at all.
+            add(geometry.shockRing, markings, -19.4, 8, -6, 3, 3, 1, 0, -Math.PI / 2, 0);
+            add(geometry.shockRing, markings, 19.4, 8, -6, 3, 3, 1, 0, Math.PI / 2, 0);
+            add(geometry.panel, markings, -19.4, 8, -6, 0.4, 0.5, 14);
+            add(geometry.panel, markings, 19.4, 8, -6, 0.4, 0.5, 14);
+          }
+        });
+      },
+      "ship_rootVaultShip"
+    ); // @payload:ship_rootVaultShip
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // adTank is the template, not samSite: this unit DRIVES (tracked chassis),
+        // it carries a rotating sensor of its own and it shoots back, so the spread
+        // has to bring across `mobile`, `dishSpin` and the `aaMounts`/`aaHeight`
+        // pair the tracer origin is measured from. samSite is a static emplacement
+        // and would drop all three.
+        const adTank = GROUND_TYPES.adTank;
+        if (!adTank) throw new Error("[ground-autonomousSam] expected GROUND_TYPES.adTank as the template");
+
+        // ===========================================================================
+        // 1. GROUND_TYPES entry
+        // ===========================================================================
+        //
+        // BALANCE TODO: placeholder. Every combat number below - hp, the whole `aa`
+        // block, `mobile`, aaMounts/aaHeight, dishSpin - is the AD TANK's, carried
+        // across unexamined through the spread and restated only where the call site
+        // should show it. Nothing about an UNMANNED battery has been costed: a SAM
+        // whose authorisation has lapsed engages without a human in the loop, which
+        // is a different threat model from a crewed autocannon (it never hesitates,
+        // it also never checks), and expressing that is a balance pass' deliverable,
+        // not this file's. What IS authored here are the dimensions: hitRadius, the
+        // crash box and the hitbox are measured off the geometry below and are
+        // correct for a 9 m tracked vehicle.
+        ctx.addGroundType("autonomousSam", {
+          ...adTank,
+          key: "autonomousSam",
+          label: "ROGUE SAM",
+          role: "Lapsed-Authorisation Autonomous SAM",
+
+          // --- Dimensions: authored for this hull, 9 m overall --------------------
+          // The model runs z -4.5..+4.5 over a 3.5 m track gauge; the canister pack
+          // stands to y 6.0 at its raised aft end and the sensor head tops out near
+          // y 4.6. Everything here is geometry-derived so the lock box and the crash
+          // volume match what is actually drawn.
+          hitRadius: 14,
+          // `top` is the collision ceiling, so it is taken off the canister pack
+          // (the tallest piece of structure), the same way the AD TANK takes its 4
+          // off the turret. Flying through the sensor mast is intended; flying
+          // through the launcher is not.
+          crash: Object.freeze({ halfLen: 4.7, halfBeam: 2.1, top: 6.0 }),
+          hitBox: Object.freeze({ x: 6, y: 7, z: 10 }),
+          // A launcher full of live rounds on a derelict chassis: it burns tall and
+          // dirty when it goes, taller than the AD TANK's ammunition.
+          smokeHeight: 5.5,
+
+          // BALANCE TODO: placeholder - inherited from adTank, restated so the
+          // values are visible at the call site instead of implied by the spread.
+          hp: adTank.hp,                 // 90 (one missile)
+          aa: adTank.aa,                 // range 600 / damage 7 / maxHitChance 0.15
+          aaMounts: adTank.aaMounts,
+          // The launch rails' mouths sit at y 4.4 on this model rather than the AD
+          // TANK's 4.6 gun line, so anything leaving the unit leaves the canisters
+          // rather than the empty air beside them. A dimension, not a balance number.
+          aaHeight: 4.4,
+          // BALANCE TODO: placeholder. Faster than the AD TANK's 1.4 tracker sweep
+          // because the head hunting on its own with nobody cueing it is THE tell
+          // that this battery is running unattended - a nervous, ceaseless sweep.
+          dishSpin: 2.0,
+          // BALANCE TODO: placeholder - the AD TANK's tracked speed and turn rate,
+          // unchanged. Same class of chassis, so the same numbers until costed.
+          mobile: adTank.mobile,
+
+          // Unaffiliated: the blip is the same warning red as the beacons on the
+          // model, so what shows on the radar and what shows on the hull agree. It
+          // is deliberately not either faction's colour - nobody owns this thing.
+          radarColor: "#ff4436",
+          tracerColor: adTank.tracerColor,
+          explosionColor: adTank.explosionColor
+        });
+
+        // ===========================================================================
+        // 2. Geometry
+        // ===========================================================================
+        ctx.addGroundModel("autonomousSam", {
+          build(env) {
+            const { THREE, geometry, makeAircraftMaterial,
+                    steel, olive, dark, light, extraMaterials, add, addRoot } = env;
+
+            // --- Scale derivation --------------------------------------------------
+            // 9 m hull length, taken to the same measured-metres convention every
+            // other ground payload uses (TEL: 19 m chassis drawn z -9.5..+9.5; LASER
+            // AAV: 12 m drawn z -6..+6). So this one is drawn z -4.5..+4.5 and every
+            // number below is a real metre. Cross-checked against the inline tracked
+            // chassis in createGroundModel (`kind === "tank"`), which is 12.4 m of
+            // track run at a 3.4 m half-gauge with its hull deck at y 1.9: this
+            // vehicle is drawn to 9/12.4 = 0.73 of that length with the track tops
+            // and deck heights held at the tank's, because a shorter tracked vehicle
+            // is shorter, not smaller - road wheels stay road-wheel sized. That is
+            // what keeps it reading as the same army's running gear parked next to
+            // an MBT rather than as a scale model of one.
+            //
+            // --- Shape identity (three marks; anything not serving one is cut) -----
+            //   1. TRACKED chassis carrying FOUR canted missile canisters. The tracks
+            //      are the first separation from every other SAM in the game - the
+            //      TEL and the LASER AAV are both wheeled - and the four-tube pack
+            //      standing up at the back is the silhouette.
+            //   2. A SENSOR HEAD that turns: an optical block on a turntable, on its
+            //      own mast, and it is the returned `dish` so it never stops sweeping.
+            //   3. RED WARNING BEACONS. Nothing else on this model is red. An
+            //      unmanned battery with a lapsed key is supposed to be flashing a
+            //      warning nobody is left to read, and that is the whole mood of the
+            //      unit in one colour.
+            //
+            // --- Palette -----------------------------------------------------------
+            // Unaffiliated / rusted grey. The themed `olive` is the army green every
+            // other ground unit is painted in, so using it here would put this thing
+            // back in somebody's order of battle. Instead the hull is a bespoke
+            // brown-grey with the roughness pushed to 0.95 and metalness to near
+            // zero - a surface that has been outdoors for years - and `steel` is
+            // reserved for the few pieces that are still bare metal.
+            const rust = makeAircraftMaterial(0x6b5a4c, 0.06, 0.95);
+            extraMaterials.push(rust);
+            // Streaked, redder oxide for the panels that have gone furthest: the
+            // track skirts, the canister cradle, the corrosion patches. Two browns
+            // one step apart is what reads as "weathered" rather than as "painted
+            // brown", which a single flat tone always does.
+            const oxide = makeAircraftMaterial(0x7d4a33, 0.05, 0.98);
+            extraMaterials.push(oxide);
+            // THE WARNING LIGHT. Unlit and additive so it stays hot against the
+            // brown at every one of the preview's four light angles and reads as
+            // something LIT rather than as a red dot painted on the hull. Pushed
+            // into `extraMaterials` or it leaks with every unit destroyed.
+            const beacon = new THREE.MeshBasicMaterial({
+              color: 0xff3a24,
+              transparent: true,
+              opacity: 0.95,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false
+            });
+            extraMaterials.push(beacon);
+            // The housing each beacon sits in - a dark red-tinted collar, so the lit
+            // lens has a rim to sit against instead of floating on a brown face.
+            const beaconBase = makeAircraftMaterial(0x50170f, 0.3, 0.55);
+            extraMaterials.push(beaconBase);
+
+            // Built nose-along -Z, which is the forward the route heading drives -
+            // the same convention the tank, the TEL and the LASER AAV all use.
+
+            // --- Running gear: TRACKS ------------------------------------------------
+            // Two track runs the full 9 m, drawn the way the inline tank draws them
+            // (a dark side box with a lighter road-wheel band under it) but with the
+            // road wheels themselves broken out as six discrete cylinders a side plus
+            // a drive sprocket and an idler. That count is what makes the TOP and
+            // SIDE cells read as TRACKS and not as two dark bars: a plain box is
+            // exactly what a wheeled hull's skirt looks like from 2 km up, and the
+            // tracks are identity mark #1.
+            for (const side of [-1, 1]) {
+              // Track run: the dark inner belt, 0.9 m tall, held INBOARD at x 1.55
+              // so the wheels can stand outboard of it and still be part of the same
+              // assembly. It is deliberately the darkest thing on the vehicle: the
+              // wheels are what has to be counted, and they only count against a
+              // dark ground.
+              add(geometry.panel, dark, side * 1.55, 0.9, 0, 0.55, 1.8, 9.0);
+              // Return-roller top run, lighter, so the track has a visible top edge
+              // instead of the run being one solid slab.
+              add(geometry.panel, steel, side * 1.55, 1.75, 0, 0.5, 0.2, 8.6);
+              // Six road wheels a side. Cylinders laid on their side (rz = PI/2
+              // rolls the cylinder axis from +y onto +x, across the vehicle), 0.62
+              // radius, hubs at x +/-1.95 which is 0.12 PROUD of the track belt.
+              // That overhang is the whole reason the wheel count is legible from
+              // directly above: wheels tucked inside the belt line are invisible in
+              // the TOP cell and the unit reads as a box on two dark bars, which is
+              // exactly what a wheeled hull's skirt looks like from 2 km up.
+              //
+              // First round of this model hid all of them behind a full-length
+              // oxide skirt: the running gear vanished in every cell and identity
+              // mark #1 was gone. The skirt is now two SHORT fenders (below) that
+              // leave the middle four wheels in the open.
+              for (const wz of [-3.35, -2.0, -0.65, 0.7, 2.05, 3.4]) {
+                add(geometry.shipCylinder, steel, side * 1.95, 0.72, wz,
+                  0.62, 0.62, 0.62, 0, 0, Math.PI / 2);
+                // Dark hub centre, so each wheel has a middle and the six do not
+                // merge into one pale stripe when they are close together.
+                add(geometry.shipCylinder, dark, side * 2.28, 0.72, wz,
+                  0.26, 0.1, 0.26, 0, 0, Math.PI / 2);
+              }
+              // Drive sprocket aft and idler forward, larger and higher than the
+              // road wheels - the asymmetry at the two ends is what says "tracked
+              // vehicle" rather than "row of rollers".
+              add(geometry.shipCylinder, oxide, side * 1.95, 1.25, 4.2,
+                0.82, 0.62, 0.82, 0, 0, Math.PI / 2);
+              add(geometry.shipCylinder, oxide, side * 1.95, 1.25, -4.2,
+                0.82, 0.62, 0.82, 0, 0, Math.PI / 2);
+              // Rusted fenders: SHORT plates over the two ends only, in the redder
+              // oxide. A bolted-on plate that has weathered differently from the
+              // hull is the cheapest "abandoned" cue on the model, but run full
+              // length it becomes a lid over the running gear - so it stops well
+              // clear of the middle of the track.
+              add(geometry.panel, oxide, side * 2.05, 2.05, -3.5, 0.5, 0.3, 2.0);
+              add(geometry.panel, oxide, side * 2.05, 2.05, 3.5, 0.5, 0.3, 2.0);
+            }
+
+            // --- Hull ----------------------------------------------------------------
+            // Low armoured box between the tracks, 3.0 m wide across the deck at
+            // y 2.35 - narrower than the 3.5 m track gauge so a strip of running
+            // gear shows down both sides from directly above. Getting this wrong
+            // (a full-gauge deck) hides the tracks in the TOP cell and identity
+            // mark #1 disappears in the one view that would have shown it best.
+            add(geometry.panel, rust, 0, 1.9, 0, 3.0, 1.5, 8.6);
+            // Sloped glacis over the nose, the standard tracked-vehicle front.
+            add(geometry.panel, rust, 0, 2.2, -3.9, 2.9, 1.7, 2.4, -0.62);
+            // Deck plate: a slightly lighter lid so the hull is not one brown mass
+            // from directly above, inset from the hull sides.
+            add(geometry.panel, steel, 0, 2.68, 0.3, 2.5, 0.2, 6.4);
+            // Corrosion patches on the deck - two oxide plates breaking up that lid.
+            // A vehicle that has been sitting for years is not uniformly coloured,
+            // and this is the one place the camera looks straight down at.
+            add(geometry.panel, oxide, -0.75, 2.8, -1.5, 0.9, 0.06, 1.8);
+            add(geometry.panel, oxide, 0.85, 2.8, 1.9, 0.7, 0.06, 1.4);
+            // Driver's station on the nose deck - a sealed hatch with NO glazing,
+            // deliberately: every crewed vehicle in this game has a dark windscreen
+            // band, and the absence of one is the quiet half of "unmanned". The
+            // vision port is plated over in oxide instead.
+            add(geometry.panel, rust, 0, 2.95, -3.0, 1.6, 0.6, 1.5);
+            add(geometry.panel, oxide, 0, 3.05, -3.72, 1.2, 0.42, 0.16);
+            // Tail plate and a stowage bin at the back, flush with the hull's aft
+            // face so neither reads as a slab floating behind the vehicle in SIDE.
+            add(geometry.panel, dark, 0, 2.1, 4.28, 2.8, 1.2, 0.24);
+            add(geometry.panel, oxide, 0, 3.0, 3.5, 2.2, 0.7, 1.2);
+
+            // ============ IDENTITY 1: FOUR CANTED MISSILE CANISTERS ==================
+            // The silhouette. A cradle on the rear deck holding four square-section
+            // canisters as a 2x2 pack, pitched nose-UP and forward at 0.42 rad (24
+            // degrees). They are the tallest, longest thing on the vehicle and they
+            // are meant to win the eye from every angle.
+            //
+            // Why FOUR IN A ROW and not a 2x2 block: the first round of this model
+            // stacked them two-up, and the four tubes fused into one brown slab in
+            // every cell of the contact sheet - the upper pair simply roofed the
+            // lower one. A single transverse row of four, with a full 0.28 m of AIR
+            // between neighbours, is the only arrangement where the count survives
+            // from directly above, which is the view that decides whether the pack
+            // reads as "four missiles" or as "a crate". The gaps are load-bearing:
+            // touching tubes are one tube.
+            //
+            // Cant maths and WHICH END IS UP: each canister is 5.4 m long, pitched
+            // rx = -0.42 rad (24 deg). Verified numerically rather than by eye: at
+            // that rotation a point at local +z 2.7 lands at world (y +1.10,
+            // z +2.47) and one at local -z 2.7 lands at (y -1.10, z -2.47). So the
+            // AFT end rises and the FORWARD end drops.
+            //
+            // That means the open MOUTHS have to be on the aft (+z) end, and the
+            // sealed blast caps on the forward (-z) end. Round 3 had this backwards
+            // - mouths low and forward, caps high and aft - which draws a launcher
+            // aimed down into the ground ahead of its own hull. A SAM elevates so
+            // the round leaves upward and over the vehicle's tail; the elevated end
+            // is the end that opens. Getting this the wrong way round is not a
+            // detail, it is the difference between a launcher and a bulldozer.
+            //
+            // The run therefore spans z -0.95..+3.95 and climbs from y 2.9 at the
+            // sealed nose to y 5.1 at the mouths, with the mouth collars reaching
+            // 6.0 - which is the `crash.top` above. Nothing overhangs the hull nose
+            // and nothing pokes below the deck.
+            //
+            // Elevating cradle the pack sits in: a trunnion box across the deck with
+            // two rusted arms. Drawn first so the canisters sit ON it.
+            add(geometry.panel, oxide, 0, 3.0, 2.9, 3.0, 0.7, 1.8);
+            for (const side of [-1, 1]) {
+              // Trunnion arm rising to the pivot - the reason the pack is at an
+              // angle instead of simply floating over the deck.
+              add(geometry.panel, steel, side * 1.45, 3.6, 2.85, 0.24, 1.6, 0.7);
+            }
+            // The four tubes, abreast at 0.94 m centres: x = -1.41, -0.47, +0.47,
+            // +1.41. Each is 0.52 m across, so there is 0.42 m of OPEN AIR between
+            // neighbours - nearly as wide as a tube. Round 2 used 0.58 m tubes on
+            // 0.86 m centres (0.28 m gaps) and the pack still fused into one brown
+            // roof in both 3/4 cells: at contact-sheet scale a gap has to be a
+            // substantial fraction of the thing it separates before the eye reads it
+            // as a gap at all. The outer pair at 1.41 +/- 0.26 still sits inside the
+            // 3.5 m track gauge, so nothing overhangs the running gear.
+            for (const cx of [-1.41, -0.47, 0.47, 1.41]) {
+              // Body: a square-section box, not a cylinder. A launch CANISTER is a
+              // crate - flat faces that catch four different shades at the preview's
+              // four light angles - where a cylinder would read as the TEL's single
+              // round tube, and the TEL is the unit this must not be confused with.
+              add(geometry.panel, rust, cx, 4.0, 1.5, 0.52, 0.52, 5.4, -0.42);
+              // A dark spine strip laid ALONG the top of each tube. This is what
+              // finally separates them in the two 3/4 cells: the sunlit upper faces
+              // of four adjacent boxes are all the same brown and merge into a roof,
+              // so each one gets its own dark line down the middle and the pack
+              // reads as four ribs instead of one slab.
+              add(geometry.panel, dark, cx, 4.28, 1.62, 0.2, 0.1, 5.2, -0.42);
+              // THE MOUTH, on the RAISED aft end: a pale steel collar with a dark
+              // aperture recessed inside it. Four dark squares in pale rings, held
+              // up at the top of the pack where nothing occludes them, is the single
+              // clearest statement of the count on the whole model - and the two-part
+              // collar-and-hole is what makes each box read as a tube with something
+              // live inside it rather than as a girder.
+              add(geometry.panel, steel, cx, 5.02, 3.83, 0.7, 0.7, 0.3, -0.42);
+              add(geometry.panel, dark, cx, 5.14, 4.1, 0.52, 0.52, 0.24, -0.42);
+              // Sealed nose cap on the low forward end, oxide: the blanked-off end,
+              // deliberately the dull one so the eye is not offered two competing
+              // "openings" per tube.
+              add(geometry.panel, oxide, cx, 2.98, -1.02, 0.62, 0.62, 0.32, -0.42);
+              // Retaining bands, two per canister, in bare steel: the marks that
+              // break up a 5.4 m untextured box and say "container".
+              add(geometry.panel, steel, cx, 3.62, -0.02, 0.68, 0.68, 0.22, -0.42);
+              add(geometry.panel, steel, cx, 4.44, 1.86, 0.68, 0.68, 0.22, -0.42);
+            }
+            // Elevation strut under the raised aft end: a rusted A-frame leg from
+            // the tail of the deck up to the underside of the pack. With the mouths
+            // now at the top of the run, the four tubes overhang the back of the
+            // hull and need something visibly holding them there - an unsupported
+            // pack reads as if it is falling off. Kept LOW and narrow so it cannot
+            // mask the mouths, which are the count's primary reading.
+            add(geometry.panel, oxide, 0, 3.35, 3.95, 2.3, 1.5, 0.24, -0.5);
+            for (const side of [-1, 1]) {
+              add(geometry.panel, steel, side * 0.95, 3.4, 3.7, 0.2, 1.5, 0.2, -0.42);
+            }
+
+            // ============ IDENTITY 3 (part): HULL WARNING BEACONS ====================
+            // Two beacons on the forward hull corners, each a dark collar with an
+            // additive lens standing proud of it. Placed on the NOSE deck rather
+            // than on the sensor mast so at least one pair of red marks is visible
+            // in every one of the four preview cells including the head-on one,
+            // where the mast head is edge-on and tiny.
+            //
+            // These are the only red on the model. Two of them plus the one on the
+            // sensor head is the whole budget: a vehicle strung with warning lights
+            // reads as a Christmas tree, and three reads as a machine flashing at
+            // nobody.
+            // Pushed right out to the hull's shoulders (x +/-1.42) and forward of
+            // the sensor mast, so from directly above the pair brackets the nose
+            // instead of clustering with the head's own light into one red smudge -
+            // which is what the first round did at x 1.25 with the mast lamp only
+            // 1.2 m behind them.
+            // Round 2 put these at z -3.35, down on the glacis, where the sloped
+            // nose plate ate both of them in the FRONT 3/4 cell. They now stand on
+            // short posts at z -2.75 on the flat deck, with the lens at y 3.55 -
+            // clear of the glacis crest and clear of the sensor block beside them.
+            for (const side of [-1, 1]) {
+              add(geometry.shipCylinder, beaconBase, side * 1.42, 3.05, -2.75, 0.2, 0.6, 0.2);
+              add(geometry.shipOctPlate, beacon, side * 1.42, 3.55, -2.75, 0.32, 0.32, 0.32);
+            }
+
+            // ============ IDENTITY 2: THE ROTATING SENSOR HEAD =======================
+            // A mast on the forward deck carrying an optical block on a turntable.
+            // Everything that traverses hangs off ONE group so the head, its lenses
+            // and its own beacon all turn together. Built as a Group (add() only
+            // makes meshes) and parented through addRoot, then handed back as
+            // `dish`: a pivot that is not parented is a sensor that is nowhere, and
+            // one that is not returned is a sensor that never moves.
+            //
+            // Mounted FORWARD (z -1.75) and the launcher aft, so the two identity
+            // marks occupy opposite ends of the vehicle instead of stacking into one
+            // lump in the middle. The pivot sits at y 2.78 - the deck top - so the
+            // block's roof lands at 5.28 and its beacon tip at 5.9, both under the
+            // canister crown at 6.0. The launcher stays the top line of the
+            // silhouette; the head is the second read, not a competing mast.
+            const head = new THREE.Group();
+            head.position.set(0, 2.78, -1.75);
+            addRoot(head);
+
+            const put = (geo, material, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+              const m = new THREE.Mesh(geo, material);
+              m.position.set(x, y, z);
+              m.scale.set(sx, sy, sz);
+              m.rotation.set(rx, ry, rz);
+              head.add(m);
+              return m;
+            };
+
+            // Turntable: a low drum the mast stands on, 1.15 m across - wider than
+            // the mast by a clear margin so it reads as a BEARING the head sits in.
+            // This is the piece that makes the block above read as something that
+            // TURNS rather than as a box bolted to the deck, the same job the LASER
+            // AAV's traverse ring does.
+            put(geometry.shipCylinder, steel, 0, 0.16, 0, 1.15, 0.32, 1.15);
+            put(geometry.panel, dark, 0, 0.36, 0, 1.9, 0.1, 1.9);
+            // Mast: a short post between turntable and head, so the optics sit above
+            // the canisters' cradle line and clear the deck clutter in SIDE view.
+            put(geometry.panel, steel, 0, 0.8, 0, 0.5, 1.0, 0.5);
+            // The optical block: wider than tall, its face at z -0.9. Grown from the
+            // first round's 1.5x0.85x1.25 to 2.1x1.15x1.7 - at contact-sheet scale
+            // the smaller box was a knuckle on a stick and the mark did not survive.
+            // It is still a clean slab: all the interest here is the lenses.
+            put(geometry.panel, rust, 0, 1.85, 0, 2.1, 1.15, 1.7);
+            // Roof cap in bare steel, inset. Light roof, dark seams and not the
+            // other way round: from directly above the head is the only part of this
+            // vehicle the camera sees in full, and a dark lid there turns it into a
+            // black rectangle that reads as an open hatch in the deck.
+            put(geometry.panel, steel, 0, 2.5, 0, 1.7, 0.16, 1.35);
+            // Side radiator slots, so the block is not an untextured cube at any of
+            // the four preview angles.
+            put(geometry.panel, dark, -1.09, 1.85, 0.15, 0.1, 0.66, 1.1);
+            put(geometry.panel, dark, 1.09, 1.85, 0.15, 0.1, 0.66, 1.1);
+            // THE OPTICS. Two dark apertures side by side on the block's front face
+            // - a wide-field window and a narrow tracker - with pale rims. A pair,
+            // not one: two eyes on a turning head is what reads as a SENSOR, where a
+            // single disc reads as the LASER AAV's emitter, and that is the other
+            // unit this must not be confused with.
+            //
+            // shipOctPlate is a squat cylinder about its own +y, so rx = PI/2 stands
+            // the plate up to FACE forward along -z. Without that rotation the
+            // lenses lie flat on the roof like table tops and the mark is invisible
+            // from every angle that matters.
+            for (const side of [-1, 1]) {
+              put(geometry.shipCylinder, light, side * 0.6, 1.85, -0.84, 0.46, 0.14, 0.46, Math.PI / 2);
+              put(geometry.shipOctPlate, dark, side * 0.6, 1.85, -0.97, 0.36, 0.12, 0.36, Math.PI / 2);
+            }
+            // Sunshade hood over the two apertures - the lip that says the optics
+            // are looking at something rather than being two holes. Its overhang is
+            // also what gives the head a FRONT from directly above, so the sweep is
+            // readable as a direction and not just as a box that happens to spin.
+            put(geometry.panel, steel, 0, 2.42, -0.95, 1.9, 0.12, 0.75, 0.28);
+            // A whip antenna off the back of the head, canted aft. It sweeps with
+            // the block, which from directly above is the clearest evidence in the
+            // whole contact sheet that this assembly rotates - a symmetric box gives
+            // the eye nothing to track.
+            put(geometry.panel, dark, 0, 2.1, 1.15, 0.12, 0.12, 1.5, 0.6);
+
+            // The head's own beacon, standing on its roof: the third and last red
+            // mark, and the one that moves. A rogue battery sweeping its own warning
+            // light across the landscape is the entire character of the unit, so it
+            // is the largest of the three lenses and sits on a visible post.
+            put(geometry.shipCylinder, beaconBase, 0, 2.75, 0.3, 0.24, 0.36, 0.24);
+            put(geometry.shipOctPlate, beacon, 0, 3.12, 0.3, 0.36, 0.34, 0.36);
+
+            // `dish` is the only field read off this return. The spec's dishSpin 2.0
+            // turns the whole head on Y for as long as the vehicle is alive, and
+            // stops it dead when it is not.
+            return { dish: head };
+          }
+        });
+      },
+      "ground_autonomousSam"
+    ); // @payload:ground_autonomousSam
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        // ---------------------------------------------------------------------------
+        // 1. Spec
+        // ---------------------------------------------------------------------------
+        // `radarSite` is the spread source, for the same two reasons ewVehicle uses
+        // it: it is the existing unarmed sensor entry (`aa: null`, so this thing never
+        // shoots back - clearing it is an errand, not a duel), and it already carries
+        // `dishSpin`, which the pivoted dish below needs. The unit is a transmitter,
+        // not a weapon.
+        //
+        // It is NOT spread from `tank`/`adTank` even though it is a vehicle: this one
+        // is a deployed relay standing on its outriggers, and giving it `mobile` would
+        // let a mission drive a truck around with its jacks down and a nine-metre dish
+        // erected. If a later pass wants it to convoy, `mobile` is the one field to
+        // add and the outriggers become a lie - that is a deliberate fork, not an
+        // oversight.
+        //
+        // BALANCE TODO: placeholder throughout. hp, smokeHeight, radarColor,
+        // tracerColor, explosionColor and dishSpin are radarSite's numbers, spread
+        // through unreviewed. Only the label/role text and the dimensions below are
+        // authored for this unit.
+        const radarSite = GROUND_TYPES.radarSite;
+        if (!radarSite) {
+          throw new Error("[rootRelay] expected the radarSite ground template to exist");
+        }
+
+        ctx.addGroundType("rootRelay", {
+          ...radarSite,
+          key: "rootRelay",
+          label: "ROOT RELAY",
+          role: "ROOT Transmission Window Relay",
+          // BALANCE TODO: placeholder (radarSite's 70). A soft-skinned truck under a
+          // deployed dish should probably be softer than an emplaced search radar,
+          // but that is a tuning pass.
+          hp: 70,
+          // Dimensions are the one block that is NOT inherited: radarSite is a square
+          // 12 m installation and this is an 11 m truck whose outriggers spread it to
+          // 13.5 m across the pads and whose dish crown reaches 12.4 m. Measured off
+          // the model below - hull z -5.5..+5.5, outrigger pads at x +/-6.0 and
+          // z +/-4.4, dish top at 12.4 - so the lock box contains both the dish and
+          // the deployed footprint instead of stopping at the cab roof.
+          hitRadius: 22,
+          crash: { halfLen: 5.6, halfBeam: 6.8, top: 12.5 },
+          hitBox: { x: 14, y: 13, z: 13 },
+          // BALANCE TODO: placeholder (radarSite's 7).
+          smokeHeight: 7,
+          // BALANCE TODO: placeholder (radarSite's 0.6). Kept deliberately at the
+          // SEARCH rate rather than the AD tank's 1.4 - a transmission relay holds a
+          // window on one bearing, so a slow sweep reads right and a fast one would
+          // make it look like a tracking radar, i.e. like something that shoots.
+          dishSpin: radarSite.dishSpin,
+          aa: null
+        });
+
+        // ---------------------------------------------------------------------------
+        // 2. Model
+        // ---------------------------------------------------------------------------
+        // Built nose-along -Z and to real metres, the frame every ground branch uses.
+        //
+        // SCALE, from measured existing implementations rather than by eye:
+        //   - ewVehicle (payload, the nearest cousin) is a 10 m hull, 3.2 m wide over
+        //     the tyres, wheels drawn as 0.85-radius cylinders = 1.7 m tyres.
+        //   - the TEL payload is 19 m on 1.5 m wheels, chassis 2.9 m wide.
+        //   The brief's 11 m therefore lands between them: hull z -5.5 .. +5.5,
+        //   2.9 m over the frame, 3.4 m over the tyres, 0.8-radius (1.6 m) wheels on
+        //   three axles. That keeps this unit visibly the same army's truck as the
+        //   other two instead of a differently-scaled prop.
+        //
+        // THREE THINGS have to read from 2 km up, and the model spends its parts on
+        // those and nothing else:
+        //   1. THE DISH - 9 m across (radius 4.5) on an 11 m truck. It is 82% of the
+        //      vehicle's whole length and it is the unit. Erected on a mast at 8.9 m
+        //      so its lower rim clears the cab roof and it sits against open sky in
+        //      every one of the four preview views.
+        //   2. FOUR GROUND OUTRIGGERS - jack legs raked out to pads at x +/-6.0 and
+        //      z +/-4.4, i.e. clear of BOTH the 3.4 m tyre track and the 4.5 m dish
+        //      radius, so the four pads make an unmistakable 12 x 8.8 m rectangle in
+        //      the top-down view that no other ground unit has. They are what says
+        //      "deployed and jacked, not driving".
+        //   3. CABLE REEL + EQUIPMENT BOXES on the rear deck - a drum with visible
+        //      flanges and spokes, plus the transmitter crates it feeds.
+        //
+        // DIFFERENTIATION FROM othRadar (the brief's explicit requirement): that unit
+        // is an 80 m FIXED FLAT LATTICE CURTAIN with no vehicle anywhere in it and no
+        // rotating part at all. This one is a small truck carrying ONE solid circular
+        // parabolic dish that spins. Flat rectangular mesh 8x the size of a building
+        // versus round solid plate on wheels - there is no angle from which the two
+        // silhouettes could be confused.
+        ctx.addGroundModel("rootRelay", {
+          build(env) {
+            const { THREE, geometry, steel, olive, dark, light, markings, add, addRoot } = env;
+
+            // ---- Running gear ----------------------------------------------------
+            // Three axles: two aft under the equipment deck, one forward under the
+            // cab, with the pair-gap amidships. Six wheels, drawn OUTBOARD of the
+            // frame at x +/-1.7 so the count survives the top-down view.
+            for (const side of [-1, 1]) {
+              for (const z of [-3.4, 2.0, 3.9]) {
+                add(geometry.shipCylinder, dark, side * 1.7, 0.8, z,
+                  0.8, 0.55, 0.8, 0, 0, Math.PI / 2);
+              }
+            }
+            // Axle beams bridging each pair, so the underside is structure and not a
+            // gap between six floating discs.
+            for (const z of [-3.4, 2.0, 3.9]) {
+              add(geometry.panel, steel, 0, 0.82, z, 3.4, 0.3, 0.5);
+            }
+
+            // ---- Chassis ---------------------------------------------------------
+            // Deep box frame the full 11 m (z -5.5 .. +5.5), narrower than the wheel
+            // track so the running gear stays visible under it.
+            add(geometry.panel, olive, 0, 1.5, 0, 2.7, 1.2, 11);
+            // Front bumper / tow pintle, the detail that gives the nose an end.
+            add(geometry.panel, dark, 0, 1.3, -5.6, 3.2, 0.7, 0.5);
+
+            // ---- Cab -------------------------------------------------------------
+            // A short forward cab, deliberately SMALL: the whole read of this unit is
+            // "the equipment is too big for the truck", and a full-length crew cab
+            // would compete with the dish. Roof at 3.6 m against a 12.4 m dish crown.
+            add(geometry.panel, olive, 0, 2.75, -3.9, 2.9, 1.9, 2.9);
+            // Sloped windscreen on the forward face.
+            add(geometry.panel, dark, 0, 3.0, -5.3, 2.4, 1.2, 0.35, -0.28);
+            // Side glazing, so the cab reads as a cab and not as a crate.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 1.5, 3.05, -3.9, 0.14, 0.9, 2.2);
+            }
+            // Roof cap in a lighter tone, separating cab from deck when both are seen
+            // against the ground from directly above.
+            add(geometry.panel, steel, 0, 3.75, -3.9, 3.0, 0.22, 3.0);
+
+            // ---- Equipment deck --------------------------------------------------
+            // The transmitter shelter behind the cab. This is the surface the mast is
+            // bolted to, so it is flat-topped and it stops SHORT of the rear axle -
+            // the last two metres of deck are left open for the reel.
+            add(geometry.panel, olive, 0, 2.9, 0.4, 3.0, 2.2, 5.2);
+            add(geometry.panel, steel, 0, 4.05, 0.4, 3.2, 0.28, 5.4);
+            // Access door aft and a generator box on the flank: the two details that
+            // keep the shelter from reading as a plain brick from behind and side-on.
+            add(geometry.panel, dark, 0, 2.8, 3.05, 1.6, 1.6, 0.3);
+            add(geometry.panel, dark, -1.7, 2.6, 1.4, 0.4, 1.1, 2.4);
+
+            // ---- IDENTITY 3: cable reel and equipment boxes -----------------------
+            // The drum sits across the tail of the deck, axis athwartships, so its
+            // circular flanges face out to port and starboard and it reads as a REEL
+            // from the side and as a fat cylinder from above. 2.6 m over the flanges
+            // on a 2.7 m frame: it is deck cargo, sized like real cable plant.
+            // Pushed right aft to z 5.1, at the very tail of the 11 m chassis. Round 1
+            // had it at 4.6 and the dish - which overhangs to z +4.9 when canted -
+            // put it in shade in both the top and the front views. At the tail it
+            // stands out past the whole dish footprint and is the one thing on the
+            // rear of the vehicle.
+            const REEL_Z = 5.1;
+            const REEL_Y = 2.75;
+            // Drum core, narrower than the flanges are apart so the flanges stand
+            // proud of it and the drum reads as WOUND rather than as a solid roller.
+            add(geometry.shipCylinder, dark, 0, REEL_Y, REEL_Z,
+              1.15, 2.0, 1.15, 0, 0, Math.PI / 2);
+            // The two flanges. These discs are the whole reel read - without them the
+            // drum is just another cylinder on a truck full of cylinders. They are
+            // 3.0 m across on a 2.9 m body, i.e. the reel is as wide as the truck.
+            for (const side of [-1, 1]) {
+              add(geometry.shipOctPlate, light, side * 1.15, REEL_Y, REEL_Z,
+                1.5, 0.2, 1.5, 0, 0, Math.PI / 2);
+              // Four spokes per flange, laid across the disc face at 45 degrees to
+              // each other. A blank disc reads as a wheel; spokes read as a reel.
+              for (let s = 0; s < 4; s += 1) {
+                add(geometry.panel, steel, side * 1.28, REEL_Y, REEL_Z,
+                  0.13, 2.8, 0.13, s * Math.PI / 4, 0, 0);
+              }
+              // Reel cradle: an A-stand under each flange, down onto the chassis deck,
+              // so the drum is mounted rather than balanced.
+              add(geometry.panel, steel, side * 1.28, 1.8, REEL_Z, 0.4, 1.9, 1.0);
+            }
+            // Paid-out cable: a run leaving the bottom of the drum forward along the
+            // deck and down the flank into the ground. It is what makes the reel read
+            // as IN USE - a relay that is transmitting is a relay that is plugged in.
+            add(geometry.panel, dark, 0, 1.6, 3.7, 0.36, 0.36, 2.4);
+            add(geometry.panel, dark, 1.1, 1.1, 2.5, 0.32, 0.32, 2.0, 0, -0.5, 0);
+            add(geometry.panel, dark, 2.3, 0.32, 1.5, 0.3, 0.3, 2.6, 0, -0.9, 0);
+            // Two transmitter crates on the deck between shelter and reel, flanking
+            // the mast foot. Kept low so they never crowd the dish.
+            for (const side of [-1, 1]) {
+              add(geometry.panel, steel, side * 0.95, 4.55, 2.4, 1.1, 0.75, 1.6);
+            }
+
+            // ---- IDENTITY 2: four ground outriggers ------------------------------
+            // Jack legs at the four corners of the chassis, raked OUTBOARD so their
+            // pads land at x +/-4.2 - well outside the 3.4 m tyre track - and z
+            // +/-3.6. Four pads at the corners of an 8.4 x 7.2 m rectangle is a
+            // footprint no other ground unit in the game draws, and it is legible from
+            // directly overhead, which is where this is mostly seen from.
+            //
+            // Each leg is drawn by SPAN, not by eye: the box is placed at the midpoint
+            // of the two endpoints, its Y scaled to the true length and rotated about
+            // Z by the span's own angle. That is the only way a raked member lands on
+            // BOTH the point it hangs from and the pad it stands on; rotating a
+            // centred box by a guessed angle swings both ends off the vehicle (the
+            // othRadar payload documents the same failure and the same fix).
+            // PAD_X is set from the DISH radius, not from the chassis: at 4.5 m the
+            // dish overhangs the truck so far that pads inside its radius are hidden
+            // under the disc in the top-down view - which is the view this identity
+            // exists for. Round 1 of this model had them at 4.2 and lost them. 6.0
+            // puts every pad clear of the 4.5 m plate with a 1.5 m margin, so the four
+            // corners read as four corners from directly overhead.
+            const HANG_X = 1.45;   // where the leg leaves the chassis frame
+            const HANG_Y = 1.55;
+            const PAD_X = 6.0;     // where the pad lands - outside the dish radius
+            const PAD_Y = 0.42;
+            const legDx = PAD_X - HANG_X;
+            const legDy = HANG_Y - PAD_Y;
+            const legLen = Math.hypot(legDx, legDy);
+            const legTilt = Math.atan2(legDx, legDy);
+            for (const side of [-1, 1]) {
+              for (const z of [-4.4, 4.4]) {
+                // Outrigger beam: the horizontal box the leg slides out of, which is
+                // what says the legs were EXTENDED rather than welded on. It is drawn
+                // full-length from the frame out to the pad, so from above the four
+                // arms are visible as arms even where the dish shades the pad itself.
+                add(geometry.panel, olive, side * ((HANG_X + PAD_X) / 2 - 0.3), 1.75, z,
+                  PAD_X - HANG_X + 0.6, 0.5, 0.8);
+                // The raked leg itself.
+                add(geometry.panel, steel,
+                  side * (HANG_X + PAD_X) / 2, (HANG_Y + PAD_Y) / 2, z,
+                  0.5, legLen, 0.5, 0, 0, -side * legTilt);
+                // Ground pad: a wide flat foot, painted light so it separates from the
+                // terrain underneath it and the four pads count at a glance. 1.5 m
+                // across - deliberately oversized for the leg it carries, because a
+                // pad the width of its own jack is invisible from 2 km up.
+                add(geometry.shipOctPlate, light, side * PAD_X, 0.24, z,
+                  1.5, 0.48, 1.5);
+                // Hazard chevron on the pad - the one piece of unlit paint on the
+                // unit, and it marks the four corners as the things standing on the
+                // ground rather than as parts of the truck.
+                add(geometry.panel, markings, side * PAD_X, 0.52, z, 1.05, 0.14, 1.05);
+              }
+            }
+
+            // ---- Mast ------------------------------------------------------------
+            // Two stages with a visible step, carrying the dish pivot to 8.9 m off a
+            // 3.6 m cab.
+            //
+            // Stood at z -0.9, i.e. FORWARD of the chassis centre, not on it. Round 2
+            // had it at 0.4 and the 4.5 m dish then covered the whole 11 m truck in
+            // the top-down view - the unit read as a floating disc with four arms and
+            // no vehicle, which loses half the identity ("dish too big FOR THE CAR"
+            // needs the car). Moved forward, the dish shades the cab and the shelter
+            // while the rear deck, the reel and the cable run stay in clear sky aft of
+            // it, and the mass still sits inside the outrigger rectangle.
+            const MAST_Z = -0.9;
+            add(geometry.panel, steel, 0, 5.3, MAST_Z, 1.0, 2.4, 1.0);
+            add(geometry.panel, light, 0, 7.5, MAST_Z, 0.7, 2.6, 0.7);
+            // Two guy struts off the mast base down to the shelter roof, fore and aft,
+            // running from the roof (y 4.2) up to the mast (y 5.6) so both ends are on
+            // something. A mast carrying a nine-metre dish with nothing bracing it
+            // reads as an error.
+            add(geometry.panel, dark, 0, 4.9, MAST_Z - 1.3, 0.2, 0.2, 2.0, 0.66);
+            add(geometry.panel, dark, 0, 4.9, MAST_Z + 1.3, 0.2, 0.2, 2.0, -0.66);
+            // Slew ring at the top of the mast: the bearing the dish turns on. It
+            // gives the spinning assembly a visible joint instead of an intersection.
+            add(geometry.shipCylinder, dark, 0, 8.75, MAST_Z, 0.95, 0.4, 0.95);
+
+            // ---- IDENTITY 1: the oversized deployed dish -------------------------
+            // 9 m across (plate radius 4.5) against an 11 m truck and a 2.9 m body.
+            // It is over three times the width of the vehicle it stands on, and that
+            // disproportion is the entire point of the unit - a relay is an aperture
+            // with a truck attached, not a truck with an antenna.
+            //
+            // Construction follows the search radar and ewVehicle exactly: an
+            // octagonal plate on a Group handed back as `dish`, so updateGroundUnit
+            // sweeps it while the unit is alive and it stops dead when it is not. The
+            // plate, its rim, its ribs and its feed all live on a TILTED SUB-GROUP so
+            // the feed boom is genuinely normal to the dish face - tilting each mesh
+            // separately leaves the feed off-axis, which is the failure the ewVehicle
+            // payload documents.
+            const dishPivot = new THREE.Group();
+            dishPivot.position.set(0, 8.9, MAST_Z);
+            const face = new THREE.Group();
+            // Canted back 40 deg: enough elevation that the dish face is presented to
+            // the camera in the top view (where its diameter is the read) while the
+            // side view still shows it edge-on as a tall disc rather than as a line.
+            face.rotation.x = -0.7;
+            dishPivot.add(face);
+
+            const DISH_R = 4.5;
+            const plate = new THREE.Mesh(geometry.shipOctPlate, light);
+            plate.scale.set(DISH_R, 0.3, DISH_R);
+            face.add(plate);
+            // Rim ring standing proud of the front face. A flat octagon reads as a
+            // table top; a rim gives it depth and says "reflector".
+            const rim = new THREE.Mesh(geometry.shipCylinder, steel);
+            rim.scale.set(DISH_R * 1.02, 0.5, DISH_R * 1.02);
+            rim.position.set(0, 0.32, 0);
+            face.add(rim);
+            // Back ribs: four radial spars across the rear face, the structure a dish
+            // this size obviously needs. They are also what stops the back of the
+            // plate from being a blank disc in the rear three-quarter view.
+            for (let i = 0; i < 4; i += 1) {
+              const rib = new THREE.Mesh(geometry.panel, dark);
+              rib.scale.set(0.28, 0.28, DISH_R * 1.9);
+              rib.position.set(0, -0.4, 0);
+              rib.rotation.y = i * Math.PI / 4;
+              face.add(rib);
+            }
+            // Hub casting on the back, where the ribs meet the pivot.
+            const hub = new THREE.Mesh(geometry.shipCylinder, steel);
+            hub.scale.set(1.15, 1.2, 1.15);
+            hub.position.set(0, -0.85, 0);
+            face.add(hub);
+
+            // Feed on a tripod quadripod off the dish face, at roughly the focal
+            // length of a shallow reflector this size (~0.4 D = 3.6 m). Legs are drawn
+            // from the rim in to the feed so the assembly is braced to the plate,
+            // which is what a real feed support is.
+            const FEED_Y = 3.4;
+            for (let i = 0; i < 3; i += 1) {
+              const a = i * (Math.PI * 2 / 3);
+              const rimX = Math.cos(a) * (DISH_R - 0.5);
+              const rimZ = Math.sin(a) * (DISH_R - 0.5);
+              const leg = new THREE.Mesh(geometry.panel, dark);
+              const span = Math.hypot(Math.hypot(rimX, rimZ), FEED_Y);
+              leg.scale.set(0.16, span, 0.16);
+              leg.position.set(rimX / 2, FEED_Y / 2, rimZ / 2);
+              // Aim the leg along its own span: rotate about Z by the in-plane offset
+              // and about Y to point it at the right rim station.
+              leg.rotation.y = -a;
+              leg.rotation.z = Math.atan2(Math.hypot(rimX, rimZ), FEED_Y);
+              face.add(leg);
+            }
+            const feed = new THREE.Mesh(geometry.shipCylinder, steel);
+            feed.scale.set(0.62, 1.0, 0.62);
+            feed.position.set(0, FEED_Y, 0);
+            face.add(feed);
+            const feedCap = new THREE.Mesh(geometry.shipOctPlate, light);
+            feedCap.scale.set(0.8, 0.28, 0.8);
+            feedCap.position.set(0, FEED_Y - 0.6, 0);
+            face.add(feedCap);
+
+            addRoot(dishPivot);
+
+            // `dish` is the one field read off this return: the pivot above, already
+            // parented via addRoot, which updateGroundUnit spins at the spec's
+            // dishSpin.
+            return { dish: dishPivot };
+          }
+        });
+      },
+      "ground_rootRelay"
+    ); // @payload:ground_rootRelay
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+
+        const tank = GROUND_TYPES.tank;
+        if (!tank) throw new Error("[mineClearer] expected the tank ground template");
+
+        // === 1. GROUND_TYPES 登録 ================================================
+        //
+        // 土台は `tank`。理由は ground_tel.payload.js と同じで、GROUND_TYPES の中で
+        // 「aa: null（対空攻撃をしない） かつ mobile を持つ」実績のある車両契約だから。
+        // 地雷除去車は戦闘車ではないが、装軌+装甲キャブという構造は戦車側の契約
+        // （履帯で走る・撃ってこない・轢かれる位置に居る）と一致する。
+        // civilRescue が使う trainCar は turnRate 120deg/s のレール用なので、
+        // 前方の重いフレイルを振り回すこの車には不適。
+        //
+        // BALANCE TODO: placeholder. hp / tracerColor / explosionColor / radarColor
+        // は tank のものを spread のまま。8m の作業車が MBT と同じ 110 HP なのは
+        // 明らかにおかしいが、それはチューニングパスの仕事でこの納品の仕事ではない。
+        ctx.addGroundType("mineClearer", {
+          ...tank,
+          key: "mineClearer",
+          label: "MINE CLEARER",
+          role: "Post-War Mine Flail Vehicle",
+          // BALANCE TODO: placeholder. 戦闘車ではない工兵車なので MBT の 110 から
+          // 落として 55（標準ミサイル1発の 98 未満＝一発で消える側）を仮置き。
+          hp: 55,
+          // --- 寸法: 車長8m（仕様§3 mineClearer 行）-----------------------------
+          // 数値はモデルの実測から取る。車体は z = -4.0 .. +4.0（＝8m ちょうど）。
+          // フレイルのブームとドラムはその前へ張り出し、鎖の先端が z = -7.3 まで
+          // 届くが、これは「車長」には数えない（実車の全長表記も車体基準）。
+          // ただし当たり判定は張り出しを含めないと、ドラムだけが弾をすり抜ける
+          // 見た目になるので hitBox / crash は張り出し込みの実効長 11.3m 側で取る。
+          // 全幅は履帯外側で 3.3m、ドラムは端のフランジ込みで 4.6m。
+          // キャブ天面 y=4.15、作業灯バーの頂点 y=4.41。
+          hitRadius: 13,
+          crash: Object.freeze({ halfLen: 5.7, halfBeam: 2.3, top: 4.2 }),
+          hitBox: Object.freeze({ x: 4.8, y: 4.6, z: 11.4 }),
+          // BALANCE TODO: placeholder. 車高 4.4m に合わせて tank の 3 から微増。
+          smokeHeight: 4,
+          // 非武装。tank から引き継いだ aa:null を明示で押さえておく
+          // （spread 元が将来変わっても撃たない側へ倒れるようにする冗長記述）。
+          aa: null,
+          // BALANCE TODO: placeholder. フレイルを回しながら地雷原を掃くので、
+          // 実車は歩くより遅い。tank の 15 / 28deg/s から大きく落として
+          // 「隊列の中で明らかに一番のろい車」に見える値を仮置き。
+          mobile: Object.freeze({ speed: 6, turnRate: (Math.PI / 180) * 20 }),
+          // 中立ユニット。レーダー上で軍用のオレンジ系(#ffc47a)と区別できる
+          // 黄色寄りの白にする（civilRescue が民間車に #eaf4ff を使ったのと同じ規約で、
+          // こちらは黄+黒の作業車塗装に合わせて黄側へ寄せる）。
+          radarColor: "#ffe9a8"
+        });
+
+        // === 2. ジオメトリ ========================================================
+        ctx.addGroundModel("mineClearer", {
+          build(env) {
+            const {
+              THREE, geometry, add, addRoot, makeAircraftMaterial, extraMaterials, dark, steel
+            } = env;
+
+            // ---- 塗装 -----------------------------------------------------------
+            // ★形状アイデンティティ③「黄+黒縞の作業車塗装」。
+            // 既存の light(0xd6dde2, 0.3, 0.45) や olive は工事車両に見えないので
+            // 専用マテリアルを起こす。civilRescue が実証した扱いに倣い、
+            // metalness=0 の拡散にして emissive を色の 0.3 倍まで持ち上げる
+            // （夜のマップで灰色に沈むのを防ぐ）。baseEmissive も一緒に直さないと
+            // 被弾フラッシュから戻るときに updateAircraftFlash が既定値へ書き戻して
+            // 暗くなる、というのも同じ。
+            const yellow = makeAircraftMaterial(0xf2b311, 0.0, 0.78);
+            yellow.emissive.setHex(0xf2b311).multiplyScalar(0.3);
+            yellow.userData.baseEmissive = yellow.emissive.clone();
+            extraMaterials.push(yellow);
+            // 縞の黒。unlit にして、どの光線状態でも必ず「黒」として出す＝
+            // 縞は明暗ではなく色の交替として読ませたい（陰影で薄くなると
+            // 「汚れた黄色い車」に見えて塗装の意味が消える）。
+            const stripe = new THREE.MeshBasicMaterial({ color: 0x14161a });
+            extraMaterials.push(stripe);
+            // 作業灯（琥珀）。これも unlit。真上からの点光として効く。
+            const lamp = new THREE.MeshBasicMaterial({ color: 0xffd24a });
+            extraMaterials.push(lamp);
+            // キャブの防弾ガラス。黄色の中で暗い帯として抜けるので、
+            // 「箱」ではなく「運転席」に読ませる唯一の要素。
+            const glass = makeAircraftMaterial(0x25333d, 0.5, 0.32);
+            extraMaterials.push(glass);
+            // フレイルの鎖。錆びた鉄。yellow より確実に暗く、dark より明るい帯に
+            // したいので専用（dark をそのまま使うと履帯と同化してドラムが沈む）。
+            const chainMat = makeAircraftMaterial(0x6a6259, 0.55, 0.55);
+            extraMaterials.push(chainMat);
+
+            // ---- 座標系 ---------------------------------------------------------
+            // 他の地上ユニットと同じく機首方向 -Z で組む（route heading が駆動する
+            // forward）。車体は z = -4.0 .. +4.0 の 8m ちょうど。前方 -Z 側が
+            // 「これから掃く地面」で、フレイルはそこへ突き出す。
+            //
+            // 2km 上空から読ませるものを3つに絞り、パーツはそこにだけ使う:
+            //   ① 前面のフレイルドラム — 車体幅より広い横向きローラーと、
+            //      そこから地面へ垂れる鎖の列。真上からは「車の前に付いた横棒＋
+            //      その手前の毛」、真横からは「前へ突き出た腕の先の太いローラー」。
+            //   ② 装甲キャブ — 車体後半に立つ、傾斜した窓を持つ背の高い箱。
+            //   ③ 黄+黒縞 — 車体側面/ドラム/ブレードの縁に交互の斜め縞。
+
+            // ---- 履帯 -----------------------------------------------------------
+            // 装軌車体。tank の履帯（x=±3.4 / 幅1.7 / 長12.4）を 8m 車体へ縮めた
+            // 比率で置く: 外側 x=±1.65、幅1.2、長7.4。これで全幅3.3m。
+            // 高さ 1.15m は「フレイルのドラムが地面を叩ける高さに車体を持ち上げる」
+            // 実車の腰高さの再現でもある。
+            //
+            // 1周目は履帯を「暗い箱＋明るい1枚帯」で済ませたら、真横から見て
+            // 車体下半分がのっぺりした灰色の板になり、装軌車に読めなかった
+            // （tank は 12.4m あるので1枚帯で足りるが、7.4m ではただの塊になる）。
+            // 転輪を1個ずつ丸で置き直して、履帯の下に円が並ぶ形にする。
+            for (const side of [-1, 1]) {
+              // 履帯の外殻。上端 1.25、下端 0.05。
+              add(geometry.panel, dark, side * 1.05, 0.65, 0, 1.2, 1.2, 7.4);
+              // 転輪5個。半径0.42、上下は履帯の中に収める。
+              for (let i = 0; i < 5; i += 1) {
+                add(geometry.shipCylinder, steel, side * 1.05, 0.52, -2.6 + i * 1.3,
+                  0.42, 1.3, 0.42, 0, 0, Math.PI / 2);
+              }
+              // 起動輪／誘導輪。前後端は大きめの丸にして、真横のシルエットで
+              // 履帯の前後が角ではなく円で終わる＝装軌車の記号を作る。
+              for (const z of [-3.5, 3.5]) {
+                add(geometry.shipCylinder, steel, side * 1.05, 0.72, z,
+                  0.72, 1.26, 0.72, 0, 0, Math.PI / 2);
+              }
+              // フェンダー（履帯上面の泥よけ）。黄色を履帯の上に通して、
+              // 黒い履帯と黄色い車体の境界を作る。
+              add(geometry.panel, yellow, side * 1.05, 1.34, 0, 1.34, 0.2, 7.2);
+            }
+
+            // ---- 車体 -----------------------------------------------------------
+            // 履帯の間に渡る箱（z -4.0 .. +4.0、y 1.25..2.35、幅2.3）。
+            // 履帯より狭くして、上から見たとき履帯が車体の外に見えるようにする。
+            add(geometry.panel, yellow, 0, 1.8, 0, 2.3, 1.1, 8.0);
+            // 前部の傾斜装甲（地雷の爆風を受ける面）。前端 z=-4.0 から前へ出す。
+            add(geometry.panel, yellow, 0, 1.95, -4.15, 2.28, 1.4, 1.3, -0.6);
+            // 後部デッキの機材箱。後端を黒くして、黄色い車体の前後に終端を作る。
+            add(geometry.panel, dark, 0, 2.6, 3.1, 2.1, 0.7, 1.6);
+            // 排気筒。後部デッキから立てると、真横のシルエットに作業機械らしい
+            // 縦の突起が1本入る。
+            add(geometry.shipCylinder, dark, 0.85, 3.3, 2.6, 0.17, 1.7, 0.17);
+
+            // ---- ★② 装甲キャブ -------------------------------------------------
+            // 車体後半（z = -0.1 .. +2.5）に立つ背の高い箱。前へ寄せすぎると
+            // ドラムに隠れ、後ろへ寄せすぎると排気筒と喧嘩するので中央やや後ろ。
+            //
+            // 1周目は高さ1.6m・幅2.2m で車体と同幅・同高さ帯に置いたら、真横でも
+            // 真上でも「車体の続き」に溶けてキャブに読めなかった。装甲キャブは
+            // 「小さく・高く・車体より狭い」ことでキャブになる（実車の防護キャブは
+            // 乗員2名ぶんしかない）ので、幅を 1.9 に絞り、天面を 4.15 まで上げて
+            // 車体天面 2.35 との間に 1.8m の段差を作る。この段差が識別点そのもの。
+            add(geometry.panel, yellow, 0, 3.25, 1.2, 1.9, 1.8, 2.6);
+            // 傾斜した前面窓（防弾ガラス）。キャブ前面 z=-0.1 に、上を後ろへ倒す。
+            // これがある/ないで「装甲キャブ」と「ただの黄色い箱」が分かれる。
+            // 2周目は 1.3m 高の窓を x幅1.6 で貼ったが、キャブ前面がドラム側の腕と
+            // 重なる角度では細く潰れて見えた。キャブ幅 1.9 いっぱいの 1.78 へ広げ、
+            // 前面 z=-0.1 の外 0.12m へ出して必ず面として出す。
+            add(geometry.panel, glass, 0, 3.5, -0.28, 1.78, 1.42, 0.2, -0.28);
+            // 側面窓。前面窓の直後に接して置き、前面から側面へ回り込む一続きの
+            // 暗い帯にする（離すと側面に開いた穴に見える）。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, glass, side * 0.97, 3.45, 0.8, 0.12, 1.3, 1.7);
+            }
+            // 窓枠（庇）。ガラスより外へ出した細い黒枠。装甲窓の「厚み」を作る。
+            add(geometry.panel, stripe, 0, 4.16, -0.34, 1.94, 0.18, 0.62, -0.28);
+            // 天面のハッチ。真上から見たときキャブが単色の四角にならないよう、
+            // 天面 4.15 の直上に暗い円を置く。
+            add(geometry.shipCylinder, dark, 0, 4.22, 1.6, 0.55, 0.16, 0.55);
+
+            // ---- ★③ 黄+黒の警告縞 ----------------------------------------------
+            // 作業車塗装の本体。側面の腰板に黒い斜め板を等間隔で並べて、黄色地に
+            // 交互の縞を作る。板は車体側面 x=±1.15 の外 0.05m に出して
+            // z-fighting を避ける。傾き rz は縞の「斜め」そのもの。
+            //
+            // 1周目は縞を車体側面いっぱい（高さ1.3）に立てたら、真横から見て
+            // 黄色より黒の面積が勝ってしまい「黒い車に黄色い筋」に見えた。
+            // 高さを車体の 1.1 より低い 0.8 に抑え、黄色を主色に残す。
+            for (const side of [-1, 1]) {
+              for (let i = 0; i < 5; i += 1) {
+                add(geometry.panel, stripe, side * 1.18, 1.8, -3.0 + i * 1.5,
+                  0.1, 0.8, 0.44, 0, 0, side * 0.5);
+              }
+            }
+            // 後面の縞（追突警告）。後端 z=+4.0 の外に立てる縦縞3本。
+            for (const x of [-0.7, 0, 0.7]) {
+              add(geometry.panel, stripe, x, 1.8, 4.04, 0.36, 1.05, 0.1, 0, 0, 0.5);
+            }
+            // ★真上から読ませる縞。上空視点ではこの車の見える面のほとんどが
+            // 車体天面とキャブ天面なので、天面にも縞を入れないと「黄色い長方形」に
+            // しかならない。車体の露出した天面（キャブより前 z -4.0..-0.1、
+            // 天面 y=2.35）の直上に、斜めの黒板を並べる。
+            for (let i = 0; i < 4; i += 1) {
+              add(geometry.panel, stripe, 0, 2.38, -3.5 + i * 1.0,
+                2.34, 0.08, 0.4, 0, 0.55, 0);
+            }
+            // キャブ天面にも 2 本だけ入れて、上から見た黄/黒の交替を車体全長へ通す。
+            for (const z of [0.5, 1.9]) {
+              add(geometry.panel, stripe, 0, 4.17, z, 1.94, 0.08, 0.36, 0, 0.55, 0);
+            }
+
+            // ---- ★① フレイルドラム（鎖打ちローラー）-----------------------------
+            // このユニットの主役。実車（Aardvark / MineWolf 等）と同じく、
+            // ドラムは車体の中ではなく前方に突き出したブームの先に付く。
+            // ドラム軸中心 z = -6.4（車体前端 -4.0 の 2.4m 前）、高さ y = 1.25。
+            //
+            // 1周目はドラムを車幅と同じ 3.6m・半径 0.62 で作り、その上に黄色い
+            // フェンダーを被せた。結果、真上からはフェンダーしか見えず（ドラムが
+            // 完全に隠れた）、真横からは前に付いた小さな灰色の箱にしか見えず、
+            // アイデンティティ①が全く読めなかった。
+            //   → ドラムを車幅 3.3m より明確に広い 4.4m へ、半径も 0.62→0.85 へ
+            //     拡大して「車より広い横向きローラー」を作る。
+            //   → 覆いフェンダーは廃止し、代わりに背後（+Z 側）だけの薄い飛散防止
+            //     板にする。ドラムと鎖の上面を絶対に塞がない。
+            // これで真上から「車体の前に、車より広い黄黒の横棒＋その前に鎖の列」が
+            // 出る。
+
+            // 押し出しブーム（左右2本）。車体前面から前へ伸びる腕。
+            // ドラムを 2.4m 前へ出した分、腕も伸ばして「車と別の装置が腕の先に
+            // ぶら下がっている」ことを見せる（1周目は腕が短くドラムが車に密着し、
+            // 車体の一部に見えていた）。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, steel, side * 1.3, 1.9, -5.2, 0.36, 0.44, 2.6, 0.1);
+              // ブームを持ち上げる油圧シリンダー。車体上面から腕へ斜めに渡す。
+              add(geometry.shipCylinder, dark, side * 1.3, 2.5, -4.2,
+                0.17, 1.7, 0.17, -0.95);
+            }
+            // ドラム両端の軸受けハウジング（ブームの先端）。ここでブームが終わり
+            // ドラムが始まる、という関節をはっきり見せる。
+            //
+            // 2周目は 0.44 × 2.0 × 1.9 の板にしたら、真横（SIDE）から見たとき
+            // ドラムと鎖を完全に覆い隠す灰色の壁になり、横からは①が一切読めなかった
+            // （手前側の軸受けが視線を塞ぐ）。ドラム直径 1.7 より確実に小さい
+            // 1.3 角へ落として、ドラムの上下と前後を必ずはみ出させる。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, steel, side * 2.0, 1.25, -6.4, 0.4, 1.3, 1.3);
+            }
+
+            // ドラム本体は回転体として addRoot でぶら下げる。回さない
+            // （updateGroundUnit が回すのは `dish` だけで、それはレーダー用の
+            // 契約。ここで dish を返すと HUD/挙動側の意味を乗っ取ることになるので
+            // 返さない）が、まとめて1つの部品として置けるほうが位置を1箇所で
+            // 管理できて安全なので Group にする。
+            const drum = new THREE.Group();
+            drum.position.set(0, 1.25, -6.4);
+            addRoot(drum);
+
+            const drumMesh = (geo, mat, x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => {
+              const m = new THREE.Mesh(geo, mat);
+              m.position.set(x, y, z);
+              m.scale.set(sx, sy, sz);
+              m.rotation.set(rx, ry, rz);
+              drum.add(m);
+              return m;
+            };
+
+            // ローラー本体。車幅（履帯外側3.3m）より明確に広い 4.4m の横向き円筒。
+            // shipCylinder は +Y 軸の円筒なので rz = PI/2 で軸を X（横）へ倒す。
+            // 半径 0.85 は「地面 y=0 に届かず、鎖が届く」高さの取り方:
+            // 軸 1.25 − 半径 0.85 = 0.40 がドラム下端で、そこから鎖が 0.4 下がって
+            // 接地する。ドラム自体が地面に埋まると、ただの横棒に見えてしまう。
+            drumMesh(geometry.shipCylinder, steel, 0, 0, 0, 0.85, 4.4, 0.85, 0, 0, Math.PI / 2);
+            // ドラムの黄黒縞。円筒の上に幅の広いリングを交互に並べて、ドラムそのものを
+            // 黄黒に塗る。ドラムは真上からこの車の一番前に見える面なので、③の塗装は
+            // ここに載せるのが一番効く。半径をローラーより 0.03 大きくして必ず外に出す。
+            for (let i = 0; i < 9; i += 1) {
+              drumMesh(geometry.shipCylinder, i % 2 ? stripe : yellow,
+                -1.96 + i * 0.49, 0, 0, 0.88, 0.42, 0.88, 0, 0, Math.PI / 2);
+            }
+            // ドラム両端のフランジ。端を円板で閉じると、真横から見て
+            // 「円筒の端面」が出る＝ローラーであることが確定する。
+            //
+            // 3周目は半径0.92の dark で作ったら、真横（SIDE）から見て手前の
+            // フランジが真っ黒な車輪になり、その裏の黄黒縞バレルを全部隠した
+            // ＝せっかく軸受けを小さくしたのに同じ occlusion をフランジで作った。
+            // 半径をバレル(0.85)より小さい 0.78 へ落とし、色も steel にして
+            // 「縞の端を締める輪」に留める。
+            for (const side of [-1, 1]) {
+              drumMesh(geometry.shipCylinder, steel, side * 2.18, 0, 0,
+                0.78, 0.12, 0.78, 0, 0, Math.PI / 2);
+            }
+
+            // ★鎖の列。ドラムから地面へ垂れる 11 本。1本ずつを 3 リンクに割って
+            // 途中で角度を変えると、真横から見て「棒」ではなく「垂れた鎖」に読める。
+            // 前方（-Z）へ振り出しながら垂らすのは、回転で前へ振られている状態。
+            //
+            // 1周目は 14 本を太さ 0.11 で垂らしたら、細すぎて縮小時に消え、
+            // ドラムの下がただ暗く滲むだけだった。本数を 11 に減らして 1 本を
+            // 0.17 まで太くし、リンクごとに角度を大きく折って形で読ませる。
+            const CHAIN_N = 11;
+            for (let i = 0; i < CHAIN_N; i += 1) {
+              // 左右対称に、ドラムの端から端まで（±1.95m）等間隔で配る。
+              const x = -1.95 + (i * 3.9) / (CHAIN_N - 1);
+              // 1本おきに振り出し量を変える＝回転中で位相がバラけている表現。
+              // これが無いと 11 本が同じ形の板になり、櫛に見える。
+              const swing = (i % 2) ? 1.0 : 0.66;
+              // リンク1: ドラム表面（半径0.85）から真下へ。
+              drumMesh(geometry.panel, chainMat, x, -1.02, -0.14 * swing,
+                0.17, 0.5, 0.17, 0.25 * swing);
+              // リンク2: 前へ振れ出す。
+              drumMesh(geometry.panel, chainMat, x, -1.38, -0.46 * swing,
+                0.17, 0.5, 0.17, 0.72 * swing);
+              // リンク3: 先端。ほぼ水平まで倒れて地面（y=0 → drum ローカルで -1.25）
+              // を叩く。先端は打撃ヘッドとして太くする。
+              //
+              // ★2周目は先端を z = -0.72 までしか出さず、ドラムの前接線
+              // （半径0.85 → ローカル z = -0.85）の内側に収まっていたため、
+              // 真上（TOP）からはドラムの影に完全に隠れて鎖が1本も見えなかった。
+              // 先端をドラム前接線より前（-1.15 前後）まで振り出して、上空から
+              // 「横棒の前に並ぶ打撃ヘッドの列」として必ず出るようにする。
+              // 4周目: 真上（TOP）から見て打撃ヘッドがまだ灰色の点にしか見えず、
+              // 「鎖の列」に読めなかった。ヘッドの X 幅を 0.26→0.34、Z を 0.5→0.62 へ
+              // 広げて、ドラム前縁に並ぶ塊として面積を持たせる。
+              drumMesh(geometry.panel, chainMat, x, -1.16, -1.12 * swing,
+                0.34, 0.3, 0.62, 1.25 * swing);
+            }
+
+            // 背後（+Z 側）の飛散防止板。1周目はこれをドラムの「上」に被せていて、
+            // 真上から見るとドラムも鎖も完全に隠れた。ドラムと鎖の上面・前面には
+            // 何も置かず、車体との間だけを塞ぐ薄い板に作り替える。
+            // 3周目は dark で作ったら、真上から見てドラムと車体の間が黒い帯で
+            // 埋まり「装置と車が1つの塊」に見えたので、黄色にして車体側の色として
+            // 読ませる（縞は車体天面のものがすぐ後ろに続く）。
+            drumMesh(geometry.panel, yellow, 0, 0.42, 1.0, 4.3, 1.4, 0.14, -0.35);
+
+            // ---- 作業灯（③の補助・仕様§3「作業灯」）------------------------------
+            // キャブ天面の前縁に琥珀のバーを1本、さらに左右へ角灯を1つずつ。
+            // unlit なので、暗いマップでもここだけ必ず光って「作業中の車」になる。
+            add(geometry.panel, lamp, 0, 4.3, 0.15, 1.3, 0.22, 0.36);
+            for (const side of [-1, 1]) {
+              add(geometry.panel, lamp, side * 0.9, 4.28, -0.05, 0.36, 0.32, 0.32);
+              // 前照灯（ドラムを照らす作業灯）。傾斜装甲の上端に付ける。
+              add(geometry.panel, lamp, side * 0.78, 2.5, -4.62, 0.42, 0.28, 0.18);
+            }
+
+            // 回るものは無い＝ `dish` は返さない。フレイルドラムは回転体だが、
+            // `dish` は updateGroundUnit のレーダー旋回契約（dishSpin / 生死で停止）
+            // なので、そこに作業機械を挿すのは意味の乗っ取りになる。
+          }
+        });
+      },
+      "ground_mineClearer"
+    ); // @payload:ground_mineClearer
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+        const trainCar = GROUND_TYPES.trainCar;
+        if (!trainCar) {
+          throw new Error("[mobileHospital] trainCar ground type is not registered");
+        }
+
+        // ===========================================================================
+        // MOBILE HOSPITAL — 移動病院車 (spec_model_batch3_20260802.md §3 W2 #17)
+        // ===========================================================================
+        //
+        // 形状アイデンティティ（サムネで生き残らせる3点。未達なら不合格）
+        //   ① 大型の白い箱型トラック/バス + 大きな赤十字
+        //   ② 展開式サイドテント（片側に張り出し）
+        //   ③（差別化要件）既存 ambulance と混同されない「倍近い車格」
+        //
+        // ★ このユニットの設計上の最大の敵は敵機ではなく、同じ GROUND_TYPES に既に
+        //    居る白い民間車 2種である。仕様の差別化要件「既存ambulance(小型)と
+        //    混同されない = 倍近い車格 + テント展開」は、実測すると相手が2台居る:
+        //
+        //      ambulance : 全長 6.0m / 全幅 2.30m / 全高 2.75m  白 / 屋根+側面に赤十字
+        //      evacBus   : 全長12.0m / 全幅 2.55m / 全高 3.35m  クリーム / 屋根に白布
+        //      本車      : 全長12.0m / 全幅 3.10m / 全高 4.15m  純白 / 巨大赤十字 + テント
+        //
+        //    「倍近い車格」を全長で稼ぐことは evacBus が既に 12m を占有しているので
+        //    できない（仕様の実寸も車長12mで固定）。よって車格は
+        //    **断面（幅×高さ）と車軸数**で作る:
+        //      ambulance 断面 2.30 x 2.75 = 6.33 m^2  → 本車 3.10 x 4.15 = 12.87 m^2
+        //      = 断面比 2.03倍。「倍近い車格」を正面/真上のシルエット面積で満たす。
+        //    さらに車輪は ambulance 4輪 / evacBus 6輪に対し **8輪(4軸)**。真上から
+        //    数えられるので、上空からでも「これは一回り上の重車両だ」と言える。
+        //
+        //    evacBus との弁別は「窓 vs 赤十字」で作る。evacBus の側面はほぼ全長の
+        //    連続窓（バスの記号）なので、本車の側面には**窓を一切入れない**。
+        //    白い無窓の壁 = 病棟であり、そこに高さ2.4mの赤十字が載る。
+        //    ambulance の側面十字は高さ1.6m なので、本車の十字は 1.5倍。
+        //
+        // 実寸換算の根拠（YF-23ヘッダーの流儀 = 既存実装の実測から換算する）
+        //   このゲームの地上ユニットは 1 unit = 1 m でモデリングされている。実測:
+        //     ambulance: 車体 z -3.0..+3.0 で hitBox.z = 6  → 全長6mが6ユニット
+        //     evacBus  : 車体 z -6.0..+6.0 で hitBox.z = 12 → 全長12mが12ユニット
+        //     tel      : 車台 z -9.5..+9.5 で全長19m（ヘッダー明記）
+        //   よって仕様の「車長12m」はそのまま z = -6.0 .. +6.0 で置く。
+        //   車輪半径は接地条件から決まる: shipCylinder は半径1・高さ1なので、
+        //   中心 y = 半径 に置けば下端がちょうど y=0（接地）。大型トラックの
+        //   タイヤ径 1.2m 級 → 半径 0.60（evacBus の 0.55、ambulance の 0.45 の上）。
+        //   テント張り出しは実物の移動診療所の側方展開幅 4m 級を採り、
+        //   車体側面 x=1.55 から x=5.6 まで（張り出し 4.05m）。真上から見た
+        //   フットプリントが 3.1m 幅の車体 + 4.05m のテントで **完全に非対称**に
+        //   なるのが②の読みの本体で、これは他のどの地上ユニットにも無い形。
+        //
+        // ---------------------------------------------------------------------------
+        // 1. GROUND_TYPES 登録
+        // ---------------------------------------------------------------------------
+        // 土台は trainCar。GROUND_TYPES の中で「非武装(aa:null) かつ mobile を持つ」
+        // エントリで、撃ってこないユニットを撃ってこないエントリから派生させれば
+        // aa の上書き忘れが構造的に起きない（ground_civilRescue が ambulance /
+        // evacBus で採った同じ流儀に揃える）。enemy/support-only なので
+        // AIRCRAFT_ORDER・ミッション・バランスには一切触れない。
+        ctx.addGroundType("mobileHospital", {
+          ...trainCar,
+          key: "mobileHospital",
+          label: "MOBILE HOSPITAL",
+          role: "Civil Field Hospital Vehicle",
+          // BALANCE TODO: placeholder. 非装甲だが ambulance(30) / evacBus(45) より
+          // 一回り大きい箱なので 70 を仮置き。撃つ対象ではないので「流れ弾一発で
+          // 消えない」以上の意味を持たない。実数は後段のバランスパスで決める。
+          hp: 70,
+          // --- 寸法: 全長12m ------------------------------------------------------
+          // モデルの実寸に一致させる。車体は z -6.0 .. +6.0、車体幅 3.10m、
+          // 屋根の天面 y=4.15、屋根上のアンテナ/空調ユニット頂点 y=4.55。
+          // テントは片側 x=+5.6 まで張り出すが、これは布であって当たり判定に
+          // 入れるべき構造物ではないので hitBox は車体側で取る。
+          // BALANCE TODO: placeholder. hitRadius は evacBus(13) より一回り大きい 15。
+          hitRadius: 15,
+          crash: Object.freeze({ halfLen: 6, halfBeam: 1.6, top: 4.2 }),
+          hitBox: Object.freeze({ x: 3.2, y: 4.2, z: 12 }),
+          // BALANCE TODO: placeholder. 車高4.2mに合わせた煙柱高さ。
+          smokeHeight: 5,
+          // 非武装。trainCar から引き継いだ aa:null をそのまま明示しておく
+          // （spread 元が変わっても撃たない側に倒れるようにするための冗長記述）。
+          aa: null,
+          // BALANCE TODO: placeholder. テントを積んだ満載の重車両。ambulance(18) /
+          // evacBus(14) より遅い帯に置く。turnRate は trainCar の 120deg/s
+          // （レール用の巨大値）だと交差点でコマのように回るので、道路車両の帯へ。
+          mobile: Object.freeze({ speed: 11, turnRate: (Math.PI / 180) * 18 }),
+          // レーダー上のブリップ色。軍用のオレンジ系(#ffc47a)の中で
+          // 「白い点＝撃つな」が読めるようにする（ambulance / evacBus と同じ規約）。
+          radarColor: "#eaf4ff"
+        });
+
+        // ---------------------------------------------------------------------------
+        // 2. ジオメトリ
+        // ---------------------------------------------------------------------------
+        ctx.addGroundModel("mobileHospital", {
+          build(env) {
+            const {
+              THREE, geometry, add, makeAircraftMaterial, extraMaterials,
+              dark, steel
+            } = env;
+
+            // --- マテリアル -------------------------------------------------------
+            // 純白の車体。既定の light(0xd6dde2, 0.3, 0.45) は金属寄りで夜のマップだと
+            // 灰色に沈む＝「白い病院車」という識別要件そのものが消える。metalness=0 の
+            // 完全拡散にし、emissive を色の 0.32 倍まで持ち上げて自照させる
+            // （makeAircraftMaterial の既定は 0.045 倍）。baseEmissive も一緒に直さないと
+            // 被弾フラッシュから戻るときに updateAircraftFlash が既定値へ書き戻して暗くなる。
+            // evacBus のクリーム(0xf2e7c4)より明確に白く、ambulance の白(0xfbfdfe)と
+            // 同じ系統に置く＝「白い医療車の仲間だが一番大きい個体」に読ませる。
+            const white = makeAircraftMaterial(0xfbfdfe, 0.0, 0.92);
+            white.emissive.setHex(0xfbfdfe).multiplyScalar(0.32);
+            white.userData.baseEmissive = white.emissive.clone();
+            extraMaterials.push(white);
+
+            // 赤十字は unlit。夜間でも必ず赤いまま出る＝識別要件そのもの。
+            // ambulance と同じ色番で揃え、赤十字が2台で同じ赤に見えるようにする。
+            const red = new THREE.MeshBasicMaterial({ color: 0xd42a24 });
+            extraMaterials.push(red);
+
+            // テント布。unlit。
+            // 1周目は 0xdfe6ea（わずかにグレー寄りの白）で置いたが、真上から見ると
+            // 自照0.32の白い車体と明度がほとんど並び、テント屋根が「車体の屋根が
+            // 横に広がったもの」に溶けた（＝②が読めない最大の原因）。
+            // 布は白ではなく**生成りのキャンバス（砂色）**にして、色相ごと車体から
+            // 外す。金属でも塗装でもない「張った布」という材質差が、明度差より
+            // 確実にサムネで効く。
+            const canvasTent = new THREE.MeshBasicMaterial({ color: 0xc9bda0 });
+            extraMaterials.push(canvasTent);
+            // テント下の床（日陰）。真上から見たときテント屋根の"下"に暗い面が
+            // 無いと、屋根は板1枚として読まれて空間にならない。屋根より一段暗い
+            // 土間色を敷いて、上から見て「屋根の縁の外に影が覗く」状態を作る。
+            const tentFloor = new THREE.MeshBasicMaterial({ color: 0x4a4238 });
+            extraMaterials.push(tentFloor);
+
+            // 運転席のガラス。白い車体との明度差で「これは車である」ことを作る。
+            // 側面には使わない——側面は赤十字のための白い壁として空ける。
+            const glass = makeAircraftMaterial(0x2a3b46, 0.55, 0.3);
+            extraMaterials.push(glass);
+
+            // =======================================================================
+            // ① 大型の白い箱型トラック — 車体
+            // =======================================================================
+            // 全長12m: 鼻 z=-6.0 .. 尻 z=+6.0。
+            // キャブオーバー型の大型トラックで、前端のキャブと後ろの病棟箱を
+            // ひとつながりの直方体にはせず、**キャブより病棟箱を高く/幅広に**する。
+            // この段差が evacBus（前から後ろまで一本の箱＝バスの記号）との
+            // 決定的な差で、真横から見たときに「バスではなく箱を積んだトラック」に
+            // 読ませる唯一の要素。
+            //
+            // 病棟箱: z -3.4 .. +6.0（中心 +1.3 / 長さ 9.4）、y 1.35..4.15、幅 3.10
+            add(geometry.panel, white, 0, 2.75, 1.3, 3.1, 2.8, 9.4);
+            // キャブ: z -6.0 .. -3.3（中心 -4.65 / 長さ 2.7）、y 1.15..3.55、幅 2.85。
+            // 後端を病棟箱の前面 -3.4 に 0.1m 差し込んで必ず接触させる
+            // （離すと「白い煉瓦が前に浮いている」ように見える。ambulance の
+            //  ボンネットで実際に踏んだ罠）。
+            add(geometry.panel, white, 0, 2.35, -4.65, 2.85, 2.4, 2.7);
+            // 病棟箱の腰帯（赤帯）。白一色の 9.4m の壁は真横から見ると
+            // のっぺりして大きさが読めないので、車体下端に基準線を1本入れる。
+            // これがあると十字の大きさが相対的に測れて「デカい」が伝わる。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, red, side * 1.56, 1.62, 1.3, 0.06, 0.34, 9.4);
+            }
+
+            // --- シャシ / 床下 ------------------------------------------------------
+            // 暗い帯を床下に通して車体が宙に浮かないようにする。前後の車輪の
+            // 内側に収め、車輪を飲み込まない（ambulance で踏んだ罠）。
+            add(geometry.panel, dark, 0, 1.0, 0.4, 2.9, 0.7, 10.4);
+            // 収納ロッカー扉。病棟箱の下端に沿った暗い横列で、床下スペースを持つ
+            // 大型車の記号。細かく見えなくてよい——真横のシルエットに情報量を足す係。
+            for (const side of [-1, 1]) {
+              for (const z of [-1.6, 1.3, 4.2]) {
+                add(geometry.panel, dark, side * 1.57, 1.62, z, 0.05, 0.5, 2.2);
+              }
+            }
+
+            // --- 運転席まわり -------------------------------------------------------
+            // フロントガラス。大型トラックの顔。ほぼ垂直に立てる。
+            add(geometry.panel, glass, 0, 2.75, -6.03, 2.6, 1.5, 0.12, 0.05);
+            // 運転席サイドウィンドウ。フロントガラスの直後に接して置くので、
+            // 窓が前面から側面へ回り込む一続きの帯として読める（離すと側面に
+            // 開いた穴に見える）。キャブの範囲 z -6.0..-3.3 に収める。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, glass, side * 1.44, 2.75, -5.3, 0.1, 1.4, 1.3);
+            }
+            // バンパーとフロントグリル。
+            add(geometry.panel, steel, 0, 1.15, -6.06, 2.8, 0.6, 0.3);
+            add(geometry.panel, dark, 0, 1.85, -6.04, 2.4, 0.7, 0.16);
+            // 後端バンパー。
+            add(geometry.panel, steel, 0, 1.15, 6.06, 2.9, 0.6, 0.3);
+
+            // =======================================================================
+            // ③ 車格 — 8輪(4軸)
+            // =======================================================================
+            // ambulance 4輪 / evacBus 6輪 に対して 8輪。真上から数えられるので、
+            // 上空から見て「一回り上の重車両」が言える。半径0.60 → 下端が y=0（接地）。
+            // 車軸は前2軸（キャブ下）+ 後2軸（病棟後端寄り）にまとめ、中央を空ける。
+            // このグルーピング自体も「長い箱を担ぐ多軸トラック」の記号。
+            // ★車輪は車体側面 x=±1.55 の**外側** x=±1.68 に置く。1周目は内側
+            // (±1.42) に置いたため、真上から見ると車体の白い天面に完全に隠れて
+            // 8輪が1つも数えられず、「車格が倍」の証拠が上空から消えていた。
+            // tel が同じ理由で車輪を OUTBOARD に出している（あちらのコメント:
+            // 「count is legible from directly above, which is where this is seen
+            //  from」）。同じ流儀に従う。タイヤ幅も 0.5→0.62 に増やして、
+            // 真上からはみ出す量を確保する。
+            for (const side of [-1, 1]) {
+              for (const z of [-4.7, -2.9, 3.3, 5.0]) {
+                add(geometry.shipCylinder, dark, side * 1.68, 0.6, z,
+                  0.6, 0.62, 0.6, 0, 0, Math.PI / 2);
+              }
+            }
+            // フェンダー。8輪が「車体の下に転がっている黒い円柱」に見えないよう、
+            // 各輪群の上に白い泥除けを渡して車体と結びつける。
+            // ただし2周目に幅0.4で x=±1.66 に置いたら、真上から見てタイヤを完全に
+            // 覆い隠してしまい、車輪を外へ出した意味が消えた（8輪が数えられない＝
+            // ③の証拠が上空から再び消える）。フェンダーは車体寄り(±1.58)の細い
+            // 庇(0.22)に留め、タイヤの外側 1.68±0.31 がはみ出したままにする。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, white, side * 1.58, 1.42, -3.8, 0.22, 0.26, 3.4);
+              add(geometry.panel, white, side * 1.58, 1.42, 4.15, 0.22, 0.26, 3.2);
+            }
+
+            // =======================================================================
+            // ① 大きな赤十字（最重要・3面）
+            // =======================================================================
+            // ★屋根の赤十字。上空からの識別はこれが担う——このゲームで地上ユニットが
+            // 見られる角度の主役は真上なので、ここが本体。屋根天面 y=4.15 の
+            // 直上 y=4.19 に薄板で置く。病棟箱の屋根 (z -3.4..+6.0、中心 +1.3) の
+            // 中心に置き、屋根の面をきちんと占有させる（端に寄せると前半が
+            // 真っ白に空いて「白い箱」にしか見えない。ambulance で踏んだ罠）。
+            // 十字は縦 6.0m × 横 2.6m のアーム、腕幅 1.55m。
+            add(geometry.panel, red, 0, 4.19, 1.3, 1.55, 0.08, 6.0);
+            add(geometry.panel, red, 0, 4.19, 1.3, 2.6, 0.08, 1.55);
+
+            // ★側面の赤十字。真横・斜めから見たときの識別。病棟箱の白い無窓の壁
+            // (z -3.4..+6.0、y 1.35..4.15) の中央に高さ2.4mの十字を貼る。
+            // ambulance の側面十字が高さ1.6m なので 1.5倍——2台が並んだとき
+            // 「同じマークの大きいほう」が一目で分かるサイズ差にしてある。
+            // 車体側面 x=±1.55 の 0.06m 外へ出して z-fighting を回避。
+            for (const side of [-1, 1]) {
+              const x = side * 1.61;
+              add(geometry.panel, red, x, 2.85, 1.6, 0.1, 2.4, 0.8);
+              add(geometry.panel, red, x, 2.85, 1.6, 0.1, 0.8, 2.4);
+            }
+            // 後面（観音扉側 z=+6.0）にも1つ。後方から入っても識別できる。
+            add(geometry.panel, red, 0, 2.85, 6.06, 1.9, 0.62, 0.1);
+            add(geometry.panel, red, 0, 2.85, 6.06, 0.62, 1.9, 0.1);
+            // 後部の乗降扉。赤十字の下に暗い枠を入れて「ここが患者の出入口」を示す。
+            add(geometry.panel, dark, 0, 1.75, 6.04, 2.1, 0.75, 0.08);
+
+            // --- 屋根の設備 ---------------------------------------------------------
+            // 空調ユニット2基。屋根が赤十字だけの真っ平らな面だと、真横から見たとき
+            // 屋根の存在自体が線1本になって高さが読めない。屋根上に厚みのある箱を
+            // 置くと稜線が二段になり、車高4.15mが実際に高く見える。
+            // 赤十字のアームを避けて左右の白い余白（|x| > 1.3 の帯）に置く。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, steel, side * 1.02, 4.38, -2.1, 0.85, 0.46, 1.5);
+            }
+            // 通信アンテナ。頂点 y=4.55。
+            add(geometry.shipCylinder, dark, -1.2, 4.45, 5.4, 0.06, 0.6, 0.06);
+
+            // =======================================================================
+            // ② 展開式サイドテント（右舷 +x へ張り出し）
+            // =======================================================================
+            // このユニットを他の全ての地上ユニットから引き離す形。真上から見た
+            // フットプリントが車体(幅3.1m)+テント(張り出し4.05m)で完全に非対称に
+            // なる——「車の横に、車と同じくらいの面積の白い屋根がもう一枚ある」。
+            // これは移動中の車には有り得ない姿で、展開して開業している診療所である
+            // ことをシルエットだけで言い切れる唯一の手段。
+            //
+            // 構成: 車体側面から生える片流れ屋根 + 外端を支える4本の支柱 +
+            //       奥側の壁 + 張り綱。すべて右舷 (+x) のみ。
+            //
+            // 屋根: 車体側 x=1.55 から外端 x=5.6 まで（張り出し 4.05m / 中心 x=3.58）。
+            // 前後は z -4.0 .. +6.6（長さ 10.6 / 中心 +1.3）。
+            // ★2周目は z -2.6..+5.2 で車体(-6.0..+6.0)の内側に完全に収めていたが、
+            //   そうすると反対舷(-x)から見た SIDE ビューでテントが車体の陰に100%
+            //   隠れ、4面図の1面で②が全く読めなかった。前後を車体の尻(+6.0)より
+            //   0.6m 後ろまで伸ばすことで、どちら側から見てもテントの屋根端と支柱が
+            //   車体シルエットの外へはみ出す。テントは車体より長い天幕になり、
+            //   「car + annex」の全長差そのものが展開の証拠にもなる。
+            // 　（それでも SIDE(-x直交) は車体で正面から隠れるため、はみ出しは
+            // 　 前後端に出る。これが -x 側からテントを検出できる唯一の手掛かり。）
+            // 高さは車体側 y=3.5 から外端 y=2.55 へ下がる片流れ。板1枚を z軸まわりに
+            // 傾けて表現する: 傾き = atan((3.5-2.55)/4.05) ≈ 0.23 rad。
+            // add の第2回転引数(ry)ではなく第3(rz)が z軸まわり＝左右の傾きなので、
+            // 板の長辺(x)を持ち上げ下げできる。板は薄く(0.1)、上から見て
+            // 7.8 x 4.05 の面積を持つ。
+            add(geometry.panel, canvasTent, 3.58, 3.03, 1.3, 4.15, 0.1, 10.6, 0, 0, -0.23);
+
+            // ★テント屋根の赤十字。1周目の最大の失敗は、真上（＝このゲームで地上
+            // ユニットを最も見る角度）から見たときテント屋根が「車の隣に置かれた
+            // 灰色の板」にしか見えなかったこと。屋根に赤十字を1つ載せると、
+            // 板は一瞬で「野外診療所の天幕」に変わる。車体屋根の十字と対になって
+            // 「赤十字が2つ = 展開して倍の面積になっている」も同時に言える。
+            // 屋根と同じ傾き rz を与え、布面のわずか上へ浮かせる。
+            // 十字は縦3.4m × 横2.3m、腕幅1.1m。
+            add(geometry.panel, red, 3.58, 3.12, 1.3, 1.1, 0.08, 3.4, 0, 0, -0.23);
+            add(geometry.panel, red, 3.58, 3.12, 1.3, 2.3, 0.08, 1.1, 0, 0, -0.23);
+
+            // 屋根の骨（あばら）。真上から見て「板」ではなく「骨に張った布」に
+            // 読ませるための線。屋根の傾きに合わせて同じ rz を与え、布の上面へ
+            // わずかに浮かせて置く。1周目は 0.14 幅の steel で、布とほぼ同色のため
+            // 完全に消えていた。dark に変えて幅も倍にし、確実に線として出す。
+            // 赤十字（z 1.3 ± 1.7）を避けた位置に4本。
+            for (const z of [-3.4, -1.9, 4.5, 6.0]) {
+              add(geometry.panel, dark, 3.58, 3.13, z, 4.25, 0.1, 0.26, 0, 0, -0.23);
+            }
+            // 屋根外端の垂れ縁（幕板）。布の端が下へ垂れているという表現で、
+            // 真横・斜めから見たときテントの外形線をはっきりさせる。
+            add(geometry.panel, canvasTent, 5.5, 2.28, 1.3, 0.12, 0.55, 10.65);
+            // 車体との接続部（軒）。テントが車体から生えていることを明示する
+            // 桁を1本、車体側面に沿って通す。ここが繋がっていないと
+            // 「隣に別のテントが建っている」に見えて、車の機能として読めない。
+            add(geometry.panel, steel, 1.62, 3.52, 1.3, 0.28, 0.22, 10.7);
+            // 車体とテントの間の見切り。真上から見たとき、白い車体の輪郭と砂色の
+            // テント屋根が接していると2つが1つの塊に融合して読める。桁の外側に
+            // 幅0.18の暗い隙間を1本通し、上空から「別体の annex が横付けされている」
+            // ことを線1本で確定させる。
+            add(geometry.panel, dark, 1.85, 3.46, 1.3, 0.18, 0.16, 10.7);
+
+            // 外端の支柱4本。地面 y=0 から屋根外端の下面 y≈2.5 まで。
+            // 支柱があることで「布が宙に浮いている」ではなく「立てた」に見える。
+            for (const z of [-3.8, -1.2, 1.4, 4.0, 6.4]) {
+              add(geometry.shipCylinder, steel, 5.5, 1.27, z, 0.075, 2.54, 0.075);
+            }
+            // 中間支柱2本（車体寄り）。屋根の垂れを支える体で、真横から見たとき
+            // テント下に「奥行きのある空間」が見えるようにする。
+            for (const z of [-2.5, 1.3, 5.1]) {
+              add(geometry.shipCylinder, steel, 3.6, 1.5, z, 0.06, 3.0, 0.06);
+            }
+            // 接地板（支柱の足）。地面との接点をはっきりさせて、テントが
+            // 浮かずに設営されて見えるようにする。
+            for (const z of [-3.8, -1.2, 1.4, 4.0, 6.4]) {
+              add(geometry.panel, dark, 5.5, 0.06, z, 0.5, 0.12, 0.5);
+            }
+
+            // ★テント下の土間（日陰）。真上から見たときの読みを決める面。
+            // 屋根 (x 1.55..5.61 / z -2.6..+5.2) の真下に、屋根よりわずかに小さい
+            // 暗い床を地面すれすれに敷く。これがあると上空から見て屋根の縁の外に
+            // 暗い縁取りが覗き、「板が置いてある」ではなく「屋根の下に空間がある」
+            // に反転する。1周目に屋根が板に見えた原因はこの床の不在。
+            add(geometry.panel, tentFloor, 3.55, 0.04, 1.3, 4.0, 0.08, 10.4);
+
+            // テント奥（前端 z=-2.6）の妻壁。1周目は高さ3.0mの全面壁で塞いだため、
+            // 真上・斜めから見るとテントが「閉じた灰色の箱」になり、診療所ではなく
+            // 貨物コンテナに見えた。腰高(1.2m)の半壁に落として、上部は開ける。
+            // 布が張ってあるのは分かるが中は見通せる＝天幕であることが読める。
+            add(geometry.panel, canvasTent, 3.58, 0.7, -3.95, 4.05, 1.2, 0.1);
+            // 妻壁の赤十字。テント側の医療マーク。半壁に合わせて位置と大きさを
+            // 収め直す（1周目は壁の高さ3.0m前提で y=2.0 に置いていた）。
+            add(geometry.panel, red, 3.58, 0.72, -4.02, 1.05, 0.3, 0.08);
+            add(geometry.panel, red, 3.58, 0.72, -4.02, 0.3, 1.05, 0.08);
+
+            // 張り綱2本。屋根の外端から地面へ斜めに張る細い線。真横から見た
+            // シルエットに「設営した」感を足す最後のひと筆で、これがあると
+            // テントが車体の固定オーニングではなく仮設物に見える。
+            // x方向へ 1.3m 出しながら 2.5m 落ちるので rz = atan(1.3/2.5) ≈ 0.48。
+            for (const z of [-3.8, 6.4]) {
+              add(geometry.shipCylinder, steel, 6.15, 1.25, z, 0.04, 2.85, 0.04, 0, 0, -0.48);
+            }
+            // 張り綱のペグ。
+            for (const z of [-3.8, 6.4]) {
+              add(geometry.panel, dark, 6.8, 0.06, z, 0.35, 0.12, 0.35);
+            }
+
+            // 展開したテントの下に置かれた診療ベッド3台。暗い土間の上に白い箱が
+            // 並ぶので、斜め後方視点でテント下を覗いたときに中身が見える＝
+            // 「開業している」の証拠になる。屋根の外へは出さない（出すと真上から
+            // 屋根の輪郭を壊す）。
+            for (const z of [-2.2, 0.5, 3.2, 5.6]) {
+              add(geometry.panel, white, 4.5, 0.42, z, 1.7, 0.34, 0.8);
+            }
+
+            // 展開したことを示す車体側の証拠: テント側だけ側面の収納ハッチが
+            // 開いている（テント資材を出した後）。開いた扉板を外へ張り出させる。
+            add(geometry.panel, white, 2.15, 1.62, -3.0, 1.1, 0.5, 0.06, 0, 0, 0);
+
+            // 返り値なし＝ dish なし。この車に回るものは何もない
+            //（レーダーも武装も持たない非戦闘車両）。
+          }
+        });
+      },
+      "ground_mobileHospital"
+    ); // @payload:ground_mobileHospital
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
