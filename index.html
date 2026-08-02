@@ -801,22 +801,11 @@
       animation: lockPulse 0.55s ease-in-out infinite alternate;
     }
 
-    /* The percentage and the bar exist to show a lock BEING taken. Once it is
-       taken the red pulsing frame says so on its own, and "LOCKED" plus a
-       full-width bar under it was the same fact printed three times. */
-    #targetBox.locked #lockLabel,
-    #targetBox.locked #lockMeter { display: none; }
-
-    #lockLabel {
-      position: absolute;
-      left: 50%;
-      top: calc(100% + 12px);
-      transform: translateX(-50%);
-      white-space: nowrap;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.15em;
-    }
+    /* The lock has no text and no bar, in either state. Acquisition is read
+       from the box itself - the spinning dashed ring, and the seeker tone
+       that tightens as it closes - and completion from the box turning red
+       and pulsing. The percentage, the "LOCKED" caption and the progress bar
+       were all restatements of that. */
 
     #targetRange {
       position: absolute;
@@ -863,24 +852,6 @@
     /* The old range readout above the frame is retired: the range now lives
        under the name tag, and showing it twice was the reported defect. */
     #targetRange { display: none; }
-
-    #lockMeter {
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: calc(100% + 29px);
-      height: 3px;
-      border: 1px solid currentColor;
-      background: rgba(0, 0, 0, 0.35);
-    }
-
-    #lockMeterFill {
-      display: block;
-      height: 100%;
-      width: 0;
-      background: currentColor;
-      box-shadow: 0 0 7px currentColor;
-    }
 
     #enemyMarkers {
       position: absolute;
@@ -2347,8 +2318,6 @@
       <span id="targetBoxTgt">TGT</span>
       <span id="targetBoxName"><b></b><i></i></span>
       <span id="targetRange"></span>
-      <span id="lockLabel">LOCK 0%</span>
-      <span id="lockMeter"><span id="lockMeterFill"></span></span>
     </div>
 
     <div id="ccipMarker"><span id="ccipLabel">CCIP</span></div>
@@ -14947,8 +14916,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       targetBoxTgt: document.getElementById("targetBoxTgt"),
       targetBoxName: document.getElementById("targetBoxName"),
       targetRange: document.getElementById("targetRange"),
-      lockLabel: document.getElementById("lockLabel"),
-      lockMeterFill: document.getElementById("lockMeterFill"),
       targetDirectionArrow: document.getElementById("targetDirectionArrow"),
       gunsight: document.getElementById("gunsight"),
       boresight: document.getElementById("boresight"),
@@ -27274,8 +27241,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // exactly what made the UGB lock audit ambiguous the first time.
         ui.targetBox.style.display = "none";
         ui.targetBox.classList.remove("locked");
-        ui.lockLabel.textContent = "LOCK 0%";
-        ui.lockMeterFill.style.width = "0%";
         return;
       }
 
@@ -27291,8 +27256,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.targetBox.style.left = `${(tmpV1.x * 0.5 + 0.5) * window.innerWidth}px`;
       ui.targetBox.style.top = `${(-tmpV1.y * 0.5 + 0.5) * window.innerHeight}px`;
       ui.targetBox.classList.toggle("locked", lock.locked);
-      ui.lockLabel.textContent = lock.locked ? "LOCKED" : `LOCK ${Math.round(lock.progress * 100)}%`;
-      ui.lockMeterFill.style.width = `${Math.round(lock.progress * 100)}%`;
       const distance = Math.round(player.position.distanceTo(target.group.position));
       ui.targetBox.classList.toggle("tgt", isTgtEntry(target));
       const lockedName = enemyDisplayName(target);
