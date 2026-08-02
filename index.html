@@ -41553,6 +41553,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (friendly.retired) return;
       friendly.retired = true;
       if (!isFriendlyShip(friendly)) friendly.group.visible = false;
+      // Nothing to tally when no guard objective owns this sortie: a
+      // deployment without a guard block could otherwise announce
+      // "CONVOY CLEAR - 1/0 SAVED" for a convoy the mission never had.
+      if (!guardState.active) return;
       guardState.saved += 1;
       const config = guardState.config || {};
       const outstanding = guardedFriendlies().some(
@@ -42066,7 +42070,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const distance = Math.hypot(friendly.group.position.x, friendly.group.position.z);
       let desiredHeading = friendly.heading;
       if (distance > 3200) {
-        desiredHeading = Math.atan2(-friendly.group.position.x, friendly.group.position.z);
+        // Same convention the enemy hulls use: facing (-x, -z) is atan2(x, z).
+        // The mirrored form sent the ship the player is guarding further out
+        // the moment it wandered, which is the opposite of what this branch
+        // exists to do.
+        desiredHeading = Math.atan2(friendly.group.position.x, friendly.group.position.z);
       }
       let headingDelta = desiredHeading - friendly.heading;
       while (headingDelta > Math.PI) headingDelta -= Math.PI * 2;
@@ -42679,7 +42687,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.deadTimer -= dt;
           if (enemy.subsystem) updateSubsystemWreck(enemy, dt);
           else if (enemy.ground) updateGroundWreck(enemy, dt);
-          else if (enemy.surface) updateShipSinking(enemy, dt);
+          else if (enemy.surface) {
+            updateShipSinking(enemy, dt);
+            // "Alive or wrecked" is what the live branch below claims, but the
+            // wrecked half never ran it: a sinking hull kept moving and
+            // settling while its mounts stayed frozen at the frame they died
+            // on, burning in mid-air over the water the ship had left.
+            for (let s = 0; s < enemy.subsystems.length; s += 1) {
+              positionSubsystem(enemy.subsystems[s]);
+            }
+          }
           if (enemy.deadTimer <= 0) {
             scene.remove(enemy.group);
             // Mounts borrow their ship's meshes and own no materials.
