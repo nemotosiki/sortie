@@ -35287,8 +35287,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // downstream: null on a normal load, which is the only state every line
     // below has ever seen.
     const MODEL_PREVIEW_ID = new URLSearchParams(location.search).get("modelPreview");
+    // `?worldPreview=<presetKey>` is the same trade for a MAP: the whole boot is
+    // swapped for a contact sheet of one world preset. Read here, once, for the
+    // same reason MODEL_PREVIEW_ID is - null on a normal load is the only state
+    // anything below has ever seen. Its own URLSearchParams rather than a shared
+    // one: the line above is the aircraft sheet's, byte for byte, and a preview
+    // mode must not be able to change how the other one boots.
+    const WORLD_PREVIEW_KEY = new URLSearchParams(location.search).get("worldPreview");
 
-    if (!MODEL_PREVIEW_ID) {
+    if (!MODEL_PREVIEW_ID && !WORLD_PREVIEW_KEY) {
     resetPlayerTransform();
     snapCamera();
     buildCampaignScreen();
@@ -35521,7 +35528,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // Preview mode owns the renderer and draws once; starting the game loop as
     // well would immediately paint the live scene over the contact sheet.
+    // modelPreview wins when a URL carries both, so the aircraft sheet's
+    // behaviour is unchanged by the existence of the map one.
     if (MODEL_PREVIEW_ID) renderModelPreview(MODEL_PREVIEW_ID);
+    // Deferred by a frame, unlike the model sheet, and it has to be: the map
+    // path calls applyWorldPreset and updateWorld, both of which touch the
+    // ocean drift accumulators - module-level `let`s declared 10k lines below
+    // this point and therefore still in their temporal dead zone here. The
+    // model sheet reads none of them, which is why it can draw inline. One rAF
+    // puts this after the whole body has evaluated, which is the ground every
+    // other applyWorldPreset call already stands on.
+    else if (WORLD_PREVIEW_KEY) requestAnimationFrame(() => renderWorldPreview(WORLD_PREVIEW_KEY));
     else requestAnimationFrame(animate);
 
     // A static 2x2 contact sheet of one model, for checking geometry that was
@@ -35749,6 +35766,208 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         propSpinners: isAircraft ? model.propSpinners.length : 0,
         dish: isGround ? Boolean(model.dish) : false,
         rotors: isHeli ? model.rotors.length : 0,
+        redraw: drawPreview
+      };
+    }
+
+    // The same 2x2 contact sheet for a MAP: `?worldPreview=nightCity`.
+    //
+    // Everything the model sheet deliberately throws away is exactly what this
+    // one is for. There is no separate scene and no three-point rig, because a
+    // map's sky, fog, sun and hemisphere light ARE the subject - lighting it
+    // "neutrally" would be photographing a different place. So this draws the
+    // live `scene` with the game's own `camera`, at the game's own fov and far
+    // plane: what the sheet shows is what a sortie shows.
+    //
+    // Four fixed stations rather than four orbit angles, because the question a
+    // map has to answer is "does it read from the altitudes it is flown at",
+    // not "what shape is it": high recon, run-in, deck level, and one looking
+    // out at the horizon from the middle of it.
+    function renderWorldPreview(presetKey) {
+      const preset = WORLD_PRESETS[presetKey];
+      if (!preset) {
+        const known = Object.keys(WORLD_PRESETS).join(", ");
+        console.error(`[worldPreview] unknown preset key "${presetKey}". Known: ${known}`);
+        document.body.innerHTML =
+          `<pre style="color:#f66;background:#111;font:14px monospace;padding:24px;white-space:pre-wrap">` +
+          `[worldPreview] unknown preset key "${presetKey}"\n\nKnown:\n${known}</pre>`;
+        return;
+      }
+
+      // setState never runs in this mode, so every screen keeps its authored
+      // default visibility and the menus sit on top of the map. Same fix as the
+      // model sheet: hide the overlays rather than teach setState a state it
+      // will never legitimately be in.
+      for (const node of document.querySelectorAll(".screen, #hud, #audioHint")) {
+        node.style.display = "none";
+      }
+      // resetPlayerTransform never ran either, so the boot airframe is parked
+      // at the origin - which on a map whose subject sits 9km down-range is a
+      // jet floating in open water in shot three. The map is the subject here.
+      player.visible = false;
+
+      // No-ops when the requested map is already the booted one, which is the
+      // correct behaviour and not a hole: `world` was built AND decorated up at
+      // the declaration, so either path leaves a fully decorated world up.
+      applyWorldPreset(presetKey);
+
+      // "The middle of the land". A plateau IS the land on every map that has
+      // one (there is no heightfield), so its centre is the only defensible
+      // aim point; failing that, sceneryOrigin is where a map that moved its
+      // subject off the origin says the subject went. Origin last.
+      const plateauAt = preset.mountains && preset.mountains.plateau
+        ? preset.mountains.plateau.at
+        : null;
+      const centre = plateauAt || preset.sceneryOrigin || [0, 0];
+      const centreX = centre[0];
+      const centreZ = centre[1];
+      // surfaceTopAt, not surfaceHeightAt: the cap of a plateau sits at the full
+      // height while the collision clamp is 0.92 of it, and this is a camera,
+      // not a collider. Altitudes below are AGL over this point - a low pass at
+      // "80m" over a 92m plateau would otherwise be underground.
+      const groundY = surfaceTopAt(centreX, centreZ);
+
+      // Where the light is, in the xz plane. Night maps carry `moon` instead of
+      // `sun`, and every preset has exactly one of the two.
+      const lightBody = preset.sun || preset.moon;
+      const lightAngle = lightBody
+        ? Math.atan2(lightBody.position[0], lightBody.position[2])
+        : 0;
+      // The three terrain shots stand 115 degrees around from the light, so it
+      // rakes across the land from the side and stays out of frame (the widest
+      // half-angle at this fov and aspect is ~45 degrees). Standing with the
+      // light behind flattens every slope; standing into it turns the map into
+      // a silhouette with a glare in the middle of it. Both are ways of not
+      // seeing the terrain.
+      const standAngle = lightAngle + (115 * Math.PI) / 180;
+      const standX = Math.sin(standAngle);
+      const standZ = Math.cos(standAngle);
+
+      const VIEWS = [
+        // Whole composition: where the islands, ridges and the city sit.
+        { label: "OVERVIEW", altitude: 2400, distance: 4200 },
+        // The height a strike actually runs in at.
+        { label: "APPROACH", altitude: 800, distance: 2600 },
+        // Deck level, where scale and scenery density are either there or not.
+        { label: "LOW PASS", altitude: 80, distance: 900 },
+        // Standing in the middle of the map looking out along the light: sky
+        // bands, fog colour, the sun road and where the sea stops.
+        { label: "HORIZON", altitude: 300, distance: 0, outward: true }
+      ];
+
+      const labelLayer = document.createElement("div");
+      labelLayer.style.cssText =
+        "position:fixed;inset:0;pointer-events:none;z-index:50;" +
+        "font:600 13px/1 ui-monospace,Consolas,monospace;letter-spacing:0.12em;color:#cfe4f5";
+      const caption = document.createElement("div");
+      caption.style.cssText =
+        "position:absolute;left:12px;top:10px;color:#9fd0ef;font-size:14px;letter-spacing:0.08em";
+      // MOUNTAINS is the count of entries in the terrain collision model, and it
+      // is on the sheet because it is the one thing a screenshot cannot show:
+      // decoration is visual only, so a building that looks like it is standing
+      // on something is standing on nothing unless a mountain is under it.
+      // DECOR is how many registered decorators claim this map - 0 on a map
+      // whose `<key>Works` was meant to run is the symptom, and a decorator that
+      // threw still counts here (its console error is that signal, not this).
+      const decorCount = WORLD_DECORATORS.filter((entry) => entry.worlds.includes(presetKey)).length;
+      // WORLD_PRESETS keeps no provenance - ctx.addWorldPreset writes into the
+      // same table as the eight literals - so "is this a payload map" is
+      // answered against the inline set. Listed rather than captured before the
+      // payload block, because capturing it would mean a third edit in the boot
+      // path; and the failure mode is the harmless one, since this sheet exists
+      // to look at payload maps and a ninth INLINE preset would merely lose a
+      // tag it does not need.
+      const INLINE_WORLD_PRESETS = new Set([
+        "archipelagoDay", "sunsetOcean", "glacierCanyon", "nightBase",
+        "nightCity", "coastalPlain", "desertBasin", "stormOcean"
+      ]);
+      const fromPayload = !INLINE_WORLD_PRESETS.has(presetKey);
+      caption.textContent =
+        `${preset.label}  ·  key=${presetKey}  ·  MOUNTAINS ${world.mountains.length}` +
+        `  ·  DECOR ${decorCount}${fromPayload ? "  ·  PAYLOAD PRESET" : ""}`;
+      labelLayer.appendChild(caption);
+      document.body.appendChild(labelLayer);
+
+      function drawPreview() {
+        const width = Math.max(2, window.innerWidth);
+        const height = Math.max(2, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(width, height, false);
+        renderer.setScissorTest(true);
+        const cellW = Math.floor(width / 2);
+        const cellH = Math.floor(height / 2);
+        camera.aspect = cellW / cellH;
+        camera.updateProjectionMatrix();
+
+        for (let i = 0; i < VIEWS.length; i += 1) {
+          const view = VIEWS[i];
+          const col = i % 2;
+          const row = Math.floor(i / 2);
+          // WebGL's origin is bottom-left; row 0 is the top of the sheet.
+          const x = col * cellW;
+          const y = height - (row + 1) * cellH;
+          renderer.setViewport(x, y, cellW, cellH);
+          renderer.setScissor(x, y, cellW, cellH);
+          if (view.outward) {
+            camera.position.set(centreX, groundY + view.altitude, centreZ);
+            // Aimed at the camera's own altitude, so the horizon is level and
+            // the frame is split by it rather than by the ground.
+            camera.lookAt(
+              centreX + Math.sin(lightAngle) * 4000,
+              groundY + view.altitude,
+              centreZ + Math.cos(lightAngle) * 4000
+            );
+          } else {
+            camera.position.set(
+              centreX + standX * view.distance,
+              groundY + view.altitude,
+              centreZ + standZ * view.distance
+            );
+            camera.lookAt(centreX, groundY, centreZ);
+          }
+          // The sky dome, the finite ocean plane and the sun road are all
+          // pinned to the camera every frame in play. Without this the dome
+          // (radius 3600) is simply behind a camera standing 4.8km from the
+          // origin and the sheet comes back as clear colour. dt 0 so no wave
+          // drift accumulates across the four cells - the sea is the same sea
+          // in all of them.
+          //
+          // The dome is pinned in updateCamera/snapCamera, NOT in updateWorld -
+          // in play the camera only ever moves through those two. A preview
+          // teleports it directly, so the pin has to be done by hand here or
+          // the dome stays wherever the last real camera move left it and its
+          // edge is drawn across the top of any cell standing further out than
+          // its radius (measured: OVERVIEW and APPROACH both showed the seam).
+          world.skyGroup.position.copy(camera.position);
+          updateWorld(0);
+          renderer.render(scene, camera);
+        }
+        renderer.setScissorTest(false);
+        renderer.setViewport(0, 0, width, height);
+
+        for (const node of labelLayer.querySelectorAll("[data-cell]")) node.remove();
+        for (let i = 0; i < VIEWS.length; i += 1) {
+          const tag = document.createElement("div");
+          tag.dataset.cell = String(i);
+          tag.textContent = VIEWS[i].label;
+          tag.style.position = "absolute";
+          tag.style.left = `${(i % 2) * (width / 2) + 14}px`;
+          tag.style.top = `${Math.floor(i / 2) * (height / 2) + 34}px`;
+          labelLayer.appendChild(tag);
+        }
+      }
+
+      drawPreview();
+      window.addEventListener("resize", drawPreview);
+      // Something for a screenshot harness to wait on, and for a human to poke
+      // at from the console - the map counterpart of __MODEL_PREVIEW__.
+      window.__WORLD_PREVIEW__ = {
+        key: presetKey,
+        label: preset.label,
+        fromPayload,
+        mountains: world.mountains.length,
+        decorators: decorCount,
+        centre: [centreX, groundY, centreZ],
         redraw: drawPreview
       };
     }
