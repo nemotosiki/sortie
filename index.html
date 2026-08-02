@@ -851,21 +851,6 @@
       will-change: left, top;
     }
 
-    #targetBox::before,
-    #targetBox::after {
-      content: "";
-      position: absolute;
-      inset: 5px;
-      border: 1px solid currentColor;
-      opacity: 0.45;
-    }
-
-    #targetBox::after {
-      inset: -5px;
-      border-style: dashed;
-      animation: targetSpin 3s linear infinite;
-    }
-
     #targetBox.locked {
       width: 44px;
       height: 44px;
@@ -2175,16 +2160,6 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    @keyframes targetSpin { to { transform: rotate(360deg); } }
-    @keyframes lockPulse { to { transform: translate(-50%, -50%) scale(0.92); } }
-
-    @media (max-width: 720px) {
-      #scorePanel { transform: scale(0.86); transform-origin: left top; }
-      #flightData { left: 12px; transform: translateY(-50%) scale(0.86); transform-origin: left center; }
-      #altData { right: 12px; transform: translateY(-50%) scale(0.86); transform-origin: right center; }
-      #statusPanel { transform: scale(0.88); transform-origin: right bottom; }
-      #radarWrap { width: 150px; }
-    }
 
     @media (max-height: 650px) {
       .screenCard { padding: 20px 28px; }
@@ -42645,10 +42620,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const config = guardState.config || {};
       showBanner(config.failBanner || "OBJECTIVE LOST", 2.4, "danger");
       resetRadio();
+      // completeMission(false) resets the radio again on this same frame, so a
+      // line queued before it was guaranteed never to be spoken - the mission's
+      // own words for losing its convoy always lost to the generic outcome
+      // line. Queued after, it plays over the failure the way it was written to.
+      completeMission(false);
       if (config.failRadio) {
         radioSay("command", config.failRadio, RADIO_PRIORITY.CRITICAL, "guard-failed");
       }
-      completeMission(false);
     }
 
     // A charge that made it. Still alive - that is the whole point of the flag
@@ -46526,7 +46505,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // line itself is crossed give the player BATTLE_FAIL_TIME to turn around
     // before the sortie is written off. Coming back inside clears everything.
     function updateBattleArea(dt) {
-      if (gameState !== STATE_PLAYING || outcomePending.active) return;
+      // The outro is as decided as the ACCOMPLISHED hold: the enemy is gone and
+      // the player is watching a scripted retreat. Leaving the fence live meant
+      // drifting during those 16 seconds raised RETURN TO THE BATTLE AREA - and
+      // could fail the sortie mid-cutscene - while the warning's own radio line
+      // was silently dropped, because startOutro had already filled the queue.
+      if (gameState !== STATE_PLAYING || outcomePending.active || outro.active) return;
       const dx = player.position.x - battleArea.centerX;
       const dz = player.position.z - battleArea.centerZ;
       let distance = Math.hypot(dx, dz);
