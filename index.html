@@ -765,9 +765,12 @@
       height: 52px;
       display: none;
       transform: translate(-50%, -50%);
-      border: 1px solid var(--warning);
-      color: var(--warning);
-      filter: drop-shadow(0 0 6px rgba(255, 213, 86, 0.7));
+      /* Green while the seeker is still working, red the moment it locks -
+         the AC read. Amber used to mean "acquiring", which put a warning
+         colour on the single most common state in the game. */
+      border: 1px solid #78ff9d;
+      color: #78ff9d;
+      filter: drop-shadow(0 0 6px rgba(65, 255, 126, 0.62));
       will-change: left, top;
     }
 
@@ -966,25 +969,34 @@
       opacity: 0.8;
     }
 
-    .enemyMarker.active .enemyMarkerName { opacity: 0.92; }
+    /* A name and a range on EVERY contact turned a busy sky into a wall of
+       text. They belong to the contacts the player has actually singled out:
+       the main selection (the one the target-select key and the camera
+       follow) and each target latched into a salvo. Everything else is a
+       green frame, plus TGT if the mission designated it. */
+    .enemyMarker.active.named .enemyMarkerName { opacity: 0.92; }
     .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
 
     /* #targetBox is already sitting on the seeker's target with the same name
        and range. A salvo target keeps its frame (the count has to stay
        readable) but must not caption itself as well, or the aircraft carries
        two identical readouts a dozen pixels apart. */
-    .enemyMarker.captioned .enemyMarkerName,
-    .enemyMarker.captioned .enemyMarkerTgt { opacity: 0; }
+    .enemyMarker.active.captioned .enemyMarkerName,
+    .enemyMarker.active.captioned .enemyMarkerTgt { opacity: 0; }
 
+    /* Selection is a SIZE, not a colour. Red is reserved for a lock, so the
+       contact the player has picked out with the target-select key reads as
+       the same green contact everything else is - just framed larger and
+       captioned. */
     .enemyMarker.selected {
       width: 29px;
       height: 29px;
-      color: #ffe66f;
       border-color: currentColor;
-      filter: drop-shadow(0 0 7px rgba(255, 224, 88, 0.82));
+      filter: drop-shadow(0 0 7px rgba(65, 255, 126, 0.8));
     }
 
-    .enemyMarker.locked {
+    .enemyMarker.locked,
+    .enemyMarker.multiLocked {
       color: #ff5968;
       border-color: currentColor;
     }
@@ -1061,8 +1073,6 @@
     /* 8AAM multi-lock: every round in the salvo lights its own box, so the
        player can count the shots before pulling the trigger. */
     .enemyMarker.multiLocked {
-      color: #ff9f4a;
-      border-color: currentColor;
       opacity: 0.95;
       visibility: visible;
     }
@@ -27221,6 +27231,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         marker.classList.toggle("tgt", isTgt);
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
         marker.classList.toggle("captioned", nameShownByLockBox);
+        // Who gets a name and a range: the main selection, and every target
+        // latched into a salvo. `captioned` still wins over this for the one
+        // contact #targetBox is already sitting on, so nothing is labelled
+        // twice.
+        marker.classList.toggle("named", selected || multiLocked);
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
         const displayName = enemyDisplayName(enemy);
         const nameLine = nameTag.firstElementChild;
