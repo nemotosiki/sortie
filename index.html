@@ -35825,7 +35825,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (gameState === STATE_READY) updateHangarView(rawDt);
       else updateCamera(rawDt);
       updateWorld(rawDt);
-      updateFlightEffects(rawDt);
+      // SIM time: this integrates G-load into the grey-out and drives the wind
+      // streaks off airspeed. On the wall clock a 1.6s kill-cam banked 1.2 of
+      // G-strain for 0.29s of actual pull, and the streaks raced past a world
+      // that was crawling.
+      updateFlightEffects(dt);
       // The second argument is SIM time: the gunsight assist settles with the
       // battle, so a kill-cam slowdown slows it too, while the fades in
       // updateVisualStatus itself stay on the wall clock.
@@ -38809,12 +38813,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const aimPoint = decoyAlive ? missile.decoy.position : player.position;
         tmpV1.copy(aimPoint).sub(missile.mesh.position);
         const distance = tmpV1.length();
-        if (decoyAlive && distance < 15) {
+        // Swept, not sampled. Head-on against a boosting jet the closing speed
+        // is ~1378 m/s: a frame covers 23m against a 13m fuse, so a round on a
+        // hitting line passed clean through between samples and flew on to its
+        // timeout. The same geometry made flares miss their 15m decoy check.
+        // Measured over the segment this frame will travel, before it moves.
+        forwardOf(missile.mesh, tmpV4);
+        const sweptDistance = Math.min(
+          distance,
+          sweptMissDistance(missile.mesh.position, tmpV4, missile.speed * dt, aimPoint)
+        );
+        if (decoyAlive && sweptDistance < 15) {
           createExplosion(missile.mesh.position, 0xffb45e, 0.55);
           removeEnemyMissile(i);
           continue;
         }
-        if (!decoyed && distance < 13) {
+        if (!decoyed && sweptDistance < 13) {
           createExplosion(missile.mesh.position, 0xff4d45, 0.72);
           applyPlayerDamage(missile.damage);
           removeEnemyMissile(i);
@@ -44196,7 +44210,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function applyPlayerDamage(amount, bypassCooldown = false) {
       if (gameState !== STATE_PLAYING) return false;
-      if (!bypassCooldown && (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0)) return false;
+      // The ACCOMPLISHED band is already decided: the battle area stops
+      // policing, the missiles in the air are wiped, and the sortie is only
+      // waiting for the banner to finish. Enemy fire that kept landing during
+      // those 2.8s turned a win into MISSION FAILED with no record written.
+      // A crash still counts - it comes through the bypass path.
+      if (!bypassCooldown
+          && (missionElapsed < MISSION_GRACE_TIME || playerHitCooldown > 0 || outcomePending.active)) {
+        return false;
+      }
 
       // incomingDamage is difficulty's one point of contact with the player's
       // own health - never the enemy's, never a friendly's, and applied here
@@ -44483,6 +44505,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         stopMusicSting();
       }
       keys.clear();
+      // A wave-clear queues CHECKPOINT 1.4s out. Dying inside that window let a
+      // success-toned banner surface on top of MISSION FAILED.
+      pendingBanner = null;
+      pendingBannerTimer = 0;
       resetLock();
       cameraFocusActive = false;
       cameraFocusTargetId = null;
@@ -46356,9 +46382,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // which is the only moment the answer is actually in question.
       ui.statusPanel.classList.toggle("healthLow", health <= PLAYER_MAX_HEALTH * 0.3);
 
-      const lowSpeed = gameState === STATE_PLAYING && playerSpeed < STALL_WARNING_SPEED;
-      ui.stallWarning.classList.toggle("active", lowSpeed || stalling);
-      ui.stallWarning.classList.toggle("caution", lowSpeed && !stalling);
+      // Both halves need the flight gate. `stalling` is frozen at whatever it
+      // was when updatePlayer stopped running, so gating only `lowSpeed` left
+      // STALL burning on the debrief of every sortie that ended in a stall.
+      const inFlight = gameState === STATE_PLAYING;
+      const lowSpeed = inFlight && playerSpeed < STALL_WARNING_SPEED;
+      const stallLit = inFlight && stalling;
+      ui.stallWarning.classList.toggle("active", lowSpeed || stallLit);
+      ui.stallWarning.classList.toggle("caution", lowSpeed && !stallLit);
       ui.stallWarning.textContent = stalling
         ? "STALL · ACCELERATE / LOWER NOSE"
         : "LOW SPEED · STALL RISK";
