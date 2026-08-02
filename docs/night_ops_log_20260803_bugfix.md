@@ -80,3 +80,11 @@
 - [S3] コメント正誤2件: 対艦ミサイル「4200/8発」→実1040/2発、露ロースター「All five are
   enemyOnly」→実態(tu95のみ)
 - m-convoyの旧スイープcerr=2はSwiftShader環境警告と判明(ゲームバグではない)
+
+### Batch 6 — 武装(23:5x適用、スモーク緑)
+- [S2] 撃墜済み目標への弾素通り: updateMissilesの目標解決からalive条件を外し死体でも信管作動
+  (damageEnemyの!aliveガードで二重スコアなし。斉射の後続弾が火球を素通りして無得点だった)
+- [S2] 8AAM: ラッチ全滅時のUNGUIDEDフォールバックがmultiLockを掃除せず、トリガ連打で
+  弾倉が無誘導弾に溶けた→clearMultiLock追加
+- [S2] SP.W斉射が全弾同じ翼端から出ていた(spawn毎のレール反転がindex偶奇と同位相で相殺)→
+  トリガ毎反転(flipSpwRailSide)へ。**実測: 2連射でx=+4.2/-4.2の左右交互を確認**

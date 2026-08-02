@@ -679,29 +679,26 @@
       z-index: 1;
     }
 
-    /* Cockpit wears a smaller HUD. Scaled about the frame's centre rather than
-       restyled piece by piece, so every instrument keeps its proportions and
-       its relationship to the others - and so third-person, which is unchanged,
-       cannot be affected by a stray rule. transform on #hud is safe here
-       because every symbol inside is positioned in screen pixels written by JS
-       against window.innerWidth/Height: scaling the container moves the drawn
-       result without changing any of that arithmetic. */
-    body[data-camera="cockpit"] #hud {
-      transform: scale(0.82);
-      transform-origin: 50% 50%;
-    }
+    /* Cockpit pulls the FLIGHT CLUSTER in toward the middle - the speed tape,
+       the altitude tape and the ladder between them read as one instrument
+       either side of the boresight, the way the series draws it. Only these
+       two move. The radar, the score and time, the weapons panel and the
+       damage readout are corner furniture and stay exactly where they are:
+       scaling the whole HUD was the previous attempt and it shrank all of
+       those too, which is not what was asked for and made the corners harder
+       to read for no gain.
 
-    /* ...except the CONFORMAL ladder, which must not be scaled at all. Its one
-       job is to overlay the outside world 1:1 - the horizon line ON the real
-       horizon, the N-degree rung where N degrees actually is - and a scale
-       factor breaks exactly that, by exactly that factor. Measured: 0.82 put
-       the horizon 60px off at 1280x720 and a rung up to 181px off, which is
-       the shrink leaking into an instrument that is not free to shrink.
-       Cancelled by the reciprocal so the surrounding HUD still shrinks. */
-    body[data-camera="cockpit"] #pitchViewport.conformal {
-      transform: scale(1.2195);
-      transform-origin: 50% 50%;
-    }
+       Left and right only. Nothing here touches the ladder, so the F-4's
+       conformal 1:1 overlay is unaffected by construction rather than by a
+       cancelling rule - the earlier global scale broke it by 0.18 of a half
+       frame and needed the reciprocal to undo.
+
+       Pulled in to 29%, not further: the ladder's 13-mark window is ~120px
+       wide either side of centre, and at 33.5% the tapes landed on top of it.
+       This clears it with a margin at 1280 and widens on bigger frames, since
+       both are percentages of the same width. */
+    body[data-camera="cockpit"] #flightData { left: 29%; }
+    body[data-camera="cockpit"] #altData { right: 29%; }
 
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
@@ -31873,7 +31870,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           continue;
         }
 
-        const target = enemies.find((enemy) => enemy.id === missile.targetId && enemy.alive);
+        // Dead targets still fuse. Requiring `alive` here made every follow-up
+        // round of a salvo ghost through the fireball the first round lit -
+        // no detonation, no hit tally, a live missile flying to fuel
+        // exhaustion. damageEnemy already refuses a dead hull, so the fuse
+        // costs nothing twice; the round simply blows on the wreck it chased.
+        const target = enemies.find((enemy) => enemy.id === missile.targetId);
         const steps = missileGuidance.stepsFor(missile, target);
         const slice = dt / steps;
         let struck = false;
@@ -32100,6 +32102,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? (enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive) || null)
         : null;
       spawnSpMissile(target, 0);
+      flipSpwRailSide();
       playSfx("missile", 0.5);
       if (target) {
         showBanner(`FOX THREE · ${PLAYER_SPW.label} · TARGET ${target.id}`, 1.15);
@@ -32128,12 +32131,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Nothing latched: one round leaves the rail unguided. A salvo is
         // what the launcher earns by holding the cone - it is not what an
         // unaimed trigger pull produces.
+        //
+        // The latch list is cleared too: everything in it is dead or gone
+        // (that is how we got here), and keeping the corpses meant every
+        // further trigger pull burned another round unguided while
+        // updateMultiLock's grace window kept the list from draining.
+        clearMultiLock();
         spawnSpMissile(null, 0);
+        flipSpwRailSide();
         playSfx("missile", 0.5);
         showBanner(`${PLAYER_SPW.label} · UNGUIDED`, 1.0, "warn");
         return 1;
       }
       targets.forEach((target, index) => spawnSpMissile(target, index));
+      flipSpwRailSide();
       playSfx("missile", 0.5);
       showBanner(`FOX THREE · ${PLAYER_SPW.label} · ${targets.length} TARGETS`, 1.3);
       clearMultiLock();
@@ -32186,9 +32197,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         lost: false
       });
 
-      missileSide *= -1;
       spwAmmo -= 1;
       spwLaunched += 1;
+    }
+    // The launch functions flip the rail side once per TRIGGER, not per round:
+    // spawnSpMissile flipping inside the salvo loop rotated missileSide in
+    // step with the index parity, so `index % 2 ? -side : side` cancelled out
+    // and all eight rounds of an 8AAM volley left the same wingtip.
+    function flipSpwRailSide() {
+      missileSide *= -1;
     }
 
     // ---- Unguided bombs -----------------------------------------------------
@@ -39743,8 +39760,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.pitchLadder.style.transform = `translate(-50%, -50%) rotate(${rollCam}rad)`;
 
       const conformal = CONFORMAL_LADDER_AIRCRAFT.has(selectedAircraftId);
-      // The CSS needs to know: the conformal ladder opts out of the cockpit
-      // HUD shrink, because scaling a 1:1 overlay stops it being 1:1.
+      // Marks which ladder is in play. Nothing in CSS depends on it now that
+      // the cockpit moves the tapes instead of scaling the HUD, but it is what
+      // the probe reads to tell the two apart.
       ui.pitchViewport.classList.toggle("conformal", conformal);
       if (conformal) {
         // Conformal: the scale is pinned to the world and slides past the frame.
