@@ -28687,16 +28687,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // The select screen used to orbit the player parked in the live mission
     // world, which left the airframe hanging in midair over whatever map the
     // sortie was about to use. STATE_READY now renders this scene instead: a
-    // hangar interior of its own, with the selected airframe up on maintenance
-    // trestles under strip lights, daylight spilling in through the open door.
+    // hangar interior of its own, with the selected airframe parked on its
+    // own landing gear under strip lights, daylight through the open door.
     // The live scene, the parked player and the launch path are untouched -
     // the world keeps existing behind this and LAUNCH flies out of the same
     // state it always did. Everything here is procedural (canvas textures,
     // box geometry): no external assets, no shadow maps, no postprocessing.
-    // Trestles rather than landing gear because none of the airframe models
-    // carry gear, and a jack stand reads as "in maintenance" at every size
-    // from a Gripen to a bomber without per-airframe tuning.
-    const HANGAR_TRESTLE_TOP = 1.7;
+    // The undercarriage comes from attachLandingGear below - the same
+    // retractable gear the planned takeoff/landing missions will animate.
     const hangarView = {
       scene: null,
       camera: null,
@@ -28706,8 +28704,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // dozen low-poly models is cheaper than a dispose/rebuild churn every
       // time the cursor walks the list.
       cache: new Map(),
-      trestleMat: null,
-      trestleBaseMat: null,
       shadowTexture: null
     };
 
@@ -28936,8 +28932,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rim.position.set(0, 6, -28);
       scene.add(rim);
 
-      hangarView.trestleMat = new THREE.MeshLambertMaterial({ color: 0xc9a22e });
-      hangarView.trestleBaseMat = new THREE.MeshLambertMaterial({ color: 0x8a6f1e });
       hangarView.shadowTexture = makeHangarTexture(256, (ctx, s) => {
         const grad = ctx.createRadialGradient(s / 2, s / 2, s * 0.05, s / 2, s / 2, s * 0.5);
         grad.addColorStop(0, "rgba(0,0,0,0.85)");
@@ -28951,9 +28945,106 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         40, Math.max(1, window.innerWidth) / Math.max(1, window.innerHeight), 0.5, 400);
     }
 
-    // The parked display for one airframe: the model lifted onto two trestles
-    // sized and placed from its bounding box, over a soft blob shadow. Built
-    // once per id and cached (see hangarView.cache).
+    // Landing gear, built to order: a tricycle undercarriage (nose leg plus
+    // two mains) sized and placed from the airframe's own bounds, so every
+    // registered model - the in-file variants and payload deliveries alike -
+    // gets a plausible stance with no per-airframe tuning. The gear group is
+    // counter-scaled inside model.group, so the dimensions here are metres
+    // regardless of theme.scale, and the whole thing moves with the aircraft.
+    // Each leg hangs off a fold pivot: setDeployed(1) is down-and-locked,
+    // 0 tucks the nose leg forward and the mains inboard and hides the group,
+    // values between are the fold in motion - the planned takeoff/landing
+    // missions animate exactly that. Call with the model unrotated (fresh
+    // from createAircraftModel), and only for aircraft that will actually
+    // show wheels - enemies in flight never pay for meshes they don't show.
+    function attachLandingGear(model) {
+      if (model.landingGear) return model.landingGear;
+      const bounds = new THREE.Box3().setFromObject(model.group);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      const scale = model.group.scale.x || 1;
+
+      const wheelRadius = THREE.MathUtils.clamp(size.z * 0.026, 0.26, 0.6);
+      // The ground sits below whatever hangs lowest on this airframe
+      // (underslung stores included), so nothing clips the floor when the
+      // aircraft rests on its wheels.
+      const clearance = Math.max(0.34, wheelRadius * 1.2);
+      const groundY = bounds.min.y - clearance;
+      const axleY = groundY + wheelRadius;
+      // Strut tops tuck just under the airframe. Kept low - size.y includes
+      // the tail fin, and a taller hip pokes the strut up through the thin
+      // wing plates, which reads far worse than a short leg.
+      const hipY = bounds.min.y + THREE.MathUtils.clamp(size.y * 0.16, 0.5, 1.3);
+
+      const strutMat = new THREE.MeshLambertMaterial({ color: 0xc6ccd2 });
+      const tireMat = new THREE.MeshLambertMaterial({ color: 0x1a1c1f });
+      const hubMat = new THREE.MeshLambertMaterial({ color: 0x777d84 });
+
+      const root = new THREE.Group();
+      root.scale.setScalar(1 / scale);
+      const pivots = [];
+
+      const buildLeg = (x, z, foldAxis, foldSign, twin) => {
+        const pivot = new THREE.Group();
+        pivot.position.set(x, hipY, z);
+        const legLength = Math.max(0.4, hipY - axleY);
+        const strut = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.09, legLength, 8), strutMat);
+        strut.position.y = -legLength / 2;
+        pivot.add(strut);
+        const offsets = twin ? [-wheelRadius * 0.42, wheelRadius * 0.42] : [0];
+        for (const dx of offsets) {
+          const tire = new THREE.Mesh(
+            new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelRadius * 0.42, 14), tireMat);
+          tire.rotation.z = Math.PI / 2;
+          tire.position.set(dx, -legLength, 0);
+          pivot.add(tire);
+          const hub = new THREE.Mesh(
+            new THREE.CylinderGeometry(wheelRadius * 0.45, wheelRadius * 0.45, wheelRadius * 0.5, 10), hubMat);
+          hub.rotation.z = Math.PI / 2;
+          hub.position.set(dx, -legLength, 0);
+          pivot.add(hub);
+        }
+        pivot.userData.foldAxis = foldAxis;
+        pivot.userData.foldSign = foldSign;
+        root.add(pivot);
+        pivots.push(pivot);
+      };
+
+      // Nose leg on the centreline with twin wheels; folds forward. Mains
+      // just aft of the centre of mass under the wing roots; they fold
+      // inboard, mirroring each other.
+      buildLeg(center.x, center.z - size.z * 0.30, "x", -1, true);
+      const mainSpread = Math.max(size.x * 0.13, wheelRadius * 2.6);
+      buildLeg(center.x - mainSpread, center.z + size.z * 0.10, "z", -1, false);
+      buildLeg(center.x + mainSpread, center.z + size.z * 0.10, "z", 1, false);
+
+      const gear = {
+        group: root,
+        // Metres below the model origin where the tyres touch while deployed;
+        // parking code lifts the aircraft by -groundY to put wheels on the
+        // floor plane.
+        groundY,
+        deployed: 1,
+        setDeployed(t) {
+          const v = THREE.MathUtils.clamp(t, 0, 1);
+          gear.deployed = v;
+          const fold = (1 - v) * 1.45;
+          for (const pivot of pivots) {
+            pivot.rotation.x = pivot.userData.foldAxis === "x" ? pivot.userData.foldSign * fold : 0;
+            pivot.rotation.z = pivot.userData.foldAxis === "z" ? pivot.userData.foldSign * fold : 0;
+          }
+          root.visible = v > 0.02;
+        }
+      };
+      model.group.add(root);
+      model.landingGear = gear;
+      return gear;
+    }
+
+    // The parked display for one airframe: the model down on its own landing
+    // gear over a soft blob shadow. Built once per id and cached (see
+    // hangarView.cache).
     function hangarDisplayFor(id) {
       let entry = hangarView.cache.get(id);
       if (entry) return entry;
@@ -28964,28 +29055,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const bounds = new THREE.Box3().setFromObject(model.group);
       const size = bounds.getSize(new THREE.Vector3());
       const center = bounds.getCenter(new THREE.Vector3());
-      // Belly rests on the trestle tops, whatever hangs lowest on this
-      // airframe (stores included - a jack crew would mind, a menu doesn't).
-      model.group.position.y = HANGAR_TRESTLE_TOP - bounds.min.y;
-
-      const padW = THREE.MathUtils.clamp(size.x * 0.16, 1.6, 3.2);
-      for (const dz of [center.z - size.z * 0.22, center.z + size.z * 0.24]) {
-        const trestle = new THREE.Group();
-        const pad = new THREE.Mesh(new THREE.BoxGeometry(padW, 0.16, 0.7), hangarView.trestleMat);
-        pad.position.y = HANGAR_TRESTLE_TOP - 0.08;
-        trestle.add(pad);
-        for (const side of [-1, 1]) {
-          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, HANGAR_TRESTLE_TOP - 0.14, 0.5), hangarView.trestleMat);
-          leg.position.set(side * padW * 0.32, (HANGAR_TRESTLE_TOP - 0.14) / 2, 0);
-          leg.rotation.z = side * 0.16;
-          trestle.add(leg);
-        }
-        const base = new THREE.Mesh(new THREE.BoxGeometry(padW * 0.95, 0.14, 0.6), hangarView.trestleBaseMat);
-        base.position.y = 0.07;
-        trestle.add(base);
-        trestle.position.set(center.x, 0, dz);
-        group.add(trestle);
-      }
+      const gear = attachLandingGear(model);
+      gear.setDeployed(1);
+      // Wheels on the concrete: lift the airframe so the tyre contact patch
+      // is the floor plane.
+      model.group.position.y = -gear.groundY;
 
       const shadow = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
@@ -29001,7 +29075,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       entry = {
         group,
         radius: Math.max(4, size.length() * 0.5),
-        lookY: HANGAR_TRESTLE_TOP + (center.y - bounds.min.y)
+        lookY: center.y - gear.groundY
       };
       hangarView.cache.set(id, entry);
       return entry;
