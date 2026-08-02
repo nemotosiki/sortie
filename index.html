@@ -44523,6 +44523,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // only pushed when the band has had its time (see updateOutcomePending).
         outcomePending.active = true;
         outcomePending.timer = OUTCOME_PENDING_TIME;
+        // updateBattleArea stops running for the band, so its warning would
+        // otherwise sit frozen on screen counting down to a failure that can
+        // no longer happen.
+        battleArea.warning = false;
+        battleArea.outside = false;
+        battleArea.timer = 0;
+        if (ui.battleAreaWarning) ui.battleAreaWarning.classList.remove("active", "critical");
         resetRadio();
         radioSay(
           "command",
@@ -46096,6 +46103,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemyMarkerScreenState.length = 0;
 
       if (gameState !== STATE_PLAYING) {
+        // The ring is drawn from the tail of this function, so this early
+        // return was the reason nothing could ever hide it: a sortie that
+        // ended with a contact in the gun envelope left the ring frozen on
+        // the debrief (which keeps the HUD up on purpose), beside a boresight
+        // symbol the two are meant to be exclusive with.
+        updateGunsight(0);
         for (const marker of enemyMarkerElements.values()) marker.remove();
         enemyMarkerElements.clear();
         clearTargetDirectionArrow();
@@ -46176,7 +46189,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function updateTargetBox() {
-      const target = enemies.find((enemy) => enemy.id === lock.targetId && enemy.alive);
+      // The same contact the radar blinks, the direction arrow points at and
+      // the on-screen marker calls `selected`. Reading lock.targetId alone
+      // made this panel name a DIFFERENT aircraft the moment a manually
+      // picked target left the lock cone - and left it blank for the whole of
+      // a bombing run, where currentLockKind() is "none" so lock.targetId is
+      // never set at all.
+      const readoutId = preferredTargetId ?? lock.targetId;
+      const target = enemies.find((enemy) => enemy.id === readoutId && enemy.alive);
       if (!target || gameState !== STATE_PLAYING) {
         // Reset the readout as well as hiding it. The panel is display:none so
         // nothing here is on screen either way, but leaving "LOCKED" sitting in
@@ -46198,7 +46218,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.targetBox.style.display = "block";
       ui.targetBox.style.left = `${(tmpV1.x * 0.5 + 0.5) * window.innerWidth}px`;
       ui.targetBox.style.top = `${(-tmpV1.y * 0.5 + 0.5) * window.innerHeight}px`;
-      ui.targetBox.classList.toggle("locked", lock.locked);
+      // The frame is the LOCK, so it only lights for the contact the seeker
+      // actually holds - which is not always the one being read out above.
+      ui.targetBox.classList.toggle("locked", lock.locked && lock.targetId === target.id);
       const distance = Math.round(player.position.distanceTo(target.group.position));
       ui.targetBox.classList.toggle("tgt", isTgtEntry(target));
       const lockedName = enemyDisplayName(target);
@@ -46371,7 +46393,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateTape(speedTapeNodes, speedKph, 100);
       updateTape(altTapeNodes, altitudeM, 100);
       ui.missionTime.textContent = formatMissionTime(missionElapsed);
-      ui.shootCue.classList.toggle("active", gameState === STATE_PLAYING && lock.locked);
+      // A lock is only half of "you may shoot": with every tube on the reload
+      // clock the trigger refuses, and the cue was still blinking GO.
+      const armed = selectedWeapon === "spw"
+        ? (PLAYER_SPW ? spwLoaded > 0 && spwAmmo > 0 : false)
+        : loadedMissiles > 0 && missileCount > 0;
+      ui.shootCue.classList.toggle("active", gameState === STATE_PLAYING && lock.locked && armed);
 
       const healthRatio = health / PLAYER_MAX_HEALTH;
       ui.damageSilhouette.classList.toggle("warn", healthRatio <= 0.55 && healthRatio > 0.3);
