@@ -699,16 +699,23 @@
        horizon is right there in the window, so the ladder is redundant - and
        rolling it turns the whole middle of the screen with every turn. The
        series draws nothing in the centre of a third-person view but the gun
-       reticle; this follows that. Shown in the cockpit view only. */
+       reticle; this follows that. Shown in the cockpit view only.
+
+       Full frame, not a box. The ladder is CONFORMAL now - the horizon line
+       lies on the real horizon and the N-degree rung lies where something N
+       degrees up actually appears - so its natural extent IS the screen. The
+       old 340px box was sized for a ladder drawn at a third of world scale;
+       at true scale it clipped the 20 degree rung away in every attitude. */
     #pitchViewport {
       position: absolute;
-      left: 50%;
-      top: 50%;
-      width: min(620px, 62vw);
-      height: min(340px, 50vh);
-      transform: translate(-50%, -50%);
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
-      opacity: 0.5;
+      /* Reads as a flight instrument rather than as chrome, now that it is
+         accurate enough to fly on. */
+      opacity: 0.8;
     }
 
     #pitchViewport.hidden { display: none; }
@@ -723,12 +730,15 @@
       will-change: transform;
     }
 
+    /* `top` is written by updatePitchLadder every frame - the horizon is just
+       the zero-degree rung and is placed by the same formula as the others. */
     .horizonLine {
       position: absolute;
-      left: 20%;
-      right: 20%;
+      left: 28%;
+      right: 28%;
       top: 50%;
       height: 1px;
+      transform: translateY(-50%);
       background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.75) 14%, rgba(83, 255, 92, 0.75) 43%, transparent 43%, transparent 57%, rgba(83, 255, 92, 0.75) 57%, rgba(83, 255, 92, 0.75) 86%, transparent);
     }
 
@@ -737,9 +747,23 @@
       left: 50%;
       width: 120px;
       height: 1px;
-      transform: translateX(-50%);
+      transform: translate(-50%, -50%);
       background: linear-gradient(90deg, transparent, rgba(83, 255, 92, 0.64) 20%, rgba(83, 255, 92, 0.64) 44%, transparent 44%, transparent 56%, rgba(83, 255, 92, 0.64) 56%, rgba(83, 255, 92, 0.64) 80%, transparent);
     }
+
+    /* Below the horizon the rungs are dashed, above them solid. Real HUDs do
+       this so a glance tells you which side of level you are on without
+       reading a number - which matters most when inverted, where the labels
+       are upside down anyway. */
+    .pitchMark.below {
+      background:
+        repeating-linear-gradient(90deg, rgba(83, 255, 92, 0.64) 0 9px, transparent 9px 17px);
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 20%, #000 44%, transparent 44%, transparent 56%, #000 56%, #000 80%, transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 20%, #000 44%, transparent 44%, transparent 56%, #000 56%, #000 80%, transparent);
+    }
+
+    .pitchMark.hidden,
+    .horizonLine.hidden { display: none; }
 
     .pitchMark::before,
     .pitchMark::after {
@@ -752,10 +776,6 @@
 
     .pitchMark::before { left: 8px; }
     .pitchMark::after { right: 8px; }
-    .pitchMark.p10 { top: calc(50% + 54px); }
-    .pitchMark.p20 { top: calc(50% + 108px); }
-    .pitchMark.n10 { top: calc(50% - 54px); }
-    .pitchMark.n20 { top: calc(50% - 108px); }
 
     #targetBox {
       position: absolute;
@@ -1384,6 +1404,14 @@
 
     body.missileAlert .pitchMark {
       background: linear-gradient(90deg, transparent, rgba(255, 74, 85, 0.64) 20%, rgba(255, 74, 85, 0.64) 44%, transparent 44%, transparent 56%, rgba(255, 74, 85, 0.64) 56%, rgba(255, 74, 85, 0.64) 80%, transparent);
+    }
+
+    /* The dashed below-horizon rungs paint their own background, so the rule
+       above does not reach them - without this twin they stay green while the
+       rest of the canopy goes red. */
+    body.missileAlert .pitchMark.below {
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 74, 85, 0.64) 0 9px, transparent 9px 17px);
     }
 
     body.missileAlert #reticlePipper { box-shadow: 0 0 5px rgba(255, 74, 85, 0.95); }
@@ -2291,13 +2319,13 @@
       <canvas id="radar"></canvas>
     </section>
 
+    <!-- The rungs are built by buildInstrumentNodes, not written here: their
+         positions are conformal, so they depend on the live camera FOV and the
+         viewport height and cannot be expressed as fixed CSS offsets. Only the
+         horizon line is markup, and even its `top` is written per frame. -->
     <div id="pitchViewport">
       <div id="pitchLadder">
         <div class="horizonLine"></div>
-        <div class="pitchMark p10" data-label="-10"></div>
-        <div class="pitchMark p20" data-label="-20"></div>
-        <div class="pitchMark n10" data-label="10"></div>
-        <div class="pitchMark n20" data-label="20"></div>
       </div>
     </div>
 
@@ -14956,6 +14984,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       targetDirectionGlyph: document.getElementById("targetDirectionGlyph"),
       targetDirectionLabel: document.getElementById("targetDirectionLabel"),
       pitchLadder: document.getElementById("pitchLadder"),
+      horizonLine: document.querySelector("#pitchLadder .horizonLine"),
       pitchViewport: document.getElementById("pitchViewport"),
       missionBanner: document.getElementById("missionBanner"),
       radioPanel: document.getElementById("radioPanel"),
@@ -15151,6 +15180,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const tmpV10 = new THREE.Vector3();
     // Owned by the enemy break / post-stall code, which runs inside the enemy
     // loop and must not tread on the tmpV* slots that loop is already holding.
+    // Owned by the pitch ladder. Same reason tmpAiA/tmpAiB exist: updateHud
+    // runs deep in a frame that has already handed tmpV1..tmpV9 to the camera
+    // and the marker code, and an attitude instrument that reads a stale
+    // scratch vector fails in exactly the way that is hardest to see.
+    const ladderF = new THREE.Vector3();
+    const ladderR = new THREE.Vector3();
+    const ladderU = new THREE.Vector3();
+
     const tmpAiA = new THREE.Vector3();
     const tmpAiB = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
@@ -15632,6 +15669,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const compassTickNodes = [];
     const speedTapeNodes = [];
     const altTapeNodes = [];
+    // Pitch ladder rungs, in degrees. 5-degree steps out to 30 is the fighter
+    // HUD standard - a 10-degree-only ladder leaves 600px gaps at true world
+    // scale and reads as two lonely bars rather than as a scale. Finer than 5
+    // is transport practice and just clutters.
+    const PITCH_RUNG_DEGREES = [30, 25, 20, 15, 10, 5, -5, -10, -15, -20, -25, -30];
+    const pitchRungNodes = [];
     // Shown at most once per page load: it is a one-time piece of information,
     // and a banner that keeps reappearing reads as a fault.
     let audioHintShown = false;
@@ -16481,6 +16524,99 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           spwAmmo = PLAYER_SPW_CAPACITY;
           resetSpwTubes();
           return { ammo: spwAmmo, loaded: spwLoaded, timers: spwReloadTimers.length };
+        },
+        // Sets a full attitude including BANK. forceAim zeroes playerBank, which
+        // makes it useless for testing an instrument whose whole job is roll.
+        forceAttitude: (yawDeg, pitchDeg = 0, bankDeg = 0) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const yaw = THREE.MathUtils.degToRad(yawDeg);
+          const pitch = THREE.MathUtils.degToRad(pitchDeg);
+          tmpV1.set(
+            Math.sin(yaw) * Math.cos(pitch),
+            Math.sin(pitch),
+            -Math.cos(yaw) * Math.cos(pitch)
+          );
+          playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
+          playerBank = THREE.MathUtils.degToRad(bankDeg);
+          syncPlayerOrientation();
+          return true;
+        },
+        // What the pitch ladder actually DREW, alongside independently computed
+        // ground truth. The truth half deliberately takes the other route: it
+        // projects real world points through the same camera every other HUD
+        // symbol uses, while updatePitchLadder works analytically from the
+        // camera quaternion. Sharing the arithmetic would let a bug agree with
+        // itself and pass.
+        hudLadderProbe: () => {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          const toPx = (v) => ({
+            x: (v.x * 0.5 + 0.5) * w,
+            y: (-v.y * 0.5 + 0.5) * h
+          });
+          // Two far points on the eye-level circle, one either side of the
+          // camera's forward axis: the line through them IS the true horizon.
+          forwardOf(camera, tmpV1);
+          tmpV2.set(tmpV1.x, 0, tmpV1.z);
+          if (tmpV2.lengthSq() < 1e-8) tmpV2.set(0, 0, -1);
+          tmpV2.normalize();
+          tmpV3.crossVectors(tmpV2, WORLD_UP).normalize();
+          const FAR = 300000;
+          const truthPoint = (side) => {
+            tmpV4.copy(camera.position)
+              .addScaledVector(tmpV2, FAR)
+              .addScaledVector(tmpV3, side * FAR * 0.35);
+            tmpV4.y = camera.position.y;
+            return toPx(tmpV5.copy(tmpV4).project(camera));
+          };
+          const a = truthPoint(-1);
+          const b = truthPoint(1);
+          const trueAngleDeg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+          // Where the true horizon crosses the screen's vertical centre line.
+          const trueYAtCentre = Math.abs(b.x - a.x) < 1e-6
+            ? null
+            : a.y + (b.y - a.y) * ((w * 0.5 - a.x) / (b.x - a.x));
+          // The angle a point `deg` above the horizon really projects to, on
+          // the camera's own vertical plane - the conformality reference.
+          const truthRung = (deg) => {
+            const rad = THREE.MathUtils.degToRad(deg);
+            tmpV4.copy(camera.position)
+              .addScaledVector(tmpV2, Math.cos(rad) * FAR)
+              .addScaledVector(WORLD_UP, Math.sin(rad) * FAR);
+            const q = tmpV5.copy(tmpV4).project(camera);
+            const cam = tmpV6.copy(tmpV4).applyMatrix4(camera.matrixWorldInverse);
+            return cam.z < 0 ? toPx(q) : null;
+          };
+          const rect = (el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width };
+          };
+          const ladderTilt = () => {
+            const m = getComputedStyle(ui.pitchLadder).transform;
+            const nums = m && m.startsWith("matrix")
+              ? m.slice(m.indexOf("(") + 1, m.indexOf(")")).split(",").map(Number)
+              : null;
+            return nums ? Math.atan2(nums[1], nums[0]) * 180 / Math.PI : 0;
+          };
+          const horizonHidden = ui.horizonLine.classList.contains("hidden");
+          return {
+            shown: !ui.pitchViewport.classList.contains("hidden"),
+            cameraFov: currentCameraFov,
+            frame: { w, h },
+            drawnTiltDeg: ladderTilt(),
+            trueTiltDeg: trueAngleDeg,
+            horizon: horizonHidden ? null : rect(ui.horizonLine),
+            horizonHidden,
+            trueHorizonYAtCentre: trueYAtCentre,
+            rungs: pitchRungNodes.map((r) => ({
+              deg: r.deg,
+              hidden: r.el.classList.contains("hidden"),
+              dashed: r.el.classList.contains("below"),
+              label: r.el.dataset.label,
+              drawn: r.el.classList.contains("hidden") ? null : rect(r.el),
+              truth: truthRung(r.deg)
+            }))
+          };
         },
         // Test affordance: point the nose straight at a target so an automated
         // run can reach a lock without flying the intercept by hand.
@@ -26995,6 +27131,95 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.boresight.style.top = `${(-tmpV7.y * 0.5 + 0.5) * window.innerHeight}px`;
     }
 
+    // The attitude ladder, drawn CONFORMAL: the horizon line lies on the real
+    // horizon and the N-degree rung lies where something N degrees above it
+    // actually appears. That is the whole standard for a HUD ladder - "objects
+    // 3 degrees below the horizon must appear at the -3 index" - and the old
+    // code met none of it. It had three independent faults:
+    //
+    //   1. It took its roll from the AIRFRAME against world up, then drew it in
+    //      the CAMERA's frame. The cockpit camera only follows 0.9 of the
+    //      aircraft's roll (CAMERA_PROFILES.cockpit.rollFollow) and lags it
+    //      besides, so the residual tilted the ladder the wrong way through
+    //      every turn - by a nonlinear fraction of bank that no constant could
+    //      cancel. Everything here comes off the CAMERA instead, which absorbs
+    //      rollFollow, the entry lag, and any future profile edit for free.
+    //   2. The rungs were laid out at 5.4px/deg in CSS while the strip slid at
+    //      3.107px/deg in JS - so the rung under the boresight was never the
+    //      current pitch, contradicting the code's own comment. Both numbers
+    //      were also blind to the FOV, which breathes 64->72 under boost.
+    //   3. Nothing was tied to world scale at all: at 1080p/64deg the world is
+    //      ~16.9px/deg, so the ladder ran at about a third of true size.
+    //
+    // Note this does NOT use the project()-a-world-point idiom the boresight,
+    // gunsight and markers use, and that is deliberate: the horizon is at
+    // infinity, so projection would need a finite stand-in whose error is worst
+    // at low altitude - exactly where the ladder earns its keep - and it would
+    // need a reference azimuth that goes degenerate pointing straight up. The
+    // analytic form is the same geometry with the singularity removed.
+    function updatePitchLadder() {
+      const frameHeight = Math.max(1, window.innerHeight);
+      // three.js `fov` is the VERTICAL field of view, which is what a pitch
+      // scale measures - do not divide by the aspect. Read live, because any
+      // px-per-degree constant is wrong at some throttle setting.
+      const focal = (frameHeight * 0.5) /
+        Math.tan(THREE.MathUtils.degToRad(currentCameraFov) * 0.5);
+
+      forwardOf(camera, ladderF);
+      rightOf(camera, ladderR);
+      upOf(camera, ladderU);
+      // Screen tilt of the true horizon: world up resolved in the camera's own
+      // image plane. Continuous through inverted flight, since atan2 is.
+      const rollCam = Math.atan2(WORLD_UP.dot(ladderR), WORLD_UP.dot(ladderU));
+      // Boresight elevation. The sea is a flat plane here, so the visual
+      // horizon is the eye-level circle and there is no dip term to add.
+      const pitchCam = Math.asin(THREE.MathUtils.clamp(ladderF.y, -1, 1));
+
+      // The strip carries ONLY the roll. Every rung, the horizon included,
+      // places itself along the strip's own axis, so the pivot stays on the
+      // boresight at screen centre and the group cannot wander off it - which
+      // the old translateY-after-rotate form did in a descending turn.
+      //
+      // Sign: +rollCam, measured. CSS rotate is clockwise-positive on a y-down
+      // screen, and atan2(up.dot(right), up.dot(up)) already comes out in that
+      // same handedness - so negating it drew the horizon mirrored about the
+      // vertical, tilting into the turn instead of against it. That was the
+      // shape of the original bug too, and it is worth stating that this sign
+      // was settled against the projected true horizon, not reasoned out.
+      ui.pitchLadder.style.transform = `translate(-50%, -50%) rotate(${rollCam}rad)`;
+
+      placePitchElement(ui.horizonLine, pitchCam, 0, focal, frameHeight);
+      for (let i = 0; i < pitchRungNodes.length; i += 1) {
+        const rung = pitchRungNodes[i];
+        placePitchElement(rung.el, pitchCam, rung.deg, focal, frameHeight);
+        // Solid above the horizon, dashed below.
+        rung.el.classList.toggle("below", rung.deg < 0);
+      }
+    }
+
+    // Where a line `deg` degrees above the horizon falls, in pixels along the
+    // ladder's axis from the boresight. tan(), not the small-angle focal*angle:
+    // the linear form is 4% out at 20 degrees and 12% out at 30, and being
+    // right at those angles is the entire point of a conformal ladder.
+    function placePitchElement(el, pitchCam, deg, focal, frameHeight) {
+      const angle = pitchCam - THREE.MathUtils.degToRad(deg);
+      // tan diverges as the axis leaves the frame. Past this the mark is
+      // genuinely off screen, so drop it rather than pin it to the edge - a bar
+      // stuck against the frame claims an attitude that is not there, the same
+      // lie updateBoresight refuses to tell for the same reason.
+      if (Math.abs(angle) > 1.4835) {   // 85 degrees
+        el.classList.add("hidden");
+        return;
+      }
+      const offset = focal * Math.tan(angle);
+      if (Math.abs(offset) > frameHeight * 1.6) {
+        el.classList.add("hidden");
+        return;
+      }
+      el.classList.remove("hidden");
+      el.style.top = `calc(50% + ${offset.toFixed(2)}px)`;
+    }
+
     // The gun ring, placed on where the nearest contact inside gun range will
     // be by the time rounds get there. Two things about it are deliberate.
     //
@@ -27338,6 +27563,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           pool.push(row);
         }
       }
+      for (const deg of PITCH_RUNG_DEGREES) {
+        const rung = document.createElement("div");
+        rung.className = "pitchMark";
+        // Unsigned, like a real ladder. Which side of level you are on is
+        // carried by the solid/dashed split and by the rung being above or
+        // below the horizon line - printing "-10" as well was a third way of
+        // saying it, and it was the one that was wrong when inverted.
+        rung.dataset.label = String(Math.abs(deg));
+        ui.pitchLadder.appendChild(rung);
+        pitchRungNodes.push({ el: rung, deg });
+      }
     }
 
     function getPlayerHeadingDeg() {
@@ -27512,26 +27748,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Cockpit only. From outside the aircraft the middle of the screen
       // carries the gun reticle and nothing else, and the ladder's roll was
       // tipping the entire centre of the HUD through every turn.
-      const ladderShown = cameraMode === "cockpit";
+      //
+      // The target view and the kill cam are excluded for the reason
+      // updateBoresight excludes them: both point the camera somewhere other
+      // than where the aeroplane is going, and an attitude scale drawn over a
+      // frame that is looking at something else is not measuring anything.
+      // cameraMode stays "cockpit" through both, so this has to be asked.
+      const ladderShown = cameraMode === "cockpit" && !cameraFocusActive && !killCam.active;
       ui.pitchViewport.classList.toggle("hidden", !ladderShown);
-      if (ladderShown) {
-        forwardOf(player, tmpV1);
-        rightOf(player, tmpV2);
-        upOf(player, tmpV3);
-        const pitch = Math.asin(THREE.MathUtils.clamp(tmpV1.y, -1, 1));
-        // Rolls against the frame, because from inside the canopy that is what
-        // keeps the horizon line lying along the real horizon.
-        const bank = Math.atan2(tmpV2.y, tmpV3.y);
-        // Rotate ABOUT THE CENTRE first, then slide the rungs along the
-        // ladder's own banked axis. This is the order a real ladder works in:
-        // whatever the attitude, the rung under the boresight is the current
-        // pitch, and the whole group stays wrapped around the centre. The
-        // other order - slide vertically, then rotate about the displaced
-        // point - sent the group wandering up and off to one side in a
-        // descending turn, which is exactly where a HUD must not wander.
-        ui.pitchLadder.style.transform =
-          `translate(-50%, -50%) rotate(${-bank * 0.7}rad) translateY(${pitch * 178}px)`;
-      }
+      if (ladderShown) updatePitchLadder();
     }
 
     function syncGameHook() {
