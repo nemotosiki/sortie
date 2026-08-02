@@ -5,17 +5,45 @@ function keyPaths(value, prefix, sink, depth) {
   if (!value || typeof value !== "object" || depth > 3) return sink;
   if (Array.isArray(value)) {
     sink.push(`${prefix}[]`);
+    // The gate exists for merge truncation, and truncation happens INSIDE
+    // array literals too - a wave off a mission's sequence, a subsystem off a
+    // ship. A snapshot that stopped at "[]" reported "no losses" for all of
+    // it. Two additions close that:
+    //  - monotonic length markers (length>=1..N): growing an array only ADDS
+    //    paths (a gain, allowed), shrinking it removes the top one (a loss).
+    //  - the UNION of the elements' own key paths, so a field that exists
+    //    only on some elements still counts as structure.
+    for (let n = 1; n <= value.length; n += 1) {
+      sink.push(`${prefix}[].length>=${n}`);
+    }
+    const seen = new Set();
+    for (const item of value) {
+      for (const path of keyPaths(item, `${prefix}[]`, [], depth + 1)) {
+        if (!seen.has(path)) {
+          seen.add(path);
+          sink.push(path);
+        }
+      }
+    }
     return sink;
   }
   for (const field of Object.keys(value).sort()) {
     const at = prefix ? `${prefix}.${field}` : field;
     sink.push(at);
+    // Read the DESCRIPTOR, never the value, when a field is an accessor. A
+    // mission's spawn-time getters answer by asking the save file what the
+    // player did last sortie, and the snapshot runs at boot - before that
+    // state exists. Touching them once took the whole page down with a TDZ
+    // error. The key path is the structure; what the getter would return is
+    // not the gate's business.
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (descriptor && typeof descriptor.get === "function") continue;
     keyPaths(value[field], at, sink, depth + 1);
   }
   return sink;
 }
 
-function shapeOf(table) {
+export function shapeOf(table) {
   return Object.fromEntries(
     Object.keys(table).sort().map((key) => [key, keyPaths(table[key], "", [], 0)])
   );

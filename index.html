@@ -2575,7 +2575,7 @@
   <script type="module">
     import * as THREE from "three";
     import { loadPayloadModules } from "./src/registry/payload-loader.js";
-    import { createRegistrySnapshot } from "./src/registry/registry-snapshot.js";
+    import { createRegistrySnapshot, shapeOf as shapeOfTable } from "./src/registry/registry-snapshot.js";
     import {
       KILL_CALLOUTS,
       RADIO_FEAR_STAGES,
@@ -10033,6 +10033,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return def;
       },
       addEnemyProfile(id, def) {
+        // The airframe has to exist first: buildEnemyTypes derives HP, speed
+        // and label from AIRCRAFT_TYPES for EVERY profile key, so a profile
+        // without one throws during finalize - long after applyPayload's
+        // try/catch, which means a blank page and no clue which payload did
+        // it. Caught here, the error names the payload and the id.
+        if (!AIRCRAFT_TYPES[id]) {
+          throw new Error(`[payload] addEnemyProfile("${id}"): no AIRCRAFT_TYPES entry with that id - register the airframe first`);
+        }
         return registryAdd(ENEMY_AI_PROFILES, "ENEMY_AI_PROFILES", id, def, PAYLOAD_REQUIRED.ENEMY_AI_PROFILES);
       },
       addEnemyMissileProfile(id, def) {
@@ -10307,6 +10315,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       deployFriendlies(missionKey, def) {
         if (!missionKey || !def || typeof def !== "object") {
           throw new Error("[payload] deployFriendlies: expected (missionKey, definition)");
+        }
+        // Same rule addWorldDecorator applies to preset keys: a typo here is
+        // silent - the deployment is built for a mission that does not exist
+        // and the real sortie flies with nothing to escort. MISSIONS is fully
+        // populated by the time a payload runs, so this is checkable now.
+        if (!MISSIONS.some((mission) => mission.key === missionKey)) {
+          throw new Error(`[payload] deployFriendlies("${missionKey}"): no mission with that key`);
         }
         pendingFriendlyDeployments.push({ missionKey, def });
         return def;
@@ -37579,6 +37594,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(FRIENDLY_DEPLOYMENTS);
     }
     applyFriendlyDeployments();
+    // The one payload-writable table built AFTER the snapshot is published (it
+    // does not exist yet when finalizeRegistries runs). Without this line the
+    // gate guarded every registry except the escort rosters - a merge could
+    // drop m-escort's transports entirely and still print "no losses".
+    window.__REGISTRY_SNAPSHOT__.FRIENDLY_DEPLOYMENTS = shapeOfTable(FRIENDLY_DEPLOYMENTS);
 
     // 僚機は陣営の機体で飛ぶ。米編は F-16、露編は MiG-29 - どちらもその陣営の
     // 「癖のない主力機」で、プレイヤーが何に乗っていても僚機と見分けがつく。

@@ -105,3 +105,23 @@
 - [S3] 装飾島カメラプロキシ半径1.75r<実外縁1.78r→1.85r
 - [S3] buildMountainGeometryの死に頂点カラー(シェーダはvertexColors未使用)を削除、
   山毎の無駄VBOを排除+ヘッダコメント正誤
+
+### Batch 8 — レジストリ・ゲートの守備範囲(00:4x適用、ゲート緑+単体テスト)
+- [S1] **ゲートが配列の中身を一切見ていなかった**: keyPathsが`[]`で打ち切っていたため、
+  subsystems 5件を全削除しても・missionのwavesを全削除しても`no losses`で通った。
+  2026-07-26の「隣接ハンクが閉じ括弧を共有して手前を飲む」事故はまさに配列リテラル内で
+  起きるので、守るべきケースが素通りしていた。→単調長さマーカー(`[].length>=N`)+
+  要素キーパスのunionへ。**単体テスト4条件PASS**(3→1件切り落とし=2損失検知/要素内フィールド
+  消失検知/要素追加は損失0/ゲッター非実行)。ゲート実測 19 tables・losses 0・+3312 fields
+- ★**この修正で一度ページを落とした(自分で検知・即修正)**: 配列再帰が
+  ミッション定義のspawn時ゲッター(marksTaken=セーブ参照)を起動→missionRecords TDZで
+  起動不能。構造スナップショットは値を読んではいけない→getOwnPropertyDescriptorで
+  アクセサを検出しキーパスだけ記録する形へ。ゲートが自分の変更を捕まえた形
+- [S1] FRIENDLY_DEPLOYMENTSがスナップショット未収録(payload書込可なのにゲート範囲外。
+  m-escortの輸送機が全消滅しても検知できなかった)→構築直後に追記。19テーブル目として実測確認
+- [S2] addEnemyProfileがAIRCRAFT_TYPES存在を検査せず→finalizeで真っ白+原因payload不明の
+  クラッシュ。登録時に検査してpayload名付きで落とす
+- [S2] deployFriendliesがミッションキーを検査せず(typoで護衛対象ゼロのまま無言起動)→検査追加
+- 見送り: `ctx.tables`の生参照(payloadがMISSIONS.spliceで削除可=add-only迂回)。既存3
+  payloadが実際にspliceで差し替え運用しているため、凍結は**ctx.replaceMissionの新設**と
+  セットでないと動いている納品物を壊す。設計判断としてユーザー確認へ回す
