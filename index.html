@@ -39753,15 +39753,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // m-carrier and m-escort keep saying exactly what they always said.
         const shipCharge = isFriendlyShip(charge);
         const guardConfig = guardState.config || {};
-        triggerRadioLine(
-          "command",
-          (shipCharge && guardConfig.asmRadio)
-            || (shipCharge
-              ? "対艦ミサイル発射を探知！ INDEPENDENCEに向かっている——発射母機を落とせ！"
-              : "敵機がLIFELINEにミサイルを撃った！ 輸送機は回避できない、母機を止めろ！"),
-          RADIO_PRIORITY.URGENT,
-          shipCharge ? "guard-asm-launch" : "guard-aam-launch"
-        );
+        if (charge.kind === "wingman") {
+          // The wingman haters ride the same `huntRef` plumbing the guard
+          // missions use, so a shot at the player's own wingman used to come
+          // out of SKYEYE's mouth as a shot at LIFELINE - a convoy that is not
+          // in the sortie at all. The man being shot at does the talking.
+          triggerRadioLine(
+            "wingman",
+            "ミサイルだ、後ろに張り付かれてる！ 誰か引き剥がしてくれ——振り切れない！",
+            RADIO_PRIORITY.URGENT,
+            "wingman-under-missile"
+          );
+        } else {
+          triggerRadioLine(
+            "command",
+            (shipCharge && guardConfig.asmRadio)
+              || (shipCharge
+                ? "対艦ミサイル発射を探知！ INDEPENDENCEに向かっている——発射母機を落とせ！"
+                : "敵機がLIFELINEにミサイルを撃った！ 輸送機は回避できない、母機を止めろ！"),
+            RADIO_PRIORITY.URGENT,
+            shipCharge ? "guard-asm-launch" : "guard-aam-launch"
+          );
+        }
       } else if (enemy.ground) {
         triggerRadioLine("wingman", "地対空ミサイル！ 基地から上がってきたぞ——回避しろ！", RADIO_PRIORITY.NORMAL, "ground-sam");
       } else if (enemy.surface) {
