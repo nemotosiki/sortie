@@ -29692,6 +29692,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const tmpV7 = new THREE.Vector3();
     const tmpV8 = new THREE.Vector3();
     const tmpV9 = new THREE.Vector3();
+    // Where a round sat at the top of the frame, for updateMissiles' swept
+    // terrain test. Its own vector because the step loop between the two reads
+    // uses every other scratch.
+    const tmpMissileFrom = new THREE.Vector3();
     const tmpV10 = new THREE.Vector3();
     // Owned by the enemy break / post-stall code, which runs inside the enemy
     // loop and must not tread on the tmpV* slots that loop is already holding.
@@ -34680,6 +34684,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const steps = missileGuidance.stepsFor(missile, target);
         const slice = dt / steps;
         let struck = false;
+        // Where the round started this frame, for the swept terrain test below.
+        tmpMissileFrom.copy(missile.mesh.position);
 
         for (let step = 0; step < steps; step += 1) {
           const guided = missileGuidance.step(missile, target, slice);
@@ -34725,9 +34731,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // hillside: without it the round passes through the hill and carries on
         // underground until it falls below sea level, which is both invisible
         // and far past the point where it should have gone off.
+        // Swept, not sampled at the endpoint. A round covers up to ~14m per
+        // frame in cruise (more on a low-fps frame), so an endpoint-only test
+        // walks straight over any ridge narrower than one step - which is
+        // exactly the shape a 4AGM meets on a hillside run. Sampling the
+        // midpoint too halves the miss window, and it is skipped entirely
+        // above 400m where no terrain can reach: the extra raycast only
+        // happens where it can change the answer.
+        let struckTerrain =
+          missile.mesh.position.y < surfaceHeightAt(missile.mesh.position.x, missile.mesh.position.z);
+        if (!struckTerrain && missile.mesh.position.y < 400) {
+          const midX = (tmpMissileFrom.x + missile.mesh.position.x) * 0.5;
+          const midY = (tmpMissileFrom.y + missile.mesh.position.y) * 0.5;
+          const midZ = (tmpMissileFrom.z + missile.mesh.position.z) * 0.5;
+          if (midY < surfaceHeightAt(midX, midZ)) {
+            missile.mesh.position.set(midX, midY, midZ);
+            struckTerrain = true;
+          }
+        }
         if (missile.life > (missile.lifeLimit ?? MISSILE_LIFE) ||
             missile.mesh.position.y < 0 ||
-            missile.mesh.position.y < surfaceHeightAt(missile.mesh.position.x, missile.mesh.position.z)) {
+            struckTerrain) {
           createImpactBurst(missile.mesh.position, 0xffca70, 0.5);
           removeMissile(i);
         }
@@ -49349,10 +49373,22 @@ varying vec2 vOceanUv;`
           const q = new THREE.Quaternion();
           const pos = new THREE.Vector3();
           const scl = new THREE.Vector3();
+          // The ring has to START outside whatever this map fences off, or the
+          // keep-clear circle eats the placement band and most of the stacks
+          // are silently dropped by `blocked` below - the desert basin fences
+          // r=3400 against a band that ended at 3300, so every stack in front
+          // of the player vanished and only the ones behind him survived.
+          // Circles measured from the scenery origin; box zones (the glacier
+          // corridor) are a lane rather than a bubble and are left to `blocked`.
+          const rockInner = keepClear.reduce((inner, zone) => {
+            if (zone.box) return inner;
+            const reach = Math.hypot(zone.x - sceneryX, zone.z - sceneryZ) + zone.r + 160;
+            return Math.max(inner, reach);
+          }, 900);
           let placed = 0;
           for (let i = 0; i < decor.rocks.count; i += 1) {
             const angle = decorRng() * Math.PI * 2;
-            const distance = 900 + decorRng() * 2400;
+            const distance = rockInner + decorRng() * 2400;
             const x = sceneryX + Math.cos(angle) * distance;
             const z = sceneryZ + Math.sin(angle) * distance;
             const s = decor.rocks.scale[0] + decorRng() * (decor.rocks.scale[1] - decor.rocks.scale[0]);
