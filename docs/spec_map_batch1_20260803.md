@@ -68,6 +68,38 @@ ChatGPT §7.2「人工物密度」表が要求していて**現行に無い**も
 これらは**decorator の build(env) で手組みする**。1マップにつき1 decorator（`<key>Works`）に
 まとめてよい。
 
+### 0-5. decorator の `env` 契約（実測。既存例はゼロなので、これが唯一の資料）
+
+`applyWorldDecorators`（index.html 53410行）が `build(env)` に渡すのは**この8つだけ**:
+
+```
+{ THREE, worldKey, preset, addRoot, keepGeometry, keepMaterial, keepTexture, surfaceHeightAt }
+```
+
+- `addRoot(node)` = `scene.add` ＋ world記録への登録。**これ以外にsceneへ物を足す手段は無い**
+- `keepGeometry / keepMaterial / keepTexture` を通したものは `disposeWorld` が自動回収する。
+  **独自の dispose を書くな**（書けないのが正しい設計）
+- `surfaceHeightAt(x, z)` はこの時点で安全（`world` 代入済み）。plateau天面のY座標はこれで取る
+- 呼ばれる順序は `disposeWorld → world = createWorld → applyWorldDecorators`。
+  createWorld の内側からは呼ばれない（`surfaceHeightAt` が古い world を見てしまうため）
+- 呼び出し箇所は 35233行（起動時）と `applyWorldPreset` 内（マップ切替時）の2つ。
+  つまり `?worldPreview=` でも装飾は出る
+
+### 0-6. 実装で踏んだ罠（1枚作るごとに追記する）
+
+**マップ1（サルク港）で判明:**
+
+1. **`decor.city.at` は `mountains.plateau.at` と1m以内で一致必須**。ズレると街が y=0（海面）へ沈む
+2. **山の乱数は全プリセット共有の固定シード `0x50a71e`**。したがって `mountains.count` を変えると
+   **plateauの平頂形状まで変わる**（同じ乱数列を消費するため）。plateau上に物を置く設計をしてから
+   `count` を触るな。触ったら実測し直し
+3. **昼光は中間アルベドを約1.8倍に持ち上げる**。地面・建物の色は**狙いより暗く書く**こと。
+   nightCity の値をそのまま昼に持ってくると白飛びする
+4. **プレビューでは天球を手でピン留めする必要があった**（`world.skyGroup.position.copy(camera.position)`）。
+   実戦では `updateCamera`/`snapCamera` が留めており `updateWorld` は留めない。Step 0で対処済み
+5. **水と屋根は同じ「平たい長方形」になりやすい**。運河・水面は海の色に寄せて値を下げ、
+   縁石を全周に回す。屋根は逆に値を上げる。これをやらないと4面図で判別できない
+
 ---
 
 ## 1. スコープ境界
