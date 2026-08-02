@@ -187,14 +187,11 @@ export default function register(ctx) {
       // IS the sweep, and addWingPivot stamps userData.sweepSide so the sign
       // is right on both sides. Drawn at the deployed 16 deg spread.
       //
-      // NOTE (host gap, not a payload bug): the inline swing-wing branches do
-      // `wingPivots.push(addWingPivot(...))`, but `wingPivots` is a local of
-      // createAircraftModel and is NOT part of the build env — a payload can
-      // only call the helper, not register the result. So the panels are
-      // built, parented and lit correctly but sit at the modelled sweep for
-      // now. Handing `wingPivots` (or having addWingPivot self-register) to
-      // the env is a one-line host change and is reported rather than worked
-      // around here, because the alternative is reaching outside the contract.
+      // (Was a host gap: `wingPivots` is a local of createAircraftModel and is
+      // not in the build env, so a payload could call the helper but not
+      // register the result, and the panels sat at the modelled sweep. Fixed
+      // in the host by having addWingPivot self-register — the option named
+      // here — so this payload needed no edit.)
       addWingPivot(wingAardvark, secondary, -1, -1.6, 0.62, 0.2);
       addWingPivot(wingAardvark, secondary, 1, 1.6, 0.62, 0.2);
 

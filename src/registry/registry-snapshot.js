@@ -36,6 +36,7 @@ export function createRegistrySnapshot({
   AIRCRAFT_ORDER,
   WORLD_DECORATORS,
   AIRCRAFT_MODELS,
+  SHIP_MODELS = {},
   MISSIONS
 }) {
   return {
@@ -70,6 +71,11 @@ export function createRegistrySnapshot({
           ? ["build", "silhouette"]
           : ["build"]
       ])
+    ),
+    // Same treatment, minus the silhouette line: a ship model is { kind, build }
+    // and the only thing that can be lost is the registration itself.
+    SHIP_MODELS: Object.fromEntries(
+      Object.keys(SHIP_MODELS).sort().map((kind) => [kind, ["build"]])
     ),
     MISSIONS: Object.fromEntries(
       MISSIONS.map((mission) => [mission.key, keyPaths(mission, "", [], 0)])

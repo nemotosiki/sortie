@@ -227,15 +227,11 @@ export default function register(ctx) {
       // The panels themselves, each on its own pivot group at the glove's
       // outboard end. Same call the MiG-23 and F-14 branches make.
       //
-      // ★ HOST GAP: the inline branches do `wingPivots.push(addWingPivot(...))`
-      // - the helper only records the group in `parts`, it does NOT put it in
-      // the sweep list. A payload is handed `addWingPivot` but not the
-      // `wingPivots` array, so these two groups are built correctly, carry the
-      // right `userData.sweepSide`, and are simply never driven by
-      // updateWingSweep. The wing is modelled at its spread setting and stays
-      // there. The fix is one line in the host (have addWingPivot push into
-      // wingPivots itself, which is what every existing caller already does by
-      // hand); this payload needs no edit when that lands.
+      // (Was a host gap: addWingPivot only recorded the group in `parts`, so a
+      // payload - handed the helper but not the `wingPivots` array - built its
+      // panels correctly and then never had them driven by updateWingSweep.
+      // The helper now pushes into wingPivots itself, and this payload needed
+      // no edit, as predicted here.)
       addWingPivot(wingSu24, secondary, -1, -2.45, 1.06, 1.2);
       addWingPivot(wingSu24, secondary, 1, 2.45, 1.06, 1.2);
 

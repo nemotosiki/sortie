@@ -9885,6 +9885,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       "hog", "fishbed", "fulcrum", "flankerd", "flankere", "raptor"
     ]);
 
+    // Hull geometry contributed by payloads, keyed by the SHIP_TYPES key.
+    // createShipModel consults this BEFORE its own if/else chain, on exactly
+    // the terms AIRCRAFT_MODELS is consulted: a registered kind adds a hull,
+    // it never replaces one. See ctx.addShipModel.
+    //
+    // No `silhouette` counterpart, because ships have no HUD outline - the
+    // radar draws them as a blip and the lock box as a box, neither of which
+    // is per-hull. A ship entry is therefore { kind, build } and nothing else.
+    const SHIP_MODELS = {};
+
+    // Every kind createShipModel's own if/else answers, including the "carrier"
+    // its trailing else covers. Same job as INLINE_AIRCRAFT_VARIANTS, kept by
+    // hand for the same reason: the chain is a chain and there is nothing to
+    // derive it from, so a new inline hull belongs here in the same edit.
+    //
+    // Note this is NOT the same set as the keys of SHIP_TYPES - the ground
+    // installations (samSite, aaGun, ...) live in SHIP_TYPES' sibling table
+    // GROUND_TYPES and are built by createGroundModel, which this hook does
+    // not reach. Registering a ship model for a ground key would be accepted
+    // here and then never consulted, so payloads should not do it.
+    const INLINE_SHIP_KINDS = new Set([
+      "aegis", "frigate", "missileBoat", "landingShip", "carrier"
+    ]);
+
     // Handed to every payload's default export. Deliberately the only surface a
     // payload gets - it cannot reach the tables directly, so every addition goes
     // through the duplicate and schema checks above.
@@ -10051,6 +10075,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         AIRCRAFT_MODELS[variant] = entry;
         return entry;
       },
+      // Hull geometry for a ship, keyed by its SHIP_TYPES key. The naval
+      // counterpart of addAircraftModel and deliberately the same shape, minus
+      // the silhouette: ships have no HUD outline to register.
+      //
+      //   ctx.addShipType("corvette", { ...spec });
+      //   ctx.addShipModel("corvette", { build(env) { ... } });
+      //
+      // `build(env)` runs inside createShipModel with that function's own
+      // locals handed in - the shared geometry cache, this hull's five themed
+      // materials, the `add` assembler and `friendly`, the flag every inline
+      // branch reads to decide whose paint the hull wears. It builds into
+      // `parts` through `add` and returns nothing; createShipModel assembles
+      // the group and the flash/dispose contract around it, so a registered
+      // hull cannot forget a field of the return shape because it never writes
+      // one.
+      //
+      // Registration is add-only on both fronts: a kind already registered and
+      // a kind the inline chain already answers are both refused, so a payload
+      // can never silently replace the Aegis' geometry with its own.
+      addShipModel(kind, def) {
+        if (typeof kind !== "string" || !kind) {
+          throw new Error("[payload] addShipModel: kind must be a non-empty string");
+        }
+        if (Object.prototype.hasOwnProperty.call(SHIP_MODELS, kind)) {
+          throw new Error(`[payload] addShipModel: duplicate kind "${kind}" - registration is add-only`);
+        }
+        if (!def || typeof def !== "object") {
+          throw new Error(`[payload] addShipModel("${kind}"): definition must be an object`);
+        }
+        if (typeof def.build !== "function") {
+          throw new Error(`[payload] addShipModel("${kind}"): build must be a function`);
+        }
+        if (INLINE_SHIP_KINDS.has(kind)) {
+          throw new Error(`[payload] addShipModel("${kind}"): an inline hull already uses that kind - registration is add-only`);
+        }
+        const entry = Object.freeze({ kind, build: def.build });
+        SHIP_MODELS[kind] = entry;
+        return entry;
+      },
       // Friendlies a mission fields: a wingman, an airbase, a carrier, ships to
       // guard. Queued rather than written, because FRIENDLY_DEPLOYMENTS is
       // declared thousands of lines below this object and is still in its
@@ -10132,6 +10195,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       Object.freeze(WORLD_PRESETS);
       Object.freeze(WORLD_DECORATORS);
       Object.freeze(AIRCRAFT_MODELS);
+      Object.freeze(SHIP_MODELS);
       Object.freeze(MISSIONS);
       Object.freeze(payloadContext);
     }
@@ -10156,6 +10220,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         AIRCRAFT_ORDER,
         WORLD_DECORATORS,
         AIRCRAFT_MODELS,
+        SHIP_MODELS,
         MISSIONS
       });
     }
@@ -15084,15 +15149,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // The panels themselves, each on its own pivot group at the glove's
             // outboard end. Same call the MiG-23 and F-14 branches make.
             //
-            // ★ HOST GAP: the inline branches do `wingPivots.push(addWingPivot(...))`
-            // - the helper only records the group in `parts`, it does NOT put it in
-            // the sweep list. A payload is handed `addWingPivot` but not the
-            // `wingPivots` array, so these two groups are built correctly, carry the
-            // right `userData.sweepSide`, and are simply never driven by
-            // updateWingSweep. The wing is modelled at its spread setting and stays
-            // there. The fix is one line in the host (have addWingPivot push into
-            // wingPivots itself, which is what every existing caller already does by
-            // hand); this payload needs no edit when that lands.
+            // (Was a host gap: addWingPivot only recorded the group in `parts`, so a
+            // payload - handed the helper but not the `wingPivots` array - built its
+            // panels correctly and then never had them driven by updateWingSweep.
+            // The helper now pushes into wingPivots itself, and this payload needed
+            // no edit, as predicted here.)
             addWingPivot(wingSu24, secondary, -1, -2.45, 1.06, 1.2);
             addWingPivot(wingSu24, secondary, 1, 2.45, 1.06, 1.2);
 
@@ -15688,11 +15749,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           role: "Heavy Unmanned Combat Aerial Vehicle",
           tag: "ENEMY",
           enemyOnly: true,
-          blurb: "エレムの重無人攻撃機。尾翼を持たない全翼のステルス機で、MQ-99の三倍を超える巨体を持つ。有人機の随伴なしに単独で戦域へ入る、無人戦争の主役。",
-          // Half-span 11.0 is the geometric wingtip of the planform below, so the
-          // wingtip contrails leave the actual tip. tipZ 3.2 is that tip's z.
-          tipSpan: 11.0,
-          tipZ: 3.2,
+          blurb: "エレムの重無人攻撃機。尾翼を持たない全翼のステルス機で、全長より全幅が大きい横長の平面形。MQ-99の四倍近い巨体を持ち、有人機の随伴なしに単独で戦域へ入る、無人戦争の主役。",
+          // Half-span 12.0 is the geometric wingtip of the planform below, so the
+          // wingtip contrails leave the actual tip. tipZ 5.4 is that tip's z - well
+          // aft, because on a 47-degree flying wing the tip IS the back corner.
+          tipSpan: 12.0,
+          tipZ: 5.4,
           theme
         }, { order: false });
 
@@ -15705,8 +15767,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ...uavAI,
           label: "S-70",
           // The MQ-99 runs 0.55 against a 3.2 m half-span (ratio ~1.78). This airframe's
-          // half-span is 11.0 units, so the same ratio asks for ~1.9.
-          hitboxScale: 1.9,
+          // half-span is 12.0 units, so the same ratio asks for ~2.1.
+          hitboxScale: 2.1,
           explosionScale: 1.15,
           radarColor: "#ff8a4d",
           tracerColor: 0xff8a4d,
@@ -15716,16 +15778,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         ctx.addAircraftModel("s70", {
           // Top view in the shared 40x44 box, nose up. Projected point-for-point from
-          // the same planform polygon the 3D model extrudes (x scaled by 38/22, z by
-          // 42/15.9), so the HUD outline and the aircraft cannot drift apart.
+          // the same planform polygon the 3D model extrudes, through ONE isotropic
+          // scale (38 / 24.0 span = 1.5833) applied to both axes, so the HUD outline
+          // carries the aircraft's real proportion instead of being stretched to fill
+          // the box. That is the whole reason the previous outline lied: it scaled x
+          // and z independently to reach all four edges, which turned a wing that is
+          // wider than it is long into one that is taller than it is wide. This path
+          // is 38 wide over 23.8 tall - 1.60 - and is centred vertically in the box.
           //
           // It is the only path in the table with NO fin, NO tailplane and no
           // fuselage break anywhere - one continuous chevron from tip to tip. The
           // leading edge leaves the apex almost straight, cranks at the shoulder and
-          // runs out at 42 deg to tips that reach the full width of the box; the
+          // runs out at 47 deg to tips that reach the full width of the box; the
           // trailing edge is the real aircraft's W, cutting forward from each tip to
           // a notch and back out to the exhaust shelf either side of the centreline.
-          silhouette: "M20.0 1.0 L22.6 5.8 L25.9 12.6 L39.0 33.2 L37.6 36.1 L28.6 30.3 L24.1 43.0 L20.0 42.2 L15.9 43.0 L11.4 30.3 L2.4 36.1 L1.0 33.2 L14.1 12.6 L17.4 5.8 Z",
+          silhouette: "M20.0 10.1 L22.6 13.0 L25.4 15.8 L39.0 30.4 L37.9 32.0 L27.8 28.5 L23.8 33.9 L20.0 33.4 L16.2 33.9 L12.2 28.5 L2.1 32.0 L1.0 30.4 L14.6 15.8 L17.4 13.0 Z",
           build(env) {
             const { geometry, extrudedSurface, verticalSurface,
                     primary, secondary, accent, canopy, dark, light, navL, navR,
@@ -15736,18 +15803,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // below - which is the single fact that has to read from every angle.
             // Every other airframe in the game is a body with things bolted to it.
             //
-            // Planform, +z aft, apex on the nose at z -9.0 and half-span 11.0 at
-            // z 3.2 (42 deg of leading-edge sweep). The trailing edge is the real
-            // S-70's W: it runs FORWARD from the tip to a notch at x +/-4.4 / z 5.4,
-            // back out to the exhaust shelf at x +/-2.1 / z 7.2, and the centreline
-            // sits at 7.0 between them. Authored as one closed polygon so the two
+            // Planform, +z aft. Apex on the nose at z -7.4, half-span 12.0 at z 5.4:
+            // 24.0 of span over 12.8 of wing length, and the tip sits AFT, near the
+            // trailing edge, which is what 47 deg of leading-edge sweep means and
+            // what makes the top view read wide. The trailing edge is the real
+            // S-70's W: it runs FORWARD from the tip to a notch at x +/-4.95 / z 4.2,
+            // back out to the exhaust shelf at x +/-2.38 / z 7.6, and the centreline
+            // sits at 7.3 between them. Authored as one closed polygon so the two
             // halves cannot drift apart.
             const blendedWing = extrudedSurface([
-              [0, -9.0],
-              [1.5, -7.2], [3.4, -4.6], [11.0, 3.2],
-              [10.2, 4.3], [5.0, 2.1], [2.4, 6.9], [0, 6.6],
-              [-2.4, 6.9], [-5.0, 2.1], [-10.2, 4.3],
-              [-11.0, 3.2], [-3.4, -4.6], [-1.5, -7.2]
+              [0, -7.4],
+              [1.62, -5.6], [3.43, -3.8], [12.0, 5.4],
+              [11.33, 6.4], [4.95, 4.2], [2.38, 7.6], [0, 7.3],
+              [-2.38, 7.6], [-4.95, 4.2], [-11.33, 6.4],
+              [-12.0, 5.4], [-3.43, -3.8], [-1.62, -5.6]
             ], 0.42);
             add(blendedWing, primary, 0, 0, 0);
 
@@ -15756,16 +15825,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // engine and thins to nothing at the tips. Built from stacked panels
             // rather than geometry.fuselage on purpose: a cylinder would put a round
             // body back on an aircraft whose whole identity is not having one.
-            add(geometry.panel, primary, 0, 0.4, -0.8, 5.2, 0.66, 9.2);
-            add(geometry.panel, primary, 0, -0.36, -0.8, 4.8, 0.46, 8.6);
+            // Wider and shorter than the wing it replaces, because the centrebody of
+            // a wide flying wing is a broad shallow lens and not a spine.
+            add(geometry.panel, primary, 0, 0.4, 0.0, 6.0, 0.66, 8.4);
+            add(geometry.panel, primary, 0, -0.36, 0.0, 5.4, 0.46, 7.8);
             // The forebody tapering into the apex, narrow enough to stay inside the
             // planform's cranked leading edge all the way forward.
-            add(geometry.panel, primary, 0, 0.16, -5.4, 2.4, 0.44, 4.2);
-            add(geometry.panel, primary, 0, 0.06, -7.0, 1.3, 0.3, 2.0);
+            add(geometry.panel, primary, 0, 0.16, -4.4, 2.6, 0.44, 3.6);
+            add(geometry.panel, primary, 0, 0.06, -5.9, 1.4, 0.3, 1.9);
             // Forebody chine: the flat faceted edge that carries the leading-edge
             // line into the apex, the same trick the Su-57 uses down its nose sides.
-            add(geometry.panel, secondary, -1.5, 0.02, -4.7, 0.8, 0.18, 3.6).rotation.y = -0.28;
-            add(geometry.panel, secondary, 1.5, 0.02, -4.7, 0.8, 0.18, 3.6).rotation.y = 0.28;
+            add(geometry.panel, secondary, -1.6, 0.02, -3.8, 0.9, 0.18, 3.2).rotation.y = -0.30;
+            add(geometry.panel, secondary, 1.6, 0.02, -3.8, 0.9, 0.18, 3.2).rotation.y = 0.30;
 
             // DORSAL INTAKE. A shouldered box sitting ON TOP of the centre spine,
             // fed by a raked lip ahead of it, with the duct fairing running aft to
@@ -15773,24 +15844,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // MQ-99, and this one is four times the size and has a visible lip and
             // spine - a low-observable inlet hides the compressor face from below,
             // which is exactly why it is up here.
-            add(geometry.intake, secondary, 0, 0.98, -2.8, 3.2, 0.95, 1.6);
+            add(geometry.intake, secondary, 0, 0.98, -1.9, 3.4, 0.95, 1.5);
             // The mouth: a wide, flat, dark rectangular aperture across the front of
             // that box. Deliberately much wider than it is tall - a low-observable
             // inlet is a letterbox, not a round hole, and it is the shape that reads
             // as "intake" from the front quarter rather than as a lump on the spine.
-            add(geometry.panel, accent, 0, 0.98, -4.45, 3.3, 0.6, 0.42);
+            add(geometry.panel, accent, 0, 0.98, -3.45, 3.5, 0.6, 0.42);
             // Splitter lip standing proud above the mouth, and the two side cheeks
             // that box the aperture in.
-            add(geometry.panel, primary, 0, 1.4, -4.2, 3.4, 0.24, 1.1);
-            add(geometry.panel, primary, -1.72, 1.0, -3.6, 0.22, 0.7, 2.4);
-            add(geometry.panel, primary, 1.72, 1.0, -3.6, 0.22, 0.7, 2.4);
+            add(geometry.panel, primary, 0, 1.4, -3.2, 3.6, 0.24, 1.05);
+            add(geometry.panel, primary, -1.82, 1.0, -2.7, 0.22, 0.7, 2.3);
+            add(geometry.panel, primary, 1.82, 1.0, -2.7, 0.22, 0.7, 2.3);
             // Duct fairing: the spine that swells from the inlet back to the nozzle.
-            add(geometry.panel, primary, 0, 0.92, -0.2, 2.8, 0.9, 5.6);
-            add(geometry.panel, primary, 0, 0.78, 3.6, 2.3, 0.82, 3.0);
+            add(geometry.panel, primary, 0, 0.92, 0.6, 3.0, 0.9, 5.0);
+            add(geometry.panel, primary, 0, 0.78, 4.0, 2.4, 0.82, 2.6);
             // Shoulder fillets blending the intake box down into the wing upper
             // surface, so the box does not read as a crate dropped on the aircraft.
-            add(geometry.panel, primary, -1.6, 0.66, -1.8, 1.0, 0.6, 6.4, 0.26);
-            add(geometry.panel, primary, 1.6, 0.66, -1.8, 1.0, 0.6, 6.4, -0.26);
+            add(geometry.panel, primary, -1.7, 0.66, -0.9, 1.1, 0.6, 6.0, 0.26);
+            add(geometry.panel, primary, 1.7, 0.66, -0.9, 1.1, 0.6, 6.0, -0.26);
 
             // EXPOSED SINGLE NOZZLE. The real aircraft flies with a plain round
             // unshrouded AL-31 duct hanging out of the trailing edge, which is the
@@ -15799,62 +15870,64 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // rather than being buried in a shelf.
             // Shelf: the short tailboom the duct exits through, carrying the nozzle
             // clear of the trailing edge so it is a separate object from behind
-            // rather than a hole in the wing.
-            add(geometry.panel, secondary, 0, 0.62, 6.6, 2.2, 1.0, 2.2);
-            add(geometry.nozzle, accent, 0, 0.62, 8.0, 2.0, 2.0, 1.5);
-            add(geometry.nozzle, dark, 0, 0.62, 8.8, 1.6, 1.6, 0.5);
-            addFlame(0, 0.62, 9.5, 1.4, 1.3);
+            // rather than a hole in the wing. Kept SHORT on purpose - a long tailboom
+            // is length, and length is the one thing this airframe cannot spend. A
+            // clearance of about one nozzle diameter is enough to read as separate.
+            add(geometry.panel, secondary, 0, 0.62, 6.7, 2.3, 1.0, 1.8);
+            add(geometry.nozzle, accent, 0, 0.62, 7.7, 2.0, 2.0, 1.1);
+            add(geometry.nozzle, dark, 0, 0.62, 8.35, 1.6, 1.6, 0.4);
+            addFlame(0, 0.62, 8.9, 1.4, 1.3);
 
             // Control surfaces scribed into the trailing edge - elevons outboard and
             // the split drag rudders that do this aircraft's yaw, because there is no
             // fin to do it with. Thin dark panels, canted to follow the swept edge.
             // Outboard elevons, laid along the tip-to-notch trailing edge segment
-            // (10.2,4.3)->(5.0,2.1): centre (7.6,3.2), length 5.65, rotation.y -0.400.
-            add(geometry.panel, dark, -7.6, 0.14, 3.05, 5.3, 0.2, 0.62).rotation.y = 0.400;
-            add(geometry.panel, dark, 7.6, 0.14, 3.05, 5.3, 0.2, 0.62).rotation.y = -0.400;
-            // Split drag rudders on the inboard segment (5.0,2.1)->(2.4,6.9), which
+            // (11.33,6.4)->(4.95,4.2): centre (8.14,5.3), length 6.75, rotation.y -0.332.
+            add(geometry.panel, dark, -8.14, 0.14, 5.3, 6.4, 0.2, 0.62).rotation.y = 0.332;
+            add(geometry.panel, dark, 8.14, 0.14, 5.3, 6.4, 0.2, 0.62).rotation.y = -0.332;
+            // Split drag rudders on the inboard segment (4.95,4.2)->(2.38,7.6), which
             // is what does this aircraft's yaw - there is no fin to do it with.
-            add(geometry.panel, dark, -3.7, 0.16, 4.32, 5.1, 0.24, 0.62).rotation.y = -1.075;
-            add(geometry.panel, dark, 3.7, 0.16, 4.32, 5.1, 0.24, 0.62).rotation.y = 1.075;
+            add(geometry.panel, dark, -3.67, 0.16, 5.9, 4.0, 0.24, 0.62).rotation.y = -0.924;
+            add(geometry.panel, dark, 3.67, 0.16, 5.9, 4.0, 0.24, 0.62).rotation.y = 0.924;
 
             // Facet lines on the upper surface: the sawtooth panel joints that make a
             // large flat wing read as a low-observable one rather than as a sheet.
-            // The leading edge runs (3.4,-4.6)->(11.0,3.2), so a scribe line parallel
-            // to it is a thin z-long box turned by 0.798 about y. Set inboard of the
+            // The leading edge runs (3.43,-3.8)->(12.0,5.4), so a scribe line parallel
+            // to it is a thin z-long box turned by 0.750 about y. Set inboard of the
             // edge and stopped short of both ends so it stays on the surface.
-            add(geometry.panel, secondary, -5.3, 0.26, -0.9, 0.16, 0.1, 5.2).rotation.y = -0.798;
-            add(geometry.panel, secondary, 5.3, 0.26, -0.9, 0.16, 0.1, 5.2).rotation.y = 0.798;
-            add(geometry.panel, secondary, -8.2, 0.16, 1.4, 0.14, 0.08, 3.0).rotation.y = -0.798;
-            add(geometry.panel, secondary, 8.2, 0.16, 1.4, 0.14, 0.08, 3.0).rotation.y = 0.798;
+            add(geometry.panel, secondary, -5.7, 0.26, 0.2, 0.16, 0.1, 5.6).rotation.y = -0.750;
+            add(geometry.panel, secondary, 5.7, 0.26, 0.2, 0.16, 0.1, 5.6).rotation.y = 0.750;
+            add(geometry.panel, secondary, -8.9, 0.16, 3.0, 0.14, 0.08, 3.2).rotation.y = -0.750;
+            add(geometry.panel, secondary, 8.9, 0.16, 3.0, 0.14, 0.08, 3.2).rotation.y = 0.750;
 
             // Weapons-bay doors scribed into the belly. This airframe carries
             // everything internally - the same reason the F-35C's belly is scribed -
             // and it is the only detail on the underside, so it is what tells the
             // bottom view apart from the top.
-            add(geometry.panel, dark, -1.3, -0.62, 0.2, 1.1, 0.14, 5.4);
-            add(geometry.panel, dark, 1.3, -0.62, 0.2, 1.1, 0.14, 5.4);
+            add(geometry.panel, dark, -1.4, -0.62, 0.9, 1.2, 0.14, 5.0);
+            add(geometry.panel, dark, 1.4, -0.62, 0.9, 1.2, 0.14, 5.0);
 
             // NO COCKPIT. The canopy material goes on the electro-optical turret
             // faired into the underside of the apex, exactly as the MQ-99 does it: a
             // single emissive eye under the nose instead of a windscreen. That, and
             // the missing tail, are the two reads that say "unmanned" head-on.
-            add(geometry.canopy, canopy, 0, -0.46, -6.2, 0.46, 0.3, 0.56);
+            add(geometry.canopy, canopy, 0, -0.46, -5.1, 0.46, 0.3, 0.56);
             // Flush apertures either side of it - the conformal sensor panels.
-            add(geometry.panel, dark, -0.86, -0.3, -5.4, 0.4, 0.1, 1.2, 0.1);
-            add(geometry.panel, dark, 0.86, -0.3, -5.4, 0.4, 0.1, 1.2, -0.1);
+            add(geometry.panel, dark, -0.9, -0.3, -4.4, 0.4, 0.1, 1.1, 0.1);
+            add(geometry.panel, dark, 0.9, -0.3, -4.4, 0.4, 0.1, 1.1, -0.1);
             // Flat radome facet on the apex itself, kept narrow so the nose stays a
             // point rather than growing a lump. No pitot boom anywhere: a
             // low-observable drone does not hang a metal rod off its radar cross
             // section, and there is no pilot to trust it.
-            add(geometry.panel, light, 0, 0.04, -7.7, 0.42, 0.2, 1.3);
+            add(geometry.panel, light, 0, 0.04, -6.4, 0.42, 0.2, 1.2);
 
             // LIGHTING, minimal by design. Two small nav lights at the geometric
             // tips and nothing else - no beacon, no strobes, no formation strips.
             // Every crewed airframe here wears more; a machine sent somewhere it is
-            // not supposed to be wears the legal minimum, and at 0.09 they are barely
-            // more than a pinprick against the 22-unit span.
-            add(geometry.canopy, navL, -10.5, 0.06, 3.5, 0.1, 0.1, 0.1);
-            add(geometry.canopy, navR, 10.5, 0.06, 3.5, 0.1, 0.1, 0.1);
+            // not supposed to be wears the legal minimum, and at 0.1 they are barely
+            // more than a pinprick against the 24-unit span.
+            add(geometry.canopy, navL, -11.5, 0.06, 5.6, 0.1, 0.1, 0.1);
+            add(geometry.canopy, navR, 11.5, 0.06, 5.6, 0.1, 0.1, 0.1);
 
             // `verticalSurface` is deliberately unused: there is no vertical surface
             // anywhere on this aircraft. Kept destructured so the omission is a
@@ -16046,14 +16119,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // IS the sweep, and addWingPivot stamps userData.sweepSide so the sign
             // is right on both sides. Drawn at the deployed 16 deg spread.
             //
-            // NOTE (host gap, not a payload bug): the inline swing-wing branches do
-            // `wingPivots.push(addWingPivot(...))`, but `wingPivots` is a local of
-            // createAircraftModel and is NOT part of the build env — a payload can
-            // only call the helper, not register the result. So the panels are
-            // built, parented and lit correctly but sit at the modelled sweep for
-            // now. Handing `wingPivots` (or having addWingPivot self-register) to
-            // the env is a one-line host change and is reported rather than worked
-            // around here, because the alternative is reaching outside the contract.
+            // (Was a host gap: `wingPivots` is a local of createAircraftModel and is
+            // not in the build env, so a payload could call the helper but not
+            // register the result, and the panels sat at the modelled sweep. Fixed
+            // in the host by having addWingPivot self-register — the option named
+            // here — so this payload needed no edit.)
             addWingPivot(wingAardvark, secondary, -1, -1.6, 0.62, 0.2);
             addWingPivot(wingAardvark, secondary, 1, 1.6, 0.62, 0.2);
 
@@ -16663,6 +16733,1725 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "aircraft_yf23"
     ); // @payload:aircraft_yf23
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+        // The destroyer is the template because it is the only hull in the table with
+        // the full fit this ship needs - gun, VLS fields and CIWS all present - so the
+        // spread brings the whole combat schema across and this file only states what
+        // is different about a cruiser.
+        const aegis = SHIP_TYPES.aegis;
+        if (!aegis) throw new Error("[ship-cruiser] expected SHIP_TYPES.aegis as the template");
+
+        // ===========================================================================
+        // 1. SHIP_TYPES entry
+        // ===========================================================================
+        //
+        // BALANCE TODO: placeholder. Every combat number below that is not a
+        // dimension - hp, cruiseSpeed, turnRate, and the whole `aa` block inherited
+        // from the destroyer via the spread - is carried over unexamined and has NOT
+        // been tuned for a 220m hull. hp in particular is still the destroyer's 500
+        // (5 standard missiles) while the ship is 40% longer and carries twice the
+        // CIWS; a balance pass owns whether that becomes ~700 (7 missiles, the 98
+        // quantum the rest of the table is built on) and whether the SAM cooldown
+        // should tighten to match the "long-range SAM" role. Dimensions, subsystems
+        // and the model are the deliverable here.
+        ctx.addShipType("cruiser", {
+          ...aegis,
+          key: "cruiser",
+          surface: true,
+          label: "CRUISER",
+          role: "Air-Defence Missile Cruiser",
+
+          // --- Dimensions: authored for this hull, 220m overall ---------------------
+          // The model's hull box runs z -110..+110 at 30m beam. Everything here is
+          // measured off that rather than scaled off the destroyer's numbers.
+          hitRadius: 116,
+          // `top` is the collision ceiling, so it is the tier-1 roof (26) rather than
+          // the mast head (78) - the destroyer does the same, taking its 22 off the
+          // deckhouse and not off its 31m mast. Flying through a lattice is the
+          // intended behaviour; flying through the block is not.
+          crash: Object.freeze({ halfLen: 112, halfBeam: 18, top: 26 }),
+          hitBox: Object.freeze({ x: 32, y: 50, z: 224 }),
+          sinkDepth: 34,
+          blastSpread: 44,
+          smokeOffset: 18,
+          smokeHeight: 22,
+          sternOffset: 108,
+          bowOffset: 106,
+
+          // BALANCE TODO: placeholder - hp/speed/turn inherited, restated only so the
+          // spread's values are visible at the call site instead of implied.
+          hp: aegis.hp,
+          cruiseSpeed: 12,
+          // 2.4 deg/s in radians, written as a literal because THREE is module-scoped
+          // inside index.html and is not on the payload ctx - it reaches a payload
+          // only through the model builder's env, which does not run until spawn.
+          turnRate: 2.4 * Math.PI / 180,
+
+          // Tracer origins for the gun burst: the amidships mount at z -16 and the
+          // forward CIWS sponson at z +42, both hardware the model draws. aaHeight is
+          // the mid-point of the two (y 30 and y 19), which is where the beam gun's
+          // muzzle actually is.
+          aaMounts: Object.freeze([-16, 42]),
+          aaHeight: 26,
+
+          // --- Subsystems: NEXT-target walk, and the model hardware each one is on --
+          // Order is the cycle order: hull, then forward VLS, aft VLS, the two beam
+          // AA mounts, then the two CIWS drums. Offsets are hull-local metres with
+          // the bow at -Z and y measured up from the waterline; each one is the
+          // centre of a part the build() below actually draws, and the model
+          // comments carry the same z values so the pair cannot drift apart.
+          subsystems: Object.freeze([
+            // Forward VLS grid on the forecastle - the 4x5 cell field at z -58,
+            // y 15 = the hatch deck on top of its plinth.
+            Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -58 }) }),
+            // Second VLS grid immediately aft of it at z -38, ahead of the bridge.
+            Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -38 }) }),
+            // Amidships gun mounts, port and starboard, on tier 1's shoulder roof.
+            Object.freeze({ key: "aa-port", kind: "aa", offset: Object.freeze({ x: -12.5, y: 30, z: -16 }) }),
+            Object.freeze({ key: "aa-stbd", kind: "aa", offset: Object.freeze({ x: 12.5, y: 30, z: -16 }) }),
+            // Two of the four CIWS drums are lockable: the forward pair on the beam
+            // sponsons at z +42. The aft pair at z +70 are drawn but not lockable, so
+            // the NEXT walk stays six stops long instead of eight.
+            Object.freeze({ key: "ciws-port", kind: "ciws", offset: Object.freeze({ x: -15.5, y: 19, z: 42 }) }),
+            Object.freeze({ key: "ciws-stbd", kind: "ciws", offset: Object.freeze({ x: 15.5, y: 19, z: 42 }) })
+          ]),
+
+          radarColor: "#ffa878",
+          tracerColor: 0xffb04a,
+          explosionColor: 0xffa348
+        });
+
+        // ===========================================================================
+        // 2. Hull geometry
+        // ===========================================================================
+        ctx.addShipModel("cruiser", {
+          build(env) {
+            const {
+              geometry, add,
+              hull, deck, house, dark, light, markings
+            } = env;
+
+            // --- Hull, boot topping and weather deck -------------------------------
+            // 220m x 30m beam. The dark band is the boot topping at the waterline,
+            // the same trick the destroyer uses to keep the hull from reading as one
+            // flat grey slab from the side.
+            add(geometry.panel, hull, 0, 5.5, 4, 30, 12, 196);
+            // Bow wedge: sy is its LENGTH along the hull once rx has laid the cone
+            // down, sx/sz its half-beam and half-depth. 24 long on a 15m half-beam
+            // keeps the stem a wedge; the destroyer's 20-on-9.5 is the same ratio.
+            add(geometry.shipBow, hull, 0, 5.5, -102, 15, 24, 6.4, -Math.PI / 2);
+            add(geometry.panel, dark, 0, 1.0, 4, 30.6, 2.2, 197);
+            add(geometry.panel, deck, 0, 12.0, 6, 29.6, 0.8, 190);
+            // Bulwark down each side of the long forecastle - it is the flat
+            // foredeck that makes this hull read as a cruiser, so it gets an edge.
+            add(geometry.panel, house, -14.4, 13.6, -62, 1.2, 2.4, 78);
+            add(geometry.panel, house, 14.4, 13.6, -62, 1.2, 2.4, 78);
+
+            // --- Bow: main mount ---------------------------------------------------
+            // One big turret right forward at z -78: a barbette, a gunhouse taller
+            // than it is long, and twin barrels at elevation reaching almost to the
+            // stem. Deliberately about twice the destroyer's 5-inch mount in every
+            // dimension - it is the second thing the eye finds after the cell fields.
+            add(geometry.shipCylinder, dark, 0, 14.6, -78, 7.0, 4.4, 7.0);
+            add(geometry.panel, light, 0, 19.6, -78, 11, 7.2, 14);
+            add(geometry.panel, dark, 0, 22.6, -78, 11.4, 1.2, 14.4);
+            // Barrels: dark against the light gunhouse, run out past the stem and
+            // already at elevation, which is what tells the eye it is a gun and not
+            // another deckhouse from the top-down view.
+            add(geometry.panel, dark, -2.2, 21.4, -89, 0.9, 0.9, 18, 0.12);
+            add(geometry.panel, dark, 2.2, 21.4, -89, 0.9, 0.9, 18, 0.12);
+            // Breakwater chevron between the mount and the cell fields.
+            add(geometry.panel, dark, 0, 13.8, -68, 18, 2.2, 2.4, -0.32);
+
+            // --- Forecastle VLS: two cell grids ------------------------------------
+            // The hatch lattice is the identity of this foredeck, so it is drawn as
+            // actual cells rather than a painted rectangle: two fields of 4 x 5, each
+            // hatch a dark plate in a light frame.
+            //   field 1 centre z -58  ->  subsystems "vls-fore" { x 0, y 12, z -58 }
+            //   field 2 centre z -38  ->  subsystems "vls-aft"  { x 0, y 12, z -38 }
+            for (const fieldZ of [-58, -38]) {
+              // The field sits on a raised plinth rather than flush in the deck, so
+              // the grid still has a silhouette from a shallow attack angle instead
+              // of flattening into deck paint the moment the camera drops.
+              add(geometry.panel, house, 0, 13.4, fieldZ, 16.4, 3.0, 18.4);
+              add(geometry.panel, dark, 0, 15.0, fieldZ, 16.8, 0.5, 18.8);
+              for (let row = 0; row < 5; row += 1) {
+                for (let col = 0; col < 4; col += 1) {
+                  const cx = -5.4 + col * 3.6;
+                  const cz = fieldZ - 6.4 + row * 3.2;
+                  // Hatch, then its raised light-grey coaming: the pair is what makes
+                  // the cells read as cells at range and not as a chequer pattern.
+                  add(geometry.panel, dark, cx, 15.4, cz, 3.0, 0.7, 2.6);
+                  add(geometry.panel, light, cx, 15.2, cz, 3.3, 0.5, 2.9);
+                }
+              }
+            }
+
+            // --- Superstructure: four-tier pyramid ---------------------------------
+            // The identity mark, so the steps are large: each tier is ~9m tall, a
+            // clear 4-5m narrower per side than the one under it, and shorter
+            // fore-and-aft, giving four distinct silhouette steps between the weather
+            // deck at y 12 and the bridge roof at y 50. The destroyer's block is one
+            // slab 9.5m tall; this is a staircase four times that.
+            // Tier 1's front face is at z -26, which is 12m clear astern of the aft
+            // cell field's back edge (z -38 + 9.2). That clearance is not cosmetic:
+            // with the block any further forward it overhangs the second grid and the
+            // foredeck reads as ONE cell field from above, which is the destroyer's
+            // layout and not this ship's.
+            add(geometry.panel, house, 0, 19.0, 0, 26, 14, 52);     // tier 1: 12..26
+            add(geometry.panel, house, 0, 31.0, -2, 19, 10, 38);    // tier 2: 26..36
+            add(geometry.panel, house, 0, 40.0, -5, 13, 8, 25);     // tier 3: 36..44
+            add(geometry.panel, house, 0, 47.0, -9, 9, 6, 16);      // tier 4: 44..50 bridge
+            // Deck lips on every step - the overhang is what makes a step read as a
+            // step rather than as a seam between two greys.
+            add(geometry.panel, dark, 0, 26.3, 0, 26.8, 0.9, 52.8);
+            add(geometry.panel, dark, 0, 36.3, -2, 19.8, 0.9, 38.8);
+            add(geometry.panel, dark, 0, 44.3, -5, 13.8, 0.9, 25.8);
+            add(geometry.panel, dark, 0, 50.3, -9, 9.8, 0.9, 16.8);
+            // Bridge glazing, wrapped round the front face of the top tier.
+            add(geometry.panel, dark, 0, 48.4, -16.6, 9.2, 2.6, 2.4);
+            // Bridge wings out to the beam, port and starboard.
+            add(geometry.panel, house, -6.4, 45.4, -14, 4, 1.2, 6);
+            add(geometry.panel, house, 6.4, 45.4, -14, 4, 1.2, 6);
+
+            // --- Phased-array panels -----------------------------------------------
+            // Four big octagonal faces on the corners of tier 2. Two rotations, both
+            // load-bearing: rx = PI/2 stands the plate up on edge (shipOctPlate is a
+            // cylinder about +y, so without this it lies flat like a table top), then
+            // ry swings the face off the fore-aft axis so it looks out over the
+            // quarter instead of straight ahead. Without the ry the plate is edge-on
+            // from the beam and disappears at the only angle a player attacks from.
+            //
+            // 7.6 across against the destroyer's 4.1 - nearly twice the array, which
+            // is the whole reason a cruiser is the fleet's air-defence ship.
+            //
+            // rx = PI/2 then rz, exactly the destroyer's pair of rotations and NOT
+            // rx + ry. The order matters: rx lays the plate's axis along +z so the
+            // octagon FACE looks fore-and-aft, and rz then rolls the plate in its own
+            // plane to cant the face outboard while keeping it face-on to anything
+            // approaching from ahead or astern. Substituting ry swings the axis into
+            // the xz plane instead, which turns the face away from the camera and
+            // leaves the drum's rim showing - a pale crescent that reads as a scoop.
+            //
+            // sy is the plate's THICKNESS once it is on edge, and it is 0.55 - the
+            // destroyer's number, not the 1.2-1.6 an "array is a big slab" instinct
+            // reaches for. A thick octagon standing half in a wall shows the curve of
+            // its rim rather than its face, and a lit rim beside a grey wall reads as
+            // a crescent-shaped scoop from three of the four preview angles. Thin
+            // enough and there is no rim to catch the light at all.
+            //
+            // x +/-10.2 puts the plate a metre proud of tier 2's 9.5m half-beam, so
+            // the whole face is outside the wall instead of half-buried in it.
+            add(geometry.shipOctPlate, light, -10.2, 31.4, -15, 7.6, 0.55, 7.6, Math.PI / 2, 0, Math.PI - 0.5);
+            add(geometry.shipOctPlate, light, 10.2, 31.4, -15, 7.6, 0.55, 7.6, Math.PI / 2, 0, Math.PI + 0.5);
+            add(geometry.shipOctPlate, light, -10.2, 31.4, 11, 7.6, 0.55, 7.6, Math.PI / 2, 0, 0.5);
+            add(geometry.shipOctPlate, light, 10.2, 31.4, 11, 7.6, 0.55, 7.6, Math.PI / 2, 0, -0.5);
+            // A canted plate is edge-on from somewhere by definition - from the beam
+            // the octagons above are a pair of narrow leaves. The beam is also the
+            // angle most attack runs come in on, so each side additionally carries a
+            // flat broadside face let into the tier-2 wall: nothing about it can go
+            // edge-on, so the ship always has a visible array from the direction it
+            // is most often looked at. The octagons carry the outline from ahead and
+            // astern; these carry it from abeam.
+            for (const side of [-1, 1]) {
+              // Dark surround INBOARD of the light face, not outboard - reversed, the
+              // frame stands in front of the panel and hides what it is meant to edge.
+              add(geometry.panel, dark, side * 9.5, 31.4, -2, 0.5, 8.0, 21.4);
+              add(geometry.panel, light, side * 9.9, 31.4, -2, 0.5, 7.2, 20);
+            }
+
+            // --- Mast 1: heavy forward lattice tower --------------------------------
+            // A real tower rather than a pole: four legs on a 9 x 9m footprint raking
+            // inboard as they climb, three cross-brace bands up the height, a plate
+            // array on top and a whip above that. Tops out at ~74m, half the beam of
+            // the ship above the bridge, which is what makes the two-mast silhouette
+            // read at a kilometre.
+            for (const [lx, lz, tiltX, tiltZ] of [
+              [-4.5, 0.5, 0, 0.115], [4.5, 0.5, 0, -0.115],
+              [-4.5, 8.5, 0, 0.115], [4.5, 8.5, 0, -0.115]
+            ]) {
+              add(geometry.shipCylinder, dark, lx, 58, lz, 0.9, 22, 0.9, tiltX, 0, tiltZ);
+            }
+            for (const [braceY, braceW, braceD] of [[50, 10.5, 9.6], [58, 9, 9.6], [66, 7.5, 9.6]]) {
+              add(geometry.panel, dark, 0, braceY, 0.5, braceW, 0.8, 0.8);
+              add(geometry.panel, dark, 0, braceY, 8.5, braceW, 0.8, 0.8);
+              add(geometry.panel, dark, -braceW / 2 + 0.3, braceY, 4.5, 0.8, 0.8, braceD);
+              add(geometry.panel, dark, braceW / 2 - 0.3, braceY, 4.5, 0.8, 0.8, braceD);
+            }
+            // Yardarm across the tower at mid height - the cross that makes a tower
+            // read as a mast rather than as a chimney from dead ahead.
+            add(geometry.panel, dark, 0, 54, 4.5, 22, 0.7, 0.7);
+            add(geometry.panel, house, 0, 69.5, 4.5, 7.6, 3.4, 8);
+            add(geometry.shipOctPlate, light, 0, 73.2, 4.5, 4.6, 0.9, 4.6);
+            add(geometry.shipCylinder, dark, 0, 78, 4.5, 0.4, 8, 0.4);
+
+            // --- Funnels and the aft mast ------------------------------------------
+            // Two uptakes in line abaft the bridge, each capped dark and each rising
+            // clear of tier 1's roof at y 26, then the second mast: a plain pole with
+            // a rotating-style search plate. It stands 40m aft of the tower and tops
+            // out ~20m lower, so the pair reads as tower-forward / pole-aft side-on
+            // instead of as two of the same thing.
+            // Both funnels are raked aft (rx -0.16) and capped in dark, standing on
+            // tier 1's roof so they clear it by 12m instead of merging into it. The
+            // rake is what stops them reading as two more superstructure boxes.
+            add(geometry.panel, house, 0, 33.0, 22, 13, 16, 13, -0.16);
+            add(geometry.panel, dark, 0, 41.2, 20.6, 14, 1.4, 14, -0.16);
+            add(geometry.panel, dark, 0, 41.6, 20.6, 9, 1.6, 9, -0.16);
+            add(geometry.panel, house, 0, 31.0, 42, 11.5, 13, 11, -0.16);
+            add(geometry.panel, dark, 0, 37.6, 40.9, 12.5, 1.4, 12, -0.16);
+            add(geometry.panel, dark, 0, 38.0, 40.9, 8, 1.6, 7.6, -0.16);
+            // Aft mast: a pole with a search plate, 50m astern of the tower and 20m
+            // shorter, so the pair reads as tower-forward / pole-aft side-on rather
+            // than as two of the same thing.
+            add(geometry.shipCylinder, dark, 0, 40, 55, 1.0, 20, 1.0);
+            add(geometry.panel, dark, 0, 46, 55, 14, 0.7, 0.7);
+            add(geometry.panel, light, 0, 52.2, 55, 11, 3.6, 0.8, 0, 0, 0.2);
+            add(geometry.shipCylinder, dark, 0, 56, 55, 0.4, 7, 0.4);
+
+            // --- Beam gun mounts ---------------------------------------------------
+            // Port/starboard tubs on tier 1's roof (y 26), out at the shoulder where
+            // they clear tier 2, barrels trained forward at elevation.
+            //   -> subsystems "aa-port"/"aa-stbd" { x -/+12.5, y 30, z -16 }
+            for (const side of [-1, 1]) {
+              add(geometry.shipCylinder, light, side * 12.5, 28.4, -16, 2.8, 3.2, 2.8);
+              // Barrel at a shallow 12 deg rather than the 20 the other hulls use:
+              // this mount stands 26m up on the block, and a steep barrel that high
+              // reads as a flagpole instead of a gun from the beam.
+              add(geometry.panel, dark, side * 12.5, 30.6, -21.5, 0.7, 0.7, 9, -0.21);
+            }
+
+            // --- CIWS: four drums on beam sponsons ---------------------------------
+            // Two per side, clear of the superstructure on their own sponsons out at
+            // the deck edge. Each is a sponson shelf, a pedestal, a drum and the
+            // radome dot on top - the same idiom the destroyer's single drum uses,
+            // so four of them read as "four of those" and not as a new part.
+            //   forward pair z +42  -> subsystems "ciws-port"/"ciws-stbd"
+            //                          { x -/+15.5, y 19, z 42 }
+            //   aft pair     z +70  -> drawn only; not lockable (see subsystems note)
+            for (const side of [-1, 1]) {
+              for (const dz of [42, 70]) {
+                add(geometry.panel, dark, side * 15.5, 14.4, dz, 7, 4.5, 13);
+                add(geometry.shipCylinder, light, side * 15.5, 18.6, dz, 2.4, 3.0, 2.4);
+                add(geometry.enemyHitbox, light, side * 15.5, 21.4, dz, 0.2, 0.2, 0.2);
+              }
+            }
+
+            // --- Stern: hangar and helo deck ---------------------------------------
+            // Hangar block with its door face, then the flight deck aft of it with
+            // the painted landing circle - the last 45m of the ship, and the only
+            // part of the weather deck that is flat and empty.
+            add(geometry.panel, house, 0, 21.0, 64, 19, 17, 24);
+            add(geometry.panel, dark, 0, 29.6, 64, 19.6, 1.2, 24.6);
+            add(geometry.panel, dark, 0, 18.0, 75.4, 12, 10, 1.8);
+            add(geometry.panel, deck, 0, 12.8, 92, 22, 1.2, 36);
+            add(geometry.shockRing, markings, 0, 13.5, 94, 9, 9, 1, -Math.PI / 2);
+            // Deck-edge safety netting down both sides of the flight deck.
+            add(geometry.panel, dark, -11.2, 12.4, 92, 0.7, 1.0, 34);
+            add(geometry.panel, dark, 11.2, 12.4, 92, 0.7, 1.0, 34);
+          }
+        });
+      },
+      "ship_cruiser"
+    ); // @payload:ship_cruiser
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+
+        // The Aegis is the template rather than the carrier: this is a surface
+        // combatant that steams in company with the fleet, not a flat-top with its
+        // own aviation-shaped fields. Everything the spread carries and this entry
+        // does not override is a placeholder — see the BALANCE TODO below.
+        const aegis = SHIP_TYPES.aegis;
+        if (!aegis) throw new Error("[ship-arsenal] SHIP_TYPES.aegis is the template and is missing");
+
+        // ---------------------------------------------------------------------------
+        // Hull geometry constants — shared by the SHIP_TYPES offsets and by build().
+        // The subsystem offsets below are NOT independent numbers: each is written
+        // against the line of build() that draws the hardware it sits on, and the
+        // pairing is called out in both places.
+        // ---------------------------------------------------------------------------
+        // Four VLS fields, each a quadrant of the deck. Centres in hull-local metres
+        // (bow at -Z), deck plane at y 8.4, hatch tops at y 9.33.
+        //   vls-1  z -73  forecastle field   (bow-most, narrowed by the hull taper)
+        //   vls-2  z -34  forward main field
+        //   vls-3  z  18  after main field
+        //   vls-4  z  62  quarterdeck field  (last one before the island)
+        // The port CIWS tub is at x -18 / z +78; the starboard drum is on the island
+        // shoulder at x +15.6 / z +92 and is hardware only.
+
+        ctx.addShipType("arsenal", {
+          ...aegis,
+          key: "arsenal",
+          surface: true,
+          label: "ARSENAL",
+          role: "Arsenal Ship",
+
+          // ---- Dimensions: 250m LOA, 44m beam at the waterline --------------------
+          // Measured off the hull this file draws, on the Aegis' own conventions:
+          // hitBox.z is the full length, crash.halfLen is half of it, and the
+          // stern/bow offsets are where the wake and the bow spray are pinned.
+          hitRadius: 128,
+          crash: Object.freeze({ halfLen: 124, halfBeam: 24, top: 20 }),
+          hitBox: Object.freeze({ x: 48, y: 30, z: 252 }),
+          sinkDepth: 34,
+          blastSpread: 52,
+          smokeOffset: 88,   // the funnel is in the aft island, not amidships
+          smokeHeight: 20,
+          sternOffset: 122,
+          bowOffset: 124,
+
+          // BALANCE TODO: placeholder. hp / cruiseSpeed / turnRate / aa / aaHeight /
+          // radarColor / tracerColor / explosionColor are all inherited verbatim from
+          // the Aegis by the spread above and have NOT been tuned for this hull.
+          // A 250m magazine ship should almost certainly be slower and more fragile
+          // per-tonne than a destroyer, and its self-defence gun should be weaker
+          // than the Aegis' (two CIWS and nothing else is the design intent), but
+          // none of that is decided here — this file ships the shape.
+          // BALANCE TODO: placeholder — aaMounts is the Aegis' [-48, 50], which does
+          // not correspond to hardware this hull draws. It exists only because the
+          // spread carries it; the live mounts are the `subsystems` entries below.
+
+          // ---- Subsystems: NEXT-target walk = hull, VLS x4, CIWS ------------------
+          // Every offset is the centre of a part build() actually draws, so a player
+          // who locks one is aiming at hardware they can see.
+          //   vls-1 { 0, 9.4, -73 }  hatch field drawn at z -73 ( 80 cells,  8x10)
+          //   vls-2 { 0, 9.4, -34 }  hatch field drawn at z -34 (168 cells, 12x14)
+          //   vls-3 { 0, 9.4,  18 }  hatch field drawn at z  18 (168 cells, 12x14)
+          //   vls-4 { 0, 9.4,  62 }  hatch field drawn at z  62 (120 cells, 12x10)
+          //   ciws  { -18, 13.4, 78 } port drum, on its tub at x -18 / z +78
+          // y 9.4 is the deck plane (8.4) plus the hatch coaming: the lock box sits
+          // on the cell mouths rather than inside the hull.
+          subsystems: Object.freeze([
+            Object.freeze({ key: "vls-1", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -73 }) }),
+            Object.freeze({ key: "vls-2", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -34 }) }),
+            Object.freeze({ key: "vls-3", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 18 }) }),
+            Object.freeze({ key: "vls-4", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 62 }) }),
+            Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: -18, y: 13.4, z: 78 }) })
+          ])
+        });
+
+        ctx.addShipModel("arsenal", {
+          build(env) {
+            const { THREE, geometry, add, friendly,
+                    hull, deck, house, dark, light, markings, extraMaterials } = env;
+
+            // =====================================================================
+            // 1. Hull — 250m, low freeboard, tumblehome
+            // =====================================================================
+            // Core slab: 250 long and 44 wide at the waterline — length-to-beam about
+            // 5.7:1, i.e. deliberately BEAMIER than any warship here (the Aegis is
+            // nearer 10:1, and the carrier's hull proper about 8:1). The extra beam
+            // is not decoration: the deck has to carry ten cells abreast and still
+            // read as a DECK from above rather than as a spine, and that top-down
+            // read is the whole silhouette.
+            // Runs z -96 to +126: it STOPS at the bow wedge's base rather than
+            // running out to the stem, so the wedge is the ship's actual nose. When
+            // the slab ran the full 244m the wedge sat inside it and the hull ended
+            // in a squared-off block with a triangle recessed in it.
+            add(geometry.panel, hull, 0, 4.4, 15, 44, 8.8, 222);
+            // Boot topping / waterline band, the same dark stripe every hull here
+            // wears at its own scale.
+            add(geometry.panel, dark, 0, 0.8, 15, 44.6, 1.9, 223);
+            // Tumblehome: two long slabs rolled INBOARD ~14 degrees, so the sides
+            // lean in from the waterline to the deck edge. This is the stealth read
+            // and the one thing no other hull in the game does — the Aegis' sides
+            // are vertical. Rolled about z, so port leans +x-up and starboard -x-up.
+            // Set OUTBOARD of the core slab's own faces (x +/-19) so the lean is a
+            // visible overhang from the side, not a slab buried inside another slab.
+            add(geometry.panel, hull, -21.4, 5.6, 16, 4.6, 11.4, 218, 0, 0, 0.25);
+            add(geometry.panel, hull, 21.4, 5.6, 16, 4.6, 11.4, 218, 0, 0, -0.25);
+            // Knuckle line where the tumblehome meets the deck edge — a thin dark
+            // strake that draws the inward lean as a hard edge instead of a soft one.
+            add(geometry.panel, dark, -20.0, 8.6, 16, 2.4, 0.6, 218, 0, 0, 0.25);
+            add(geometry.panel, dark, 20.0, 8.6, 16, 2.4, 0.6, 218, 0, 0, -0.25);
+            // Faceted bow. A wave-piercing wedge rather than the Aegis' knife: wide
+            // at the base, raked, and SHORT — the point is that it looks like it was
+            // designed to be invisible rather than to be fast.
+            //
+            // geometry.shipBow is a FOUR-SIDED cone whose scale is a RADIUS, not a
+            // width: sx is the half-beam of its base, and the base sits aft with the
+            // point forward once it is rotated -PI/2 about X. The Aegis' numbers are
+            // the calibration — a 19-wide hull carries sx 9.5, i.e. exactly half —
+            // so a 44-wide hull wants sx 22 to meet it flush. sx 30 made the stem
+            // visibly flare wider than the ship, which is what the last pass showed.
+            //
+            // sy is then the -Z run and sz the height: 26m of entry, 9.6m tall, so
+            // the wedge is a long shallow stealth stem rather than the flat blade
+            // (sz 5.4) or the stubby barge nose (sy 14) of the two passes before it.
+            add(geometry.shipBow, hull, 0, 4.6, -109, 22, 26, 9.6, -Math.PI / 2);
+            // Forecastle breakwater: a low angled plate across the deck ahead of the
+            // first cell field, abaft the wedge's root at z -95. Set at y 9.6 so it
+            // stands just proud of the hatches it shelters — the one thing forward of
+            // the island allowed to break the flush deck line, and only by a metre.
+            add(geometry.panel, house, 0, 9.6, -92, 26, 1.9, 4, 0.36);
+            // Transom — flat cut stern, squared off, another line the fleet's other
+            // hulls do not have.
+            add(geometry.panel, hull, 0, 4.9, 120, 41, 9.6, 8);
+            add(geometry.panel, dark, 0, 4.9, 124.4, 37, 8, 1.2);
+
+            // =====================================================================
+            // 2. The deck — one flush plane, and the four cell fields ON it
+            // =====================================================================
+            // The deck is NARROWER than the waterline beam (40 against 44) because
+            // of the tumblehome. Flush from the breakwater right aft to the island,
+            // with nothing standing on it except cells.
+            // Runs z -108 to +122: it stops at the breakwater rather than carrying on
+            // over the bow wedge, which is what made the deck visibly overhang the
+            // stem in profile.
+            add(geometry.panel, deck, 0, 8.4, 7, 40, 1.2, 230);
+            // Deck-edge coaming: a low continuous lip so the cell fields read as
+            // being set INTO a deck rather than stacked on top of a slab.
+            add(geometry.panel, house, -19.4, 9.1, 7, 1.4, 1.6, 228);
+            add(geometry.panel, house, 19.4, 9.1, 7, 1.4, 1.6, 228);
+
+            // The VLS fields. The grid is PAINTED, not built cell by cell, for the
+            // same reason the carrier's runway markings are painted: 492 hatches is
+            // 984 meshes, two orders of magnitude past what any hull here costs, and
+            // the cells are flat lids seen from above — exactly the case a decal
+            // answers better than geometry. Each field is a plate (the armoured box
+            // the cells are sunk into) with one textured plane laid on it.
+            //
+            // The texture is this hull's only non-standard material, so it goes into
+            // `extraMaterials` and is disposed with the model - the same contract the
+            // carrier's deck skin follows. One canvas is shared by all four fields;
+            // per-field extent comes from the plane's scale and the texture's repeat,
+            // so a field is always a whole number of cells wide and long.
+            const cellCanvas = document.createElement("canvas");
+            cellCanvas.width = 64;
+            cellCanvas.height = 64;
+            {
+              const g = cellCanvas.getContext("2d");
+              // One cell: a mid-grey lid on a near-black surround, with the centre
+              // seam every real hatch has. Drawn once and tiled, so the pitch is
+              // exact.
+              //
+              // The gaps are WIDE (7 of 64 px) and the lid is deliberately NOT white.
+              // This is an unlit MeshBasicMaterial, so it takes no shading from the
+              // preview's key light and none from the map's sun: whatever contrast
+              // the canvas has is all the contrast there will ever be, at every
+              // range and every angle. A pale lid on a thin seam turned the fields
+              // into four blank white slabs in the three-quarter views - the grid
+              // only survived looking straight down. Dark seams this wide keep it
+              // legible where the player actually sees the ship, from off the bow.
+              g.fillStyle = friendly ? "#161d27" : "#1b1f24";
+              g.fillRect(0, 0, 64, 64);
+              g.fillStyle = friendly ? "#5d718a" : "#6d757d";
+              g.fillRect(7, 7, 50, 50);
+              g.fillStyle = friendly ? "#161d27" : "#1b1f24";
+              g.fillRect(29, 7, 6, 50);
+              // Hinge line along one edge, so the lids read as lids and the field has
+              // a direction rather than being a chequerboard.
+              g.fillStyle = friendly ? "#93a8bd" : "#9ea7af";
+              g.fillRect(7, 7, 50, 6);
+            }
+            // `fieldCount` hands the first field the original texture and every later
+            // one a clone, so the CanvasTexture that is made here always ends up
+            // owned by a material in `extraMaterials` rather than orphaned.
+            const cellTexture = new THREE.CanvasTexture(cellCanvas);
+            let fieldCount = 0;
+
+            // buildCellField(zc, cols, rows) lays a cols x rows field centred on
+            // (0, zc) at pitch 2.9m. Twelve columns spans 34.8m across a 40m deck, so
+            // the grid runs very nearly rail to rail and the walkways left over are
+            // the narrow strips a real ship has, not empty deck.
+            const pitch = 2.9;
+            const buildCellField = (zc, cols, rows) => {
+              const w = cols * pitch;
+              const len = rows * pitch;
+              // Field surround: the armoured box the cells are sunk into, standing a
+              // little proud of the deck so the field has a visible edge in profile.
+              add(geometry.panel, house, 0, 8.7, zc, w + 1.8, 0.9, len + 1.8);
+              add(geometry.panel, dark, 0, 9.16, zc, w + 1.0, 0.22, len + 1.0);
+              // The cell grid itself, one plane laid flat on the box top. Each field
+              // needs its OWN texture object: `repeat` lives on the texture, so a
+              // single shared map would end up wearing the last field's cell count on
+              // all four. The clones share the one source canvas, and each rides in
+              // `extraMaterials` with the material that holds it - which is what
+              // disposes it with the model. A material made in build() and left out
+              // of that array is the one way a payload hull can leak.
+              const map = fieldCount === 0 ? cellTexture : cellTexture.clone();
+              fieldCount += 1;
+              map.needsUpdate = true;
+              map.wrapS = THREE.RepeatWrapping;
+              map.wrapT = THREE.RepeatWrapping;
+              map.repeat.set(cols, rows);
+              // No mipmaps. A field is about a hundred pixels across on screen while
+              // carrying a dozen cells, so every mip level past the first averages the
+              // seams into the lids and the field turns into one pale slab - which is
+              // exactly what the three-quarter views showed before this line. Linear
+              // magnification with a LinearMipmap minFilter is the default and is the
+              // wrong default here: the grid IS the ship's identity, so it is worth
+              // the aliasing to keep it visible at the range the player flies at.
+              map.generateMipmaps = false;
+              map.minFilter = THREE.LinearFilter;
+              map.magFilter = THREE.LinearFilter;
+              const fieldSkin = new THREE.MeshBasicMaterial({ map });
+              extraMaterials.push(fieldSkin);
+              add(geometry.shipDeck, fieldSkin, 0, 9.29, zc, w, len, 1, -Math.PI / 2);
+            };
+
+            // Four fields running z -87.5 to +76.5 with only 4m walkways between them:
+            // 164m of the 250m hull is cell hatch, which is the "one whole face of
+            // the deck is grid" requirement made literal. 536 cells.
+            //
+            // vls-1  { x 0, y 9.4, z -73 } — forecastle field, 8 x 10 = 80 cells.
+            // Four columns narrower and four rows shorter than the main fields: the
+            // hull is still tapering into the 30m bow wedge here (root at z -95), and
+            // a field any longer would put hatches inside the stem.
+            buildCellField(-73, 8, 10);
+            // vls-2  { x 0, y 9.4, z -34 } — forward main field, 12 x 14 = 168 cells.
+            buildCellField(-34, 12, 14);
+            // vls-3  { x 0, y 9.4, z  18 } — after main field, 12 x 14 = 168 cells.
+            buildCellField(18, 12, 14);
+            // vls-4  { x 0, y 9.4, z  62 } — quarterdeck field, 12 x 10 = 120 cells.
+            // Ten rows rather than fourteen: at pitch 2.9 this field runs out to
+            // z 76.5, and the island's forward face is at z 77. Fourteen would put
+            // hatches inside the superstructure.
+            buildCellField(62, 12, 10);
+
+            // Deck striping in the walkways between the fields: the only bare deck on
+            // the ship, painted so the fields read as four separate blocks instead of
+            // one continuous carpet. This is what makes "four lockable quadrants"
+            // visible before the player locks anything.
+            for (const z of [-60, -8, 41]) {
+              add(geometry.shipDeck, markings, 0, 9.05, z, 36, 1.4, 1, -Math.PI / 2);
+            }
+
+            // =====================================================================
+            // 3. Aft island — the ONLY superstructure
+            // =====================================================================
+            // Small, faceted, and shoved right aft at z +88, which leaves 200m of
+            // clear cell deck ahead of it. Sides tapered inboard to match the hull's
+            // tumblehome so the whole ship shares one geometry language.
+            add(geometry.panel, house, 0, 13.4, 89, 26, 9, 24);
+            add(geometry.panel, house, -12.6, 13.4, 89, 2.6, 8.6, 23, 0, 0, 0.24);
+            add(geometry.panel, house, 12.6, 13.4, 89, 2.6, 8.6, 23, 0, 0, -0.24);
+            // Bridge box on top, set forward on the island so it overlooks the deck.
+            add(geometry.panel, house, 0, 20.4, 85, 19, 5, 13);
+            add(geometry.panel, dark, 0, 22.3, 85, 19.6, 0.9, 13.6);
+            // Bridge windows — one dark band round the front face.
+            add(geometry.panel, dark, 0, 21.4, 78.3, 17.6, 1.9, 0.6);
+            // Faceted enclosed mast: a single tapered tower, not a lattice. Stealth
+            // ships hide their antennas inside one; the frigate's open lattice is the
+            // deliberate contrast. Kept SHORT relative to the hull (tops out at 34m
+            // against a 250m length) so nothing on this ship out-reads the deck.
+            add(geometry.panel, house, 0, 28.4, 91, 8.4, 8.4, 8.4);
+            add(geometry.panel, house, 0, 33.6, 91, 5, 4, 5);
+            add(geometry.shipOctPlate, light, 0, 36.2, 91, 3.4, 0.5, 3.4);
+            add(geometry.shipCylinder, dark, 0, 38.8, 91, 0.34, 4.6, 0.34);
+            // Exhaust: two flush uptakes let into the island roof aft, angled, rather
+            // than a funnel standing proud of it.
+            add(geometry.panel, dark, -5.6, 18.6, 97, 4, 2.4, 7, -0.22);
+            add(geometry.panel, dark, 5.6, 18.6, 97, 4, 2.4, 7, -0.22);
+            // Helipad on the quarterdeck abaft the island — the one flat thing left.
+            add(geometry.panel, deck, 0, 9.3, 111, 30, 0.7, 18);
+            add(geometry.shockRing, markings, 0, 9.72, 111, 7.4, 7.4, 1, -Math.PI / 2);
+
+            // =====================================================================
+            // 4. Self defence — two CIWS drums, and that is the entire fit
+            // =====================================================================
+            // Asymmetric on purpose: the port drum is on a deck-edge tub level with
+            // the island front, the starboard one is a deck higher on the island's
+            // own shoulder. From the front three-quarter the ship therefore shows one
+            // gun where a warship shows a battery, which is the whole read.
+            //
+            // ciws subsystem { x -15, y 13.4, z 78 } == the PORT tub + drum below.
+            add(geometry.panel, house, -18, 11.2, 78, 7, 3.4, 9);
+            add(geometry.shipCylinder, light, -18, 13.4, 78, 2.1, 2.4, 2.1);
+            add(geometry.panel, dark, -18, 15.4, 74.4, 0.55, 0.55, 6.4, -0.3);
+            // Starboard drum: hardware only, no subsystem entry — the design intent
+            // is a single lockable CIWS, and a second lock box on a 250m hull whose
+            // point is its cell fields would dilute the NEXT walk.
+            add(geometry.panel, house, 15.6, 15.2, 92, 6, 3.2, 8);
+            add(geometry.shipCylinder, light, 15.6, 17.5, 92, 2, 2.3, 2);
+            add(geometry.panel, dark, 15.6, 19.4, 88.6, 0.5, 0.5, 6, -0.3);
+            // Two decoy launcher blocks flanking the quarterdeck, low and canted with
+            // the tumblehome. Small enough not to break the "one superstructure" read.
+            add(geometry.panel, dark, -17.2, 10.4, 104, 3.4, 2.4, 5, 0, 0, 0.22);
+            add(geometry.panel, dark, 17.2, 10.4, 104, 3.4, 2.4, 5, 0, 0, -0.22);
+          }
+        });
+      },
+      "ship_arsenal"
+    ); // @payload:ship_arsenal
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+        const carrier = SHIP_TYPES.carrier;
+        if (!carrier) {
+          throw new Error("[lhd] expected the carrier entry to spread from");
+        }
+
+        // BALANCE TODO: placeholder. Everything not listed in the overrides below is
+        // the carrier's number, inherited by spread and deliberately untouched:
+        // cruiseSpeed, turnRate, the whole `aa` spec, blastSpread, smokeOffset,
+        // smokeHeight, radarColor / tracerColor / explosionColor. A 257 m amphib
+        // should not steer, shoot or burn exactly like a 330 m supercarrier - hp
+        // 1040 in particular is four LASM, which is capital-ship money for a hull
+        // whose job is to be interrupted rather than to be a fortress. Left as-is on
+        // purpose: this payload is a MODEL, and picking those numbers is a balance
+        // pass with missions to test them in, which this is not.
+        //
+        // What IS authored here: identity (key/label/role), the hull's physical size
+        // (hitRadius / crash / hitBox / sinkDepth / stern-bow offsets), and the
+        // subsystem fit, because all of those are statements about the geometry
+        // below and would be simply wrong if inherited from a 330 m hull.
+        ctx.addShipType("lhd", {
+          ...carrier,
+          key: "lhd",
+          surface: true,
+          label: "LHD",
+          role: "Amphibious Assault Ship",
+          // Sized off the model, not off the carrier. Hull 257 m long x 48 m over
+          // the flight deck x 64 m from waterline to the island's mast head.
+          hitRadius: 118,
+          crash: Object.freeze({ halfLen: 130, halfBeam: 26, top: 24 }),
+          hitBox: Object.freeze({ x: 52, y: 44, z: 264 }),
+          sinkDepth: 36,
+          sternOffset: 126,
+          bowOffset: 130,
+          // The two gun tubs the ciws subsystems sit on, in hull-local z. Read by
+          // the AA burst code for tracer origins, so they have to be the model's
+          // own mounts and nothing else.
+          aaMounts: Object.freeze([-108, 110]),
+          aaHeight: 24,
+          // NEXT-target walk: hull, then this array in order. Every offset below is
+          // the centre of a part the build() function actually draws - the numbers
+          // are repeated in comments at each part so the two cannot drift.
+          //
+          // Fit is a real Wasp's: no VLS anywhere (an amphib carries none), one gun
+          // position up on the island, and a CIWS drum at each end of the deck.
+          subsystems: Object.freeze([
+            // -> island gun tub: shipCylinder at (18, 24.4, -20), barrel above it.
+            Object.freeze({ key: "aa-island", kind: "aa", offset: Object.freeze({ x: 18, y: 25, z: -20 }) }),
+            // -> forward CIWS drum: shipCylinder at (-24, 23.6, -108) on the port
+            //    bow deck-edge sponson.
+            Object.freeze({ key: "ciws-fore", kind: "ciws", offset: Object.freeze({ x: -24, y: 24, z: -108 }) }),
+            // -> aft CIWS drum: shipCylinder at (24, 23.6, 110) on the starboard
+            //    quarter sponson.
+            Object.freeze({ key: "ciws-aft", kind: "ciws", offset: Object.freeze({ x: 24, y: 24, z: 110 }) })
+          ])
+        });
+
+        ctx.addShipModel("lhd", {
+          build(env) {
+            const {
+              geometry, add,
+              hull, deck, house, dark, light, olive2, markings
+            } = env;
+
+            // ---- Hull -------------------------------------------------------
+            // 226 m of parallel body, 36 wide at the waterline, with the bow wedge
+            // carrying the forward 31 m. Boot topping (the dark band) is drawn a
+            // touch proud of the hull exactly as the carrier and Aegis draw theirs.
+            add(geometry.panel, hull, 0, 8, 10, 36, 18, 226);
+            // shipBow is ConeGeometry(1, 1, 4) - a 4-sided pyramid of RADIUS 1 and
+            // HEIGHT 1. Three.js composes as T*R*S, so the scale is applied in the
+            // cone's OWN frame and only then swung round by the -PI/2 x-rotation.
+            // That means the axes are not what the argument names suggest, and
+            // getting it wrong is how the first pass hung a black fin under the
+            // keel (sy 22 on an 18 m hull = a 44 m deep wedge):
+            //   sx -> half-BEAM   (18 => 36 m across, matching the 36 m hull)
+            //   sy -> LENGTH      (31 => the forward 31 m, tip landing at z -128.5)
+            //   sz -> half-DEPTH  (9  => 18 m tall, exactly the hull's 18, so the
+            //         wedge's top and bottom are the hull's own)
+            // Cross-check against the Aegis, which is the same idiom at 155 m:
+            // (9.5, 20, 5) on a hull 19 wide x 9 tall x 128 long.
+            add(geometry.shipBow, hull, 0, 8, -113, 18, 31, 9, -Math.PI / 2);
+            add(geometry.panel, dark, 0, 1, 10, 36.6, 2, 227);
+            // Sponson shelf: the hull flares out under the deck overhang along the
+            // whole parallel body, which is what stops the flight deck from looking
+            // like a plank balanced on a box in the side and front views.
+            add(geometry.panel, hull, -19, 15, 6, 6, 7, 196);
+            add(geometry.panel, hull, 19, 15, 6, 6, 7, 196);
+
+            // ---- Well dock --------------------------------------------------
+            // The identity mark at the stern: the transom is left OPEN. Rather than
+            // one box across the back, the aft 44 m of hull is drawn as two side
+            // walls and a floor, so there is a real 15 m x 40 m hole you can see
+            // into from the rear 3/4 view. The gate lies flat in the water behind
+            // it, lowered, which is what an LHD looks like when it is working.
+            add(geometry.panel, hull, -13.5, 8, 105, 9, 18, 48);
+            add(geometry.panel, hull, 13.5, 8, 105, 9, 18, 48);
+            // Dock floor, awash - dark so the opening reads as a shadowed cavity
+            // rather than a notch in a bright surface. Dropped to y 2.6 and the
+            // walls left full height so the cavity is 12 m deep at the transom,
+            // which is what makes it survive being lit from above in the TOP view.
+            add(geometry.panel, dark, 0, 2.6, 105, 18, 2, 48);
+            // Dock side walls, inboard faces, in the dark paint - two more surfaces
+            // of shadow inside the mouth. Without these the first render read the
+            // opening as a flat notch rather than a hole.
+            add(geometry.panel, dark, -9.4, 8, 105, 1.2, 16, 48);
+            add(geometry.panel, dark, 9.4, 8, 105, 1.2, 16, 48);
+            // Overhead of the dock (the underside of the flight deck aft) and the
+            // transom lintel over the opening.
+            add(geometry.panel, dark, 0, 16.6, 105, 18, 3, 48);
+            // Lowered stern gate: a ramp hinged at the sill, angled down aft.
+            add(geometry.panel, light, 0, 3, 134, 17, 1.4, 18, 0.3);
+            // Two LCACs / landing craft chocked in the dock, army green like the
+            // LST's vehicles - the cargo is the point, so it is drawn. Sat down in
+            // the well (y 5.0) so they are seen THROUGH the transom mouth, which is
+            // the readout that the opening is an opening.
+            add(geometry.panel, olive2, 0, 5, 96, 12, 3.4, 18);
+            add(geometry.panel, dark, 0, 7.4, 94, 7, 1.6, 7);
+            add(geometry.panel, olive2, 0, 5, 118, 12, 3.4, 18);
+            add(geometry.panel, dark, 0, 7.4, 116, 7, 1.6, 7);
+
+            // ---- Flight deck ------------------------------------------------
+            // 250 m x 48 m, flush, no angle and no catapult. Drawn as a solid slab
+            // (not the carrier's textured plane, which paints jet runway decals -
+            // exactly the wrong marks for this ship) with the deck edge picked out
+            // dark so the plan view has an outline. Ends at z +126, so the deck
+            // overhangs the well dock rather than being cut short of it - which is
+            // what a real LHD does, and why the dock is a cave rather than a trench.
+            add(geometry.panel, deck, 0, 20, 1, 48, 3, 250);
+            // Deck edge, drawn just BELOW the deck surface rather than flush with
+            // it. The second pass had these standing proud at deck level, where a
+            // 1.4 m dark stripe down each side ate 3 m off a 48 m deck in the TOP
+            // view and made the beam the ship was widened for read as narrow again.
+            add(geometry.panel, dark, -23.8, 18.9, 1, 1.2, 2.2, 250);
+            add(geometry.panel, dark, 23.8, 18.9, 1, 1.2, 2.2, 250);
+            // Deck-edge safety nets, port side and forward - thin dark strips just
+            // below deck level, the detail that keeps the side view from being two
+            // flat rectangles.
+            add(geometry.panel, dark, -25.4, 18.8, 1, 3, 0.5, 236);
+            add(geometry.panel, dark, 25.4, 18.8, -60, 3, 0.5, 110);
+            // Deck-edge aircraft elevator, port side aft - a Wasp's second elevator
+            // hangs off the port quarter, and it is the one asymmetry on this side.
+            add(geometry.panel, deck, -26.5, 20, 60, 8, 2.6, 24);
+
+            // ---- Helo spots -------------------------------------------------
+            // Nine landing circles down the deck, painted white with the shockRing
+            // geometry (an annulus) laid flat - the same part the Aegis and frigate
+            // use for their single helo circle, so the paint reads the same on all
+            // three hulls. Radius 9 m spots on a 26 m pitch: the column of rings IS
+            // the "this ship flies helicopters" signal from the top view, and there
+            // is no other way to say it at this range.
+            //
+            // The column runs down the PORT half of the deck (x -7) rather than the
+            // centreline, because the island eats the starboard side aft - which is
+            // where a Wasp's spots actually are, and it also leaves the starboard
+            // strip free as the taxi lane the parked airframes sit on.
+            for (let spot = 0; spot < 9; spot += 1) {
+              const sz = -110 + spot * 26;
+              add(geometry.shockRing, markings, -10, 21.6, sz, 9.5, 9.5, 1, -Math.PI / 2);
+            }
+            // Spot numbers, or as close as a primitive gets to one: a short bar
+            // painted just outboard of each circle, alternating side so the deck
+            // does not read as one dashed line.
+            for (let spot = 0; spot < 9; spot += 1) {
+              const sz = -110 + spot * 26;
+              add(geometry.panel, markings, spot % 2 ? -21.5 : 1.5, 21.6, sz, 3.6, 0.4, 1.2);
+            }
+
+            // ---- Island -----------------------------------------------------
+            // Compact, TALL, and hard against the starboard deck edge (x +18 on a
+            // 48-wide deck, i.e. the outboard sixth) rather than the carrier's long
+            // low block set inboard. Height is the readable difference: this island
+            // stands 34 m above the deck on a 12 m footprint, so from the side it
+            // is a tower, where the carrier's is a shed with a pole on it.
+            //
+            // Two renders were spent losing this island in the deck. The fix was not
+            // more parts, it was VALUE: the deck slab and `house` sit close enough
+            // in tone that a superstructure painted entirely in `house` disappears
+            // against it from directly overhead, which is the view the player spends
+            // an attack run in. The base block stays `house`, but every level above
+            // it steps up to `light` (the near-white the masts and gun tubs use), so
+            // the tower reads as a bright stack against a dark deck in the TOP view
+            // and as a silhouette in the two three-quarters.
+            // Footprint is 14 m x 48 m. A real Wasp's island is about 50 m long on a
+            // 250 m deck and the fourth render still had this at 34 - readable, but
+            // reading as a deckhouse rather than as the ship's one tower. 48 is the
+            // number that makes the starboard side of the TOP view look occupied.
+            add(geometry.panel, house, 18, 29, 8, 14, 15, 48);
+            add(geometry.panel, light, 18, 39.5, -2, 11.5, 7.5, 28);
+            add(geometry.panel, dark, 18, 43.6, -2, 12.1, 1.2, 28.6);
+            // Bridge windows: one dark band wrapping the forward face of the upper
+            // block, tilted like a real bridge visor.
+            add(geometry.panel, dark, 18, 40, -15.8, 11.7, 3.4, 1.4, -0.22);
+            // Two uptakes / stacks aft on the island - a Wasp has a pair, and they
+            // are the easiest way to tell the island from the carrier's single one.
+            add(geometry.panel, light, 18, 42, 17, 8, 11, 10);
+            add(geometry.panel, dark, 18, 47.8, 17, 8.4, 1.6, 10.4);
+            add(geometry.panel, light, 18, 40, 28, 6.8, 9, 8);
+            add(geometry.panel, dark, 18, 44.8, 28, 7.2, 1.6, 8.4);
+            // Mast: two canted legs and a cross brace, topped by an octagonal air
+            // search plate and a whip - the frigate's lattice idiom, shortened.
+            add(geometry.shipCylinder, dark, 16.4, 52, 5, 0.6, 16, 0.6, 0, 0, 0.07);
+            add(geometry.shipCylinder, dark, 19.6, 52, 5, 0.6, 16, 0.6, 0, 0, -0.07);
+            add(geometry.panel, dark, 18, 55, 5, 5.2, 0.5, 0.5);
+            add(geometry.shipOctPlate, light, 18, 61, 5, 4, 0.8, 4, Math.PI / 2, 0, 0.5);
+            add(geometry.shipCylinder, dark, 18, 65, 5, 0.34, 6, 0.34);
+            // SPS-style flat panels on the island's two faces, port and outboard.
+            add(geometry.shipOctPlate, light, 25.4, 34, -8, 3.2, 0.8, 3.2, Math.PI / 2, 0, Math.PI - 0.5);
+            add(geometry.shipOctPlate, light, 10.6, 34, -8, 3.2, 0.8, 3.2, Math.PI / 2, 0, 0.5);
+
+            // ---- Subsystem hardware -----------------------------------------
+            // Every mount below is drawn where its subsystems offset says it is.
+            // aa-island  -> (18, 25, -20)    gun tub + barrel on the island's front
+            add(geometry.shipCylinder, light, 18, 24.4, -20, 2.4, 2.6, 2.4);
+            add(geometry.panel, dark, 18, 26.6, -24.6, 0.55, 0.55, 8, -0.3);
+            // ciws-fore  -> (-24, 24, -108)  drum on the port bow deck-edge sponson
+            add(geometry.panel, dark, -24, 20.4, -108, 7, 5, 14);
+            add(geometry.shipCylinder, light, -24, 23.6, -108, 2.1, 2.4, 2.1);
+            add(geometry.enemyHitbox, light, -24, 25.8, -108, 0.17, 0.17, 0.17);
+            // ciws-aft   -> (24, 24, 110)    drum on the starboard quarter sponson
+            add(geometry.panel, dark, 24, 20.4, 110, 7, 5, 14);
+            add(geometry.shipCylinder, light, 24, 23.6, 110, 2.1, 2.4, 2.1);
+            add(geometry.enemyHitbox, light, 24, 25.8, 110, 0.17, 0.17, 0.17);
+
+            // ---- Parked helicopters -----------------------------------------
+            // Three airframes chocked down the STARBOARD taxi lane, clear of the
+            // spot column and forward of the island. Deliberately crude - a
+            // fuselage box, a tail boom, rotor BLADES and a tail rotor - because
+            // createHeliModel is the flying unit's model and calling it here would
+            // put a 4-metre-scale detailed helo on a 257-metre ship AND tie this
+            // hull's build to that function's material contract.
+            //
+            // The rotor is drawn as FOUR THIN BLADES rather than the solid disc the
+            // first pass used. A 19 m opaque disc at deck level rendered as a black
+            // hole punched in the flight deck from directly overhead - it hid the
+            // airframe underneath it and read as damage, not as an aircraft. Blades
+            // let the deck and the fuselage show through the swept circle, which is
+            // what makes the shape parse as a helicopter from the TOP view, and the
+            // top view is the one where the deck clutter matters at all.
+            //
+            // Proportions are a Sea Stallion's: 22 m fuselage under a 22 m rotor,
+            // which is why the blades reach past the tail boom.
+            // PAINT ORDER matters more than the parts here, and the third render is
+            // what proved it: with the blades in `light` over an `olive2` fuselage,
+            // the TOP view showed three bright X's floating on a deck with no
+            // aircraft under them. The rotor was the brightest thing in the group
+            // and the airframe the dimmest, which is exactly backwards - the blades
+            // are the accessory, the fuselage is the object. So the fuselage is now
+            // `light` (it is the thing that must be seen) and the rotor is `dark`
+            // (a shadow over it), which is also how a real grey-on-grey deck shot
+            // reads.
+            // All three sit FORWARD of the island (which now runs z -16 .. +32) with
+            // the aftmost airframe's tail 6 m clear of the island's front face.
+            const parked = [
+              { x: 13, z: -100, ry: 0.16 },
+              { x: 13, z: -68, ry: -0.1 },
+              { x: 13, z: -36, ry: 0.22 }
+            ];
+            for (const helo of parked) {
+              const { x, z, ry } = helo;
+              const sin = Math.sin(ry);
+              const cos = Math.cos(ry);
+              // Fuselage, then the olive cockpit block stepped down at the nose.
+              add(geometry.panel, light, x, 23.8, z, 5.4, 4.2, 15, 0, ry, 0);
+              add(geometry.panel, olive2, x + sin * 8.8, 23.2, z - cos * 8.8, 4.2, 3.2, 4.6, 0, ry, 0);
+              // Sponsons either side of the fuselage - the wide stance is what tells
+              // a naval transport helo from a gunship at a glance.
+              add(geometry.panel, olive2, x - cos * 3.4, 22.5, z - sin * 3.4, 1.9, 1.9, 6.4, 0, ry, 0);
+              add(geometry.panel, olive2, x + cos * 3.4, 22.5, z + sin * 3.4, 1.9, 1.9, 6.4, 0, ry, 0);
+              // Tail boom running aft, the fin, and the tail rotor disc on its side.
+              add(geometry.panel, light, x - sin * 10.4, 24.4, z + cos * 10.4, 1.8, 1.8, 8, 0, ry, 0);
+              add(geometry.panel, light, x - sin * 14.4, 26.6, z + cos * 14.4, 1.1, 5.2, 3.2, 0, ry, 0);
+              add(geometry.shipCylinder, dark, x - sin * 14.4 + 1.2, 27.6, z + cos * 14.4,
+                2.6, 0.3, 2.6, 0, 0, Math.PI / 2);
+              // Rotor head on its mast, then the blades. TWO crossed blades rather
+              // than the four an earlier pass drew: four at 45 deg spacing put eight
+              // thin spokes in one circle and the TOP view read them as a scribble -
+              // a spider on the deck, not a rotor. Two wide blades read as a rotor
+              // at any size the ship is ever seen at, and they are also what a
+              // parked airframe with its blades spread looks like from above once
+              // the disc is not turning.
+              add(geometry.shipCylinder, dark, x, 26.4, z - 1, 0.9, 2, 0.9);
+              add(geometry.panel, dark, x, 27.4, z - 1, 2.2, 0.4, 21, 0, ry + 0.35, 0);
+              add(geometry.panel, dark, x, 27.4, z - 1, 2.2, 0.4, 21, 0, ry + 0.35 + Math.PI / 2, 0);
+            }
+          }
+        });
+      },
+      "ship_lhd"
+    ); // @payload:ship_lhd
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+        const frigate = SHIP_TYPES.frigate;
+        if (!frigate) {
+          throw new Error("[ssgn] expected the frigate ship template to exist");
+        }
+
+        // BALANCE TODO: placeholder. hp, cruiseSpeed, turnRate and the entire `aa`
+        // block are the frigate's numbers verbatim, spread in and left alone. Only
+        // identity, dimensions and the subsystem layout are authored here. A real
+        // pass should make this thing slow, near-blind to aircraft (a surfaced boat
+        // has essentially no AA fit worth the name) and expensive to kill in the
+        // window it is up - none of which is true of a Perry-class frigate.
+        ctx.addShipType("ssgn", {
+          ...frigate,
+          key: "ssgn",
+          surface: true,
+          label: "SSGN",
+          role: "Cruise Missile Submarine",
+          // BALANCE TODO: placeholder (frigate's 196 = exactly 2 missiles).
+          hp: frigate.hp,
+          // Dimensions, and only these, are authored. 170 m hull, 18.4 m beam, and a
+          // profile that is almost entirely below the sightline: hitBox y 29 covers
+          // the sail crown at 27.4 with a hand's width to spare, and its x 20 covers
+          // the 18.4 beam. Everything is measured off the model below.
+          hitRadius: 74,
+          crash: Object.freeze({ halfLen: 84, halfBeam: 10, top: 28 }),
+          hitBox: Object.freeze({ x: 20, y: 29, z: 170 }),
+          // Shallow: there is not much of it above the water to sink in the first
+          // place, so a deep settle would drop the wreck out of sight instantly.
+          sinkDepth: 14,
+          blastSpread: 28,
+          smokeOffset: -18,
+          smokeHeight: 11,
+          sternOffset: 82,
+          bowOffset: 84,
+          // BALANCE TODO: placeholder. One notional mount on the sail, at the sail's
+          // own z, so the tracer at least leaves the only structure that could carry
+          // a gun. `aa` itself is the frigate's, unchanged.
+          aaMounts: Object.freeze([-30]),
+          aaHeight: 20,
+          // NEXT-target walk: hull, then the two hatch rows, then the sail.
+          //
+          // Every offset is a part this file actually draws, and the y values are the
+          // coaming crowns rather than the casing, so a lock box sits ON the hardware:
+          //   vls-port  x -7.4 / z  0  = centre of the PORT hatch row (6 coamings at
+          //                              x -7.4, z -34..+34), coaming crown y 8.3
+          //   vls-stbd  x  7.4 / z  0  = centre of the STARBOARD row, same numbers
+          //   aa-sail   x  0   / z -30 = the sail, whose block spans z -47..-13;
+          //                              y 16 is mid-fin, not the crown, so the box
+          //                              covers the fin rather than floating over it
+          subsystems: Object.freeze([
+            Object.freeze({ key: "vls-port", kind: "vls", offset: Object.freeze({ x: -7.4, y: 8.3, z: 0 }) }),
+            Object.freeze({ key: "vls-stbd", kind: "vls", offset: Object.freeze({ x: 7.4, y: 8.3, z: 0 }) }),
+            Object.freeze({ key: "aa-sail", kind: "aa", offset: Object.freeze({ x: 0, y: 16, z: -30 }) })
+          ]),
+          // Cooler than the surface fleet's ambers, which is the radar's own way of
+          // saying "different class of target".
+          radarColor: "#9fd6c4",
+          tracerColor: 0xffb04a,
+          explosionColor: 0xffa348
+        });
+
+        ctx.addShipModel("ssgn", {
+          build(env) {
+            const { geometry, add, hull, deck, dark, light, markings } = env;
+
+            // ---- Pressure hull ---------------------------------------------------
+            // A cylinder lying along Z, 18.4 m across the beam and 170 m long, sunk so
+            // that its AXIS IS AT y -1.6, i.e. BELOW the waterline. Only the top of
+            // the barrel is above y 0, which is the whole trick: nothing under the
+            // sea is modelled because the sea cuts it off, and the part that shows is
+            // a low round back with a crown at y 7.2 and a 12 m wide wet strip at the
+            // waterline where the round shoulders meet it. That is 5.6 m of freeboard
+            // on a 170 m hull - a third of the frigate's proportion.
+            add(geometry.shipCylinder, hull, 0, -1.6, 0, 9.2, 170, 8.8, Math.PI / 2);
+            // Rounded nose and tail caps: stepped-down cylinders on the same sunken
+            // axis, so the hull tapers to a blunt round nose and a blunt round tail.
+            // shipBow is deliberately absent from this file - a clipper stem is the
+            // one silhouette cue that would make this read as a surface combatant.
+            add(geometry.shipCylinder, hull, 0, -1.6, -84, 8.2, 14, 7.8, Math.PI / 2);
+            add(geometry.shipCylinder, hull, 0, -1.9, -91, 6.2, 10, 5.8, Math.PI / 2);
+            add(geometry.shipCylinder, hull, 0, -2.4, -96, 3.6, 8, 3.4, Math.PI / 2);
+            add(geometry.shipCylinder, hull, 0, -1.6, 84, 8.4, 14, 8, Math.PI / 2);
+            add(geometry.shipCylinder, hull, 0, -1.9, 91, 6.4, 10, 6, Math.PI / 2);
+            add(geometry.shipCylinder, hull, 0, -2.4, 96.5, 3.8, 8, 3.6, Math.PI / 2);
+            // Boot topping: the wet band right at the waterline, the same trick the
+            // frigate and the Aegis use to stop the hull dissolving into the sea.
+            // Kept thin, because on this hull the waterline is most of what shows.
+            add(geometry.panel, dark, 0, 0.6, 0, 15.6, 1.4, 166);
+
+            // ---- Casing ----------------------------------------------------------
+            // The flat walking deck laid along the crown. Narrow (11 m of a 18.4 m
+            // beam) so the hull's round shoulders stay visible either side of it -
+            // that curve is what makes the shape read as a submarine rather than a
+            // barge. Painted `deck`, the one paint difference on an otherwise
+            // single-colour boat.
+            add(geometry.panel, deck, 0, 7.15, 0, 11, 0.5, 158);
+            // Anechoic-tile break lines. Four thin dark bands across the casing, which
+            // is the only surface detail on 170 m of otherwise blank hull and the
+            // thing that keeps the top-down view from reading as an untextured slab.
+            for (let i = 0; i < 4; i += 1) {
+              add(geometry.panel, dark, 0, 7.45, -62 + i * 41, 11.4, 0.3, 1.2);
+            }
+
+            // ---- Sail (conning tower) --------------------------------------------
+            // Block z -47..-13 (34 m long), x +/-3, rising from the casing at 7.2 to
+            // 25.7, with a faired step on top to 27.4. Long, thin and knife-edged: the
+            // Oscar's fin is a slab, not a tower, and the length is what stops it
+            // looking like a deckhouse from above.
+            add(geometry.panel, hull, 0, 16.4, -30, 6, 18.6, 34);
+            // Rakes, and they have to be as TALL as the fin they rake or they read as
+            // separate flaps lying against it - which is exactly what a short canted
+            // box did the first two times this was drawn. Each spans very nearly the
+            // fin's full height (y 8 to 24 against the block's 7.1 to 25.7), is
+            // centred INSIDE the block's end rather than butted onto it, and is
+            // rotated about x so the top edge overhangs the bottom: a leading edge
+            // raked back and a trailing edge swept forward.
+            add(geometry.panel, hull, 0, 16, -44.5, 6, 16.4, 9, 0.42);
+            add(geometry.panel, hull, 0, 16, -15.5, 6, 16, 8, -0.38);
+            add(geometry.panel, hull, 0, 26, -30, 5, 2.8, 28);
+            // Sail top: the bridge cockpit cut into the crown, and the raised masts.
+            // At this range the masts are what identify the fin as a conning tower.
+            add(geometry.panel, dark, 0, 27.6, -38, 3.4, 0.8, 8);
+            add(geometry.shipCylinder, dark, -1, 32, -30, 0.38, 11, 0.38);
+            add(geometry.shipCylinder, dark, 1, 33.6, -26.5, 0.34, 14, 0.34);
+            add(geometry.shipOctPlate, light, 1, 41, -26.5, 1.8, 0.35, 1.8);
+            // Sail planes: the horizontal fins out of the fin's shoulders. The only
+            // thing on the boat with any span, and the reason the fin reads as an
+            // aerofoil rather than a chimney from the front.
+            add(geometry.panel, hull, -6.6, 18.6, -28, 8, 0.8, 6, 0, 0, 0.09);
+            add(geometry.panel, hull, 6.6, 18.6, -28, 8, 0.8, 6, 0, 0, -0.09);
+
+            // ---- Missile hatches (THE feature) -----------------------------------
+            // Six SS-N-19 tubes per beam, drawn as two rows of OPEN hatches at
+            // x +/-7.4 running z -34 to +34 on 13.6 m centres. The pair of rows is
+            // what the subsystems `vls-port` / `vls-stbd` are measured on:
+            //   row centre z 0, coaming crown y 8.3, x +/-7.4 - the same three
+            //   numbers, unrounded, that the two `vls` offsets above carry.
+            //
+            // Each hatch is four parts, because "open" has to survive the top-down
+            // view, where a flat disc reads as a painted circle and a bump reads as a
+            // closed lid:
+            //   1. `light` coaming standing 1.1 m proud of the casing
+            //   2. `dark` bore standing proud of the COAMING - the hole itself, and
+            //      the reason the row reads as open rather than as twelve bumps
+            //   3. `light` lid standing up on edge outboard of the bore, leaning 26
+            //      deg so it is unmistakably a hinged door rather than more deck
+            //   4. a `markings` ring painted around the coaming - white paint at the
+            //      one place on the boat the eye is supposed to go
+            for (let i = 0; i < 6; i += 1) {
+              const hz = -34 + i * 13.6;
+              for (const side of [-1, 1]) {
+                const hx = side * 7.4;
+                // Coaming: a short wide cylinder, its crown at y 8.3 (= subsystem y).
+                // 3.4 m radius on a 11 m casing: the two rows take up the whole deck,
+                // which is what the real boat looks like and what makes the hatches
+                // the first thing read rather than a detail found later.
+                add(geometry.shipCylinder, light, hx, 7.6, hz, 3.4, 1.4, 3.4);
+                // The bore. The coaming is a SOLID cylinder, not a ring, so a bore
+                // sunk inside it is simply invisible from above - which is the one
+                // angle that has to work. It is therefore drawn as a narrower dark
+                // cylinder whose top face stands 0.25 m PROUD of the coaming's,
+                // reading as a dark disc inside a light annulus from overhead and as
+                // an open tube mouth from every oblique angle. 2.35 m of the coaming's
+                // 3.4 leaves a metre of visible lip all the way round.
+                add(geometry.shipCylinder, dark, hx, 7.1, hz, 2.35, 3.5, 2.35);
+                // The lid, hinged on the OUTBOARD lip and standing open on edge. Two
+                // constraints fight here and both are load-bearing: leaning it far
+                // enough inboard to stay inside the 9.2 m half-beam puts it over its
+                // own bore and hides the hole from directly overhead, which is the
+                // one angle that matters most. 26 deg of lean is the settlement - the
+                // door clears the dark disc in the top-down, still reads as hinged
+                // rather than as a wall, and its outer top corner reaches x 12.4,
+                // outboard of the hull but well inside the 20 m hitBox. At 12 of them
+                // it is the row of raised doors that carries "open" in the side view.
+                add(geometry.panel, light, hx + side * 3.5, 10.8, hz, 0.6, 6.2, 6, 0, 0, side * -0.46);
+                // Painted ring around the coaming: white paint at the one place on the
+                // boat the eye is supposed to go.
+                add(geometry.shockRing, markings, hx, 8.34, hz, 4, 4, 1, -Math.PI / 2);
+              }
+            }
+
+            // ---- Stern -----------------------------------------------------------
+            // Cruciform tail fins and the shaft fairings. Only the upper fin and the
+            // horizontal pair are above water, which is exactly what a surfaced boat
+            // shows: a small blade sticking up aft of everything else.
+            // The upper rudder: a THIN blade, not a box. 1.4 m thick against 22 m of
+            // chord and 13 m of height, with the leading edge raked forward off the
+            // casing so it grows out of the hull instead of sitting on it. This is the
+            // last vertical thing aft and it has to read as a fin at a glance,
+            // otherwise it looks like deck cargo - which is what a fatter version of
+            // it did look like.
+            add(geometry.panel, hull, 0, 12.4, 74, 1.4, 13, 20);
+            // Its leading rake, sized and rotated on the same rule as the sail's:
+            // as tall as the blade it rakes and centred INSIDE the blade's end, so
+            // the two read as one fin. A shorter one canted harder stood off the top
+            // corner like a flag, which is the failure this line exists to avoid.
+            add(geometry.panel, hull, 0, 12.4, 64.5, 1.4, 12.4, 8, -0.42);
+            add(geometry.panel, dark, 0, 18.6, 75, 1.7, 1.2, 13);
+            // Stern planes: the horizontal pair, right at the waterline where a
+            // surfaced boat shows them as two wet blades either side of the tail.
+            add(geometry.panel, hull, -8.4, 1.8, 74, 14, 1.2, 15);
+            add(geometry.panel, hull, 8.4, 1.8, 74, 14, 1.2, 15);
+            // Free-flood grating aft of the sail and a towed-array fairing on the
+            // port quarter - two small dark blocks that keep the after casing from
+            // being 80 m of nothing.
+            add(geometry.panel, dark, 0, 7.5, 46, 9, 0.7, 14);
+            add(geometry.panel, dark, -4.6, 7.6, 60, 1.6, 0.8, 26);
+          }
+        });
+      },
+      "ship_ssgn"
+    ); // @payload:ship_ssgn
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+        const carrier = SHIP_TYPES.carrier;
+        if (!carrier) {
+          throw new Error("[hospitalShip] carrier ship type is not registered");
+        }
+
+        // --- 1. SHIP_TYPES 登録 -------------------------------------------------
+        //
+        // 土台は carrier。理由は「戦闘しない大型船」という点で最も近いから
+        // （landingShip は 165m でスケールが遠く、上陸判定 landing:true も付いてくる）。
+        // 上書きするのは label / role / 寸法 / HP / 武装無効化 / subsystems だけ。
+        ctx.addShipType("hospitalShip", {
+          ...carrier,
+          key: "hospitalShip",
+          surface: true,
+          label: "HOSPITAL",
+          role: "Hospital Ship",
+          // BALANCE TODO: placeholder. 撃つ対象ではないので HP は「うっかり
+          // 一発では沈まない」以上の意味を持たない。carrier の 1040 は過大、
+          // 98の倍数規約に乗せて 588（= 標準ミサイル6発）を仮置き。
+          hp: 588,
+          // BALANCE TODO: placeholder。病院船は逃げも隠れもしないので carrier 相当。
+          cruiseSpeed: 10,
+          turnRate: carrier.turnRate,
+
+          // --- 寸法: 全長270m ---------------------------------------------------
+          // モデルの実寸に一致させる。船体は z -135(艏の先端) .. +136(艦尾)、
+          // 最大幅 32m(船体) / 33m(救命艇の張り出し)、船体天面 y=20、
+          // 上部構造頂部 y=53、マスト頂点 y=68。
+          hitRadius: 124,
+          crash: Object.freeze({ halfLen: 136, halfBeam: 17, top: 26 }),
+          hitBox: Object.freeze({ x: 34, y: 44, z: 272 }),
+          sinkDepth: 36,
+          blastSpread: 52,
+          smokeOffset: 46,   // 煙突の z 位置（下の add と一致）
+          smokeHeight: 24,
+          sternOffset: 132,
+          bowOffset: 134,
+
+          // --- 武装無効化 -------------------------------------------------------
+          // 病院船は撃たない。aaFiringPoints() は subsystems に kind:"aa" が
+          // 1つも無いとき aaMounts の旧経路へ落ちるので、そこを二重に殺す:
+          //   tracers 0 → 発射点ゼロ → shipAaBurst が mounts.length===0 で即 return
+          //   range   0 → その手前の距離判定で必ず早期 return
+          // ENEMY_MISSILE_PROFILES に hospitalShip の項が無いので SAM も撃たない。
+          aaMounts: Object.freeze([0]),
+          aaHeight: 0,
+          aa: Object.freeze({ range: 0, cooldownMin: 99, cooldownSpread: 0, damage: 0, maxHitChance: 0, tracers: 0 }),
+
+          // --- subsystems: 空 ---------------------------------------------------
+          // 非武装なので NEXT 巡回に乗る部位は存在しない。空配列は
+          // spawnShipSubsystems がゼロ回ループするだけで、艦体そのものだけが
+          // ロック候補になる（＝「この船をロックしてしまった」が player に
+          // はっきり見える）。
+          subsystems: Object.freeze([]),
+
+          // レーダー/曳光/爆発色。曳光は撃たないので使われないが、必須キーの
+          // 形は崩さない。レーダー色だけは白寄りにして、軍艦のオレンジ系ブリップ
+          // の中で「白い点＝撃つな」が読めるようにする。
+          radarColor: "#eaf4ff",
+          tracerColor: 0xffffff,
+          explosionColor: 0xffd8c0
+        });
+
+        // --- 2. 船体ジオメトリ ---------------------------------------------------
+        ctx.addShipModel("hospitalShip", {
+          build(env) {
+            const {
+              geometry, add, friendly,
+              // hull/deck/house/olive2 は使わない。この船は白が識別要件なので
+              // 灰色の標準3材質を一切当てない（暗部の dark と白物の light、
+              // 白ペイントの markings だけ既存艦と共有する）。
+              dark, light, markings,
+              THREE, makeAircraftMaterial, extraMaterials
+            } = env;
+
+            // 病院船の識別色は3つとも標準7材質に無いので専用に作る。
+            // 全て extraMaterials に入れる（＝モデル破棄時に一緒に dispose される）。
+            //
+            // 白船体: metalness=0 / roughness=0.95 の完全拡散。既存艦の light
+            // (0xd6dde2, 0.3, 0.45) は金属寄りで、環境光の弱い夜のマップだと
+            // 灰色に沈む。病院船は「夜でも白い」が識別要件なので、金属成分を
+            // 抜いて拡散反射だけで返す方向に振る。makeAircraftMaterial は色の
+            // 0.045 を emissive に回すので、白は自動的に最も明るい底上げを得る。
+            const white = makeAircraftMaterial(0xfbfdfe, 0.0, 0.95);
+            // makeAircraftMaterial 既定の emissive は色の 0.045 倍で、既存の灰色艦
+            // が周囲に溶けない程度の底上げしかしない。病院船は「夜でも白い」が
+            // 識別要件なので、ここだけ 0.30 倍まで持ち上げて自照させる。
+            // baseEmissive/baseIntensity も更新しないと、被弾フラッシュが戻るとき
+            // updateAircraftFlash が既定値へ書き戻して暗くなるので必ず一緒に直す。
+            white.emissive.setHex(0xfbfdfe).multiplyScalar(0.3);
+            white.userData.baseEmissive = white.emissive.clone();
+            extraMaterials.push(white);
+            // 上部構造の白は船体よりごく僅かに暗く、段差が影だけに頼らず読めるように。
+            const houseWhite = makeAircraftMaterial(0xe9eff2, 0.0, 0.9);
+            houseWhite.emissive.setHex(0xe9eff2).multiplyScalar(0.24);
+            houseWhite.userData.baseEmissive = houseWhite.emissive.clone();
+            extraMaterials.push(houseWhite);
+            // 赤十字と緑帯は MeshBasic。陰の影響を受けないので、夜のミッションでも
+            // 舷側のマークが必ず赤いまま出る＝識別の要件そのもの。
+            const red = new THREE.MeshBasicMaterial({ color: friendly ? 0xe03a34 : 0xd42a24 });
+            extraMaterials.push(red);
+            const green = new THREE.MeshBasicMaterial({ color: friendly ? 0x3fbf6a : 0x35a95e });
+            extraMaterials.push(green);
+
+            // === 船体 (270m: 艏の先端 z=-135 .. 艦尾 z=+135) =====================
+            // 主船体ボックス: z -110..+122 (中心 +6 / 長さ 232)。艏の楔はこの
+            // 前端 -110 にぴったり接して 25m 伸び、先端がちょうど -135 になる
+            // （= 全長 270m）。carrier の hull(-145..155)+bow(tip -175) と同じ
+            // 「箱の前端に楔を継ぐ」組み方。
+            add(geometry.panel, white, 0, 9, 6, 32, 22, 232);
+            // 艏の楔: ConeGeometry(1,1,4) を -X 軸回りに -90° 倒すと、高さ(sy)が
+            // -Z 方向へ伸びる。底面(半径 sx)を箱の前端 -110 に合わせるので
+            // 中心 z = -110 - 25/2 = -122.5、sy=25、半径 16 = 箱の半幅と一致。
+            add(geometry.shipBow, white, 0, 9, -122.5, 16, 25, 11, -Math.PI / 2);
+            // 喫水下の暗い帯（既存全艦が持つ「船底ライン」。ここだけ白くない）。
+            add(geometry.panel, dark, 0, 1.6, 6, 32.6, 3.2, 233);
+            // 艦尾の切り落とし（トランサム）。
+            add(geometry.panel, white, 0, 9, 126, 30, 22, 20);
+
+            // === 緑帯（舷側を一周） =============================================
+            // 白船体の上端すぐ下に細い緑帯。病院船標識の緑帯に相当。
+            // 船体の舷側 x=±16 の外へ 0.15m 出して z-fighting を避け、
+            // 前端は箱の前端 -110 で止める（楔の上には乗せない）。
+            add(geometry.panel, green, -16.15, 17.2, 6, 0.3, 2.4, 232);
+            add(geometry.panel, green, 16.15, 17.2, 6, 0.3, 2.4, 232);
+            add(geometry.panel, green, 0, 17.2, 136.2, 30, 2.4, 0.3);
+            // 艏の楔の上には帯を回さない。1〜2周目で斜め板を試したが、四角錐の
+            // 斜面に平板を沿わせると必ずどこかが面から飛び出し、真上・前方から
+            // 「船首から緑の棘が生えている」ように見えた。帯は箱の側面だけで
+            // 十分に一周して読める。
+
+            // === 舷側の大赤十字（★最重要） =====================================
+            // 左右両舷、船体側面の高さいっぱい（縦16m）の十字。船体の白い側面は
+            // y 約 -2..20 なので、中心 y=9 に縦16mを置くと上下に余白1.5mずつ残る。
+            // 緑帯(x=±16.15)より更に外の x=±16.35 に出して確実に手前へ。
+            // 270m は長いので前後2箇所（上部構造の真下 z=-20 と、艏寄り z=-84）。
+            for (const side of [-1, 1]) {
+              const x = side * 16.35;
+              // 主マーク: 縦棒 高さ16m×奥行5.4m / 横棒 長さ16m×高さ5.4m
+              add(geometry.panel, red, x, 9, -20, 0.3, 16, 5.4);
+              add(geometry.panel, red, x, 9, -20, 0.3, 5.4, 16);
+              // 艏寄りの副マーク（一回り小さい 12m）
+              add(geometry.panel, red, x, 9, -84, 0.3, 12, 4.1);
+              add(geometry.panel, red, x, 9, -84, 0.3, 4.1, 12);
+              // 艦尾寄りの副マーク。後方から入っても必ず1つは視界に入る。
+              add(geometry.panel, red, x, 9, 76, 0.3, 12, 4.1);
+              add(geometry.panel, red, x, 9, 76, 0.3, 4.1, 12);
+            }
+
+            // === 上部構造（客船型：白い箱を4段の階段状） ========================
+            // 船体天面 y=20。ここから上へ積む。軍艦の「低くて長い甲板室」とは逆に、
+            // 客船は船体高さと同じくらいの塊が船の前半に乗る＝これが遠距離での
+            // 最大の識別点なので、高さを惜しまない（最上部 y=52）。
+            //
+            // 露天甲板（歩ける面）。既存艦は暗い deck 材を敷くが、この船だけは
+            // 真上から見たとき甲板が黒く見えてはいけない（2周目で実際にそう
+            // なった＝赤十字が黒地に乗って軍艦に見える）。船体白よりごく僅かに
+            // 暗い houseWhite を敷いて、明度差だけ付ける。
+            add(geometry.panel, houseWhite, 0, 20.4, 6, 31, 0.9, 230);
+            // 1段目: 船体幅いっぱいの長い船室ブロック (y 21..32、z -88..+62)。
+            // 後端を +62 まで伸ばして煙突(z 36..56)の土台にする。
+            add(geometry.panel, houseWhite, 0, 26.5, -13, 29, 11, 150);
+            // 2段目 (y 32..41)。
+            add(geometry.panel, houseWhite, 0, 36.5, -32, 24, 9, 104);
+            // 3段目 (y 41..48)。
+            add(geometry.panel, houseWhite, 0, 44.5, -44, 18, 7, 70);
+            // 4段目＝ブリッジ (y 48..53)。前端を最も艏側へ張り出させて階段状に。
+            add(geometry.panel, houseWhite, 0, 50.5, -62, 14, 5, 30);
+            // ブリッジ前面の窓（斜めに寝かせた暗い板）。
+            add(geometry.panel, dark, 0, 51, -76.6, 13, 4, 0.6, -0.3);
+            // 各段の屋根に暗い「縁だけ」の手すりを入れて、白＋白の段差が影に
+            // 頼らず読めるようにする。ここは板を屋根いっぱいに敷いてはいけない
+            // ——真上から見たとき屋根が黒く塗り潰され、白い船に赤十字という
+            // 識別像が消える（1周目で実際にそうなった）。左右2本ずつの細い帯のみ。
+            const railings = [
+              { y: 32.2, z: -13, halfBeam: 14.5, len: 150.6 },
+              { y: 41.2, z: -32, halfBeam: 12.0, len: 104.6 },
+              { y: 48.2, z: -44, halfBeam: 9.0, len: 70.6 },
+              { y: 53.2, z: -62, halfBeam: 7.0, len: 30.6 }
+            ];
+            for (const rail of railings) {
+              for (const side of [-1, 1]) {
+                add(geometry.panel, dark, side * rail.halfBeam, rail.y, rail.z, 0.7, 0.9, rail.len);
+              }
+            }
+            // 窓列: 各段の側面に暗い水平帯を通す。客船に見えるかどうかはほぼ
+            // これで決まる（軍艦の甲板室には連続窓が無い）。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 14.6, 28.5, -13, 0.4, 2.8, 148);
+              add(geometry.panel, dark, side * 12.1, 37.5, -32, 0.4, 2.6, 102);
+              add(geometry.panel, dark, side * 9.1, 45.5, -44, 0.4, 2.4, 68);
+            }
+
+            // === 煙突1本 ========================================================
+            // z=+46（spec.smokeOffset と一致）。客船型に倣って太く短い1本を
+            // 1段目屋根の上に立てる。軍艦の細いマスト状煙突との識別点。
+            add(geometry.panel, houseWhite, 0, 40, 46, 13, 16, 20);
+            add(geometry.panel, dark, 0, 48.5, 46, 13.6, 1.8, 20.6);
+            // 煙突の左右にも赤十字（側面図でここが一番目に入る高さ）。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, red, side * 6.65, 40, 46, 0.3, 10, 3.4);
+              add(geometry.panel, red, side * 6.65, 40, 46, 0.3, 3.4, 10);
+            }
+
+            // === マスト（武装なし・航海灯と航海レーダーのみ） ====================
+            add(geometry.shipCylinder, light, 0, 62, -62, 0.6, 18, 0.6);
+            add(geometry.shipOctPlate, light, 0, 67.2, -62, 3.4, 0.5, 3.4);
+            add(geometry.panel, light, 0, 64, -62, 8, 0.5, 0.5);
+
+            // === 救命艇（客船の識別記号。舷側にずらりと並ぶ） ====================
+            // 2段目デッキの外側に片舷5艇ずつ。軍艦にはこの列が無い。
+            for (const side of [-1, 1]) {
+              for (let i = 0; i < 5; i += 1) {
+                const pz = -66 + i * 28;
+                add(geometry.shipCylinder, light, side * 13.4, 34.5, pz, 1.7, 9, 1.7, Math.PI / 2);
+                add(geometry.panel, dark, side * 13.4, 37.6, pz, 1.2, 1.4, 9.4);
+              }
+            }
+
+            // === 艦尾ヘリ甲板 + 赤十字 ==========================================
+            // 上部構造(1段目の後端 z=+62)より後ろ、z=+100 を中心にした平らな甲板
+            // (z 66..134)。艦尾の露天甲板をまるごと使う。ここも白。
+            add(geometry.panel, houseWhite, 0, 21.6, 100, 28, 1.4, 68);
+            // 着艦円（既存艦と同じ shockRing の使い方）。ただし既存艦が使う
+            // markings(白ペイント)では白甲板の上で完全に消えるので、この船だけ
+            // dark を当てて「白地に黒い円」にする。3周目で白のまま出して
+            // 一切見えなかったのを直したもの。十字(22m)が内側に収まる半径14。
+            add(geometry.shockRing, dark, 0, 22.5, 100, 14, 14, 1, -Math.PI / 2);
+            // 甲板上の赤十字。真上から見たときの識別はこれが担う。
+            // 甲板天面 y=22.3 の直上 y=22.6 に薄板で置く。
+            add(geometry.panel, red, 0, 22.6, 100, 6.6, 0.3, 22);
+            add(geometry.panel, red, 0, 22.6, 100, 22, 0.3, 6.6);
+            // 甲板の縁の暗いコーミング。甲板が宙に浮いて見えないように。
+            for (const side of [-1, 1]) {
+              add(geometry.panel, dark, side * 14.2, 20.9, 100, 0.5, 1.6, 68);
+            }
+
+            // === 上部構造の屋根にも赤十字 ========================================
+            // 真上から見て「白い長物の中央に赤十字」が読めるようにする。
+            // 屋根は段ごとに前寄りへ短くなるので、上の段に隠れない露天部だけに置く:
+            //   1段目 z -88..+44、2段目が z -84..+20 を覆う → 露天は z +20..+44
+            //   2段目 z -84..+20、3段目が z -79..-9 を覆う → 露天は z -9..+20
+            // 1段目屋根の露天部のうち、煙突(z 36..56)より艏側 (中心 z=28)
+            add(geometry.panel, red, 0, 32.8, 28, 4.6, 0.3, 15);
+            add(geometry.panel, red, 0, 32.8, 28, 15, 0.3, 4.6);
+            // 2段目屋根の露天部 (中心 z=5、長さ22に収める)
+            add(geometry.panel, red, 0, 41.8, 5, 5.4, 0.3, 18);
+            add(geometry.panel, red, 0, 41.8, 5, 18, 0.3, 5.4);
+            // 艏の露天甲板 (上部構造の前端 z=-88 より前、z -110..-88) にもう一つ。
+            // 真上から見て船の前後どちらの端にも赤十字がある状態にして、
+            // 進入方向によらず1周目の視認で識別できるようにする。
+            add(geometry.panel, red, 0, 21.1, -99, 5.4, 0.3, 18);
+            add(geometry.panel, red, 0, 21.1, -99, 18, 0.3, 5.4);
+          }
+        });
+      },
+      "ship_hospitalShip"
+    ); // @payload:ship_hospitalShip
+    applyPayload(
+      function register(ctx) {
+        const { SHIP_TYPES } = ctx.tables;
+        const lst = SHIP_TYPES.landingShip;
+        if (!lst) {
+          throw new Error("[cargoShip] expected the landingShip template to exist");
+        }
+
+        // BALANCE TODO: placeholder. Every combat number below - hp, cruiseSpeed,
+        // turnRate, the aa block, blastSpread, sinkDepth - is the landing ship's,
+        // inherited unchanged. Only identity, dimensions and the (empty) armament fit
+        // are authored here. A loaded 200m freighter should almost certainly be
+        // slower to turn and harder to sink than an LST, and the numbers should
+        // eventually say so.
+        ctx.addShipType("cargoShip", {
+          ...lst,
+          key: "cargoShip",
+          surface: true,
+          // The LST's `landing:true` MUST be cleared. That flag tells updateShip to
+          // steer at the nearest beach and updateLandingThreat to punish the player
+          // for letting one arrive - a merchant hull inherits neither behaviour, and
+          // leaving it set would silently turn every convoy into a beachhead timer.
+          landing: false,
+          label: "CARGO",
+          role: "Container Ship",
+          // 200m LOA / 32m beam. hitRadius sits between the LST's 78 (165m) and the
+          // carrier's 150 (330m), scaled off length the way the others are.
+          hitRadius: 92,
+          // `top` is the height a crashing aircraft is stopped at, so it is measured
+          // off the tallest SOLID mass the model draws - the bridge block, which
+          // runs to y 52 - and not off the mast or the crane booms, which an
+          // aeroplane would go through rather than into.
+          crash: Object.freeze({ halfLen: 100, halfBeam: 17, top: 52 }),
+          // y 63 is waterline to masthead; z 200 is the full LOA; x 34 is the beam
+          // plus the bridge-wing overhang.
+          hitBox: Object.freeze({ x: 34, y: 63, z: 200 }),
+          sternOffset: 96,
+          bowOffset: 98,
+          blastSpread: 40,
+          smokeOffset: 60,   // the funnel is aft, so the burning is too
+          smokeHeight: 24,
+          // UNARMED. The three gun keys have to stay PRESENT and be neutered in
+          // place rather than deleted, for two independent reasons:
+          //   1. registryAdd derives its required-key set from the intersection of
+          //      every existing SHIP_TYPES entry, and all five carry aaMounts /
+          //      aaHeight / aa. Dropping them is a load-time throw.
+          //   2. updateShip dereferences `spec.aa.cooldownMin` unconditionally every
+          //      frame, so `aa: undefined` is a crash, not a disarm. Same trap the
+          //      transportHeli payload documents for updateHeli.
+          // The disarm is therefore structural: tracers 0 means aaFiringPoints'
+          // legacy loop produces zero mounts and shipAaBurst returns on the empty
+          // list, and range 0 means it would have returned before that anyway.
+          // Nothing on the model draws a barrel, and nothing in the sim fires one.
+          aaMounts: Object.freeze([]),
+          aaHeight: 0,
+          aa: Object.freeze({ range: 0, cooldownMin: 9999, cooldownSpread: 0, damage: 0, maxHitChance: 0, tracers: 0 }),
+          // No subsystems either, for the same reason the missile boat has none: with
+          // no gun, no VLS and no CIWS there is no hardware on the model to lock, and
+          // an empty-but-present array would still put the hull into the NEXT walk as
+          // a parent with nothing under it. Absent = the pre-M9 path, which is what a
+          // civilian target should take. `subsystems` is NOT in the required set (the
+          // frigate and the missile boat both lack it), so deleting it is legal here
+          // where deleting the gun keys is not.
+          subsystems: undefined,
+          // Merchant orange-white rather than the fleet's amber, so it is separable
+          // from its escorts on the radar at a glance.
+          radarColor: "#ffe6c2",
+          tracerColor: 0xffb04a,      // inherited; nothing on this hull fires
+          explosionColor: 0xffa348
+        });
+
+        ctx.addShipModel("cargoShip", {
+          build(env) {
+            const { geometry, add, friendly, makeAircraftMaterial,
+                    hull, deck, house, dark, light, olive2, markings,
+                    extraMaterials } = env;
+
+            // Container paint. Three tones is the brief and three tones is what
+            // reads: a rust red, a sea green and a slate blue. The five themed
+            // materials cannot supply these (they are hull grey / deck grey / house
+            // grey / shadow / white), so they are made here - and therefore MUST go
+            // into extraMaterials or they leak with every hull that sinks.
+            //
+            // Consequence of being extra rather than standard: containers do NOT
+            // flash white on a hit. That is the correct read anyway - the cargo is
+            // not the thing taking the damage, the ship is, and the grey hull under
+            // the stack still flashes.
+            const boxColors = friendly
+              ? [0xa8443a, 0x3f7d6a, 0x4a6288]
+              : [0xb8503f, 0x46876f, 0x53688f];
+            const crates = boxColors.map((color) => {
+              const m = makeAircraftMaterial(color, 0.14, 0.88);
+              extraMaterials.push(m);
+              return m;
+            });
+
+            // ---- Hull: a slab, 200m x 32m. -------------------------------------
+            // Freeboard is deliberately the tallest afloat here in absolute terms
+            // (deck edge y 13 against the LST's 10 and the Aegis' 9) but the SAME
+            // fraction of length the others run - a merchant is a wall-sided box,
+            // not a deeper ship. The read comes from the stack sitting on top of a
+            // tall unbroken side with no sheer, no deckhouse and no gun on it.
+            add(geometry.panel, hull, 0, 6.5, 6, 32, 13, 174);
+            // Boot topping at the waterline. Thin: the earlier 3.2m band read as a
+            // second hull and made the whole thing look twice as deep as it is.
+            add(geometry.panel, dark, 0, 0.9, 6, 32.6, 1.9, 175);
+            // Forward section, narrower in beam, running out to the stem.
+            add(geometry.panel, hull, 0, 6.5, -85, 23, 13, 22);
+            // Raked stem: a shallow wedge, not the knife bow every combatant carries.
+            add(geometry.shipBow, hull, 0, 6.5, -97, 11.5, 13, 7, -Math.PI / 2);
+            // Bulbous bow at the forefoot - a merchant tell, and the only genuinely
+            // round thing on the hull.
+            add(geometry.shipCylinder, dark, 0, 2.2, -99, 2.8, 8, 2.8, 0, 0, Math.PI / 2);
+            // Squared transom.
+            add(geometry.panel, hull, 0, 6.5, 94, 29, 13, 12);
+
+            // ---- Weather deck + the hatch coamings the stack sits in ------------
+            add(geometry.panel, deck, 0, 13.4, 0, 31, 1.2, 184);
+            // Coaming rails down both sides of the cargo run: the containers read as
+            // held in a slot rather than balanced on a flat plate.
+            // Span matches the cargo run in the BAYS table: z -93..53, centre -20.
+            add(geometry.panel, dark, -14.4, 15.2, -20, 1.8, 3, 146);
+            add(geometry.panel, dark, 14.4, 15.2, -20, 1.8, 3, 146);
+            // Forecastle: raised bow deck, mooring winches, and a plain pole mast.
+            add(geometry.panel, deck, 0, 15.4, -88, 21, 2.8, 20);
+            add(geometry.shipCylinder, dark, -5, 17.8, -92, 1.4, 1.4, 1.4);
+            add(geometry.shipCylinder, dark, 5, 17.8, -92, 1.4, 1.4, 1.4);
+            add(geometry.shipCylinder, light, 0, 22, -84, 0.5, 10, 0.5);
+
+            // ---- THE CARGO ------------------------------------------------------
+            // The identity of the hull, and the one thing that must survive at
+            // thumbnail size. Four bays running z -93..+53 - 146m of stack, nearly
+            // three quarters of the deck - separated by 10m gaps that read as bay
+            // divisions rather than as empty deck.
+            //
+            // Part budget drove the construction. The inline hulls run 28-30 parts
+            // apiece and a literal grid of 40ft boxes came out at 244, which is not
+            // worth 8x the scene cost. The unit drawn here is therefore a ROW-TIER:
+            // one mesh spanning a whole bay's length, one third of its beam and one
+            // stacking level. Three rows x 3-5 tiers = 9-15 meshes a bay, and every
+            // one of them is a different colour from the three neighbours it touches.
+            //
+            // An intermediate version merged tiers into two tall slabs with painted
+            // seam lines to save meshes. It rendered as two painted slabs. The
+            // chequerboard only reads when the colour changes at every level, so the
+            // tiers are real geometry and the seams are the 0.35m gaps between them.
+            //
+            // Deck at y 14.0. Tier height 5.4m, so a 5-tier bay is 27m of boxes
+            // standing on 13m of freeboard - the stack is twice as tall as the hull
+            // is deep, which is the proportion that says "loaded container ship" and
+            // the one the first pass got wrong.
+            const DECK_Y = 14.0;
+            const TIER = 5.4;
+            // Bay centres bow->stern, their length, and tiers carried. The profile
+            // steps UP from the bow to a 5-tier peak amidships and back DOWN toward
+            // the bridge, so the top line is a staircase and not a lid.
+            //
+            // Extents are written out and the CRANE GAPS are named, because both
+            // earlier passes got this wrong by arithmetic rather than by taste: one
+            // overlapped two bays, and the next buried a crane pedestal inside the
+            // bay it was supposed to stand forward of.
+            //   bay 0   -80 +/-13 = -93..-67
+            //   GAP     -67..-57                <- crane at -62
+            //   bay 1   -38 +/-19 = -57..-19
+            //   GAP     -19.. -9                <- crane at -14
+            //   bay 2     8 +/-17 =  -9.. 25
+            //   bay 3    40 +/-13 =  27.. 53
+            // The forecastle ends at z -78 and the stem at -100, so the forward bay
+            // sits ON deck rather than out over the water - which the first pass,
+            // with the bay running to -105, did not.
+            const BAYS = [
+              { z: -80, len: 26, tiers: 3, half: 9.6 },   // fine bow bay: narrow, low
+              { z: -38, len: 38, tiers: 4, half: 13.2 },
+              { z: 8, len: 34, tiers: 5, half: 13.2 },    // peak
+              { z: 40, len: 26, tiers: 3, half: 13.2 }    // steps down under the bridge
+            ];
+            for (let b = 0; b < BAYS.length; b += 1) {
+              const bay = BAYS[b];
+              const pitch = (bay.half * 2) / 3;
+              const rowW = pitch - 0.55;          // 0.55m air between rows
+              for (let t = 0; t < bay.tiers; t += 1) {
+                // The top tier of every bay is one box shorter fore and aft. That
+                // single inset is what stops a bay reading as an extruded prism from
+                // the side, and it costs nothing.
+                const top = t === bay.tiers - 1;
+                const len = top ? bay.len - 12 : bay.len;
+                for (let c = 0; c < 3; c += 1) {
+                  // Colour walk. `2 * t` rather than `t` so a row's colour changes by
+                  // two steps between levels: with a stride of one, (c + t) makes the
+                  // stack read as diagonal stripes instead of a chequerboard.
+                  const mat = crates[(b + c + 2 * t) % 3];
+                  add(geometry.panel, mat,
+                      (c - 1) * pitch, DECK_Y + 0.35 + t * TIER + (TIER - 0.35) / 2,
+                      bay.z, rowW, TIER - 0.35, len);
+                }
+              }
+              // Lashing bridge at the foot of the bay: a dark band tying the whole
+              // bay to the deck, which also hides the join with the coaming.
+              add(geometry.panel, dark, 0, DECK_Y + 0.9, bay.z, bay.half * 2 + 0.6, 1.8, bay.len + 0.5);
+            }
+
+            // ---- Two deck cranes, standing in the bay gaps at z -62 and z -14 ----
+            // Pedestal, slewing house, and a jib raked up and FORWARD over the
+            // stack. Both are on the centreline, which is how a self-geared feeder
+            // carries them and what lets the jibs plumb either side.
+            //
+            // The numbers are derived, not eyeballed, because two earlier passes put
+            // a floating jib next to a pedestal it never touched. The boom is a
+            // 32m box whose long axis is +Z, rotated by rotation.x = +RAKE. For
+            // Rx(t) a local point (0,0,h) lands at (y - h sin t, z + h cos t), so
+            // with RAKE POSITIVE the +Z half goes DOWN and AFT - that end is the
+            // heel - and the -Z half goes UP and FORWARD over the cargo. Getting
+            // that sign backwards (rotation.x = -RAKE, which is what the previous
+            // pass wrote) hangs the boom head off the stern and the heel in the air
+            // above the pedestal, which is exactly how it rendered.
+            //   dz = cos(0.55) * 16 = 13.6    dy = sin(0.55) * 16 = 8.3
+            // Heel is the top of the slewing house at HEEL_Y, so the boom's CENTRE -
+            // which is what `add` positions - sits at HEEL_Y + 8.3, z cz - 13.6, and
+            // the head reaches HEEL_Y + 16.6 at z cz - 27.2.
+            //
+            // HEEL_Y 44 is chosen against the cargo, not picked: the peak bay tops
+            // out at DECK_Y + 5*TIER = 41.4, so a heel below that buries the boom
+            // heel in containers and hides the pedestal from every angle except
+            // straight down. 44 clears the tallest stack.
+            const crane = (cz, swing) => {
+              const RAKE = 0.55;
+              const BOOM = 32;
+              const HEEL_Y = 44;
+              const dz = Math.cos(RAKE) * BOOM / 2;
+              const dy = Math.sin(RAKE) * BOOM / 2;
+              // Pedestal: a fat column standing on the deck (y 14) and running all
+              // the way up into the slewing house - 27m of column centred at 27.5.
+              add(geometry.shipCylinder, house, 0, 27.5, cz, 2.6, 27, 2.6);
+              // Slewing house on top, and its dark roof at the heel line.
+              add(geometry.panel, house, 0, 41.4, cz, 6.6, 5.6, 8.5, 0, swing, 0);
+              add(geometry.panel, dark, 0, 44.4, cz, 7, 1, 8.9, 0, swing, 0);
+              // Boom, plus a thinner top chord that makes it read as a lattice
+              // rather than a stick. rotation.order is YXZ deliberately: `add`
+              // writes rotation in the default XYZ, which for a raked AND slewed
+              // boom tips it out of its own vertical plane. YXZ = slew first, then
+              // rake within the slewed plane, which is how a real crane moves.
+              const jib = add(geometry.panel, light, 0, HEEL_Y + dy, cz - dz, 1.6, 1.6, BOOM);
+              jib.rotation.order = "YXZ";
+              jib.rotation.set(RAKE, swing, 0);
+              const chord = add(geometry.panel, dark, 0, HEEL_Y + dy + 1.6, cz - dz, 0.7, 0.7, BOOM - 4);
+              chord.rotation.order = "YXZ";
+              chord.rotation.set(RAKE, swing, 0);
+              // Hook block, hanging plumb 5m below the boom head.
+              add(geometry.shipCylinder, dark, 0, HEEL_Y + dy * 2 - 5, cz - dz * 2, 0.9, 2.6, 0.9);
+            };
+            // z -62 and z -14 are the two bay gaps listed in the BAYS table above.
+            // Both pedestals therefore stand on open deck with cargo fore and aft of
+            // them, which is the whole point: a crane inside a bay is invisible.
+            crane(-62, 0.18);
+            crane(-14, -0.15);
+
+            // ---- Aft superstructure: the tall narrow box ------------------------
+            // Six-deck accommodation block sitting right over the engine room. 16m
+            // wide in a 32m beam and 30m tall on a 20m footprint - taller than it is
+            // long in BOTH plan axes, which is the merchant proportion and the exact
+            // opposite of the LST's low wide deckhouse.
+            // Block runs y 14 -> 47: it has to top the 41m peak of the container
+            // stack, or the tallest thing on the ship is its cargo and the aft
+            // tower stops being the landmark that says which end is the stern.
+            add(geometry.panel, house, 0, 30.5, 66, 16, 33, 20);
+            // Deck banding: six thin dark lines = six accommodation levels. Cheap,
+            // and it is what sells "tall box" rather than "grey slab" at range.
+            for (let d = 0; d < 6; d += 1) {
+              add(geometry.panel, dark, 0, 18 + d * 5, 66, 16.4, 0.5, 20.4);
+            }
+            // Bridge deck: wider than the block below and overhanging both sides,
+            // with a dark glazed strip across its front face. The overhang is what
+            // makes the top of the ship legible from directly above.
+            add(geometry.panel, house, 0, 49.5, 64, 24, 5, 13);
+            add(geometry.panel, dark, 0, 50, 57.3, 23, 3.2, 1.2);
+            add(geometry.panel, dark, 0, 52.3, 64, 24.6, 1, 13.6);
+            // Bridge-wing consoles on the outboard tips.
+            add(geometry.panel, light, -11.8, 49.5, 64, 1.6, 1.8, 5);
+            add(geometry.panel, light, 11.8, 49.5, 64, 1.6, 1.8, 5);
+            // Mast above the bridge: pole, one small navigation plate, a yard.
+            add(geometry.shipCylinder, dark, 0, 58, 66, 0.6, 11, 0.6);
+            add(geometry.shipOctPlate, light, 0, 60, 66, 1.5, 0.35, 1.5);
+            add(geometry.panel, light, 0, 63, 66, 6, 0.4, 0.4);
+            // Funnel, aft of the block, with the dark cap band every line paints on
+            // and twin exhaust uptakes standing out of it.
+            add(geometry.panel, house, 0, 33, 82, 10, 24, 11);
+            add(geometry.panel, dark, 0, 44.4, 82, 10.6, 2.6, 11.6);
+            add(geometry.shipCylinder, dark, -2.4, 47, 82, 1.4, 2.4, 1.4);
+            add(geometry.shipCylinder, dark, 2.4, 47, 82, 1.4, 2.4, 1.4);
+            // Poop deck aft of the funnel: mooring gear and two lashed spares in the
+            // vehicle olive, so the stern is not a blank plate.
+            add(geometry.panel, deck, 0, 14.2, 94, 25, 1.4, 12);
+            add(geometry.panel, olive2, -6, 16.4, 94, 5, 3, 9);
+            add(geometry.panel, olive2, 6, 16.4, 94, 5, 3, 9);
+            add(geometry.shipCylinder, dark, 0, 15.8, 99, 1.2, 1.4, 1.2);
+
+            // ---- Hull markings: draft marks and the load line disc ----
+            // The disc is the shockRing standing on the hull side amidships - the
+            // Plimsoll mark, which is a civilian tell no warship carries.
+            add(geometry.shockRing, markings, -16.2, 7, -5, 2.8, 2.8, 1, 0, -Math.PI / 2, 0);
+            add(geometry.shockRing, markings, 16.2, 7, -5, 2.8, 2.8, 1, 0, Math.PI / 2, 0);
+            add(geometry.panel, markings, -16.2, 7, -5, 0.4, 0.5, 13);
+            add(geometry.panel, markings, 16.2, 7, -5, 0.4, 0.5, 13);
+          }
+        });
+      },
+      "ship_cargoShip"
+    ); // @payload:ship_cargoShip
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -19621,7 +21410,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const cameraUp = new THREE.Vector3(0, 1, 0);
 
     // `?modelPreview=<aircraftId>` swaps the whole boot for a contact sheet of
-    // one airframe. Read once, here, so the value cannot change under anything
+    // one airframe; `?modelPreview=ship:<kind>` does the same for one hull out
+    // of SHIP_TYPES. Read once, here, so the value cannot change under anything
     // downstream: null on a normal load, which is the only state every line
     // below has ever seen.
     const MODEL_PREVIEW_ID = new URLSearchParams(location.search).get("modelPreview");
@@ -19862,25 +21652,39 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     if (MODEL_PREVIEW_ID) renderModelPreview(MODEL_PREVIEW_ID);
     else requestAnimationFrame(animate);
 
-    // A static 2x2 contact sheet of one airframe, for checking a model that was
+    // A static 2x2 contact sheet of one model, for checking geometry that was
     // just registered without flying a sortie to find it. Four fixed camera
     // angles - front three-quarter, side, top, rear three-quarter - on a plain
     // background under a plain three-point rig, because the point is to see the
     // SHAPE. The game's own sky, fog and map lighting are all deliberately
-    // absent: they are what the airframe has to read against in play, and what
+    // absent: they are what the model has to read against in play, and what
     // makes a modelling mistake hard to see while making it.
     //
     // Drawn with scissor+viewport rather than four canvases so it is the one
     // renderer, the one WebGL context and the one colour pipeline the game
     // itself uses - a model that looks right here looks the same in the air.
-    function renderModelPreview(aircraftId) {
-      const spec = AIRCRAFT_TYPES[aircraftId];
+    //
+    // Two subjects, told apart by the `ship:` prefix and nothing else, so the
+    // aircraft form is byte-for-byte the URL it always was:
+    //   ?modelPreview=tu22m3        an AIRCRAFT_TYPES id
+    //   ?modelPreview=ship:aegis    a SHIP_TYPES key
+    // Ships are drawn in their ENEMY livery (createShipModel's `friendly`
+    // false), which is the paint every hull is authored against and the one
+    // the player sees on all but the escorted few.
+    function renderModelPreview(previewId) {
+      const isShip = previewId.startsWith("ship:");
+      // `subjectKey`, not `key` - the three-point rig below already owns that
+      // name for its key light.
+      const subjectKey = isShip ? previewId.slice(5) : previewId;
+      const table = isShip ? SHIP_TYPES : AIRCRAFT_TYPES;
+      const spec = subjectKey ? table[subjectKey] : undefined;
       if (!spec) {
-        const known = Object.keys(AIRCRAFT_TYPES).join(", ");
-        console.error(`[modelPreview] unknown aircraft id "${aircraftId}". Known ids: ${known}`);
+        const noun = isShip ? "ship kind" : "aircraft id";
+        const known = Object.keys(table).join(", ");
+        console.error(`[modelPreview] unknown ${noun} "${subjectKey}". Known: ${known}`);
         document.body.innerHTML =
           `<pre style="color:#f66;background:#111;font:14px monospace;padding:24px;white-space:pre-wrap">` +
-          `[modelPreview] unknown aircraft id "${aircraftId}"\n\nKnown ids:\n${known}</pre>`;
+          `[modelPreview] unknown ${noun} "${subjectKey}"\n\nKnown:\n${known}</pre>`;
         return;
       }
 
@@ -19896,7 +21700,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // every pool, and none of that belongs on a contact sheet.
       const previewScene = new THREE.Scene();
       previewScene.background = new THREE.Color(0x2a2f36);
-      const model = createAircraftModel(spec.theme);
+      const model = isShip ? createShipModel(subjectKey, false) : createAircraftModel(spec.theme);
       previewScene.add(model.group);
 
       // Three-point rig: key high off the front-left, fill low from the right to
@@ -19941,8 +21745,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const caption = document.createElement("div");
       caption.style.cssText =
         "position:absolute;left:12px;top:10px;color:#9fd0ef;font-size:14px;letter-spacing:0.08em";
-      caption.textContent = `${spec.label}  ·  id=${aircraftId}  ·  variant=${spec.theme.variant}` +
-        `${AIRCRAFT_MODELS[spec.theme.variant] ? "  ·  PAYLOAD MODEL" : ""}`;
+      // Aircraft carry a `variant` (the geometry key) and a sweep list; ships
+      // carry neither, so the caption is assembled per subject rather than
+      // formatted once with blanks in it.
+      //
+      // PIVOTS is the swing-wing count, and it is on the sheet because it is
+      // the one thing about a variable-geometry airframe a screenshot cannot
+      // otherwise show: the wings look correct at their modelled sweep whether
+      // or not updateWingSweep can reach them. PIVOTS 0 on a swing-wing is the
+      // symptom; PIVOTS 2 is the proof it is driven.
+      const fromPayload = isShip
+        ? Boolean(SHIP_MODELS[subjectKey])
+        : Boolean(AIRCRAFT_MODELS[spec.theme.variant]);
+      const parts = model.group.children.length;
+      caption.textContent = isShip
+        ? `${spec.label}  ·  ship:${subjectKey}  ·  PARTS ${parts}` +
+          `${fromPayload ? "  ·  PAYLOAD MODEL" : ""}`
+        : `${spec.label}  ·  id=${subjectKey}  ·  variant=${spec.theme.variant}` +
+          `  ·  PARTS ${parts}  ·  PIVOTS ${model.wingPivots.length}` +
+          `${fromPayload ? "  ·  PAYLOAD MODEL" : ""}`;
       labelLayer.appendChild(caption);
       document.body.appendChild(labelLayer);
 
@@ -19996,13 +21817,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       window.addEventListener("resize", drawPreview);
       // Something for a screenshot harness to wait on, and for a human to poke
       // at from the console.
+      // `subject` says which of the two shapes the rest of this object is in:
+      // a ship has no variant and no moving parts, so those three fields are
+      // null / 0 rather than absent, and a harness can read them unconditionally.
       window.__MODEL_PREVIEW__ = {
-        id: aircraftId,
-        variant: spec.theme.variant,
-        fromPayload: Boolean(AIRCRAFT_MODELS[spec.theme.variant]),
-        parts: model.group.children.length,
-        wingPivots: model.wingPivots.length,
-        propSpinners: model.propSpinners.length,
+        subject: isShip ? "ship" : "aircraft",
+        id: previewId,
+        key: subjectKey,
+        variant: isShip ? null : spec.theme.variant,
+        fromPayload,
+        parts,
+        wingPivots: isShip ? 0 : model.wingPivots.length,
+        propSpinners: isShip ? 0 : model.propSpinners.length,
         redraw: drawPreview
       };
     }
@@ -32245,6 +34071,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // the sweep control: 0 leaves the wing at the modelled forward sweep.
       // Ry(t) sends the tip to z' = -x sin t, so raking a panel AFT needs a
       // NEGATIVE angle on the right wing - updateWingSweep applies -delta*side.
+      //
+      // The helper registers the group in `wingPivots` itself. It used to only
+      // record it in `parts` and leave the caller to do the push, which the two
+      // inline branches did by hand - but a payload airframe is handed the
+      // helper and NOT the array, so a registered swing-wing built its panels
+      // correctly and then sat at the modelled sweep forever because nothing
+      // could ever put them on the sweep list. Self-registering is the one
+      // place that reaches both callers; the inline branches now just call it.
       const addWingPivot = (geo, material, side, x, y, z) => {
         const pivot = new THREE.Group();
         pivot.position.set(x, y, z);
@@ -32253,6 +34087,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         pivot.add(panel);
         pivot.userData.sweepSide = side;
         parts.push(pivot);
+        wingPivots.push(pivot);
         return pivot;
       };
       // One propeller disc: four blades and a spinner cone on a group that
@@ -32527,8 +34362,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Swing wings. Each outer panel hangs off its own pivot group at the
         // glove, so rotation.y on the group is the sweep. addWingPivot records
         // them for updateFlightEffects(); createAircraftModel returns them.
-        wingPivots.push(addWingPivot(geometry.wingTomcat, secondary, -1, -1.85, 0.16, -0.4));
-        wingPivots.push(addWingPivot(geometry.wingTomcat, secondary, 1, 1.85, 0.16, -0.4));
+        addWingPivot(geometry.wingTomcat, secondary, -1, -1.85, 0.16, -0.4);
+        addWingPivot(geometry.wingTomcat, secondary, 1, 1.85, 0.16, -0.4);
         // Details: radome, anti-glare strip, dorsal spine down the tunnel and
         // nav lights on the gloves (the tips move, so lights stay put).
         add(geometry.nose, dark, 0, -0.04, -10.1, 0.32, 0.28, 0.36);
@@ -32901,8 +34736,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         add(geometry.panel, secondary, -1.35, 0.5, -1.0, 1.5, 0.24, 3.4, 0.1);
         add(geometry.panel, secondary, 1.35, 0.5, -1.0, 1.5, 0.24, 3.4, -0.1);
         // Swing wings on their own pivot groups, shoulder height at y 0.52.
-        wingPivots.push(addWingPivot(geometry.wingFlogger, secondary, -1, -1.35, 0.52, -1.2));
-        wingPivots.push(addWingPivot(geometry.wingFlogger, secondary, 1, 1.35, 0.52, -1.2));
+        addWingPivot(geometry.wingFlogger, secondary, -1, -1.35, 0.52, -1.2);
+        addWingPivot(geometry.wingFlogger, secondary, 1, 1.35, 0.52, -1.2);
         // Rectangular side intakes with raked splitter plates.
         add(geometry.panel, accent, -1.32, -0.14, -2.8, 0.5, 1.2, 4.0);
         add(geometry.panel, accent, 1.32, -0.14, -2.8, 0.5, 1.2, 4.0);
@@ -33479,6 +35314,55 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         parts.push(m);
         return m;
       };
+
+      // Payload hulls are consulted BEFORE the chain below, and take the early
+      // exit when one answers. Nothing below is reachable for a registered kind
+      // and nothing below changed: addShipModel refuses any kind the chain
+      // already answers, so the two sets are disjoint by construction and this
+      // lookup can only ever catch a hull that would otherwise have fallen
+      // through to the carrier in the trailing else.
+      //
+      // The builder gets the locals, not the finished model. It calls the same
+      // `add` every inline branch calls, paints with the same five themed
+      // materials, and reads the same `friendly` flag they read - so a payload
+      // hull is repainted allied-blue by the same mechanism the Aegis is, and
+      // arrives downstream carrying exactly the fields the hit flash and
+      // disposeShipMaterials read. It cannot forget one, because it never
+      // writes one.
+      //
+      // `extraMaterials` is handed over as the array itself rather than a
+      // pusher: it is where a hull's own non-standard material goes (the
+      // carrier's deck-decal texture is the one existing use), and anything
+      // put in it is disposed with the model. A material made inside build()
+      // and NOT put there is the one way a payload hull can leak.
+      const registeredShip = SHIP_MODELS[kind];
+      if (registeredShip) {
+        registeredShip.build({
+          THREE,
+          kind,
+          // Whose ship this is. Every inline branch reads it to pick paint, and
+          // a payload hull that ignores it simply wears one livery on both
+          // sides - which is legal, just less readable.
+          friendly,
+          geometry,
+          makeAircraftMaterial,
+          // This hull's own materials, already themed by `friendly` and already
+          // in standardMaterials, so anything painted with them flashes white
+          // on a hit and is disposed with the model.
+          hull, deck, house, dark, light, olive2, markings,
+          makeCarrierDeckTexture,
+          extraMaterials,
+          add
+        });
+        root.add(...parts);
+        return {
+          group: root,
+          flames: [],
+          standardMaterials: [hull, deck, house, dark, light, olive2],
+          flameMaterial: markings,
+          extraMaterials
+        };
+      }
 
       if (kind === "aegis") {
         // Arleigh Burke idiom at true scale (155m, bow at -Z): knife bow, one
