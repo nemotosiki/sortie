@@ -32455,9 +32455,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // existing UI and the unlock chain keep reading `rank`/`cleared`, so a
       // clear on any tier still unlocks the next sortie exactly as before.
       const priorRanks = entry.ranks && typeof entry.ranks === "object" ? entry.ranks : {};
-      const priorTierRank = priorRanks[sortieDifficulty];
+      const flownTier = effectiveDifficulty();
+      const priorTierRank = priorRanks[flownTier];
       if (!priorTierRank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[priorTierRank] || 0)) {
-        priorRanks[sortieDifficulty] = rank;
+        priorRanks[flownTier] = rank;
       }
       entry.ranks = priorRanks;
       // Sticky, like the rank: one clean sortie earns the emblem for the record
@@ -32482,7 +32483,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // scoreMult lands here, on the recorded/stored total only - the rank
       // that produced it was already decided by computeMissionRank()'s ratio,
       // which never sees this multiplier.
-      const scoreMult = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).scoreMult;
+      const scoreMult = (DIFFICULTY_TUNING[effectiveDifficulty()] || DIFFICULTY_TUNING.normal).scoreMult;
       const scoredTotal = Math.round(result.total * scoreMult);
       entry.scores = [...priorScores, scoredTotal].sort((a, b) => b - a).slice(0, 3);
       entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
@@ -32495,6 +32496,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // side is always open and no mission waits on another campaign's progress.
     // Still keyed on the mission key, so existing records carry over untouched.
     function isMissionUnlocked(index) {
+      // Anything already flown stays open. The chain below only asks whether
+      // the PREVIOUS slot is cleared, so inserting a mission into the middle of
+      // a campaign (addMission accepts `{after}`) used to re-lock the sortie
+      // that had moved down a slot - its record survived while the mission
+      // itself went back to "?????".
+      if (missionRecords[MISSIONS[index].key]?.cleared) return true;
       const slot = campaignSlotOf(index);
       // A mission outside the active campaign keeps its own campaign's chain
       // rather than falling back to the global one - the debug hook can select
@@ -37156,15 +37163,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // and the campaign switched to one still in progress - normal is always a
     // safe landing spot, unlike leaving the stale choice pointed at a tier that
     // no longer appears in the list.
+    // What the selector should SHOW and what a sortie should fly at. ACE is
+    // earned per campaign but the setting is stored under one key, so the old
+    // code demoted the stored value the moment the other side's screen was
+    // opened - a player who earned ACE on the Russian campaign lost it during
+    // boot, before ever reaching the campaign fork. The demotion is now a view
+    // of the setting rather than a write to it.
+    function effectiveDifficulty() {
+      if (sortieDifficulty === "ace" && !isAceUnlocked()) return "normal";
+      return sortieDifficulty;
+    }
+
     function updateDifficultySelector() {
-      if (!isAceUnlocked() && sortieDifficulty === "ace") {
-        sortieDifficulty = "normal";
-        saveDifficulty();
-      }
-      const tuning = DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal;
+      const shown = effectiveDifficulty();
+      const tuning = DIFFICULTY_TUNING[shown] || DIFFICULTY_TUNING.normal;
       if (ui.briefingDifficultyValue) ui.briefingDifficultyValue.textContent = tuning.label;
       if (ui.briefingDifficultyRow) {
-        ui.briefingDifficultyRow.classList.toggle("aceTier", sortieDifficulty === "ace");
+        ui.briefingDifficultyRow.classList.toggle("aceTier", shown === "ace");
       }
     }
 
@@ -39842,7 +39857,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Difficulty's one point of contact with enemy skill: walk the tier
       // ladder by skillShift and clamp at both ends, so EASY never demotes a
       // rookie past rookie and HARD/ACE never promote an expert past expert.
-      const skillShift = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).skillShift;
+      const skillShift = (DIFFICULTY_TUNING[effectiveDifficulty()] || DIFFICULTY_TUNING.normal).skillShift;
       const baseSkillIndex = SKILL_TIER_ORDER.indexOf(baseSkillId);
       const resolvedSkillId = baseSkillIndex < 0
         ? baseSkillId
@@ -44503,7 +44518,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // incomingDamage is difficulty's one point of contact with the player's
       // own health - never the enemy's, never a friendly's, and applied here
       // so every source (gun, missile, AA, CIWS, ship SAM) is scaled alike.
-      const difficultyDamage = (DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal).incomingDamage;
+      const difficultyDamage = (DIFFICULTY_TUNING[effectiveDifficulty()] || DIFFICULTY_TUNING.normal).incomingDamage;
       const safeAmount = Number.isFinite(amount)
         ? THREE.MathUtils.clamp(Math.round(amount * difficultyDamage), 1, PLAYER_MAX_HEALTH)
         : 0;
