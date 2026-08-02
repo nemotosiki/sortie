@@ -14613,6 +14613,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // the end of it, so a spawn from anywhere else falls back to the old
     // nose-on-to-player behaviour.
     let spawningForward = null;
+    // Counts eligible non-TGT fighter spawns so every third one becomes a
+    // wingman hunter - a ratio, not a dice roll, so it holds in every wave.
+    let wingmanHunterTicker = 0;
     // Course of the friendly a hunt wave was anchored on - unit XZ vector to
     // its exit point, or null when the anchor was not a moving charge. Same
     // relay pattern as spawningForward: written by waveAnchorFor, read once
@@ -16293,6 +16296,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             contacts
           };
         },
+        // Collision geometry, measured at a point: the mesh skin the player
+        // dies on and the analytic cone the enemy AI avoids.
+        terrainProbe: (x, z) => ({
+          skin: Number(surfaceTopAt(x, z).toFixed(2)),
+          floor: Number(terrainFloorAt({ x, y: 0, z }).toFixed(2)),
+          mountains: world.mountains
+            .filter((m) => (x - m.x) * (x - m.x) + (z - m.z) * (z - m.z) < m.r * m.r * 9)
+            .map((m) => ({ x: m.x, z: m.z, r: m.r, h: m.h, rx: m.rx, rz: m.rz, rot: m.rot, capHeight: m.capHeight }))
+        }),
         // The wingman's own flight, measured: mode, speed vs its airframe
         // ceiling, station error and terrain clearance.
         wingmanProbe: () => friendlies.filter((friendly) => friendly.kind === "wingman").map((friendly) => ({
@@ -16327,6 +16339,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ),
           strike: Boolean(enemy.strikeTarget),
           hunt: Boolean(enemy.hunt),
+          hater: Boolean(enemy.wingmanHunter),
+          chasingWingman: Boolean(enemy.huntRef && enemy.huntRef.kind === "wingman"),
           aimKind: enemy.aimKind || null,
           y: Number(enemy.group.position.y.toFixed(0)),
           floor: Number(terrainFloorAt(enemy.group.position).toFixed(0)),
@@ -19421,14 +19435,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         player.position.y = 4;
         applyPlayerDamage(PLAYER_MAX_HEALTH, true);
       } else {
-        // Mountains are solid: flying into one below its summit is a crash.
-        for (const mountain of world.mountains) {
-          const dx = player.position.x - mountain.x;
-          const dz = player.position.z - mountain.z;
-          if (dx * dx + dz * dz < mountain.r * mountain.r && player.position.y < mountain.h) {
-            applyPlayerDamage(PLAYER_MAX_HEALTH, true);
-            break;
-          }
+        // Mountains are solid exactly where their MESH is. The old test was
+        // a full-height CYLINDER (radius r, height h) over what is visually
+        // an elliptical, randomly rotated, noise-displaced cone: it killed
+        // in clean air off a spire's shoulders (worst on the glacier
+        // slalom, where the spires are tall and narrow) and let the skirt -
+        // which flares up to 1.48x the nominal footprint - pass through
+        // untouched. The ray sampler hits the actual skin, so where the
+        // rock is drawn is where it kills, and nowhere else.
+        const terrainSkin = surfaceTopAt(player.position.x, player.position.z);
+        if (terrainSkin > 0 && player.position.y < terrainSkin + 2) {
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
         }
       }
 
@@ -21373,6 +21390,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: spec.behavior,
         tgt: spawningTgt,
+        // Every third eligible spawn of the non-TGT screen flies at the
+        // WINGMAN when the player is not pressing it - see the huntRef
+        // resolution in updateEnemies. TGT, hunt, strike and heavy
+        // airframes never do: their jobs are authored.
+        wingmanHunter: !spawningTgt && !spawningHunt && !strikeSpawn &&
+          !HEAVY_AIR_TYPES.has(spec.key) && (wingmanHunterTicker += 1) % 3 === 0,
         // "air" / "ship" / null. A hunting aircraft flies at the friendly it
         // came for and shoots at it instead of at the player - see
         // huntTargetFor() and the hunt branch in updateEnemies. null is every
@@ -22529,10 +22552,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // anything heavier. The wingman is there to shave a trash contact down.
     // Killing things is the player's job, and these numbers keep it that way.
     const WINGMAN_GUN_RANGE = 600;
-    const WINGMAN_GUN_DOT = 0.985;
-    const WINGMAN_GUN_HIT_CHANCE = 0.45;
+    const WINGMAN_GUN_DOT = 0.97;
+    const WINGMAN_GUN_HIT_CHANCE = 0.6;
     const WINGMAN_GUN_INTERVAL = 0.6;
-    const WINGMAN_GUN_DAMAGE_SCALE = 0.4;
+    const WINGMAN_GUN_DAMAGE_SCALE = 0.75;
+    // A third of the non-TGT screen takes an interest in the wingman (see
+    // wingmanHunter in spawnEnemy). They yield to the player only at merge
+    // distance: the wingman flies 72m off the player's beam, so any larger
+    // radius made the hater's attention flicker every time the dogfight
+    // wheeled past the player.
+    const WINGMAN_HATER_YIELD = 150;
     // A kill of its own is worth one line, not a running commentary.
     const WINGMAN_KILL_RADIO_COOLDOWN = 25;
 
@@ -23344,26 +23373,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
     }
 
-    // What the wingman is allowed to shoot at, and it is a deliberately short
-    // list: airborne, trash-role, not an ace, NOT a designated target, and far
-    // enough from the player that it cannot be the thing the player is killing
-    // right now. TGT is the mission - the kill count, the wave clock and the
-    // rank are all built on it - so the wingman never touches one at any range,
-    // and line/elite/ace are left alone because a fight the player was meant to
-    // have is not the wingman's to take.
+    // What the wingman is allowed to shoot at: any airborne non-TGT that is
+    // not an ace. TGT is the mission - the kill count, the wave clock and the
+    // rank are all built on it - so the wingman never touches one at any
+    // range, and the poach guard keeps it off whatever the player has closed
+    // on. Within those lines it actually fights: an enemy that is ATTACKING
+    // the wingman is its fight by definition - preferred over anything else
+    // and exempt from the poach guard, so being harassed turns into a
+    // dogfight instead of being ignored.
     function wingmanPreyFor(friendly) {
       let best = null;
-      let bestDistance = Infinity;
+      let bestScore = Infinity;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
-        if (enemy.ground || enemy.surface || enemy.subsystem) continue;
+        if (enemy.ground || enemy.surface || enemy.subsystem || enemy.heli) continue;
         if (enemy.isAce) continue;
-        if (enemy.spec.roleId !== "trash") continue;
         if (isTgtEntry(enemy)) continue;
-        if (player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD) continue;
+        const attacksMe = enemy.huntRef === friendly;
+        if (!attacksMe && player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD) continue;
         const distance = friendly.group.position.distanceTo(enemy.group.position);
-        if (distance > WINGMAN_ACQUIRE_RANGE || distance >= bestDistance) continue;
-        bestDistance = distance;
+        if (distance > WINGMAN_ACQUIRE_RANGE) continue;
+        const score = attacksMe ? distance - WINGMAN_ACQUIRE_RANGE * 2 : distance;
+        if (score >= bestScore) continue;
+        bestScore = score;
         best = enemy;
       }
       return best;
@@ -23379,12 +23411,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Dead, lost, dragged too far from the player, out of time, or the
         // player has closed on it after all - in which case it stops being the
         // wingman's and goes back to being the player's.
+        // The poach guard does not apply to an enemy that is attacking the
+        // wingman itself: that fight happens right next to the player by
+        // geometry (the hater chases the station), and dropping it on the
+        // guard made every such engagement last exactly one frame.
+        const targetAttacksMe = Boolean(target) && target.huntRef === friendly;
         if (
           !target ||
           friendly.wingModeTimer <= 0 ||
           friendly.group.position.distanceTo(target.group.position) > WINGMAN_BREAK_RANGE ||
           player.position.distanceTo(friendly.group.position) > WINGMAN_LEASH ||
-          player.position.distanceTo(target.group.position) < WINGMAN_POACH_GUARD
+          (!targetAttacksMe && player.position.distanceTo(target.group.position) < WINGMAN_POACH_GUARD)
         ) {
           friendly.wingMode = "form";
           friendly.wingTargetId = null;
@@ -24172,6 +24209,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forwardOf(player, tmpV5);
       rightOf(player, tmpV6);
       upOf(player, tmpV7);
+      // The one wingman, if it is flying this sortie - resolved once per
+      // pass for the wingman-hater charge runs below.
+      let wingmanRef = null;
+      for (const friendly of friendlies) {
+        if (friendly.kind === "wingman" && friendly.alive) { wingmanRef = friendly; break; }
+      }
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
@@ -24253,6 +24296,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // weapon paths in updateEnemyOrdnance, so an attacker cannot be flying
         // at the convoy while shooting at the player.
         enemy.huntRef = enemy.hunt ? huntTargetFor(enemy) : null;
+        // The wingman haters ride the same charge plumbing - flight offsets,
+        // guns and missiles all included (damage no-ops on the invulnerable
+        // wingman; the value is the split attention). The player takes the
+        // fight back just by closing inside WINGMAN_HATER_YIELD.
+        if (!enemy.huntRef && enemy.wingmanHunter && wingmanRef && distanceToPlayer > WINGMAN_HATER_YIELD) {
+          enemy.huntRef = wingmanRef;
+        }
 
         if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
           enemy.mode = "pursuit";
@@ -24626,14 +24676,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Highest mountain top whose footprint covers this point (2.6 in squared
     // terms, so ~1.6 radii out). One definition of "the ground" for the steering
     // look-ahead, the hard floor and the post-stall script alike.
+    // The AI's terrain floor. This used to be a full-height cylinder per
+    // mountain, which made the floor a step function: an enemy crossing the
+    // rim at low altitude was snapped from sea level to the summit in one
+    // frame by the hard-floor clamp - the reported "warp". The floor is now
+    // the mountain's own elliptical cone (in its rotated frame, skirt at
+    // 1.35x the footprint to cover most of the mesh's noise flare), so it
+    // rises continuously and the clamp only ever nudges by metres.
     function terrainFloorAt(position) {
       let floorHeight = 0;
       for (const mountain of world.mountains) {
         const mdx = position.x - mountain.x;
         const mdz = position.z - mountain.z;
-        if (mdx * mdx + mdz * mdz < mountain.r * mountain.r * 2.6) {
-          floorHeight = Math.max(floorHeight, mountain.h);
-        }
+        if (mdx * mdx + mdz * mdz >= mountain.r * mountain.r * 2.6) continue;
+        const cosR = Math.cos(mountain.rot || 0);
+        const sinR = Math.sin(mountain.rot || 0);
+        const localX = mdx * cosR - mdz * sinR;
+        const localZ = mdx * sinR + mdz * cosR;
+        const rho = Math.hypot(localX / mountain.rx, localZ / mountain.rz);
+        const cap = Math.min(mountain.topRadius ?? 0.08, 0.99);
+        const t = THREE.MathUtils.clamp((1.35 - rho) / (1.35 - cap), 0, 1);
+        const coneHeight = (mountain.capHeight ?? mountain.h) * t;
+        if (coneHeight > floorHeight) floorHeight = coneHeight;
       }
       return floorHeight;
     }
@@ -32787,6 +32851,9 @@ varying vec2 vOceanUv;`
           // clamp, which is 8% short of the surface things stand on.
           rx: radius, rz: depth, topRadius: plateau ? plateau.topRadius : 0.08,
           capHeight: height,
+          // The mesh yaw, so the analytic cone in terrainFloorAt can work in
+          // the ellipse's own frame.
+          rot: mountain.rotation.y,
           mesh: mountain
         });
       }
