@@ -31992,6 +31992,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     const geometry = createSharedGeometry();
+    // Identity set of every geometry the whole game shares. It lives as long as
+    // the page does and must never be disposed with a model.
+    const SHARED_GEOMETRIES = new Set(Object.values(geometry));
+
+    // Every geometry hanging off this model that is NOT shared - i.e. that the
+    // model built for itself and nothing else will ever free. Payload airframes
+    // and units draw their own planforms (extrudedSurface, or a plain
+    // `new THREE.CylinderGeometry` in the build), and before this each spawn,
+    // kill, kill-cam and hangar scroll left those buffers on the GPU forever.
+    // Collected by walking the finished model rather than by asking builders to
+    // register, so a payload cannot forget to opt in.
+    function collectOwnedGeometries(root) {
+      const owned = [];
+      const seen = new Set();
+      root.traverse((child) => {
+        const geo = child.geometry;
+        if (!geo || SHARED_GEOMETRIES.has(geo) || seen.has(geo)) return;
+        seen.add(geo);
+        owned.push(geo);
+      });
+      return owned;
+    }
     const shared = createSharedMaterials();
     let world = createWorld(DEFAULT_WORLD_PRESET);
     // The boot map gets decorated too, and only on the line AFTER the
@@ -44981,6 +45003,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // propeller spin read. It cannot forget one, because it never writes one.
       const registeredModel = AIRCRAFT_MODELS[theme.variant];
       if (registeredModel) {
+        // Materials a payload paints for itself, the same field name the ship
+        // and ground builders already hand back. Geometry ownership is worked
+        // out after the build by collectOwnedGeometries.
+        const extraMaterials = [];
         registeredModel.build({
           THREE,
           theme,
@@ -44991,7 +45017,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           geometry,
           extrudedSurface,
           verticalSurface,
-          makeAircraftMaterial,
+          // Wrapped so a payload airframe that paints something in a colour of
+          // its own gets it disposed with the model - the asymmetry the ship
+          // and ground builders never had.
+          makeAircraftMaterial: (...args) => {
+            const material = makeAircraftMaterial(...args);
+            extraMaterials.push(material);
+            return material;
+          },
           // This model's own materials, already themed and already in
           // standardMaterials - so anything painted with them flashes white on
           // a hit and is disposed with the model.
@@ -45007,7 +45040,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           wingPivots,
           propSpinners,
           standardMaterials: [primary, secondary, accent, canopy, dark, light, navL, navR],
-          flameMaterial
+          flameMaterial,
+          extraMaterials,
+          ownedGeometries: collectOwnedGeometries(root)
         };
       }
 
@@ -46200,7 +46235,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           flames: [],
           standardMaterials: [hull, deck, house, dark, light, olive2],
           flameMaterial: markings,
-          extraMaterials
+          extraMaterials,
+          ownedGeometries: collectOwnedGeometries(root)
         };
       }
 
@@ -46394,7 +46430,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         flames: [],
         standardMaterials: [hull, deck, house, dark, light, olive2],
         flameMaterial: markings,
-        extraMaterials
+        extraMaterials,
+        ownedGeometries: collectOwnedGeometries(root)
       };
     }
 
@@ -46473,6 +46510,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           standardMaterials: [steel, olive, dark, light],
           flameMaterial: markings,
           extraMaterials,
+          ownedGeometries: collectOwnedGeometries(root),
           dish
         };
       }
@@ -46658,6 +46696,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         standardMaterials: [steel, olive, dark, light],
         flameMaterial: markings,
         extraMaterials,
+        ownedGeometries: collectOwnedGeometries(root),
         dish
       };
     }
@@ -46762,6 +46801,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           standardMaterials: [olive, dark, glass, light, rotorSkin],
           flameMaterial: markings,
           extraMaterials,
+          ownedGeometries: collectOwnedGeometries(root),
           rotors,
           // Same reason the inline return carries them: the shared probes read
           // these unconditionally and a helicopter never reaches those paths.
@@ -46847,6 +46887,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         standardMaterials: [olive, dark, glass, light, rotorSkin],
         flameMaterial: markings,
         extraMaterials,
+        ownedGeometries: collectOwnedGeometries(root),
         rotors,
         // updateEnemyWingSweep / updateEnemyProps and the airframe probe all
         // read these unconditionally. A helicopter never reaches those paths,
@@ -46892,6 +46933,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (material.map) material.map.dispose();
           material.dispose();
         }
+      }
+      // Only geometry this model built for itself is ever listed here; the
+      // shared cache is never handed to it, so nothing global can be freed
+      // by mistake.
+      if (model.ownedGeometries) {
+        for (const geometry of model.ownedGeometries) geometry.dispose();
       }
     }
 

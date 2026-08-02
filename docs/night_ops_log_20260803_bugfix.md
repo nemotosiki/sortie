@@ -125,3 +125,20 @@
 - 見送り: `ctx.tables`の生参照(payloadがMISSIONS.spliceで削除可=add-only迂回)。既存3
   payloadが実際にspliceで差し替え運用しているため、凍結は**ctx.replaceMissionの新設**と
   セットでないと動いている納品物を壊す。設計判断としてユーザー確認へ回す
+
+### Batch 9 — payloadユニットのジオメトリリーク根治(01:0x適用)
+- [S1] payload製の機体/艦/地上/ヘリが`build()`内で作る自前ジオメトリを誰も解放していなかった。
+  インライン機体は共有キャッシュのみ使用なので**payload製だけが漏れる非対称**。
+  スポーン/撃墜/キルカム/ハンガー切替のたびにVBOが永久残留(e2dは1機5本)
+- **方式**: payloadに登録を要求せず、**完成したモデル木を歩いて共有キャッシュに無い
+  ジオメトリを回収**(`collectOwnedGeometries`)→4ビルダー全ての返り値に載せ、
+  disposeAircraftMaterialsで解放。payload側を1行も触らずに済む(=バッチ班の所有物に非接触)
+- **誤解放しないことの証明**: ①静的=payload領域の`new THREE.*Geometry` 8件すべてが
+  `build()`内(=インスタンス専有)であることをASTライクに走査して確認、共有ジオメトリは
+  SHARED_GEOMETRIES集合で除外 ②実機=同型2機(a100×2/e2d×2)を並べて片方を撃墜→
+  **残る同型機が生存しconsole/pageerror 0**
+- 併せてcreateAircraftModelに`extraMaterials`を新設(艦/地上/ヘリだけが持っていた穴)
+
+### 最終検証(01:1x)
+**全40ミッション: 正しいキーで起動 40/40・pageerror 0**(米編20/露編20)。
+露編は今夜のBatch7修正まで1本も起動できていなかったので、全数通過は今夜が初。
