@@ -20745,7 +20745,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     // 8AAM: the cone fills a target list instead of a single lock, nearest
-    // first, one more every multiLockTime. Any other weapon empties it.
+    // first, a full LOCK_TIME each. Any other weapon empties it.
     function updateMultiLock(dt, candidates) {
       const weapon = selectedWeapon === "spw" ? PLAYER_SPW : null;
       if (!weapon || weapon.multi <= 1) {
@@ -20798,14 +20798,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         multiLock.timer = 0;
       }
       multiLock.timer += dt;
-      // The first round of a salvo costs a full seeker lock - the same
-      // LOCK_TIME every single-shot weapon pays, and exactly what the HUD's
-      // LOCK% is counting out - and the launcher then rolls onto the rest at
-      // its own cadence. Before this a 4AAM latched its first target in
-      // 0.22s while the HUD still read LOCK 26%, which is what "it fires
-      // before the lock completes" looked like even when no dwell was being
-      // inherited.
-      const need = multiLock.ids.length === 0 ? LOCK_TIME : (weapon.multiLockTime || 0.45);
+      // EVERY slot of a salvo costs the full seeker lock - the same
+      // LOCK_TIME every single-shot weapon pays. The 0.22s multiLockTime
+      // "cadence" the later slots used to run at made every lock after the
+      // first read as instant, which is the reported bug: a lock is a
+      // per-target price, and holding the first one does not discount the
+      // second. multiLockTime stays in the tables but nothing reads it.
+      const need = LOCK_TIME;
       if (multiLock.timer >= need) {
         multiLock.ids.push(next.id);
         multiLock.workingId = null;
