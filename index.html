@@ -724,8 +724,8 @@
        SPEED/ALT box and the big number are outboard). Measured rather than
        reasoned - anchoring on the panel put the columns 34px past centre, on
        top of each other. 239 = 100 of clearance + that 139. */
-    body[data-camera="cockpit"] #flightData { left: calc(50% - 317px); }
-    body[data-camera="cockpit"] #altData { right: calc(50% - 317px); }
+    body[data-camera="cockpit"] #flightData { left: calc(50% - 357px); }
+    body[data-camera="cockpit"] #altData { right: calc(50% - 357px); }
 
     /* The attitude ladder belongs to a HUD seen through a canopy, where the
        glass is bolted to the aeroplane and the horizon line has to roll
@@ -37951,13 +37951,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // midpoint too halves the miss window, and it is skipped entirely
         // above 400m where no terrain can reach: the extra raycast only
         // happens where it can change the answer.
+        // surfaceTopAt for the same reason the bomb path uses it: ground
+        // targets stand on the unclamped mesh top, so a round measured against
+        // the collision clamp sinks 8% of a plateau's height into the visible
+        // deck before it goes off.
         let struckTerrain =
-          missile.mesh.position.y < surfaceHeightAt(missile.mesh.position.x, missile.mesh.position.z);
+          missile.mesh.position.y < surfaceTopAt(missile.mesh.position.x, missile.mesh.position.z);
         if (!struckTerrain && missile.mesh.position.y < 400) {
           const midX = (tmpMissileFrom.x + missile.mesh.position.x) * 0.5;
           const midY = (tmpMissileFrom.y + missile.mesh.position.y) * 0.5;
           const midZ = (tmpMissileFrom.z + missile.mesh.position.z) * 0.5;
-          if (midY < surfaceHeightAt(midX, midZ)) {
+          if (midY < surfaceTopAt(midX, midZ)) {
             missile.mesh.position.set(midX, midY, midZ);
             struckTerrain = true;
           }
