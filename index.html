@@ -1350,16 +1350,50 @@
       animation-duration: 0.85s;
     }
 
+    /* Just above HUD centre, boxed - the AC read. It used to sit at top 18%
+       with the banner row; in the reference the alert hangs right over the
+       boresight where the eye already is. */
     #missileWarning {
-      top: 18%;
+      top: 38%;
       color: #ff4a55;
       text-shadow: 0 0 12px rgba(255, 42, 58, 0.95);
     }
 
     #missileWarning.active {
       opacity: 1;
-      border-color: rgba(255, 69, 82, 0.75);
+      border-color: rgba(255, 69, 82, 0.9);
       animation: alertPulse 0.34s ease-in-out infinite alternate;
+    }
+
+    /* MISSILE ALERT owns the whole canopy: while an enemy round is tracking
+       the player every var()-driven HUD element goes red by variable flip,
+       and the handful of literal greens below follow. What deliberately does
+       NOT change: the enemy markers (their green/red already carries their
+       own meaning) and the radar's contact colours - see drawRadar. */
+    body.missileAlert {
+      --hud: #ff4a55;
+      --hud-line: rgba(255, 74, 85, 0.78);
+      --hud-soft: rgba(255, 74, 85, 0.5);
+      --hud-dim: rgba(255, 150, 158, 0.6);
+      --panel: rgba(26, 3, 7, 0.55);
+    }
+
+    body.missileAlert .horizonLine {
+      background: linear-gradient(90deg, transparent, rgba(255, 74, 85, 0.75) 14%, rgba(255, 74, 85, 0.75) 43%, transparent 43%, transparent 57%, rgba(255, 74, 85, 0.75) 57%, rgba(255, 74, 85, 0.75) 86%, transparent);
+    }
+
+    body.missileAlert .pitchMark {
+      background: linear-gradient(90deg, transparent, rgba(255, 74, 85, 0.64) 20%, rgba(255, 74, 85, 0.64) 44%, transparent 44%, transparent 56%, rgba(255, 74, 85, 0.64) 56%, rgba(255, 74, 85, 0.64) 80%, transparent);
+    }
+
+    body.missileAlert #reticlePipper { box-shadow: 0 0 5px rgba(255, 74, 85, 0.95); }
+    body.missileAlert #silhouetteBody { fill: rgba(255, 74, 85, 0.16); }
+    body.missileAlert .rackMissile path { fill: rgba(255, 74, 85, 0.16); }
+    body.missileAlert #statusPanel .hudName { color: #ff8a93; }
+    body.missileAlert #tgtRemainRow.cleared .hudVal { color: #ff8a93; }
+    body.missileAlert #ccipMarker {
+      color: #ff8a93;
+      filter: drop-shadow(0 0 6px rgba(255, 74, 85, 0.6));
     }
 
     /* Low on the frame, above the stall caption: the banner row (top ~22-30%)
@@ -15462,6 +15496,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let cameraFocusTargetId = null;
     let cameraFocusSource = null;
     let nearestMissileThreat = null;
+    // Test affordance, same pattern as radarBlinkOverride: a fake threat that
+    // stands in for getNearestEnemyMissileThreat() so a gate can exercise the
+    // whole downstream alert chain (threat hook, warning box, red canopy,
+    // scope tint, tone) without waiting on AI launch geometry - pursuers park
+    // inside their own missile's minRange and gun instead, so a real launch
+    // is rare in a scripted run.
+    let missileAlertOverride = null;
     let damageSmokeTimer = 0;
     let currentCameraFov = BASE_CAMERA_FOV;
     let fearStageReached = 0;
@@ -16303,6 +16344,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Fires the selected weapon exactly as the trigger does, so a gate
         // exercises the real launch path rather than a copy of it.
         forceFire: () => fireWeapon(),
+        // See missileAlertOverride.
+        forceMissileAlert: (on) => {
+          missileAlertOverride = on
+            ? { id: -1, ownerId: -1, ownerType: "debug", distance: 640, direction: "6 O'CLOCK" }
+            : null;
+          return Boolean(missileAlertOverride);
+        },
         // Collision geometry, measured at a point: the mesh skin the player
         // dies on and the analytic cone the enemy AI avoids.
         terrainProbe: (x, z) => ({
@@ -18531,7 +18579,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function updateAudioCues(dt) {
-      nearestMissileThreat = gameState === STATE_PLAYING ? getNearestEnemyMissileThreat() : null;
+      nearestMissileThreat = gameState === STATE_PLAYING
+        ? (missileAlertOverride || getNearestEnemyMissileThreat())
+        : null;
       playerTargetedBy = countEnemiesTargetingPlayer();
 
       updateEngineAudio();
@@ -18828,6 +18878,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       cameraFocusTargetId = null;
       cameraFocusSource = null;
       nearestMissileThreat = null;
+      document.body.classList.remove("missileAlert");
       cameraKeyHold.pressed = false;
       cameraKeyHold.focus = false;
       cameraKeyHold.targetId = null;
@@ -26137,6 +26188,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       cameraFocusTargetId = null;
       cameraFocusSource = null;
       nearestMissileThreat = null;
+      document.body.classList.remove("missileAlert");
       for (let i = enemyMissiles.length - 1; i >= 0; i -= 1) removeEnemyMissile(i);
       ui.boostIndicator.classList.remove("active");
 
@@ -27436,9 +27488,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       const threat = nearestMissileThreat;
       ui.missileWarning.classList.toggle("active", Boolean(threat));
-      ui.missileWarning.textContent = threat
-        ? `MISSILE ALERT · ${threat.direction} · ${Math.round(threat.distance)}M`
-        : "MISSILE ALERT";
+      // Plain "MISSILE ALERT" in its box, per the AC reference - the bearing
+      // and range that used to ride the caption are on the scope already (the
+      // round is drawn there), and the whole-HUD red carries the urgency.
+      document.body.classList.toggle(
+        "missileAlert",
+        Boolean(threat) && gameState === STATE_PLAYING
+      );
 
       // Both weapon rows stay up, as they do in AC7: MSL and the special weapon
       // each keep their own name and count, and the caret says which one the
@@ -27869,10 +27925,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const inset = size * 0.06;
       const span = size - inset * 2;
 
-      ctx.fillStyle = "rgba(6, 30, 12, 0.4)";
+      // MISSILE ALERT: the scope's own furniture - frame, grid, rings, cone,
+      // cardinals, the player arrow - follows the canopy to red. The contact
+      // blips keep their colours: white/red enemies and blue friendlies are
+      // MEANINGS, and repainting them under stress is when a misread costs.
+      const alertRed = Boolean(nearestMissileThreat) && gameState === STATE_PLAYING;
+      const scopeLine = (alpha) => alertRed
+        ? `rgba(255, 74, 85, ${alpha})`
+        : `rgba(83, 255, 92, ${alpha})`;
+
+      ctx.fillStyle = alertRed ? "rgba(30, 5, 9, 0.4)" : "rgba(6, 30, 12, 0.4)";
       ctx.fillRect(inset, inset, span, span);
 
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.34)";
+      ctx.strokeStyle = scopeLine(0.34);
       ctx.lineWidth = 1;
       ctx.strokeRect(inset, inset, span, span);
       ctx.beginPath();
@@ -27882,7 +27947,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ctx.lineTo(center, inset + span);
       ctx.stroke();
 
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.18)";
+      ctx.strokeStyle = scopeLine(0.18);
       ctx.beginPath();
       ctx.arc(center, center, radius * 0.5, 0, Math.PI * 2);
       ctx.moveTo(center + radius, center);
@@ -27891,7 +27956,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // Forward view cone (matches the on-screen HUD's lock cone half-angle).
       const coneHalf = Math.acos(THREE.MathUtils.clamp(LOCK_DOT, -1, 1));
-      ctx.strokeStyle = "rgba(83, 255, 92, 0.42)";
+      ctx.strokeStyle = scopeLine(0.42);
       ctx.beginPath();
       ctx.moveTo(center, center);
       ctx.lineTo(center + Math.sin(-coneHalf) * span, center - Math.cos(-coneHalf) * span);
@@ -27903,7 +27968,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // strip uses, so the two instruments always agree.
       const headingRad = Math.atan2(lastRadarForward.x, -lastRadarForward.z);
       const letterRadius = span * 0.42;
-      ctx.fillStyle = "rgba(150, 255, 158, 0.75)";
+      ctx.fillStyle = alertRed ? "rgba(255, 150, 158, 0.75)" : "rgba(150, 255, 158, 0.75)";
       ctx.font = "700 9px ui-monospace, Consolas, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -28071,8 +28136,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ctx.shadowBlur = 0;
       }
 
-      ctx.fillStyle = "#aaf8ff";
-      ctx.shadowColor = "#72eaff";
+      ctx.fillStyle = alertRed ? "#ff6a75" : "#aaf8ff";
+      ctx.shadowColor = alertRed ? "#ff4a55" : "#72eaff";
       ctx.shadowBlur = 7;
       ctx.beginPath();
       ctx.moveTo(center, center - 8);
@@ -28144,6 +28209,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const missile of enemyMissiles) scene.remove(missile.mesh);
       enemyMissiles.length = 0;
       nearestMissileThreat = null;
+      document.body.classList.remove("missileAlert");
 
       for (const effect of effects) {
         scene.remove(effect.node);
