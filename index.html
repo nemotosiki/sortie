@@ -843,11 +843,11 @@
       width: 24px;
       height: 24px;
       transform: translate(-50%, -50%);
-      border: 1px solid rgba(112, 255, 151, 0.92);
-      color: #78ff9d;
+      border: 1px solid currentColor;
+      color: #f4f7fa;
       opacity: 0;
       visibility: hidden;
-      filter: drop-shadow(0 0 5px rgba(65, 255, 126, 0.68));
+      filter: drop-shadow(0 0 5px rgba(244, 247, 250, 0.55));
       transition: opacity 90ms ease, width 90ms ease, height 90ms ease, color 90ms ease;
       will-change: left, top;
     }
@@ -876,6 +876,16 @@
     .enemyMarker.active {
       opacity: 0.88;
       visibility: visible;
+    }
+
+    .enemyMarker.hostileOptional {
+      color: #f4f7fa;
+      filter: drop-shadow(0 0 5px rgba(244, 247, 250, 0.55));
+    }
+
+    .enemyMarker.tgt {
+      color: #ff5968;
+      filter: drop-shadow(0 0 6px rgba(255, 89, 104, 0.72));
     }
 
     /* A ship's mount is a smaller frame than a contact: it reads as a part of
@@ -949,7 +959,7 @@
        text. They belong to the contacts the player has actually singled out:
        the main selection (the one the target-select key and the camera
        follow) and each target latched into a salvo. Everything else is a
-       green frame, plus TGT if the mission designated it. */
+       white frame, plus TGT if the mission designated it. */
     .enemyMarker.active.named .enemyMarkerName { opacity: 0.92; }
     .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
 
@@ -2088,6 +2098,23 @@
       h1 { font-size: 58px; }
       .subtitle { margin: 8px auto 12px; }
     }
+
+    /* IFF contract: every friendly/support contact is blue. This late rule
+       deliberately overrides the historical green friendly marker without
+       changing its diamond geometry or lock exclusion. */
+    .friendlyMarker,
+    .friendlyMarker.active {
+      color: #68beff;
+      border-color: #68beff;
+      filter: drop-shadow(0 0 5px rgba(104, 190, 255, 0.68));
+    }
+
+    .friendlyMarker::before,
+    .friendlyMarkerLabel {
+      color: #68beff;
+      border-color: currentColor;
+    }
+
   </style>
   <link rel="stylesheet" href="./styles/radio.css">
   <link rel="stylesheet" href="./styles/hud-polish.css">
@@ -49727,8 +49754,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Two independent readings, so a blip can carry both at once:
         //   ring  = designated target
         //   blink = the contact the player currently has selected
-        const isTgt = isTgtEntry(enemy);
-        const blipColor = isTgt ? "#ff5968" : "#f4f7fa";
+        const disposition = contactDisposition(enemy);
+        const isTgt = disposition === CONTACT_DISPOSITION.TGT;
+        const blipColor = CONTACT_COLORS[disposition];
         // Half the blink cycle the selected blip is dimmed rather than gone -
         // a blip that vanishes outright reads as a dropped contact.
         const blipAlpha = isTarget && !radarBlinkOn ? 0.28 : 1;
@@ -49796,8 +49824,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(headingAngle);
-        ctx.fillStyle = FRIENDLY_RADAR_COLOR;
-        ctx.shadowColor = FRIENDLY_RADAR_COLOR;
+        const friendlyBlipColor = CONTACT_COLORS[CONTACT_DISPOSITION.FRIENDLY];
+        ctx.fillStyle = friendlyBlipColor;
+        ctx.shadowColor = friendlyBlipColor;
         ctx.shadowBlur = 6;
         if (isFriendlyShip(friendly)) {
           // Same hull bar the enemy ships get, so the two read as the same
