@@ -4311,6 +4311,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : WAVE_PRESETS.air1;
       }
       const kind = entry.kind === "naval" ? "naval" : "air";
+      if (entry.rankNeutral && entry.tgt !== false) {
+        throw new Error("[mission] rankNeutral contacts must be authored with tgt:false");
+      }
       return Object.freeze({
         kind,
         types: kind === "air" ? Object.freeze([...(entry.types || [])]) : null,
@@ -4333,6 +4336,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Designated-target flag, AC style. Omitted = true, so every wave
         // authored before this existed still counts toward ACCOMPLISHED.
         tgt: entry.tgt !== false,
+        // Optional combat contact that awards visible score but contributes no
+        // numerator or denominator to the mission rank. Used by ARCA screens.
+        rankNeutral: Boolean(entry.rankNeutral),
         label: entry.label || null,
         // Spawns together with the wave before it instead of waiting for that
         // wave to be cleared. Escorts and CAP have to be on the board while
@@ -4442,6 +4448,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return isTgtEntry(enemy) ? KILL_SCORE : Math.round(KILL_SCORE * BONUS_KILL_SCORE_FACTOR);
     }
 
+    function contactRankValue(enemy) {
+      return enemy && enemy.rankNeutral ? 0 : contactScoreValue(enemy);
+    }
+
     // Denominator and numerator of the rank. Reset per sortie alongside score.
     const rankStats = { spawnedValue: 0, playerKillValue: 0 };
 
@@ -4450,7 +4460,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // five spawners keeps a new contact type from silently missing the tally.
     function registerSpawnedValue(enemy) {
       if (!enemy) return;
-      rankStats.spawnedValue += contactScoreValue(enemy);
+      rankStats.spawnedValue += contactRankValue(enemy);
     }
 
     // What the HUD writes beside the target box. `label` is already the short
@@ -34636,6 +34646,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Set for the duration of one spawnMissionWave call and read by the four
     // spawners it fans out to. Ground units set their own flag per unit.
     let spawningTgt = true;
+    // Rank-neutral is independent from TGT: the contact still fights and pays
+    // visible bonus score, but never changes the rank ratio.
+    let spawningRankNeutral = false;
     // Same relay, for the wave's `hunt` field: null on every wave that is
     // flying at the player, which is every wave outside the two guard sorties.
     let spawningHunt = null;
@@ -34656,6 +34669,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveIdCursor: 0,
       waveNumber: 0,
       spawningTgt: true,
+      spawningRankNeutral: false,
       spawningHunt: null,
       waveTargetsSpawned: 0,
       pendingWaves: [],
@@ -39715,6 +39729,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       wingmanHunterTicker = 0;
       waveTargetsSpawned = 0;
       spawningTgt = true;
+      spawningRankNeutral = false;
       spawningHunt = null;
       // Invalidated here and re-taken by captureMissionAnchor at the bottom of
       // this function, so a wave can never be laid out around the LAST
@@ -39822,6 +39837,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       checkpoint.waveIdCursor = waveIdCursor;
       checkpoint.waveNumber = waveNumber;
       checkpoint.spawningTgt = spawningTgt;
+      checkpoint.spawningRankNeutral = spawningRankNeutral;
       checkpoint.spawningHunt = spawningHunt;
       checkpoint.waveTargetsSpawned = waveTargetsSpawned;
       // Copied entry by entry rather than kept by reference. The live array is
@@ -39899,6 +39915,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveIdCursor = at.waveIdCursor;
       waveNumber = at.waveNumber;
       spawningTgt = at.spawningTgt;
+      spawningRankNeutral = Boolean(at.spawningRankNeutral);
       spawningHunt = at.spawningHunt;
       waveTargetsSpawned = at.waveTargetsSpawned;
       // The queue goes back before the respawn, not after. The wave about to
@@ -42300,6 +42317,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: "rotary",
         tgt: spawningTgt,
+        rankNeutral: spawningRankNeutral,
         heli: true,
         isAce: false,
         aceEngageLineFired: true,
@@ -42529,6 +42547,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: spec.behavior,
         tgt: spawningTgt,
+        rankNeutral: spawningRankNeutral,
         // Every third eligible spawn of the non-TGT screen flies at the
         // WINGMAN when the player is not pressing it - see the huntRef
         // resolution in updateEnemies. TGT, hunt, strike and heavy
@@ -42662,6 +42681,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         role: spec.role,
         behavior: "fleet",
         tgt: spawningTgt,
+        rankNeutral: spawningRankNeutral,
         surface: true,
         isAce: false,
         aceEngageLineFired: true,
@@ -45263,6 +45283,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A module-level relay rather than another parameter on four spawn
       // functions, and it is consumed synchronously inside this call.
       spawningTgt = isTgtEntry(wave);
+      spawningRankNeutral = Boolean(wave.rankNeutral);
       // What this wave came for. Read by spawnEnemy the same way spawningTgt
       // is, and cleared with it at the bottom of this call.
       spawningHunt = wave.hunt || null;
@@ -45377,6 +45398,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
       spawningTgt = true;
+      spawningRankNeutral = false;
       spawningHunt = null;
     }
 
@@ -47060,7 +47082,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // The rank's numerator. Separate from `score`, which also carries the
         // guard penalties - a transport lost must not quietly shrink the field
         // the player is being measured against.
-        rankStats.playerKillValue += killScore;
+        rankStats.playerKillValue += contactRankValue(enemy);
         if (score > highscore) {
           highscore = score;
           saveHighscore();
@@ -49524,6 +49546,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             type: enemy.type,
             tgt: isTgtEntry(enemy),
             disposition: contactDisposition(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
             isAce: enemy.isAce,
             // Role and tier are never shown to the player - the aircraft is
             // supposed to just feel weak or lethal - but the probe has to be
@@ -49644,6 +49667,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // is flying at instead of the player.
         tgt: isTgtEntry(enemy),
         disposition: contactDisposition(enemy),
+        rankNeutral: Boolean(enemy.rankNeutral),
         hunt: enemy.hunt || null
       }));
       hook.threats.incomingMissiles = enemyMissiles.map((missile) => ({
