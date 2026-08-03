@@ -34584,6 +34584,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           propRotation: friendly.model && friendly.model.propSpinners && friendly.model.propSpinners.length
             ? Number(friendly.model.propSpinners[0].rotation.z.toFixed(4))
             : null,
+          hitFlash: Number((friendly.hitFlash || 0).toFixed(4)),
+          retired: Boolean(friendly.retired),
           wingPivots: friendly.model && friendly.model.wingPivots
             ? friendly.model.wingPivots.length
             : 0
@@ -42729,6 +42731,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (friendly.retired) return;
       friendly.retired = true;
       if (!isFriendlyShip(friendly)) friendly.group.visible = false;
+      // Same reason destroyFriendly clears it: the flash decays in
+      // updateFriendlies' LIVING branch, and `retired` skips that branch
+      // entirely. A transport goes invisible on retirement so it never showed
+      // this, but a landing ship is deliberately left standing on the sand for
+      // the rest of the sortie - and one that beached within a tenth of a
+      // second of taking a hit kept the white emissive burned into the
+      // picture the whole mission was about.
+      friendly.hitFlash = 0;
+      if (friendly.model && friendly.model.standardMaterials) {
+        updateAircraftFlash(friendly.model, 0);
+      }
       // Nothing to tally when no guard objective owns this sortie: a
       // deployment without a guard block could otherwise announce
       // "CONVOY CLEAR - 1/0 SAVED" for a convoy the mission never had.
