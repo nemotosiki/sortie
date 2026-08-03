@@ -198,7 +198,12 @@ export function createPlayerGunController({
     return getEnemyHitboxRadius() * (enemy.spec.hitboxScale || 1);
   }
 
-  function aimForgiveness(range) {
+  function aimForgiveness(range, target = null) {
+    // Ships and their mounted subsystems already expose their physical
+    // hull radius. Fighter-scale close-range forgiveness must not turn a
+    // carrier into a several-hundred-metre invisible sphere. Ground units
+    // retain the original help because their hit volumes are small.
+    if (target && target.surface && !target.ground) return 1;
     const t = THREE.MathUtils.clamp(range / profile.range, 0, 1);
     return THREE.MathUtils.lerp(GUN_CLOSE_FORGIVENESS, 1, t);
   }
@@ -257,7 +262,7 @@ export function createPlayerGunController({
     lastGimbal.angleDeg = null;
     lastGimbal.rangeM = null;
     lastGimbal.k = null;
-    if (gimbalTargetId) {
+    if (gimbalTargetId != null) {
       const gimbalTarget = enemies.find((entity) => entity.id === gimbalTargetId && entity.alive);
       if (gimbalTarget) {
         const gimbalDist = leadPoint(start, gimbalTarget, tmpV4);
@@ -288,7 +293,7 @@ export function createPlayerGunController({
       const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
       const baseRadius = enemyHitSphereRadius(enemy);
       if (baseRadius <= 0) continue;
-      const radius = baseRadius * aimForgiveness(range);
+      const radius = baseRadius * aimForgiveness(range, enemy);
       if (missDistance > radius) continue;
       hits.push({ enemy, distance: along, missDistance });
     }
@@ -379,7 +384,7 @@ export function createPlayerGunController({
     gunsightState.leadM = leadM;
     gunsightState.assistK = k;
     gunsightState.hot = hot;
-    gunsightState.forgiveness = aimForgiveness(bestRange);
+    gunsightState.forgiveness = aimForgiveness(bestRange, best);
   }
 
   // Called once when an aircraft is loaded. Switching airframes resets which
@@ -388,6 +393,16 @@ export function createPlayerGunController({
   function setAircraft(aircraftId) {
     profile = playerGunProfileFor(aircraftId);
     muzzleIndex = 0;
+    assistState.k = 0;
+    assistState.targetId = null;
+    lastGimbal.applied = false;
+    lastGimbal.angleDeg = null;
+    lastGimbal.rangeM = null;
+    lastGimbal.k = null;
+    gunsightState.active = false;
+    gunsightState.targetId = null;
+    gunsightState.assistK = 0;
+    gunsightState.hot = false;
     return profile;
   }
 

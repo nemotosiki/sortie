@@ -2090,6 +2090,7 @@
     }
   </style>
   <link rel="stylesheet" href="./styles/radio.css">
+  <link rel="stylesheet" href="./styles/hud-polish.css">
 
   <script type="importmap">
   {
@@ -34491,6 +34492,53 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "map_whitePass"
     ); // @payload:map_whitePass
+    applyPayload(
+      function register(ctx) {
+        const { MISSIONS } = ctx.tables;
+
+        function extendMission(key, makeReplacement) {
+          const at = MISSIONS.findIndex((mission) => mission.key === key);
+          if (at <= 0) {
+            throw new Error(`[ace-combat-polish] mission ${key} not found at a replaceable index`);
+          }
+          const original = MISSIONS[at];
+          const after = MISSIONS[at - 1].key;
+          const replacement = makeReplacement(original);
+
+          MISSIONS.splice(at, 1);
+          try {
+            return ctx.addMission(replacement, { after });
+          } catch (error) {
+            MISSIONS.splice(at, 0, original);
+            throw error;
+          }
+        }
+
+        extendMission("r07", (mission) => {
+          const designatedHunters = new Set(["TOMCAT", "HORNET"]);
+          let changed = 0;
+          const sequence = mission.sequence.map((wave) => {
+            if (!wave || !designatedHunters.has(wave.label)) return wave;
+            if (wave.tgt === false) {
+              throw new Error(`[ace-combat-polish] ${wave.label} unexpectedly became optional`);
+            }
+            if (wave.hunt && wave.hunt !== "air") {
+              throw new Error(`[ace-combat-polish] ${wave.label} already hunts ${wave.hunt}`);
+            }
+            changed += 1;
+            return { ...wave, hunt: "air" };
+          });
+
+          if (changed !== designatedHunters.size) {
+            throw new Error(
+              `[ace-combat-polish] r07 expected TOMCAT and HORNET, changed ${changed}`
+            );
+          }
+          return { ...mission, sequence };
+        });
+      },
+      "ace_combat_polish"
+    ); // @payload:ace_combat_polish
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
