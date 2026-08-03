@@ -831,87 +831,6 @@
     .pitchMark::before { left: 8px; }
     .pitchMark::after { right: 8px; }
 
-    #targetBox {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 52px;
-      height: 52px;
-      display: none;
-      transform: translate(-50%, -50%);
-      /* Green while the seeker is still working, red the moment it locks -
-         the AC read. Amber used to mean "acquiring", which put a warning
-         colour on the single most common state in the game.
-         The frame takes currentColor rather than naming a colour of its own:
-         .locked only ever restated `color`, so a literal here stayed behind
-         when the lock came up and left a green frame around a red box. */
-      border: 1px solid currentColor;
-      color: #78ff9d;
-      filter: drop-shadow(0 0 6px rgba(65, 255, 126, 0.62));
-      will-change: left, top;
-    }
-
-    #targetBox.locked {
-      width: 44px;
-      height: 44px;
-      color: #ff4454;
-      border-width: 2px;
-      filter: drop-shadow(0 0 8px rgba(255, 68, 84, 0.95));
-      animation: lockPulse 0.55s ease-in-out infinite alternate;
-    }
-
-    /* The lock has no text and no bar, in either state. Acquisition is read
-       from the box itself - the spinning dashed ring, and the seeker tone
-       that tightens as it closes - and completion from the box turning red
-       and pulsing. The percentage, the "LOCKED" caption and the progress bar
-       were all restatements of that. */
-
-    #targetRange {
-      position: absolute;
-      left: 50%;
-      bottom: calc(100% + 7px);
-      transform: translateX(-50%);
-      white-space: nowrap;
-      font-size: 9px;
-      letter-spacing: 0.11em;
-    }
-
-    /* Same layout as the enemy markers, so the locked contact does not change
-       shape when the lock box takes over from its marker. */
-    #targetBoxTgt,
-    #targetBoxName {
-      position: absolute;
-      white-space: nowrap;
-      font-family: "Courier New", "Lucida Console", monospace;
-      font-size: 9.5px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      line-height: 1.25;
-    }
-
-    #targetBoxTgt {
-      right: calc(100% + 7px);
-      top: 50%;
-      transform: translateY(-50%);
-      color: #ff4454;
-      display: none;
-    }
-
-    #targetBox.tgt #targetBoxTgt { display: block; }
-
-    #targetBoxName {
-      left: calc(100% + 7px);
-      top: 2px;
-      color: currentColor;
-    }
-
-    #targetBoxName b { display: block; font-weight: 700; }
-    #targetBoxName i { display: block; font-style: normal; font-weight: 400; opacity: 0.8; }
-
-    /* The old range readout above the frame is retired: the range now lives
-       under the name tag, and showing it twice was the reported defect. */
-    #targetRange { display: none; }
-
     #enemyMarkers {
       position: absolute;
       inset: 0;
@@ -933,12 +852,25 @@
       will-change: left, top;
     }
 
+    /* The lock diamond, drawn inside the frame the instant the seeker latches
+       on and on nothing else. This used to be an unconditional second square on
+       every contact in the sky, which only ever read as a thicker box. Its
+       diagonal (14 * root2 = 19.8px) clears the frame's 22px interior. */
     .enemyMarker::before {
       content: "";
       position: absolute;
-      inset: 4px;
+      left: 50%;
+      top: 50%;
+      width: 14px;
+      height: 14px;
       border: 1px solid currentColor;
-      opacity: 0.28;
+      transform: translate(-50%, -50%) rotate(45deg);
+      display: none;
+    }
+
+    .enemyMarker.locked::before,
+    .enemyMarker.multiLocked::before {
+      display: block;
     }
 
     .enemyMarker.active {
@@ -952,10 +884,6 @@
       width: 22px;
       height: 22px;
       border-style: dashed;
-    }
-
-    .enemyMarker.subsystem::before {
-      inset: 3px;
     }
 
     /* AC04 target box layout:
@@ -1016,23 +944,8 @@
     .enemyMarker.active.named .enemyMarkerName { opacity: 0.92; }
     .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
 
-    /* #targetBox is already sitting on the seeker's target with the same name
-       and range. A salvo target keeps its frame (the count has to stay
-       readable) but must not caption itself as well, or the aircraft carries
-       two identical readouts a dozen pixels apart. */
-    .enemyMarker.active.captioned .enemyMarkerName,
-    .enemyMarker.active.captioned .enemyMarkerTgt { opacity: 0; }
-
-    /* Selection is a SIZE, not a colour. Red is reserved for a lock, so the
-       contact the player has picked out with the target-select key reads as
-       the same green contact everything else is - just framed larger and
-       captioned. */
-    .enemyMarker.selected {
-      width: 29px;
-      height: 29px;
-      border-color: currentColor;
-      filter: drop-shadow(0 0 7px rgba(65, 255, 126, 0.8));
-    }
+    /* Selection is shown by the caption, not by the frame: the box stays the
+       same green box every other contact has. */
 
     .enemyMarker.locked,
     .enemyMarker.multiLocked {
@@ -2301,12 +2214,6 @@
     <div id="enemyMarkers"></div>
     <div id="baseMarker"><span id="baseMarkerLabel">ALLIED AIRBASE</span></div>
     <div id="hitConfirm">HIT</div>
-
-    <div id="targetBox">
-      <span id="targetBoxTgt">TGT</span>
-      <span id="targetBoxName"><b></b><i></i></span>
-      <span id="targetRange"></span>
-    </div>
 
     <div id="ccipMarker"><span id="ccipLabel">CCIP</span></div>
 
@@ -33465,10 +33372,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       baseMarker: document.getElementById("baseMarker"),
       baseMarkerLabel: document.getElementById("baseMarkerLabel"),
       hitConfirm: document.getElementById("hitConfirm"),
-      targetBox: document.getElementById("targetBox"),
-      targetBoxTgt: document.getElementById("targetBoxTgt"),
-      targetBoxName: document.getElementById("targetBoxName"),
-      targetRange: document.getElementById("targetRange"),
       gunsight: document.getElementById("gunsight"),
       boresight: document.getElementById("boresight"),
       pitchLadder: document.getElementById("pitchLadder"),
@@ -45271,6 +45174,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!Number.isFinite(distance) || distance > spec.attackRange || distance < 25) return;
       tmpV9.multiplyScalar(1 / distance);
       forwardOf(enemy.group, tmpV8);
+      // A tail turret shoots AFT. The player-facing path reverses the nose for
+      // a rearGun aircraft and measures aimThreshold against that reversed
+      // vector - which is what tu95's own spec comment means by "0.4 is the
+      // rear cone dot < -0.4". This path never reversed it, so a Bear hunting
+      // the carrier aimed its tail gun out of its radome, and the tracers left
+      // the nose. Same contract on both sides now.
+      const rearGun = Boolean(spec.rearGun);
+      if (rearGun) tmpV8.negate();
       const aimAlignment = tmpV8.dot(tmpV9);
       if (aimAlignment < spec.aimThreshold) return;
 
@@ -45280,7 +45191,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         spec.maxHitChance
       );
       const hit = Math.random() < hitChance;
-      const start = enemy.group.position.clone().addScaledVector(tmpV8, 7);
+      const start = enemy.group.position.clone()
+        .addScaledVector(tmpV8, rearGun ? (spec.rearGunOffset || 7) : 7);
       const end = friendly.group.position.clone();
       if (!hit) {
         const scatter = spec.aimScatter || 1;
@@ -46878,7 +46790,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // the debrief came up.
       updateBoresight();
       updateEnemyHudMarkers(simDt);
-      updateTargetBox();
       updateCcip();
     }
 
@@ -47374,16 +47285,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tmpV7.copy(enemy.group.position).project(camera);
         const onScreen = isHudProjectionVisible(tmpV7, tmpV6, 1.04);
         const multiLocked = multiLock.ids.includes(enemy.id);
-        // The single-lock box normally hides the marker under it, but a salvo
-        // target has to keep its own LOCK frame or the count is unreadable.
-        const coveredByLockBox = onScreen && lock.targetId === enemy.id && !multiLocked;
-        const active = onScreen && !coveredByLockBox;
-        // ...but keeping the frame is not the same as keeping the readout. The
-        // salvo target that is ALSO the seeker's target had both its own name
-        // tag and #targetBox on it, a dozen pixels apart - the same aircraft
-        // captioned twice. The frame is what the salvo needs; the name comes
-        // from the lock box, which is already sitting on this contact.
-        const nameShownByLockBox = onScreen && targetBoxContactId() === enemy.id;
+        // One contact, one node, one frame. #targetBox used to draw a second
+        // frame over the same aircraft, so every state here had to be arbitrated
+        // against it; that system is gone and nothing needs hiding any more.
+        const active = onScreen;
         const selected = selectedId === enemy.id;
         const locked = lock.locked && lock.targetId === enemy.id;
 
@@ -47398,11 +47303,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         marker.classList.toggle("multiLocked", multiLocked);
         marker.classList.toggle("tgt", isTgt);
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
-        marker.classList.toggle("captioned", nameShownByLockBox);
         // Who gets a name and a range: the main selection, and every target
-        // latched into a salvo. `captioned` still wins over this for the one
-        // contact #targetBox is already sitting on, so nothing is labelled
-        // twice.
+        // latched into a salvo.
         marker.classList.toggle("named", selected || multiLocked);
         const distance = Math.round(player.position.distanceTo(enemy.group.position));
         const displayName = enemyDisplayName(enemy);
@@ -47431,56 +47333,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       updateGunsight(dt);
-    }
-
-    // Which contact #targetBox is sitting on. ONE definition, because the
-    // enemy markers suppress their own name tag for exactly this contact
-    // (`captioned`) - when the two disagreed, the manually selected aircraft
-    // got its name and range drawn twice, a few pixels apart.
-    function targetBoxContactId() {
-      return preferredTargetId ?? lock.targetId;
-    }
-
-    function updateTargetBox() {
-      // The same contact the radar blinks, the direction arrow points at and
-      // the on-screen marker calls `selected`. Reading lock.targetId alone
-      // made this panel name a DIFFERENT aircraft the moment a manually
-      // picked target left the lock cone - and left it blank for the whole of
-      // a bombing run, where currentLockKind() is "none" so lock.targetId is
-      // never set at all.
-      const target = enemies.find((enemy) => enemy.id === targetBoxContactId() && enemy.alive);
-      if (!target || gameState !== STATE_PLAYING) {
-        // Reset the readout as well as hiding it. The panel is display:none so
-        // nothing here is on screen either way, but leaving "LOCKED" sitting in
-        // a hidden node means the DOM disagrees with the game state - which is
-        // exactly what made the UGB lock audit ambiguous the first time.
-        ui.targetBox.style.display = "none";
-        ui.targetBox.classList.remove("locked");
-        return;
-      }
-
-      tmpV2.copy(target.group.position).applyMatrix4(camera.matrixWorldInverse);
-      tmpV1.copy(target.group.position).project(camera);
-      const visible = isHudProjectionVisible(tmpV1, tmpV2, 1.12);
-      if (!visible) {
-        ui.targetBox.style.display = "none";
-        return;
-      }
-
-      ui.targetBox.style.display = "block";
-      ui.targetBox.style.left = `${(tmpV1.x * 0.5 + 0.5) * window.innerWidth}px`;
-      ui.targetBox.style.top = `${(-tmpV1.y * 0.5 + 0.5) * window.innerHeight}px`;
-      // The frame is the LOCK, so it only lights for the contact the seeker
-      // actually holds - which is not always the one being read out above.
-      ui.targetBox.classList.toggle("locked", lock.locked && lock.targetId === target.id);
-      const distance = Math.round(player.position.distanceTo(target.group.position));
-      ui.targetBox.classList.toggle("tgt", isTgtEntry(target));
-      const lockedName = enemyDisplayName(target);
-      const lockedNameLine = ui.targetBoxName.firstElementChild;
-      const lockedRangeLine = ui.targetBoxName.lastElementChild;
-      if (lockedNameLine.textContent !== lockedName) lockedNameLine.textContent = lockedName;
-      const lockedRange = String(distance);
-      if (lockedRangeLine.textContent !== lockedRange) lockedRangeLine.textContent = lockedRange;
     }
 
     // ---- AC-style instruments -------------------------------------------------
