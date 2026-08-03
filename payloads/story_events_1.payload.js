@@ -114,7 +114,7 @@ export default function register(ctx) {
   // triggerRadioLine/resetRadio.  Prefer an exposed ctx bridge if the host ever
   // provides one; otherwise use the core queue when inlined and a tiny visual
   // preview only for ?payloads= development mode.  No global schema is added.
-  const PRIORITY_CRITICAL = 2;
+  const PRIORITY_CRITICAL = 3;
   const districtLines = [
     "CITY GRID: GRID-C、電力喪失",
     "CITY GRID: GRID-B、医療回線停止",

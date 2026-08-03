@@ -886,6 +886,15 @@
       border-style: dashed;
     }
 
+    /* The mount's frame is 2px narrower, and the contact diamond's 19.8px
+       diagonal clears its 20px interior by a tenth of a pixel - which is
+       "touching" on screen. Scaled to keep the same visible gap: 12 * root2 =
+       17.0px inside 20px. */
+    .enemyMarker.subsystem::before {
+      width: 12px;
+      height: 12px;
+    }
+
     /* AC04 target box layout:
      *
      *        TGT   [ box ]   F-4
@@ -6443,9 +6452,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // lock-on, the gun raycast, missile guidance, the radar and the whole kill
     // flow come for free - `surface` keeps them off the flight AI and `ground`
     // switches the handful of places that differ. They never move, and a killed
-    // one does not sink or vanish: the wreck burns where it stood until the
-    // mission ends.
+    // one does not sink or vanish. The wreck stays where it stood until the
+    // mission ends, while its costly burn effects naturally die down.
     const GROUND_WRECK_FOREVER = 9999;
+    const GROUND_WRECK_EFFECT_TIME = 18;
+    const GROUND_WRECK_EFFECT_RANGE = 1800;
     const GROUND_TYPES = {
       samSite: Object.freeze({
         key: "samSite",
@@ -12800,7 +12811,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // triggerRadioLine/resetRadio.  Prefer an exposed ctx bridge if the host ever
         // provides one; otherwise use the core queue when inlined and a tiny visual
         // preview only for ?payloads= development mode.  No global schema is added.
-        const PRIORITY_CRITICAL = 2;
+        const PRIORITY_CRITICAL = 3;
         const districtLines = [
           "CITY GRID: GRID-C、電力喪失",
           "CITY GRID: GRID-B、医療回線停止",
@@ -13819,7 +13830,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Production source-inlines this function and can reach the core radio queue.
         // The query loader imports it as a separate module, so a small fallback clones
         // the existing panel for development without adding a host-side schema.
-        const PRIORITY_CRITICAL = 2;
+        const PRIORITY_CRITICAL = 3;
         const WATCHED_KEYS = new Set(["m02", "r02", "r08", "m-escort", "m05", "r20"]);
         let fallbackRadio = null;
 
@@ -34721,7 +34732,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function readMissionRecords() {
       try {
-        return JSON.parse(window.localStorage.getItem("sortieMissionRecords") || "{}") || {};
+        const parsed = JSON.parse(window.localStorage.getItem("sortieMissionRecords") || "{}");
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
       } catch {
         return {};
       }
@@ -36995,6 +37007,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // balance permanently negative.
           aircraftPurchases.clear();
           saveAircraftPurchases();
+          // The record store backs unlocks, the wallet and ownership. Rebuild
+          // those dependent views immediately; otherwise a cleared profile can
+          // still display an unowned jet and a now-locked sortie until reload.
+          applyCampaign(selectedCampaignId);
           return true;
         },
         forceTeleport: (x, y, z) => {
@@ -37578,6 +37594,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     });
     ui.retryBtn.addEventListener("click", () => {
       ensureAudio();
+      if ((gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) && epilogueState.active) {
+        finishEpilogue();
+        return;
+      }
       flyAgain();
     });
     ui.changeAircraftBtn.addEventListener("click", () => {
@@ -38326,7 +38346,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
         // After updateBattleArea, so a boundary washout this frame takes the
         // sortie before the wave logic can hand out a completion.
-        if (gameState === STATE_PLAYING) updateMission(dt);
+        if (gameState === STATE_PLAYING) updateMission(dt, rawDt);
         // rawDt, not dt: the band above it fades on wall-clock time, so a
         // kill-cam slowdown at the buzzer must not desync the two.
         if (gameState === STATE_PLAYING) updateOutcomePending(rawDt);
@@ -38527,7 +38547,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         else if (gameState === STATE_MISSION_SELECT) confirmMissionSelection();
         else if (gameState === STATE_BRIEFING) advanceBriefing();
         else if (gameState === STATE_READY) requestLaunch();
-        else flyAgain();
+        else if ((gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER) && epilogueState.active) {
+          // The keyboard already uses its first confirmation to finish the
+          // debrief text. Keep the pad on the same contract rather than
+          // restarting before a gamepad-only player can read the aftermath.
+          finishEpilogue();
+        } else flyAgain();
       }
       if (cameraPressed && !gamepadInput.previousCamera) {
         // Square/X is "back": one step out of the funnel per press, so the pad
@@ -38553,8 +38578,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (dpadUpPressed && !gamepadInput.previousCycleUp) moveMissionCursor(-1);
         if (dpadDownPressed && !gamepadInput.previousCycleDown) moveMissionCursor(1);
       } else if (gameState === STATE_BRIEFING) {
-        // Briefing has nothing to cycle: D-pad and stick are deliberately inert
-        // here, or they would drop the player straight into the hangar.
+        // Briefing owns the horizontal axis for difficulty, just as the
+        // keyboard arrows do. Keeping it inert made the visible difficulty
+        // arrows the one menu control a gamepad-only player could not use.
+        if (dpadLeftPressed && !gamepadInput.previousCycleLeft) cycleDifficulty(-1);
+        if (dpadRightPressed && !gamepadInput.previousCycleRight) cycleDifficulty(1);
       } else if (gameState !== STATE_PLAYING) {
         if ((dpadLeftPressed && !gamepadInput.previousCycleLeft) ||
             (dpadUpPressed && !gamepadInput.previousCycleUp)) {
@@ -38929,7 +38957,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateLockDroneAudio() {
       const context = audioSystem.context;
       const master = audioSystem.master;
-      const wanted = gameState === STATE_PLAYING && lock.targetId !== null;
+      const wanted = gameState === STATE_PLAYING && !outcomePending.active && lock.targetId !== null;
 
       if (!context || !master || context.state !== "running" || !wanted) {
         if (audioSystem.lockOsc) {
@@ -39306,15 +39334,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function updateAudioCues(dt) {
-      nearestMissileThreat = gameState === STATE_PLAYING
+      const combatCuesActive = gameState === STATE_PLAYING && !outcomePending.active;
+      nearestMissileThreat = combatCuesActive
         ? (missileAlertOverride || getNearestEnemyMissileThreat())
         : null;
-      playerTargetedBy = countEnemiesTargetingPlayer();
+      playerTargetedBy = combatCuesActive ? countEnemiesTargetingPlayer() : 0;
 
       updateEngineAudio();
       updateLockDroneAudio();
 
-      if (gameState !== STATE_PLAYING) {
+      if (!combatCuesActive) {
         audioSystem.lockTimer = 0;
         audioSystem.threatTimer = 0;
         audioSystem.rwrTimer = 0;
@@ -39565,6 +39594,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveNumber = 0;
       missionWaveIndex = 0;
       waveIdCursor = 0;
+      // The hunter pattern is deterministic per sortie. Leaving the counter at
+      // the previous sortie's remainder made the advertised one-in-three split
+      // depend on what the player flew before this launch.
+      wingmanHunterTicker = 0;
       waveTargetsSpawned = 0;
       spawningTgt = true;
       spawningHunt = null;
@@ -39597,6 +39630,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       cameraShake = 0;
       damageSmokeTimer = 0;
       currentCameraFov = BASE_CAMERA_FOV;
+      cockpitRigidBlend = 0;
       camera.fov = BASE_CAMERA_FOV;
       camera.updateProjectionMatrix();
       missileSide = 1;
@@ -39844,11 +39878,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // behind this, and raised before the wave spawns so the wave's own small
       // banner queues underneath it the way it does on a normal launch.
       hideBigBanner();
+      // startMission queued the opening wave's radio, but that wave is removed
+      // below. Do not let its briefing play over the restored encounter.
+      resetRadio();
       showBigBanner("CHECKPOINT RESTART", MISSIONS[currentMissionIndex].title, 2.4);
       // And the banked wave goes back on. spawnMissionWave walks the five
       // variables forward the same way the first attempt did, chained concurrent
       // followers and all, so the board comes back the shape it was.
       spawnMissionWave(MISSIONS[currentMissionIndex].waves[missionWaveIndex]);
+      // Respawning directly into a restored wave must not allow an inherited
+      // missile or gun tick to erase the player before control comes back.
+      playerHitCooldown = Math.max(playerHitCooldown, MISSION_GRACE_TIME);
       // Still standing, so a second death in this wave comes back here again.
       checkpoint.active = true;
       // Set after startMission, which clears it.
@@ -39996,20 +40036,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       if (nextState === STATE_CAMPAIGN_SELECT) {
         hideBigBanner();
+        stopMusicSting();
         campaignCursor = Math.max(0, CAMPAIGNS.findIndex((campaign) => campaign.id === selectedCampaignId));
         updateCampaignScreen();
         queueMicrotask(() => ui.campaignConfirmBtn.focus({ preventScroll: true }));
       } else if (nextState === STATE_MISSION_SELECT) {
         hideBigBanner();
+        stopMusicSting();
         missionCursor = currentMissionIndex;
         updateMissionScreen();
       } else if (nextState === STATE_BRIEFING) {
         hideBigBanner();
+        stopMusicSting();
         startBriefing();
         updateDifficultySelector();
         queueMicrotask(() => ui.briefingNextBtn.focus({ preventScroll: true }));
       } else if (nextState === STATE_READY) {
         hideBigBanner();
+        stopMusicSting();
         playerModel.group.visible = true;
         updateHangarScreen();
         queueMicrotask(() => ui.startBtn.focus({ preventScroll: true }));
@@ -40265,7 +40309,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       if (player.position.y <= 4) {
         player.position.y = 4;
-        applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+        applyPlayerDamage(PLAYER_MAX_HEALTH, true, true);
       } else {
         // Mountains are solid exactly where their MESH is. The old test was
         // a full-height CYLINDER (radius r, height h) over what is visually
@@ -40277,7 +40321,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // rock is drawn is where it kills, and nowhere else.
         const terrainSkin = surfaceTopAt(player.position.x, player.position.z);
         if (terrainSkin > 0 && player.position.y < terrainSkin + 2) {
-          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true, true);
         }
       }
 
@@ -40296,7 +40340,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const box = enemy.spec.crash;
         if (Math.abs(along) < box.halfLen && Math.abs(side) < box.halfBeam &&
             player.position.y < enemy.group.position.y + box.top) {
-          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true, true);
           break;
         }
       }
@@ -40318,7 +40362,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const side = tmpV3.x * -tmpV2.z + tmpV3.z * tmpV2.x;
         if (Math.abs(along) < box.halfLen && Math.abs(side) < box.halfBeam &&
             player.position.y < friendly.group.position.y + box.top) {
-          applyPlayerDamage(PLAYER_MAX_HEALTH, true);
+          applyPlayerDamage(PLAYER_MAX_HEALTH, true, true);
           break;
         }
       }
@@ -44637,8 +44681,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tmpV7.z * tmpV5.x - tmpV7.x * tmpV5.z,
         tmpV7.x * tmpV5.x + tmpV7.z * tmpV5.z
       );
+      const yawRate = dt > 0 ? yawDelta / dt : 0;
       const bankWanted = THREE.MathUtils.clamp(
-        -(yawDelta / dt) * WINGMAN_BANK_PER_RATE,
+        -yawRate * WINGMAN_BANK_PER_RATE,
         -WINGMAN_MAX_BANK,
         WINGMAN_MAX_BANK
       );
@@ -46590,10 +46635,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    // A dead installation is scenery from here on: the model stays put and
-    // burns, with the odd secondary cooking off, until clearMissionObjects
-    // disposes it at the end of the sortie.
+    // A dead installation remains scenery until the sortie ends. Its burn is
+    // deliberately finite and proximity-gated, so wrecks behind the player
+    // cannot keep allocating particles and explosion voices for an entire run.
     function updateGroundWreck(enemy, dt) {
+      enemy.wreckAge = (enemy.wreckAge || 0) + dt;
+      if (enemy.wreckAge > GROUND_WRECK_EFFECT_TIME) return;
+      const dx = enemy.group.position.x - player.position.x;
+      const dy = enemy.group.position.y - player.position.y;
+      const dz = enemy.group.position.z - player.position.z;
+      if (dx * dx + dy * dy + dz * dz > GROUND_WRECK_EFFECT_RANGE * GROUND_WRECK_EFFECT_RANGE) return;
       const spec = enemy.spec;
       enemy.smokeTimer -= dt;
       if (enemy.smokeTimer <= 0) {
@@ -46808,6 +46859,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Installations neither sink nor pop out of existence: one big blast,
         // then the burning hulk stays on the map (updateGroundWreck plays it).
         enemy.deadTimer = GROUND_WRECK_FOREVER;
+        enemy.wreckAge = 0;
         enemy.smokeTimer = 0;
         enemy.sinkBoomTimer = 0.6;
         chainBlast = enemy.spec.chain || null;
@@ -46962,7 +47014,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
     }
 
-    function applyPlayerDamage(amount, bypassCooldown = false) {
+    function applyPlayerDamage(amount, bypassCooldown = false, ignoreDifficulty = false) {
       if (gameState !== STATE_PLAYING) return false;
       // The ACCOMPLISHED band is already decided: the battle area stops
       // policing, the missiles in the air are wiped, and the sortie is only
@@ -46977,7 +47029,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // incomingDamage is difficulty's one point of contact with the player's
       // own health - never the enemy's, never a friendly's, and applied here
       // so every source (gun, missile, AA, CIWS, ship SAM) is scaled alike.
-      const difficultyDamage = (DIFFICULTY_TUNING[effectiveDifficulty()] || DIFFICULTY_TUNING.normal).incomingDamage;
+      const difficultyDamage = ignoreDifficulty
+        ? 1
+        : (DIFFICULTY_TUNING[effectiveDifficulty()] || DIFFICULTY_TUNING.normal).incomingDamage;
       const safeAmount = Number.isFinite(amount)
         ? THREE.MathUtils.clamp(Math.round(amount * difficultyDamage), 1, PLAYER_MAX_HEALTH)
         : 0;
@@ -47152,13 +47206,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    function updateMission(dt) {
+    function updateMission(dt, rawDt = dt) {
       if (gameState !== STATE_PLAYING) return;
       // The sortie is already decided during the ACCOMPLISHED hold - re-running
       // the wave logic here would re-fire its banner and its completion call.
       if (outcomePending.active) return;
       if (outro.active) {
-        updateOutro(dt);
+        updateOutro(rawDt);
         return;
       }
       updatePendingWaves(dt);
@@ -47190,7 +47244,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
 
-      waveClearTimer -= dt;
+      // The banner and radio use wall-clock time. A kill-cam slowdown must not
+      // leave their completed messages followed by a second-long dead gap.
+      waveClearTimer -= rawDt;
       if (waveClearTimer > 0) return;
 
       if (tgtRemaining) {
@@ -47291,6 +47347,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // success-toned banner surface on top of MISSION FAILED.
       pendingBanner = null;
       pendingBannerTimer = 0;
+      pendingBigBanner = null;
       resetLock();
       cameraFocusActive = false;
       cameraFocusTargetId = null;
@@ -49041,7 +49098,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const armed = selectedWeapon === "spw"
         ? (PLAYER_SPW ? spwLoaded > 0 && spwAmmo > 0 : false)
         : loadedMissiles > 0 && missileCount > 0;
-      ui.shootCue.classList.toggle("active", gameState === STATE_PLAYING && lock.locked && armed);
+      const inFlight = gameState === STATE_PLAYING && !outcomePending.active;
+      ui.shootCue.classList.toggle("active", inFlight && lock.locked && armed);
 
       const healthRatio = health / PLAYER_MAX_HEALTH;
       ui.damageSilhouette.classList.toggle("warn", healthRatio <= 0.55 && healthRatio > 0.3);
@@ -49055,7 +49113,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Both halves need the flight gate. `stalling` is frozen at whatever it
       // was when updatePlayer stopped running, so gating only `lowSpeed` left
       // STALL burning on the debrief of every sortie that ended in a stall.
-      const inFlight = gameState === STATE_PLAYING;
       const lowSpeed = inFlight && playerSpeed < STALL_WARNING_SPEED;
       const stallLit = inFlight && stalling;
       ui.stallWarning.classList.toggle("active", lowSpeed || stallLit);
@@ -49080,7 +49137,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // round is drawn there), and the whole-HUD red carries the urgency.
       document.body.classList.toggle(
         "missileAlert",
-        Boolean(threat) && gameState === STATE_PLAYING
+        Boolean(threat) && inFlight
       );
 
       // Both weapon rows stay up, as they do in AC7: MSL and the special weapon
@@ -49117,7 +49174,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.score = Math.round(score);
       hook.highscore = Math.round(highscore);
       hook.difficulty.selected = sortieDifficulty;
-      hook.difficulty.tuning = DIFFICULTY_TUNING[sortieDifficulty];
+      hook.difficulty.tuning = DIFFICULTY_TUNING[sortieDifficulty] || DIFFICULTY_TUNING.normal;
       hook.difficulty.available = availableDifficulties();
       hook.difficulty.aceUnlocked = isAceUnlocked();
       hook.health = Math.round(health);
@@ -53472,6 +53529,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // it: the sortie list, the hangar, the cursor and the player's jet. Safe to
     // call with the campaign already active - it simply re-syncs.
     function applyCampaign(campaignId) {
+      // A two-press purchase prompt belongs to one hangar only. Never carry it
+      // into the other campaign, where the same confirmation would be stale.
+      pendingPurchaseId = null;
       selectedCampaignId = campaignById(campaignId).id;
       rebuildCampaignMissionIndices();
       ensureAircraftInCampaign();

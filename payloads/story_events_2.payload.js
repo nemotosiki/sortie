@@ -339,7 +339,7 @@ export default function register(ctx) {
   // Production source-inlines this function and can reach the core radio queue.
   // The query loader imports it as a separate module, so a small fallback clones
   // the existing panel for development without adding a host-side schema.
-  const PRIORITY_CRITICAL = 2;
+  const PRIORITY_CRITICAL = 3;
   const WATCHED_KEYS = new Set(["m02", "r02", "r08", "m-escort", "m05", "r20"]);
   let fallbackRadio = null;
 
