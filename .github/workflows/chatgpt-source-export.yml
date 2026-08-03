@@ -1,0 +1,32 @@
+name: ChatGPT source export
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Upload current source tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: sortie-source
+          path: |
+            index.html
+            payloads
+            tools
+            docs
+            package.json
+            package-lock.json
+          if-no-files-found: warn
+          retention-days: 1
