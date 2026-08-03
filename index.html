@@ -4365,6 +4365,32 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return !entry || entry.tgt !== false;
     }
 
+    // One classifier owns every player-facing contact colour. Aircraft type,
+    // faction, ace paint and lock state never participate in IFF colour.
+    const CONTACT_DISPOSITION = Object.freeze({
+      TGT: "TGT",
+      HOSTILE_OPTIONAL: "HOSTILE_OPTIONAL",
+      FRIENDLY: "FRIENDLY"
+    });
+    const CONTACT_COLORS = Object.freeze({
+      TGT: "#ff5968",
+      HOSTILE_OPTIONAL: "#f4f7fa",
+      FRIENDLY: "#68beff"
+    });
+
+    function contactDisposition(entry, source = "enemy") {
+      if (source === "friendly" || (entry && entry.friendly === true)) {
+        return CONTACT_DISPOSITION.FRIENDLY;
+      }
+      return isTgtEntry(entry)
+        ? CONTACT_DISPOSITION.TGT
+        : CONTACT_DISPOSITION.HOSTILE_OPTIONAL;
+    }
+
+    function contactDispositionColor(entry, source = "enemy") {
+      return CONTACT_COLORS[contactDisposition(entry, source)];
+    }
+
     // What destroying this contact is worth. The rank compares what the player
     // killed against what was spawned, so the two sides MUST be counted by the
     // same formula - a mount worth 150 on the way out and 1000 on the way in
@@ -48889,7 +48915,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const y = (-tmpV7.y * 0.5 + 0.5) * window.innerHeight;
         marker.style.left = `${x}px`;
         marker.style.top = `${y}px`;
-        friendlyMarkerScreenState.push({ kind: friendly.kind, label: friendly.label, x, y, distance });
+        friendlyMarkerScreenState.push({
+          kind: friendly.kind,
+          label: friendly.label,
+          x,
+          y,
+          distance,
+          disposition: CONTACT_DISPOSITION.FRIENDLY
+        });
       }
 
       for (const [key, marker] of friendlyMarkerElements) {
@@ -48940,12 +48973,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // designated targets only, the aircraft's name to the right on every
         // contact, range underneath. The frame colour itself is left to the
         // existing selected/locked states.
-        const isTgt = isTgtEntry(enemy);
+        const disposition = contactDisposition(enemy);
+        const isTgt = disposition === CONTACT_DISPOSITION.TGT;
+        marker.dataset.disposition = disposition;
         marker.classList.toggle("active", active);
         marker.classList.toggle("selected", selected);
         marker.classList.toggle("locked", locked);
         marker.classList.toggle("multiLocked", multiLocked);
         marker.classList.toggle("tgt", isTgt);
+        marker.classList.toggle(
+          "hostileOptional",
+          disposition === CONTACT_DISPOSITION.HOSTILE_OPTIONAL
+        );
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
         // Who gets a name and a range: the main selection, and every target
         // latched into a salvo.
@@ -48965,7 +49004,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           marker.style.top = `${y}px`;
           enemyMarkerScreenState.push({
             id: enemy.id, x, y, selected, locked, multiLocked,
-            tgt: isTgt, name: displayName
+            tgt: isTgt, disposition, name: displayName
           });
         }
       }
@@ -49311,6 +49350,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.cameraFocus.source = cameraFocusSource;
       hook.hud.visibleEnemyMarkers = enemyMarkerScreenState.map((marker) => ({ ...marker }));
       hook.hud.visibleFriendlyMarkers = friendlyMarkerScreenState.map((marker) => ({ ...marker }));
+      hook.hud.contactPalette = { ...CONTACT_COLORS };
       hook.hud.radarBlinkOn = radarBlinkOn;
       // The friendly roster, for the probe that proves a friendly is never a
       // contact: whatever is in here must never appear in enemies[], never be
@@ -49437,7 +49477,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         waveCount: MISSIONS[currentMissionIndex].waveCount,
         enemies: enemies.filter((enemy) => enemy.alive)
           .map((enemy) => ({
-            id: enemy.id, type: enemy.type, tgt: isTgtEntry(enemy), isAce: enemy.isAce,
+            id: enemy.id,
+            type: enemy.type,
+            tgt: isTgtEntry(enemy),
+            disposition: contactDisposition(enemy),
+            isAce: enemy.isAce,
             // Role and tier are never shown to the player - the aircraft is
             // supposed to just feel weak or lethal - but the probe has to be
             // able to prove the multipliers landed on the right contacts.
@@ -49556,6 +49600,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Designated-target flag and, on the guard sorties, what this aircraft
         // is flying at instead of the player.
         tgt: isTgtEntry(enemy),
+        disposition: contactDisposition(enemy),
         hunt: enemy.hunt || null
       }));
       hook.threats.incomingMissiles = enemyMissiles.map((missile) => ({
