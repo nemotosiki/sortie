@@ -963,13 +963,27 @@
     .enemyMarker.active.named .enemyMarkerName { opacity: 0.92; }
     .enemyMarker.tgt.active .enemyMarkerTgt { opacity: 1; }
 
-    /* Selection is shown by the caption, not by the frame: the box stays the
-       same green box every other contact has. */
+    /* Contact colour is immutable IFF. Selection and lock are geometry:
+       an outer frame, a thicker border and the existing inner diamond. */
+    .enemyMarker.selected {
+      outline: 1px solid currentColor;
+      outline-offset: 3px;
+    }
 
     .enemyMarker.locked,
     .enemyMarker.multiLocked {
-      color: #ff5968;
+      border-width: 2px;
       border-color: currentColor;
+    }
+
+    .enemyMarker.locked::before,
+    .enemyMarker.multiLocked::before {
+      animation: contactLockPulse 620ms ease-in-out infinite;
+    }
+
+    @keyframes contactLockPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.42; }
     }
 
     /* Retired: the range moved under the name tag, and keeping this would show
@@ -49378,6 +49392,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.hud.visibleEnemyMarkers = enemyMarkerScreenState.map((marker) => ({ ...marker }));
       hook.hud.visibleFriendlyMarkers = friendlyMarkerScreenState.map((marker) => ({ ...marker }));
       hook.hud.contactPalette = { ...CONTACT_COLORS };
+      hook.hud.selectionUsesColour = false;
+      hook.hud.hasIndependentOffscreenTargetArrow = false;
       hook.hud.radarBlinkOn = radarBlinkOn;
       // The friendly roster, for the probe that proves a friendly is never a
       // contact: whatever is in here must never appear in enemies[], never be
