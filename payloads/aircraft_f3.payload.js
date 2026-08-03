@@ -1,9 +1,10 @@
 // F-3 - ARCA next-generation air-superiority demonstrator.
 //
 // Story role: the top aircraft of the nominally neutral ARCA security force.
-// It is a NON-TARGET interference aircraft, not a campaign reward and not a
-// hangar entry. Missions may spawn it with `tgt: false`; the airframe itself is
-// deliberately registered enemy/support-only (`order: false`).
+// In hostile missions it is an ordinary shootable/lockable enemy with `tgt:
+// false`: it attacks the player but is never a mandatory mission objective.
+// Sera's early campaign may instead spawn the same airframe through the allied
+// support path. The airframe itself remains hangar-excluded (`order: false`).
 //
 // The real-world inspiration is the Japanese/British/Italian GCAP programme,
 // whose final production shape and performance are not fixed. This therefore
@@ -11,11 +12,12 @@
 // original blended twin-engine stealth fighter around the public design ideas:
 // a broad cranked wing, chined forebody, buried engines and canted twin tails.
 export default function register(ctx) {
-  const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+  const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ENEMY_MISSILE_PROFILES } = ctx.tables;
   const raptor = AIRCRAFT_TYPES.f22;
   const raptorAI = ENEMY_AI_PROFILES.f22;
-  if (!raptor || !raptorAI) {
-    throw new Error("[f3] expected the f22 aircraft and AI templates to exist");
+  const raptorMissile = ENEMY_MISSILE_PROFILES.f22;
+  if (!raptor || !raptorAI || !raptorMissile) {
+    throw new Error("[f3] expected the f22 aircraft, AI and missile templates to exist");
   }
 
   const theme = {
@@ -83,14 +85,13 @@ export default function register(ctx) {
     theme
   }, { order: false });
 
-  // ARCA aircraft are tactically obstructive but do not attack. The mission
-  // definition is responsible for `tgt: false`; this profile guarantees the
-  // airframe cannot damage the player, a designated target or an escort while
-  // it mixes into radar and target-selection traffic.
+  // Hostile ARCA aircraft use ordinary fighter combat AI. Mission definitions
+  // decide allegiance: Sera's early campaign uses the allied support spawner;
+  // Sera's middle/late campaign and all of Erem use the hostile spawner with
+  // `tgt: false`. The absence of TGT affects objectives, not lock-on or combat.
   ctx.addEnemyProfile("f3", {
     ...raptorAI,
     label: "ARCA F-3",
-    attackRange: 0,
     hitboxScale: 1.12,
     patrolSpeedScale: Math.max(1.08, raptorAI.patrolSpeedScale || 1),
     patrolPathScale: 0.72,
@@ -98,13 +99,17 @@ export default function register(ctx) {
     verticalAmplitude: 54,
     verticalFrequency: 0.24,
     explosionScale: 1.12,
-    radarColor: "#d7efff",
-    tracerColor: 0xd7efff,
-    explosionColor: 0xc8ddff,
+    radarColor: "#ff715e",
+    tracerColor: 0xff9a72,
+    explosionColor: 0xff9270,
     theme
   });
-  // Intentionally no addEnemyMissileProfile. In this engine the missing entry
-  // is the no-missile contract. attackRange: 0 suppresses gun attacks as well.
+
+  // F-3 must be able to fight like every other hostile ARCA aircraft. Reuse the
+  // live F-22 launcher contract for now; airframe differentiation remains in
+  // the F-3's lower mobility/durability and higher speed. Mission-level `tgt:
+  // false` keeps it optional even while it launches missiles and uses its gun.
+  ctx.addEnemyMissileProfile("f3", { ...raptorMissile });
 
   ctx.addAircraftModel("f3", {
     // Top view in the shared 40x44 HUD box. The broad cranked wing and long
