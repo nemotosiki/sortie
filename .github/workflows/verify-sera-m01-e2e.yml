@@ -48,7 +48,10 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Run registry gate
-        run: node tools/registry_gate.mjs
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
 
       - name: Run M01 browser E2E
         shell: bash
