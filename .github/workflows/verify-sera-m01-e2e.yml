@@ -32,7 +32,7 @@ jobs:
       - name: Add focused M01 probes
         run: python tools/apply_sera_m01_debug_probe.py
 
-      - name: Run static and registry contracts
+      - name: Run static contracts
         run: |
           node tools/check_air_iff_foundation.mjs
           node tools/check_map_ren_bay.mjs
@@ -40,13 +40,15 @@ jobs:
           node tools/check_sera_m01_wave_host.mjs
           node tools/check_sera_m01_rook_host.mjs
           node tools/check_sera_m01_breach_host.mjs
-          node tools/registry_gate.mjs
           git diff --check
 
       - name: Install Chromium harness
         run: |
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
+
+      - name: Run registry gate
+        run: node tools/registry_gate.mjs
 
       - name: Run M01 browser E2E
         shell: bash
