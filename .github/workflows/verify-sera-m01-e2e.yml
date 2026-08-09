@@ -20,7 +20,7 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: chatgpt/sera-act1-implementation
           fetch-depth: 0
@@ -53,7 +53,16 @@ jobs:
             if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
             sleep 1
           done
-          node tools/check_sera_m01_e2e.mjs
+          set +e
+          node tools/check_sera_m01_e2e.mjs 2>&1 | tee /tmp/sera-m01-e2e.log
+          status=${PIPESTATUS[0]}
+          {
+            echo '### Sera M01 Chromium E2E'
+            echo '```text'
+            tail -n 120 /tmp/sera-m01-e2e.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Commit verified probes and remove workflow scaffolding
         shell: bash
