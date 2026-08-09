@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// Static/runtime-contract check for payloads/mission_sera_m01.payload.js.
+// Runtime-contract check for payloads/mission_sera_m01.payload.js.
 //
-// This test does not require a browser. It imports a temporary .mjs copy of the
-// payload, supplies the smallest compatible registry context, and proves that
-// the stock first mission is replaced in place with the intended IFF counts.
+// This test imports a temporary .mjs copy of the payload, supplies the smallest
+// compatible registry context, and proves that the stock first mission is
+// replaced in place with the v0.16 M01 encounter and its host-side contracts.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -27,7 +27,8 @@ const source = fs.readFileSync(PAYLOAD, "utf8");
 assert(!source.includes("\r"), "payload must be LF-only");
 assert(source.includes('world: "renBay"'), "mission does not select renBay");
 assert(source.includes('friendlyBase:'), "mission has no bomber strike destination");
-assert(source.includes('tgt: false'), "mission has no white optional contacts");
+assert(source.includes('bomberBreach:'), "mission has no breach contract");
+assert(source.includes('wingmen:'), "mission has no two-wingman roster");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sera-m01-check-"));
 const tempModule = path.join(tempDir, "mission_sera_m01.mjs");
@@ -53,7 +54,7 @@ try {
     tables: {
       MISSIONS,
       WORLD_PRESETS: { renBay: {} },
-      AIRCRAFT_TYPES: { tu22m3: {}, mig29: {} },
+      AIRCRAFT_TYPES: { tu22m3: {}, mig29: {}, f16: {} },
       ENEMY_AI_PROFILES: { tu22m3: {}, mig29: {} }
     },
     addMission(def) {
@@ -61,7 +62,7 @@ try {
         assert(def[required] !== undefined, `replacement missing ${required}`);
       }
       assert(!MISSIONS.some((mission) => mission.key === def.key), `duplicate mission key ${def.key}`);
-      const normalized = Object.freeze({ ...def, waves: def.sequence, waveCount: def.sequence.length });
+      const normalized = Object.freeze({ ...def, waves: def.sequence, waveCount: def.sequence.filter((wave) => !wave.concurrent).length });
       MISSIONS.push(normalized);
       return normalized;
     }
@@ -75,30 +76,54 @@ try {
   assert(mission.title === "FIRST CONTACT", `unexpected title ${mission.title}`);
   assert(mission.world === "renBay", `unexpected world ${mission.world}`);
   assert(mission.parTime === 660, `unexpected parTime ${mission.parTime}`);
-  assert(mission.sequence.length === 6, `expected 6 sequence entries, got ${mission.sequence.length}`);
+  assert(mission.sequence.length === 7, `expected 7 sequence entries, got ${mission.sequence.length}`);
+  assert(mission.waveCount === 4, `expected 4 principal phases, got ${mission.waveCount}`);
 
-  const tgt = mission.sequence
-    .filter((wave) => wave.tgt !== false)
-    .reduce((sum, wave) => sum + wave.types.length, 0);
-  const optional = mission.sequence
-    .filter((wave) => wave.tgt === false)
-    .reduce((sum, wave) => sum + wave.types.length, 0);
-  const bombers = mission.sequence
-    .flatMap((wave) => wave.types)
-    .filter((type) => type === "tu22m3").length;
-  const escorts = mission.sequence
-    .flatMap((wave) => wave.types)
-    .filter((type) => type === "mig29").length;
+  const tgtWaves = mission.sequence.filter((wave) => wave.tgt !== false);
+  const optionalWaves = mission.sequence.filter((wave) => wave.tgt === false);
+  const tgt = tgtWaves.reduce((sum, wave) => sum + wave.types.length, 0);
+  const optional = optionalWaves.reduce((sum, wave) => sum + wave.types.length, 0);
+  const bombers = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "tu22m3").length;
+  const escorts = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "mig29").length;
 
   assert(tgt === 6, `expected 6 red TGT contacts, got ${tgt}`);
   assert(optional === 10, `expected 10 white optional contacts, got ${optional}`);
   assert(bombers === 6, `expected 6 Tu-22M3 bombers, got ${bombers}`);
-  assert(escorts === 10, `expected 10 MiG-29 escorts, got ${escorts}`);
+  assert(escorts === 10, `expected 10 MiG-29 contacts, got ${escorts}`);
+  assert(optionalWaves.every((wave) => wave.rankNeutral === true), "white M01 contacts must be rank-neutral");
+
+  const tutorial = mission.sequence[0];
+  assert(tutorial.tgt === false, "tutorial contacts must be white/non-TGT");
+  assert(tutorial.gate?.mode === "clearOrTimeout", "tutorial phase gate is missing");
+  assert(tutorial.gate?.timeout === 75, `unexpected tutorial timeout ${tutorial.gate?.timeout}`);
+  assert(Array.isArray(tutorial.at) && tutorial.at.length === 2, "tutorial has no authored approach point");
+
+  assert(mission.friendlies?.wingmen?.length === 2, "expected CROWN and LARK wingmen");
+  const wingmanLabels = mission.friendlies.wingmen.map((wingman) => wingman.label);
+  assert(wingmanLabels.includes("ROOK 1 CROWN"), "CROWN wingman missing");
+  assert(wingmanLabels.includes("ROOK 3 LARK"), "LARK wingman missing");
+  assert(mission.friendlies.wingmen.some((wingman) => wingman.radioSpeaker === "crown"), "CROWN radio identity missing");
+  assert(mission.friendlies.wingmen.some((wingman) => wingman.radioSpeaker === "lark"), "LARK radio identity missing");
+  assert(mission.friendlies.playerStart?.facing, "player start has no authored facing point");
+
+  assert(mission.bomberBreach?.sCapAt === 1, "one-breach S cap missing");
+  assert(mission.bomberBreach?.failAt === 2, "two-breach failure threshold missing");
+  assert(mission.successRadio?.speaker === "meridian", "success is not owned by MERIDIAN");
+  assert(mission.failureRadio?.speaker === "meridian", "failure is not owned by MERIDIAN");
   assert(mission.friendlyBase?.label === "REN BAY AIRPORT", "friendlyBase contract missing");
   assert(mission.battleRadius === 15000, `unexpected battleRadius ${mission.battleRadius}`);
 
+  const speakerIds = new Set([
+    ...mission.introRadio.map((line) => line.speaker),
+    ...mission.sequence.flatMap((wave) => wave.radio || []).map((line) => line.speaker)
+  ]);
+  for (const speaker of ["meridian", "crown", "lark"]) {
+    assert(speakerIds.has(speaker), `${speaker} has no authored M01 line`);
+  }
+
   console.log("check_sera_m01_payload: PASS");
-  console.log(`  mission=${mission.key} world=${mission.world} TGT=${tgt} WHITE=${optional} par=${mission.parTime}s`);
+  console.log(`  mission=${mission.key} world=${mission.world} TGT=${tgt} WHITE=${optional} phases=${mission.waveCount}`);
+  console.log(`  wingmen=${wingmanLabels.join(" / ")} breach=${mission.bomberBreach.sCapAt}/${mission.bomberBreach.failAt}`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
