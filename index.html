@@ -4353,18 +4353,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // A delayed entry that never comes due is simply never spawned, which
         // is the design - clearing the wave fast is how the player refuses it.
         delay: Math.max(0, Number(entry.delay) || 0),
-        // Naval only. `at` pins the formation's centre to a world [x, z]
-        // instead of taking the default "2.4km off the player's nose, clamped
-        // into the inner sea", and `facing` is the [x, z] the hulls point at.
-        // Both exist for BEACHHEAD: a landing force is defined by the line it
-        // is steaming down, and a fleet placed relative to wherever the player
-        // happens to be looking has no such line. Omitted on every wave
-        // written before this, so the default placement is untouched.
-        at: kind === "naval" && Array.isArray(entry.at)
+        // A non-TGT principal may still be a real phase. `clearOrTimeout`
+        // holds progression while one of the contacts it spawned is alive,
+        // but releases the phase once its authored clock expires. Existing
+        // waves omit this and retain the designated-target-only contract.
+        gate: entry.gate && entry.gate.mode === "clearOrTimeout"
+          ? Object.freeze({
+              mode: "clearOrTimeout",
+              timeout: Math.max(0, Number(entry.gate.timeout) || 0)
+            })
+          : null,
+        // Any wave may author an absolute [x, z] approach point and an [x, z]
+        // point to face. Naval formations keep their existing use; air waves
+        // gain the same deterministic geography for story missions. Omitted
+        // entries still use the historic mission-ring placement.
+        at: Array.isArray(entry.at)
           ? Object.freeze([Number(entry.at[0]) || 0, Number(entry.at[1]) || 0])
           : null,
-        facing: kind === "naval" && Array.isArray(entry.facing)
+        facing: Array.isArray(entry.facing)
           ? Object.freeze([Number(entry.facing[0]) || 0, Number(entry.facing[1]) || 0])
+          : null,
+        // Air only. An authored approach altitude accompanies `at`; naval
+        // waves stay at sea level and ignore it.
+        altitude: kind === "air" && Number.isFinite(Number(entry.altitude))
+          ? Number(entry.altitude)
           : null,
         // ENEMY_ROLES key for every aircraft in the wave. Omitted = line, i.e.
         // the airframe flown at its published numbers. `ace` is never written
@@ -34639,6 +34651,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // by spawnMissionWave, drained by updatePendingWaves, cleared whenever a
     // new wave the player must clear goes on the board.
     const pendingWaves = [];
+    // Optional gate owned by the active principal wave. Its ids are the exact
+    // contacts that phase spawned; escorts and later waves cannot accidentally
+    // hold it open.
+    let activeWaveGate = null;
     // Next free HUD target id block, and how many wave targets the sortie has
     // put on the board so far. Both are per-sortie and reset in startMission.
     let waveIdCursor = 0;
@@ -39723,6 +39739,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       waveNumber = 0;
       missionWaveIndex = 0;
       waveIdCursor = 0;
+      activeWaveGate = null;
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -42143,14 +42160,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // 難度つまみでしかなく、ここで問題なのは護衛対象からの距離なので。
       // 開幕組 (OPENING_SPAWN_TIME 以内) はリングと窓を押し出して接近フェーズを
       // 作る - 定数の所の理由書き参照。
-      const opening = !((wave && wave.hunt)) && missionElapsed < OPENING_SPAWN_TIME;
+      const explicitOrigin = Boolean(wave && wave.at);
+      const opening = !explicitOrigin && !((wave && wave.hunt)) && missionElapsed < OPENING_SPAWN_TIME;
       const radius = wave && wave.hunt
         ? HUNT_WAVE_RING_RADIUS
         : (opening ? Math.max(WAVE_RING_RADIUS[ringBand], OPENING_SPAWN_RADIUS) : WAVE_RING_RADIUS[ringBand]);
-      const anchor = waveAnchorFor(wave, new THREE.Vector3());
-      const origin = opening
-        ? resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3(), OPENING_SPAWN_MIN_RANGE, OPENING_SPAWN_MAX_RANGE)
-        : resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3());
+      const anchor = wave && wave.facing
+        ? new THREE.Vector3(wave.facing[0], 0, wave.facing[1])
+        : waveAnchorFor(wave, new THREE.Vector3());
+      const authoredAltitude = Number.isFinite(wave && wave.altitude)
+        ? wave.altitude
+        : player.position.y;
+      const origin = explicitOrigin
+        ? new THREE.Vector3(
+            wave.at[0],
+            Math.max(WAVE_SPAWN_MIN_ALTITUDE, authoredAltitude),
+            wave.at[1]
+          )
+        : (opening
+          ? resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3(), OPENING_SPAWN_MIN_RANGE, OPENING_SPAWN_MAX_RANGE)
+          : resolveWaveSpawnPoint(anchor, waveIndex, radius, new THREE.Vector3()));
       // Hunt 波は護衛対象の前半球に置かない。スライドが選んだベアリングを、
       // 進行方向から HUNT_SPAWN_REAR_ANGLE 以上離れた最寄りの角へ最小回転で
       // 寄せる。リング半径は変えないので猶予の保証はそのまま。
@@ -45292,6 +45321,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // mixes the two can never hand out the same target number twice.
       const idBase = wave.idBase === null || wave.idBase === undefined ? waveIdCursor : wave.idBase;
       waveIdCursor = Math.max(waveIdCursor, idBase + size);
+      if (!wave.concurrent) {
+        activeWaveGate = wave.gate
+          ? {
+              ids: new Set(Array.from({ length: size }, (_, slot) => idBase + slot + 1)),
+              elapsed: 0,
+              timeout: wave.gate.timeout
+            }
+          : null;
+      }
       // Designated targets only - the dev hooks below equate this with `kills`
       // to fast-forward a mission, and a bonus contact must not satisfy the
       // objective counter.
@@ -47355,6 +47393,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updatePendingWaves(dt);
       updateStrikeThreat();
       updateLandingThreat();
+      if (activeWaveGate) {
+        activeWaveGate.elapsed += dt;
+        const gateContactAlive = enemies.some(
+          (enemy) => enemy.alive && activeWaveGate.ids.has(enemy.id)
+        );
+        if (gateContactAlive && activeWaveGate.elapsed < activeWaveGate.timeout) {
+          waveClearTimer = -1;
+          return;
+        }
+        activeWaveGate = null;
+      }
       // Only designated targets hold the mission open. A surviving escort or
       // CAP keeps fighting - and keeps being worth bonus points - but it can
       // never stall the next wave or deny the player the mission.
