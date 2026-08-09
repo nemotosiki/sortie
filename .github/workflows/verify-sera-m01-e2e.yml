@@ -5,7 +5,10 @@ on:
     branches:
       - chatgpt/sera-act1-implementation
     paths:
+      - payloads/map_renBay.payload.js
+      - payloads/mission_sera_m01.payload.js
       - tools/apply_sera_m01_debug_probe.py
+      - tools/check_map_ren_bay.mjs
       - tools/check_sera_m01_e2e.mjs
       - .github/workflows/verify-sera-m01-e2e.yml
 
@@ -29,7 +32,7 @@ jobs:
       - name: Add focused M01 probes
         run: python tools/apply_sera_m01_debug_probe.py
 
-      - name: Run static contracts
+      - name: Run static and registry contracts
         run: |
           node tools/check_air_iff_foundation.mjs
           node tools/check_map_ren_bay.mjs
@@ -37,6 +40,7 @@ jobs:
           node tools/check_sera_m01_wave_host.mjs
           node tools/check_sera_m01_rook_host.mjs
           node tools/check_sera_m01_breach_host.mjs
+          node tools/registry_gate.mjs
           git diff --check
 
       - name: Install Chromium harness
@@ -60,7 +64,7 @@ jobs:
           {
             echo '### Sera M01 Chromium E2E'
             echo '```text'
-            tail -n 120 /tmp/sera-m01-e2e.log
+            tail -n 160 /tmp/sera-m01-e2e.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
