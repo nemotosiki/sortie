@@ -29,9 +29,7 @@ M01より一段だけ複雑にし、空対空から空対地へ仕事が変わ�
 
 ## 1. 物語上の役割
 
-M01で爆撃隊を止めても、戦争は終わらない。
-
-ROOK三機は引き続き同じ編成。
+M01に続く二回目の出撃。大きなドラマを進める回ではなく、ROOK三機の仕事ぶりとRAVENが一人で一方向を任されるようになったことを見せる。
 
 ```text
 ROOK 1 CROWN
@@ -40,16 +38,16 @@ ROOK 3 LARK
 AWACS MERIDIAN
 ```
 
-MERIDIANが正式な作戦指示を出し、CROWNは編隊内でRAVENが戦いやすい位置を作る。RAVENはPHASE 2で初めて一つの攻撃軸を事実上任されるが、英雄扱いはしない。
+MERIDIANが正式な作戦指示を出し、CROWNは編隊内でRAVENが戦いやすい位置を作る。RAVENはPHASE 2で初めて一つの攻撃軸を事実上任されるが、英雄扱いや成長の大演説はしない。
 
 ### 無線上の役割分担
 
 - **MERIDIAN**: 敵侵入軸、施設状況、TGT更新、TEL経路、MISSION UPDATE。
-- **CROWN**: 低空目標への入り方、離脱方向、対地攻撃中に空を見失わないための助言。
-- **LARK**: 施設の火災、地上作業員、RAVEN背後の敵、TELの道路位置。
-- **地上偵察・発電所・飛行場管制**: 目標発見と地域の生活感。
+- **CROWN**: 低空目標への入り方、離脱方向、対地攻撃中の短い補助。説教、試験官のような評価、人生訓は使わない。
+- **LARK**: 地上施設、火災、RAVEN背後の敵、TELの道路位置。
+- **地上偵察・発電所・飛行場管制**: 目標発見と施設の業務状況。
 
-CROWNは「東へ行け」と正式命令を出すのではなく、MERIDIANの指示を受けて「東側はお前に任せる」と支える。
+CROWNは「東へ行け」と正式命令を出すのではなく、MERIDIANの指示を受けて「東側は任せる」と軽く支える。
 
 ---
 
@@ -248,8 +246,9 @@ TELは2両ずつ少し間隔を空けて走らせる。一度の爆撃で4両全
 ### 9.1 基本規約
 
 - MERIDIANが攻撃軸と目標を指定する。
-- CROWNは低空進入、離脱、再攻撃のコツを短く教える。
-- CROWNはRAVENを試験するように振る舞わず、任せた後も失敗時に支援する。
+- CROWNは低空進入、離脱、再攻撃のコツを短く話すだけにする。
+- CROWNはRAVENを試験する教官のように振る舞わず、成績や損害を人生訓へ変えない。
+- CROWNの好感は「助ける」「手柄を奪わない」「気軽に任せる」「ミスを蒸し返さない」で作る。
 - LARKは地上施設、火災、TELの道路位置、RAVENの背後を読む。
 - TEL発見前に「巡航ミサイル発射機がいる」と先回りして言わない。
 - PHASE 3では重要なTGT移動警告を背景会話より優先する。
@@ -261,43 +260,43 @@ TELは2両ずつ少し間隔を空けて走らせる。一度の爆撃で4両全
 | `m02_intro_01` | 開始3秒 | MERIDIAN | NORMAL | 「ROOK、アマル平原へ進入。発電所と予備飛行場が攻撃を受けている。」 |
 | `m02_intro_02` | 開始10秒 | 発電所管制 | NORMAL | 「負荷を北系統へ切り替える。作業員は地下へ退避。」 |
 | `m02_intro_03` | 開始16秒 | LARK | NORMAL | 「畑しかないように見えるけど、送電線だらけだね。」 |
-| `m02_intro_04` | 開始20秒 | CROWN | NORMAL | 「低く入るなら鉄塔だけは忘れるな。俺も拾いには降りられない。」 |
+| `m02_intro_04` | 開始20秒 | CROWN | NORMAL | 「低く行くなら鉄塔だけ見ておけ。俺も拾いには降りられない。」 |
 | `m02_p1_01` | PHASE 1表示 | MERIDIAN | CRITICAL | 「北東、低空の攻撃機二。発電所へ向かっている。TGT指定。」 |
-| `m02_p1_02` | Su-24へ6km | CROWN | NORMAL | 「上から追うな。高度を合わせて後ろへ入れ。」 |
+| `m02_p1_02` | Su-24へ6km | CROWN | NORMAL | 「上から追うより、高度を合わせた方が楽だ。」 |
 | `m02_p1_03` | 最初の攻撃機撃墜 | LARK | NORMAL | 「一機停止。残りは河川沿い。」 |
 | `m02_p2_01` | PHASE 2開始 | MERIDIAN | CRITICAL | 「東方から第二波。進路、予備飛行場。」 |
 | `m02_p2_02` | 上記の2秒後 | MERIDIAN | URGENT | 「ROOK 2、東側編隊を迎撃。ROOK 1と3は西側を維持。」 |
-| `m02_p2_03` | RAVENが東へ旋回 | CROWN | NORMAL | 「東側は任せる。難しく考えるな、攻撃機だけ止めろ。」 |
+| `m02_p2_03` | RAVENが東へ旋回 | CROWN | NORMAL | 「東側は任せる。攻撃機だけ頼む。」 |
 | `m02_p2_04` | RAVENがROOK隊から5km離れる | LARK | NORMAL | 「こっちは大丈夫。RAVENはそのまま行って。」 |
 | `m02_update_01` | 全Su-24撃墜3秒後 | 地上偵察 | URGENT | 「東部道路に大型車両四。荷台が起きている……発射機だ。」 |
 | `m02_update_02` | 上記の1秒後 | MERIDIAN | CRITICAL | 「照合完了。巡航ミサイルTEL四。TGT更新。」 |
-| `m02_update_03` | MISSION UPDATE表示 | CROWN | NORMAL | 「空は俺たちが見る。RAVEN、地上を頼む。」 |
+| `m02_update_03` | MISSION UPDATE表示 | CROWN | NORMAL | 「空はこっちで見る。RAVEN、車列をよろしく。」 |
 | `m02_tel_01` | TELへ8km | LARK | NORMAL | 「果樹林の切れ目、舗装路を北へ移動中。」 |
 | `m02_tel_02` | 移動SAM表示 | MERIDIAN | URGENT | 「TEL随伴に移動SAM。射程圏を表示する。」 |
 | `m02_air_01` | 南方MiG出現 | MERIDIAN | CRITICAL | 「南から戦闘機四。非TGT、TEL迎撃を継続。」 |
-| `m02_air_02` | 上記の2秒後 | CROWN | NORMAL | 「付き合わなくていい。攻撃の邪魔だけさせるな。」 |
+| `m02_air_02` | 上記の2秒後 | CROWN | NORMAL | 「戦闘機は俺たちで散らす。RAVENは車列をどうぞ。」 |
 | `m02_tel_03` | TEL残り2 | MERIDIAN | URGENT | 「TEL、残り二。鉄道積替地点まで六キロ。」 |
 | `m02_end_01` | 最終TEL撃破 | MERIDIAN | NORMAL | 「全発射機の停止を確認。残存航空隊は後退中。」 |
 | `m02_end_02` | 上記の3秒後 | LARK | NORMAL | 「発電所、まだ動いてる。」 |
-| `m02_end_03` | 上記の1秒後 | CROWN | NORMAL | 「よし。RAVEN、燃料を見て帰ろう。」 |
+| `m02_end_03` | 上記の1秒後 | CROWN | NORMAL | 「よし。燃料を見て帰ろう。」 |
 
 ### 9.3 条件付き無線
 
 | ID | 条件 | 話者 | 台詞 |
 |---|---|---|---|
-| `m02_cond_too_low` | RAVEN高度120m未満が5秒継続 | CROWN | 「RAVEN、少し上げろ。畑より鉄塔の方が高い。」 |
-| `m02_cond_good_low_pass` | 低空からSu-24を短時間撃墜 | CROWN | 「いい入り方だ。離脱も同じくらい丁寧にな。」 |
+| `m02_cond_too_low` | RAVEN高度120m未満が5秒継続 | CROWN | 「RAVEN、少し上げろ。鉄塔の方が高い。」 |
+| `m02_cond_good_low_pass` | 低空からSu-24を短時間撃墜 | CROWN | 「いいぞ。抜けたら一度上げよう。」 |
 | `m02_cond_power_hit` | 発電所HP50%未満 | 発電所管制 | 「主変圧器に被害。南系統を遮断する。」 |
 | `m02_cond_airfield_hit` | 予備飛行場HP50%未満 | 飛行場管制 | 「滑走路東端に着弾。待機機を西側へ移す。」 |
-| `m02_cond_raven_targeted` | PHASE 2でRAVENへ敵2機以上接近 | CROWN | 「その護衛は俺が一機取る。攻撃機へ行け。」 |
-| `m02_cond_tel_chase_air` | 白MiGを12秒追いTELから5km以上離れる | CROWN | 「そいつらは車列から離したいだけだ。TELへ戻ろう。」 |
+| `m02_cond_raven_targeted` | PHASE 2でRAVENへ敵2機以上接近 | CROWN | 「護衛を一機もらう。RAVENは攻撃機へ。」 |
+| `m02_cond_tel_chase_air` | 白MiGを12秒追いTELから5km以上離れる | CROWN | 「そいつは俺が引く。車列へ戻っていい。」 |
 | `m02_cond_sam_launch` | 移動SAM発射 | LARK | 「地上発射、RAVENへ向かってる！」 |
 | `m02_cond_tel_escape_6k` | 先頭TELが脱出線6km | MERIDIAN | 「先頭TEL、脱出線まで六キロ。」 |
 | `m02_cond_tel_escape_3k` | 先頭TELが脱出線3km | MERIDIAN | 「先頭TGT、残り三キロ。迎撃を急げ。」 |
 | `m02_cond_one_escape` | TEL1両脱出 | MERIDIAN | 「TEL一両が鉄道区へ到達。残る三両を破壊せよ。」 |
 | `m02_cond_low_hp` | RAVEN HP35%未満 | LARK | 「RAVEN、煙が濃い。対地進入は浅くして。」 |
-| `m02_cond_clean_end` | 施設損失0・TEL脱出0 | CROWN | 「一人で東側を片づけたな。次もそのくらい落ち着いてくれ。」 |
-| `m02_cond_damaged_end` | 施設損失あり | CROWN | 「全部は守れない日もある。持ち帰ったものを数えよう。」 |
+| `m02_cond_clean_end` | 施設損失0・TEL脱出0 | CROWN | 「東側、全部片づけたな。助かった。」 |
+| `m02_cond_damaged_end` | 施設損失あり | CROWN | 「施設に被害は出た。あとは地上に任せて戻ろう。」 |
 
 条件付き無線は一回限り。`clean_end`と`damaged_end`は排他で、`m02_end_02`の前へ挿入する。
 
@@ -327,7 +326,8 @@ TELは2両ずつ少し間隔を空けて走らせる。一度の爆撃で4両全
 - 白MiGを無視してもTELを破壊可能
 - 施設HPが敵出現直後に急減しない
 - Sランクが敵スポーン乱数に左右されない
-- MERIDIANが正式指示、CROWNが助言という役割を崩さない
-- CROWNが失敗を責める台詞を持たない
+- MERIDIANが正式指示、CROWNが短い補助という役割を崩さない
+- CROWNが失敗や施設損害を人生訓へ変えない
+- CROWNの台詞が説教、格言、道徳評価になっていない
 - 標準プレイが12〜15分に収まる
 - 無線がTEL距離警告を遮らない
