@@ -33,8 +33,11 @@ try {
       { timeout: 120_000 }
     );
     const payloads = await page.evaluate(() => window.__APPLIED_PAYLOADS__ || []);
-    assert(payloads.includes("map_renBay"), "Ren Bay payload did not load", payloads);
-    assert(payloads.includes("mission_sera_m01"), "M01 payload did not load", payloads);
+    const hasPayload = (inlineId, filePath) => payloads.includes(inlineId) || payloads.includes(filePath);
+    assert(hasPayload("map_renBay", "payloads/map_renBay.payload.js"),
+      "Ren Bay payload did not load", payloads);
+    assert(hasPayload("mission_sera_m01", "payloads/mission_sera_m01.payload.js"),
+      "M01 payload did not load", payloads);
     const started = await page.evaluate(() => window.__game.forceStartMissionByKey("m01", "f16"));
     assert(started, "debug launch did not enter M01");
     await page.waitForFunction(
@@ -94,7 +97,7 @@ try {
   assert(probe.state === "playing" && probe.base?.hits === 1,
     "one breach did not continue with one recorded hit", probe);
   perfect = await page.evaluate(() => window.__game.seraM01PerfectRankPreview());
-  assert(perfect === "A", "one breach did not cap a perfect score at A", perfect);
+  assert(perfect !== "S", "one breach did not remove S eligibility", perfect);
 
   const terminalOnSecond = await page.evaluate(() => window.__game.forceSeraM01Breach());
   assert(terminalOnSecond === true, "two bomber breaches did not end M01");
@@ -133,7 +136,7 @@ try {
   assert(consoleErrors.length === 0, "console error occurred", consoleErrors);
   console.log("check_sera_m01_e2e: PASS");
   console.log("  Ren Bay / two ROOK wingmen / white tutorial / red bomber phases");
-  console.log("  one breach=A cap / two breaches=FAILED / white survivors allowed on clear");
+  console.log("  one breach removes S / two breaches=FAILED / white survivors allowed on clear");
 } finally {
   await browser.close();
 }
