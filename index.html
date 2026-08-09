@@ -43889,46 +43889,48 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return friendlies.filter((friendly) => friendly.vulnerable);
     }
 
-    function spawnFriendlyWingman() {
-      // The campaign's airframe and the campaign's callsign - see
-      // WINGMAN_BY_CAMPAIGN. An unset or unknown campaign falls back to the
-      // American entry, which is the fixed F-16 every mission flew before the
-      // Russian side existed.
-      const entry = WINGMAN_BY_CAMPAIGN[selectedCampaignId] || WINGMAN_BY_CAMPAIGN.usa;
-      const spec = AIRCRAFT_TYPES[entry.type];
+    function spawnFriendlyWingman(config = null) {
+      // A reboot mission may author more than one wingman, with its own
+      // callsign, radio identity and formation slot. Stock deployments still
+      // call this with no arguments and receive the historic campaign entry.
+      const campaignEntry = WINGMAN_BY_CAMPAIGN[selectedCampaignId] || WINGMAN_BY_CAMPAIGN.usa;
+      const type = config && config.type ? config.type : campaignEntry.type;
+      const spec = AIRCRAFT_TYPES[type];
+      if (!spec) throw new Error(`[friendly] unknown wingman aircraft "${type}"`);
+      const authoredOffset = config && config.offset ? config.offset : {};
+      const numberOr = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+      const wingOffset = Object.freeze({
+        back: numberOr(authoredOffset.back, WINGMAN_OFFSET.back),
+        side: numberOr(authoredOffset.side, WINGMAN_OFFSET.side),
+        up: numberOr(authoredOffset.up, WINGMAN_OFFSET.up)
+      });
+
       const group = new THREE.Group();
       const model = createAircraftModel(spec.theme);
       group.add(model.group);
-      // Deliberately no hitbox mesh. Nothing raycasts against friendlies -
-      // fireGun() and the missile/bomb paths all build their target list from
-      // enemies[] - and adding one would only invite a future call site to
-      // find it.
+      // Deliberately no hitbox mesh. Player weapons only inspect enemies[].
       scene.add(group);
 
       forwardOf(player, tmpV1);
       rightOf(player, tmpV3);
       group.position.copy(player.position)
-        .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
-        .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
-      group.position.y += WINGMAN_OFFSET.up;
+        .addScaledVector(tmpV1, -wingOffset.back)
+        .addScaledVector(tmpV3, wingOffset.side);
+      group.position.y += wingOffset.up;
       group.quaternion.copy(player.quaternion);
 
       const friendly = {
         kind: "wingman",
-        type: entry.type,
-        label: entry.callsign,
-        // Invulnerable by construction: nothing damages a friendly, because
-        // no weapon path can see this array. `alive` exists so the radar and
-        // marker loops read the same way they do for enemies.
+        type,
+        label: config && config.label ? config.label : campaignEntry.callsign,
+        radioSpeaker: config && config.radioSpeaker ? config.radioSpeaker : "wingman",
+        wingOffset,
+        // Invulnerable by construction: no player or enemy damage path owns a
+        // hitbox for this kind. `alive` is shared marker/radar state.
         alive: true,
         group,
         model,
         radarSymbol: "air",
-        // ---- Its own aircraft, from here down -----------------------------
-        // Speed along its own nose, the bank it is holding, which of the two
-        // modes it is flying and the one contact that mode is about. Read by
-        // updateFriendlyWingman and by nothing else - the other friendly kinds
-        // never carry any of it.
         wingSpeed: playerSpeed,
         wingBank: 0,
         wingMode: "form",
@@ -43936,16 +43938,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wingModeTimer: WINGMAN_REJOIN_TIME,
         wingFireCooldown: 0,
         wingKillRadioTimer: 0,
-        // The airframe's own gun, at the fraction of it a wingman is allowed.
-        // Cached because the airframe cannot change mid-sortie.
         wingCruise: spec.cruiseSpeed,
-        // The airframe's ceiling. Every throttle path below clamps to it -
-        // the wingman can fall behind a faster player and catch up later,
-        // but it can never fly faster than the jet it is.
         wingBoost: spec.boostSpeed,
-        // The filtered wanted point - see WINGMAN_AIM_K.
         wingAim: group.position.clone(),
-        // Last frame's station error, for the probe.
         wingStationError: 0,
         wingGunDamage: spec.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
       };
@@ -44178,8 +44173,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Called from spawnMissionGround, i.e. before the first wave, so the m03
     // player start is already moved by the time spawnNavalWave() reads the
     // player's position to lay the enemy fleet out.
+    function missionFriendlyDeployment(mission) {
+      if (!mission) return null;
+      return mission.friendlies || FRIENDLY_DEPLOYMENTS[mission.key] || null;
+    }
+
     function spawnMissionFriendlies(mission) {
-      const deployment = FRIENDLY_DEPLOYMENTS[mission.key];
+      const deployment = missionFriendlyDeployment(mission);
       if (!deployment) return;
       // Only ever a second airfield when the mission does not already stand
       // one up itself.
@@ -44187,7 +44187,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
       if (deployment.ships) spawnFriendlyShips(deployment.ships);
       if (deployment.transports) spawnFriendlyTransports(deployment.transports);
-      if (deployment.wingman) spawnFriendlyWingman();
+      if (Array.isArray(deployment.wingmen)) {
+        for (const wingman of deployment.wingmen) spawnFriendlyWingman(wingman);
+      } else if (deployment.wingman) {
+        spawnFriendlyWingman();
+      }
       // After the spawns, so the objective is counted off what is actually on
       // the board rather than off what the table asked for.
       if (deployment.guard) armGuardObjective(deployment.guard);
@@ -44422,13 +44426,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // array: where the sortie begins. m03 uses it to put the player off the
     // INDEPENDENCE's bow so the first frame of the mission is the carrier.
     function applyFriendlyPlayerStart(mission) {
-      const deployment = FRIENDLY_DEPLOYMENTS[mission.key];
+      const deployment = missionFriendlyDeployment(mission);
       if (!deployment || !deployment.playerStart) return;
-      player.position.set(
-        deployment.playerStart.x,
-        deployment.playerStart.y,
-        deployment.playerStart.z
-      );
+      const start = deployment.playerStart;
+      player.position.set(start.x, start.y, start.z);
+      // A facing point is less error-prone than a duplicated heading convention:
+      // the quaternion is derived from the same LOCAL_FORWARD used everywhere
+      // else in the flight model.
+      if (start.facing) {
+        tmpV1.set(start.facing.x - start.x, 0, start.facing.z - start.z);
+        if (tmpV1.lengthSq() > 0.001) {
+          tmpV1.normalize();
+          playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+          playerBank = 0;
+        }
+      }
       syncPlayerOrientation();
     }
 
@@ -44702,6 +44714,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (enemy.isAce) continue;
         if (isTgtEntry(enemy)) continue;
         const attacksMe = enemy.huntRef === friendly;
+        const claimedByOther = friendlies.some(
+          (other) => other !== friendly
+            && other.kind === "wingman"
+            && other.alive
+            && other.wingTargetId === enemy.id
+        );
+        if (!attacksMe && claimedByOther) continue;
         if (!attacksMe && player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD) continue;
         const distance = friendly.group.position.distanceTo(enemy.group.position);
         if (distance > WINGMAN_ACQUIRE_RANGE) continue;
@@ -44768,12 +44787,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         forwardOf(target.group, tmpV1);
         tmpV4.copy(target.group.position).addScaledVector(tmpV1, -WINGMAN_ASTERN);
       } else {
+        const wingOffset = friendly.wingOffset || WINGMAN_OFFSET;
         forwardOf(player, tmpV1);
         rightOf(player, tmpV3);
         tmpV4.copy(player.position)
-          .addScaledVector(tmpV1, -WINGMAN_OFFSET.back)
-          .addScaledVector(tmpV3, WINGMAN_OFFSET.side);
-        tmpV4.y += WINGMAN_OFFSET.up;
+          .addScaledVector(tmpV1, -wingOffset.back)
+          .addScaledVector(tmpV3, wingOffset.side);
+        tmpV4.y += wingOffset.up;
       }
 
       // Hold the wanted point out of the ground, then filter it - see the
@@ -44922,7 +44942,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // One line, and worded to sit right in either cockpit - the speaker label
       // itself is already per-campaign (RADIO_SPEAKER_LABELS).
       triggerRadioLine(
-        "wingman",
+        friendly.radioSpeaker || "wingman",
         "こっちで1機落とした。数は減らしておく——本命は任せる。",
         RADIO_PRIORITY.NORMAL,
         `wingman-kill-${target.id}`
@@ -45564,12 +45584,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forwardOf(player, tmpV5);
       rightOf(player, tmpV6);
       upOf(player, tmpV7);
-      // The one wingman, if it is flying this sortie - resolved once per
-      // pass for the wingman-hater charge runs below.
-      let wingmanRef = null;
-      for (const friendly of friendlies) {
-        if (friendly.kind === "wingman" && friendly.alive) { wingmanRef = friendly; break; }
-      }
+      // All live wingmen, resolved once per pass. Hater flights are
+      // distributed deterministically so CROWN and LARK both draw pressure.
+      const wingmanRefs = friendlies.filter(
+        (friendly) => friendly.kind === "wingman" && friendly.alive
+      );
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
@@ -45664,8 +45683,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // guns and missiles all included (damage no-ops on the invulnerable
         // wingman; the value is the split attention). The player takes the
         // fight back just by closing inside WINGMAN_HATER_YIELD.
-        if (!enemy.huntRef && enemy.wingmanHunter && wingmanRef && distanceToPlayer > WINGMAN_HATER_YIELD) {
-          enemy.huntRef = wingmanRef;
+        if (
+          !enemy.huntRef
+          && enemy.wingmanHunter
+          && wingmanRefs.length > 0
+          && distanceToPlayer > WINGMAN_HATER_YIELD
+        ) {
+          enemy.huntRef = wingmanRefs[Math.abs(enemy.serial || 0) % wingmanRefs.length];
         }
 
         if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
