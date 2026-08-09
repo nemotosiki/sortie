@@ -1,0 +1,22 @@
+name: Diagnose Sera M01 world source line
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - .github/workflows/diagnose-sera-m01-world-line.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+      - run: python tools/apply_sera_m01_debug_probe.py
+      - name: Print the source around the Chromium stack line
+        run: nl -ba index.html | sed -n '55935,55955p'
