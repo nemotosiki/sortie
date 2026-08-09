@@ -5851,7 +5851,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // written as a bare `key === "bomber"` test back when there was exactly one
     // bomber in the game, and that test silently turned the Tu-95 into a
     // fighter that flew at the player instead of at the base.
-    const STRIKE_AIR_TYPES = Object.freeze(new Set(["bomber", "tu95"]));
+    // Tu-22M3 carries the reboot M01 strike contract. Keeping this in the
+    // shared set means spawn, AI steering, first-kill radio and breach
+    // detection all agree that the Backfire is a bomber, not a fighter.
+    const STRIKE_AIR_TYPES = Object.freeze(new Set(["bomber", "tu95", "tu22m3"]));
 
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
