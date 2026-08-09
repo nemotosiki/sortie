@@ -8,6 +8,7 @@
 - design source: `chatgpt/story-campaign-reboot@81936bb48afe019f62a460ce25a071df09794cce`
 - safe plan: `ae5a710164b1eca2405a33e77bfddf8d28bebb31`
 - current test-playable Sera M01: **NO**
+- latest verified GitHub HEAD before this ledger update: `5ce67878f10dc7e313090147328d453603600b7d`
 
 ## GitHub上で実在確認済み
 
@@ -15,6 +16,18 @@
 - [x] `payloads/map_renBay.payload.js`
 - [x] `tools/check_map_ren_bay.mjs`
 - [x] `docs/implementation/sera_act1_safe_implementation_plan.md`
+- [x] `payloads/mission_sera_m01.payload.js` — M01置換ペイロードのチェックポイント
+- [x] `tools/check_sera_m01_payload.mjs` — 赤6／白10・置換順序の契約チェック
+
+## 検証状態
+
+- [x] M01ペイロードをGitHubへ保存
+- [x] 保存後にブランチHEADが更新されたことを確認
+- [x] commit SHA指定でM01ペイロードを再取得
+- [ ] `check_sera_m01_payload.mjs` 実行結果PASS
+- [ ] Ren Bay `worldPreview` E2E
+- [ ] M01 development payload起動E2E
+- [ ] M01クリア／失敗／リスタート通し確認
 
 ## まだ未完了
 
@@ -22,9 +35,8 @@
 - [ ] Ren Bay `worldPreview` E2E
 - [ ] 複数ROOK僚機 host extension
 - [ ] MERIDIAN / CROWN / LARK radio speaker extension
-- [ ] `payloads/mission_sera_m01.payload.js`
 - [ ] M01 bomber breach 0/1/2 logic
-- [ ] M01 radio script
+- [ ] M01条件付き無線の実装
 - [ ] M01 10〜12分 tuning
 - [ ] M01通しプレイ
 - [ ] Amal Plain / M02
@@ -36,6 +48,7 @@
 
 1. `FRIENDLY_DEPLOYMENTS` は `wingman: true` -> `spawnFriendlyWingman()` 1回で、CROWN + LARKの2機編成をそのまま表現できない。
 2. `src/ui/radio.js` の標準話者は `command / wingman / enemy` で、USA表示は `SKYEYE / HAMMER 2` 固定。M01の `MERIDIAN / CROWN / LARK` を識別表示する互換拡張が必要。
+3. 現行の基地被害機能は投弾ごとの評価減点までは持つが、「2機突破で即MISSION FAILED」はM01専用の追加処理が必要。
 
 ## コミット台帳
 
@@ -45,12 +58,15 @@
 | `9122cae18b265ca397ffff3a0d9ac7d0683495c3` | recovered | Ren Bay map draft回収 |
 | `fab7bee53570cf31e3ee52a4ae885cee5ffe462b` | recovered | Ren Bay static check回収 |
 | `ae5a710164b1eca2405a33e77bfddf8d28bebb31` | verified | 失敗回避実装計画 |
+| `adabf9b88c7322dfea444ee87baa590c1431417f` | verified | 実装ステータス台帳追加 |
+| `1197f725cf12390671cb98ce3be180a2d0f72dab` | saved/refetched | Sera M01ミッションペイロードのチェックポイント |
+| `5ce67878f10dc7e313090147328d453603600b7d` | saved | Sera M01ペイロード契約チェック追加 |
 
 ## 次の一手
 
-**Phase 0: preflight gateを1コミットで追加する。**
+**`tools/check_sera_m01_payload.mjs`を実行し、PASSを確認したら、その結果だけを台帳へ反映してコミットする。**
 
-preflightが緑になるまで、新M01本体・M02以降には進まない。
+その後、Ren Bayの`worldPreview`を実ブラウザで通す。E2Eが緑になるまで、複数僚機・無線話者拡張には進まない。
 
 ## 報告判定
 
