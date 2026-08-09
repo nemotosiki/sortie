@@ -1,4 +1,4 @@
-// RECOVERED from the previous execution record; NOT YET VALIDATED.
+// RECOVERED from the previous execution record; current createWorld schema aligned.
 // REN BAY (`renBay`) — Sera's dawn coastal air-defence region for M01.
 // Payload-only world preset. All resources are registered through the
 // addWorldDecorator env contract and are reclaimed by disposeWorld.
@@ -57,16 +57,31 @@ export default function register(ctx) {
       shore: { sand: 0xb9ae93, shallow: 0x5a9eb1, opacity: 0.78, width: 1.22 },
       trees: { perIsland: 10, color: 0x365641, trunk: 0x493a2a, height: [9, 18] },
       rocks: { count: 14, color: 0x4d5856, scale: [7, 18] },
+      // The city builder consumes radial bands (`r`) and height ranges rather
+      // than the older radius/minHeight draft shape. Dawn keeps the windows
+      // sparse; the low, broad skyline is carried by the wall mass, airport
+      // and hospital landmarks rather than a night-city light field.
       city: {
-        at: [0, 4300], cell: 118, street: 32,
+        at: [0, 4300],
+        cell: 118,
+        street: 32,
         districts: [
-          { radius: 1150, minHeight: 18, maxHeight: 88, fill: 0.66 },
-          { radius: 2100, minHeight: 10, maxHeight: 48, fill: 0.48 }
+          { r: [0, 1150], height: [18, 88], fill: 0.66 },
+          { r: [1150, 2100], height: [10, 48], fill: 0.48 }
         ],
-        colors: [0x6f7479, 0x85817b, 0x6b7073, 0x8c857c],
-        roofColors: [0x565b60, 0x6a6660, 0x4f565b],
-        windowColor: 0xffd5a0, windowEmissive: 0.08,
-        streetColor: 0x3b3f42, streetLights: false
+        maxHeight: 88,
+        wall: 0x6f7479,
+        roof: 0x565b60,
+        windows: {
+          warm: 0xffd5a0,
+          cold: 0xbfd8ff,
+          lit: 0.04,
+          rows: 18,
+          cols: 12,
+          repeat: 8
+        },
+        grid: null,
+        beacons: null
       }
     }
   });
