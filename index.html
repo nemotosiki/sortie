@@ -34655,6 +34655,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // contacts that phase spawned; escorts and later waves cannot accidentally
     // hold it open.
     let activeWaveGate = null;
+    // Set only when a mission-specific world objective ends the sortie. A
+    // normal player crash still uses the legacy failure line.
+    let missionFailureRadioOverride = null;
     // Next free HUD target id block, and how many wave targets the sortie has
     // put on the board so far. Both are per-sortie and reset in startMission.
     let waveIdCursor = 0;
@@ -34696,6 +34699,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawnedValue: 0,
       playerKillValue: 0,
       baseDamagePenalty: 0,
+      friendlyBaseHits: 0,
+      friendlyBaseBreached: false,
+      friendlyBaseWarnedFar: false,
+      friendlyBaseWarnedClose: false,
       missionElapsed: 0,
       // Debrief statistics, carried so the numbers do not wind backwards across
       // a restart - they are what the sortie actually did, checkpoint or not.
@@ -34812,7 +34819,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // finishes the job while shot to pieces still flew the mission - and the
     // clean sortie is honoured with the NO DAMAGE emblem instead.
     function computeMissionRank() {
-      const par = MISSIONS[currentMissionIndex].parTime;
+      const mission = MISSIONS[currentMissionIndex];
+      const par = mission.parTime;
       const spawned = rankStats.spawnedValue;
       const kill = rankStats.playerKillValue;
       const timeBonus = Math.round(missionTimeBonus(missionElapsed, par, spawned));
@@ -34851,6 +34859,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         && guardedFriendlies().every((friendly) => !friendly.alive);
       if (guardWiped && RANK_ORDER[rank] > RANK_ORDER.B) rank = "B";
 
+      const breachCapAt = Number(mission.bomberBreach && mission.bomberBreach.sCapAt);
+      const breachCapped = Number.isFinite(breachCapAt)
+        && Boolean(friendlyBase)
+        && friendlyBase.hits >= breachCapAt;
+      if (breachCapped && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -34867,6 +34881,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const nextThreshold = rank === "C" ? RANK_TUNING.B
         : (rank === "B" ? RANK_TUNING.A : (rank === "A" ? RANK_TUNING.S : null));
       const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B")
+        || (breachCapped && rank === "A")
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -39740,6 +39755,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       missionWaveIndex = 0;
       waveIdCursor = 0;
       activeWaveGate = null;
+      missionFailureRadioOverride = null;
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -39869,6 +39885,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       checkpoint.spawnedValue = rankStats.spawnedValue;
       checkpoint.playerKillValue = rankStats.playerKillValue;
       checkpoint.baseDamagePenalty = baseDamagePenalty;
+      checkpoint.friendlyBaseHits = friendlyBase ? friendlyBase.hits : 0;
+      checkpoint.friendlyBaseBreached = Boolean(friendlyBase && friendlyBase.breached);
+      checkpoint.friendlyBaseWarnedFar = Boolean(friendlyBase && friendlyBase.warnedFar);
+      checkpoint.friendlyBaseWarnedClose = Boolean(friendlyBase && friendlyBase.warnedClose);
       checkpoint.missionElapsed = missionElapsed;
       checkpoint.missileHits = missileHits;
       checkpoint.gunKills = gunKills;
@@ -39953,6 +39973,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rankStats.spawnedValue = at.spawnedValue;
       rankStats.playerKillValue = at.playerKillValue;
       baseDamagePenalty = at.baseDamagePenalty;
+      if (friendlyBase) {
+        friendlyBase.hits = at.friendlyBaseHits || 0;
+        friendlyBase.breached = Boolean(at.friendlyBaseBreached);
+        friendlyBase.warnedFar = Boolean(at.friendlyBaseWarnedFar);
+        friendlyBase.warnedClose = Boolean(at.friendlyBaseWarnedClose);
+      }
       missionElapsed = at.missionElapsed;
       missileHits = at.missileHits;
       gunKills = at.gunKills;
@@ -45009,6 +45035,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       friendlyMarkerScreenState.length = 0;
     }
 
+    function authoredRadioPriority(line, fallback = RADIO_PRIORITY.NORMAL) {
+      if (!line) return fallback;
+      if (Number.isFinite(line.priority)) return Math.trunc(line.priority);
+      if (line.priority === "CRITICAL") return RADIO_PRIORITY.CRITICAL;
+      if (line.priority === "URGENT") return RADIO_PRIORITY.URGENT;
+      if (line.priority === "NORMAL") return RADIO_PRIORITY.NORMAL;
+      return fallback;
+    }
+
+    function playAuthoredRadio(line, fallback = RADIO_PRIORITY.NORMAL) {
+      if (!line || !line.speaker || !line.text) return false;
+      return triggerRadioLine(
+        line.speaker,
+        line.text,
+        authoredRadioPriority(line, fallback),
+        line.id || null
+      );
+    }
+
     // Ground installations belong to the mission rather than to a wave: they
     // are already standing when the player arrives and count toward the same
     // target total, so the sortie only ends once the base is flat too.
@@ -45041,7 +45086,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // itself keeps it and the deployment table only ever adds.
       spawnMissionFriendlies(mission);
       if (mission.introRadio) {
-        for (const line of mission.introRadio) radioSay(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+        for (const line of mission.introRadio) playAuthoredRadio(line);
       }
     }
 
@@ -45376,7 +45421,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // composition has to author its own lines, or it would announce ships
         // that are not there.
         if (wave.radio) {
-          for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+          for (const line of wave.radio) playAuthoredRadio(line);
         } else {
           triggerRadioLine(
             "command",
@@ -45419,7 +45464,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           else showBanner(`WAVE ${waveNumber} · INBOUND`, 2.0, "danger");
         }
         if (wave.radio) {
-          for (const line of wave.radio) triggerRadioLine(line.speaker, line.text, RADIO_PRIORITY.NORMAL, line.id);
+          for (const line of wave.radio) playAuthoredRadio(line);
         } else if (acePilot) {
           // The profile owns the body of the call; the wave owns whether it is
           // the opening contact or a reinforcement. Ids are per callsign so a
@@ -47162,12 +47207,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (enemy.type === "carrier") startAceKillCam(enemy);
       if (STRIKE_AIR_TYPES.has(enemy.type) && !bomberFirstKillFired) {
         bomberFirstKillFired = true;
-        triggerRadioLine(
-          "command",
-          "1機撃墜を確認。残りを頼む、時間が無い。",
-          RADIO_PRIORITY.NORMAL,
-          "bomber-first-down"
-        );
+        const authored = MISSIONS[currentMissionIndex].bomberFirstKillRadio;
+        if (!playAuthoredRadio(authored)) {
+          triggerRadioLine(
+            "command",
+            "1機撃墜を確認。残りを頼む、時間が無い。",
+            RADIO_PRIORITY.NORMAL,
+            "bomber-first-down"
+          );
+        }
       }
       if (enemy.isAce) {
         aceDestroyed = true;
@@ -47267,8 +47315,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // rank, not the sortie: the objective is still to shoot every bomber down,
     // and a mission that ended the moment one got past would just be a timer.
     function updateStrikeThreat() {
-      if (!friendlyBase) return;
+      if (!friendlyBase) return false;
 
+      const mission = MISSIONS[currentMissionIndex];
+      const breachRule = mission.bomberBreach || null;
       let closest = -1;
       for (const enemy of enemies) {
         if (!enemy.alive || !enemy.strikeTarget || enemy.bombRunFired) continue;
@@ -47297,16 +47347,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playSfx("explosion", 0.95, 0.68);
         playTone(52, 1.1, 0.2, "sawtooth");
         cameraShake = Math.min(1.8, cameraShake + 0.9);
-        // CITY LIGHTS defends a city, not an airfield: the HUD marker already
-        // reads SAINT VERDA while these lines said "base". The deployment knows
-        // which it is, so the wording follows it.
         const struckLabel = friendlyBase.style === "city" ? "CITY" : "BASE";
         const struckRadio = friendlyBase.style === "city"
           ? "市街に着弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！"
           : "基地被弾！ 投弾を許した——だが作戦は続行だ。爆撃機を全機墜とせ！";
         showBanner(`${struckLabel} DAMAGED · -${BASE_BOMB_PENALTY} PTS`, 2.0, "danger");
-        radioSay("command", struckRadio,
-          RADIO_PRIORITY.URGENT, `base-hit-${friendlyBase.hits}`);
+
+        const failAt = Number(breachRule && breachRule.failAt);
+        if (Number.isFinite(failAt) && friendlyBase.hits >= failAt) {
+          missionFailureRadioOverride = mission.failureRadio || breachRule.failureRadio || null;
+          if (breachRule.failBanner) showBanner(breachRule.failBanner, 2.0, "danger");
+          completeMission(false);
+          return true;
+        }
+
+        if (!playAuthoredRadio(breachRule && breachRule.hitRadio, RADIO_PRIORITY.URGENT)) {
+          radioSay(
+            "command",
+            struckRadio,
+            RADIO_PRIORITY.URGENT,
+            `base-hit-${friendlyBase.hits}`
+          );
+        }
 
         // Egress: hold the run heading and keep going, away from the field.
         tmpV9.copy(enemy.group.position).sub(enemy.strikeTarget);
@@ -47317,8 +47379,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.strikeTarget.y = enemy.group.position.y;
       }
 
-      // Two warnings on the way in, each fired once, so the player can hear the
-      // clock running without the radio nagging every frame.
+      // Two warnings on the way in, each fired once. Missions may replace only
+      // the wording and speaker; the distance contract stays shared.
       if (closest >= 0) {
         if (closest < 1100 && !friendlyBase.warnedClose) {
           friendlyBase.warnedClose = true;
@@ -47329,12 +47391,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             1.8,
             "danger"
           );
-          radioSay("command", "爆撃機が基地に迫っている！ 投弾される前に落とせ！", RADIO_PRIORITY.URGENT, "base-warn-close");
+          if (!playAuthoredRadio(breachRule && breachRule.closeRadio, RADIO_PRIORITY.URGENT)) {
+            radioSay(
+              "command",
+              "爆撃機が基地に迫っている！ 投弾される前に落とせ！",
+              RADIO_PRIORITY.URGENT,
+              "base-warn-close"
+            );
+          }
         } else if (closest < 2600 && !friendlyBase.warnedFar) {
           friendlyBase.warnedFar = true;
-          radioSay("command", "敵爆撃編隊、本基地へ直行中。進路上に何もない——君だけだ。", RADIO_PRIORITY.NORMAL, "base-warn-far");
+          if (!playAuthoredRadio(breachRule && breachRule.farRadio)) {
+            radioSay(
+              "command",
+              "敵爆撃編隊、本基地へ直行中。進路上に何もない——君だけだ。",
+              RADIO_PRIORITY.NORMAL,
+              "base-warn-far"
+            );
+          }
         }
       }
+      return false;
     }
 
     // BEACHHEAD's counterpart to updateStrikeThreat, and deliberately the same
@@ -47415,7 +47492,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
       updatePendingWaves(dt);
-      updateStrikeThreat();
+      if (updateStrikeThreat()) return;
       updateLandingThreat();
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
@@ -47580,12 +47657,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         battleArea.timer = 0;
         if (ui.battleAreaWarning) ui.battleAreaWarning.classList.remove("active", "critical");
         resetRadio();
-        radioSay(
-          "command",
-          "空域クリア。敵全機の撤退を確認。帰投せよ、{nickname}。",
-          RADIO_PRIORITY.CRITICAL,
-          "mission-outcome"
-        );
+        const successLine = MISSIONS[currentMissionIndex].successRadio;
+        if (!playAuthoredRadio(successLine, RADIO_PRIORITY.CRITICAL)) {
+          radioSay(
+            "command",
+            "空域クリア。敵全機の撤退を確認。帰投せよ、{nickname}。",
+            RADIO_PRIORITY.CRITICAL,
+            "mission-outcome"
+          );
+        }
         showBigBanner(
           "MISSION ACCOMPLISHED",
           MISSIONS[currentMissionIndex].title,
@@ -47607,12 +47687,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         saveHighscore();
       }
       resetRadio();
-      triggerRadioLine(
-        "command",
-        "応答が途絶えた…聞こえていたら帰投せよ。",
-        RADIO_PRIORITY.CRITICAL,
-        "mission-outcome"
-      );
+      const failureLine = missionFailureRadioOverride;
+      missionFailureRadioOverride = null;
+      if (!playAuthoredRadio(failureLine, RADIO_PRIORITY.CRITICAL)) {
+        triggerRadioLine(
+          "command",
+          "応答が途絶えた…聞こえていたら帰投せよ。",
+          RADIO_PRIORITY.CRITICAL,
+          "mission-outcome"
+        );
+      }
       setState(STATE_GAMEOVER);
       showBigBanner("MISSION FAILED", MISSIONS[currentMissionIndex].title, 1.8, "danger");
       playTone(196, 0.7, 0.1, "sawtooth");
