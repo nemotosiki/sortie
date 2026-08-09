@@ -1,0 +1,46 @@
+name: Apply Sera M01 Tu-22M3 strike integration
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m01_tu22_strike.py
+      - .github/workflows/apply-sera-m01-tu22-strike.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sera-m01-tu22-strike
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply deterministic strike classification patch
+        run: python tools/apply_sera_m01_tu22_strike.py
+
+      - name: Run contracts
+        run: |
+          node tools/check_sera_m01_tu22_strike.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          git diff --check
+
+      - name: Commit verified integration
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html
+          git rm tools/apply_sera_m01_tu22_strike.py .github/workflows/apply-sera-m01-tu22-strike.yml
+          git commit -m 'Classify the M01 Tu-22M3 as strike traffic'
+          git push origin HEAD:chatgpt/sera-act1-implementation
