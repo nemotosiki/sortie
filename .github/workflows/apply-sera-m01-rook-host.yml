@@ -1,0 +1,47 @@
+name: Apply Sera M01 ROOK host integration
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m01_rook_host.py
+      - .github/workflows/apply-sera-m01-rook-host.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sera-m01-rook-host
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply deterministic host patch
+        run: python tools/apply_sera_m01_rook_host.py
+
+      - name: Run static contracts
+        run: |
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          git diff --check
+
+      - name: Commit the verified integration
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html
+          git rm tools/apply_sera_m01_rook_host.py .github/workflows/apply-sera-m01-rook-host.yml
+          git commit -m 'Field CROWN and LARK as distinct ROOK wingmen'
+          git push origin HEAD:chatgpt/sera-act1-implementation
