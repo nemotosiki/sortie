@@ -1,0 +1,66 @@
+name: Verify Sera M01 in Chromium
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m01_debug_probe.py
+      - .github/workflows/verify-sera-m01-e2e.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-sera-m01-e2e
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Add focused M01 probes
+        run: python tools/apply_sera_m01_debug_probe.py
+
+      - name: Run static contracts
+        run: |
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run M01 browser E2E
+        shell: bash
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
+            sleep 1
+          done
+          node tools/check_sera_m01_e2e.mjs
+
+      - name: Commit verified probes and remove workflow scaffolding
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html
+          git rm tools/apply_sera_m01_debug_probe.py .github/workflows/verify-sera-m01-e2e.yml
+          git commit -m 'Verify Sera M01 end to end in Chromium'
+          git push origin HEAD:chatgpt/sera-act1-implementation
