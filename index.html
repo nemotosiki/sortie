@@ -3166,7 +3166,7 @@
     // running weakest to strongest so the campaign filter yields a sane order
     // on either side.
     const AIRCRAFT_ORDER = [
-      "f16", "gripen", "f2a", "fa18", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
+      "f16", "gripen", "f2a", "fa18", "f15c", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
       "mig21", "mig23", "mig29", "su25", "su33", "su47", "su35", "su57"
     ];
     const DEFAULT_AIRCRAFT_ID = "f16";
@@ -3192,7 +3192,7 @@
         locked: false,
         lockNote: "",
         aircraft: Object.freeze([
-          "f16", "gripen", "f2a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "f4", "a10", "f22"
+          "f16", "gripen", "f2a", "fa18", "f15c", "f15", "f14", "rafale", "typhoon", "f35c", "f4", "a10", "f22"
         ])
       }),
       Object.freeze({
@@ -3558,6 +3558,29 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
         theme: Object.freeze({
 primary: 0xb9c2ca, secondary: 0x707a85, accent: 0x2f4f75,
 canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.02, variant: "hornet"
+        })
+      }),
+      // F-15C: CROWN's preferred pure fighter. It keeps the old Eagle
+      // silhouette and gives up the Strike Eagle's armour and 4AGM for better
+      // acceleration, roll and sustained turn plus the long-range XLAA.
+      f15c: Object.freeze({
+        id: "f15c",
+        label: "F-15C EAGLE",
+        role: "Air Superiority Fighter",
+        tag: "INTERCEPTOR",
+        blurb: "余計な対地装備を持たない単座の制空型イーグル。F-15Eより軽く、加速・ロール・持続旋回で上回る。長射程ミサイルで先手を取り、格闘戦でも押し切るCROWN好みの古典的な制空戦闘機。",
+        cruiseSpeed: 315, boostSpeed: 680, brakeSpeed: 126,
+        pitchRateDeg: 46, rollRateDeg: 170, yawRateDeg: 13, maxBankAngleDeg: 60,
+        normalRollSpring: 45, rollRateLimitDeg: 163, turnRateDeg: 35,
+        rollDamping: 11.5, stallWarnSpeed: 85, stallEntrySpeed: 73, stallAuthorityLoss: 0.53, structuralG: 3.2,
+        gunDamage: 22, missileDamage: 98,
+        boostResponse: 0.81, brakeResponse: 0.47, cruiseResponse: 0.55,
+        missileCapacity: 24, maxHealth: 145,
+        spw: Object.freeze({ key: "xlaa", capacity: 14 }),
+        tipSpan: 8.55, tipZ: 2.7,
+        theme: Object.freeze({
+primary: 0xc8d2d9, secondary: 0x697783, accent: 0x324a60,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.03, variant: "lancer"
         })
       }),
       f15: Object.freeze({
@@ -4682,6 +4705,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           scale: 0.72,
           variant: "viper"
         })
+      }),
+      f15c: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.96,
+        patrolSpeedScale: 1.04,
+        patrolPathScale: 1,
+        engageRange: 1020,
+        fireMin: 1.1, fireSpread: 1.2,
+        damageMin: 7, damageMax: 11,
+        attackRange: 860, aimThreshold: 0.46,
+        breakChance: 0.34, breakTime: 1.5, breakTurnScale: 1.22,
+        verticalJink: 0.24,
+        turnScale: 1.04
       }),
       f15: Object.freeze({
         behavior: "formation",
@@ -5871,6 +5907,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damage: 98,
         life: 7.8,
         launchDot: 0.2
+      }),
+      f15c: Object.freeze({
+        cooldownMin: 8.2,
+        cooldownSpread: 4.2,
+        range: 1420,
+        minRange: 210,
+        speed: 395,
+        turnRate: THREE.MathUtils.degToRad(66),
+        damage: 98,
+        life: 8.1,
+        launchDot: 0.21
       }),
       f15: Object.freeze({
         cooldownMin: 8.8,
