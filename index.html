@@ -36020,6 +36020,125 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     window.__game = {
+      // Focused vertical-slice probes. They are intentionally generic enough
+      // to remain useful while M01 is tuned, but refuse every other mission so
+      // a debug action cannot alter a stock sortie by accident.
+      forceStartMissionByKey: (key, aircraftId = "f16") => {
+        if (gameState === STATE_PLAYING) return false;
+        const index = MISSIONS.findIndex((mission) => mission.key === key);
+        if (index < 0 || !AIRCRAFT_TYPES[aircraftId]) return false;
+        currentMissionIndex = index;
+        selectedCampaignId = missionCampaignId(MISSIONS[index]);
+        rebuildCampaignMissionIndices();
+        selectedAircraftId = aircraftId;
+        applyAircraftLoadout(aircraftId);
+        startMission();
+        return gameState === STATE_PLAYING;
+      },
+      seraM01Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        return {
+          state: gameState,
+          missionKey: mission ? mission.key : null,
+          worldKey: mission ? mission.world : null,
+          waveNumber,
+          missionWaveIndex,
+          outcomePending: outcomePending.active,
+          outcomeTimer: outcomePending.timer,
+          activeGate: activeWaveGate
+            ? {
+                elapsed: activeWaveGate.elapsed,
+                timeout: activeWaveGate.timeout,
+                ids: [...activeWaveGate.ids]
+              }
+            : null,
+          friendlies: friendlies.map((friendly) => ({
+            kind: friendly.kind,
+            label: friendly.label,
+            type: friendly.type || null,
+            radioSpeaker: friendly.radioSpeaker || null,
+            position: [friendly.group.position.x, friendly.group.position.y, friendly.group.position.z]
+          })),
+          enemies: enemies.filter((enemy) => enemy.alive).map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            tgt: isTgtEntry(enemy),
+            disposition: contactDisposition(enemy),
+            strike: Boolean(enemy.strikeTarget),
+            position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
+          })),
+          base: friendlyBase
+            ? {
+                hits: friendlyBase.hits,
+                breached: Boolean(friendlyBase.breached),
+                warnedFar: Boolean(friendlyBase.warnedFar),
+                warnedClose: Boolean(friendlyBase.warnedClose)
+              }
+            : null,
+          radio: {
+            speaker: ui.radioSpeaker ? ui.radioSpeaker.textContent : "",
+            text: ui.radioText ? ui.radioText.textContent : ""
+          }
+        };
+      },
+      forceSeraM01AdvancePhase: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01") return false;
+        if (activeWaveGate) activeWaveGate.elapsed = activeWaveGate.timeout;
+        updateMission(0.016, 3.0);
+        return true;
+      },
+      forceSeraM01Breach: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01" || !friendlyBase) {
+          return false;
+        }
+        const bomber = enemies.find(
+          (enemy) => enemy.alive && enemy.strikeTarget && !enemy.bombRunFired
+        );
+        if (!bomber) return false;
+        bomber.group.position.x = friendlyBase.x;
+        bomber.group.position.z = friendlyBase.z;
+        return updateStrikeThreat();
+      },
+      seraM01PerfectRankPreview: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "m01") return null;
+        const oldKill = rankStats.playerKillValue;
+        const oldElapsed = missionElapsed;
+        rankStats.playerKillValue = rankStats.spawnedValue;
+        missionElapsed = 0;
+        const rank = computeMissionRank().rank;
+        rankStats.playerKillValue = oldKill;
+        missionElapsed = oldElapsed;
+        return rank;
+      },
+      forceSeraM01Complete: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01") return false;
+        for (let pass = 0; pass < 12 && gameState === STATE_PLAYING && !outcomePending.active; pass += 1) {
+          if (activeWaveGate) activeWaveGate.elapsed = activeWaveGate.timeout;
+          const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+          for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+          updateMission(0.016, 3.0);
+        }
+        return outcomePending.active;
+      },
+      forceSeraM01ResolveOutcome: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING
+            || !mission
+            || mission.key !== "m01"
+            || !outcomePending.active) {
+          return false;
+        }
+        // Use the production transition function, but advance its wall-clock
+        // hold deterministically. Headless Chromium can throttle requestAnimationFrame
+        // to 1 Hz and the game clamps frame delta, making a real 2.8 s band take
+        // nearly a minute in CI even though it is correct in a foreground tab.
+        updateOutcomePending(OUTCOME_PENDING_TIME + 0.1);
+        return gameState === STATE_COMPLETE;
+      },
       // Same reader the payload context exposes, surfaced here because a
       // mission's own code runs against window.__game rather than against the
       // registration-time ctx. A function, not a value: every other field on

@@ -7,7 +7,7 @@
 //   - replaces the stock USA m01 in place without changing the campaign order
 //   - uses the recovered `renBay` world
 //   - teaches the three-colour IFF contract: red TGT / white hostile / blue ally
-//   - fields ROOK 1 CROWN and ROOK 3 LARK as two distinct blue wingmen
+//   - fields CROWN in an F-15C and LARK in an F-16C as distinct blue wingmen
 //   - opens with two white fighters, advancing on clear or after 75 seconds
 //   - follows with three Tu-22M3 groups: 6 red bombers and 8 white escorts
 //   - 0 bomber breaches = full defence; 1 = continue with S capped; 2 = failure
@@ -17,7 +17,7 @@ export default function register(ctx) {
   if (!WORLD_PRESETS.renBay) {
     throw new Error("[sera-m01] renBay is not registered; load map_renBay first");
   }
-  for (const type of ["tu22m3", "mig29", "f16"]) {
+  for (const type of ["tu22m3", "mig29", "f16", "f15c"]) {
     if (!AIRCRAFT_TYPES[type]) {
       throw new Error(`[sera-m01] required aircraft not registered: ${type}`);
     }
@@ -60,7 +60,7 @@ export default function register(ctx) {
       },
       wingmen: [
         {
-          type: "f16",
+          type: "f15c",
           label: "ROOK 1 CROWN",
           radioSpeaker: "crown",
           // CROWN starts slightly ahead and left as the element lead.
@@ -282,7 +282,7 @@ export default function register(ctx) {
     battleCenter: { x: 0, z: 0 },
     battleRadius: 15000,
 
-    briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-29は敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n護衛のMiG-29は白表示だ。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNとROOK 3 LARKが同行する。",
+    briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-29は敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n護衛のMiG-29は白表示だ。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
     introRadio: [
       {
         speaker: "meridian",

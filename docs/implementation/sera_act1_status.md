@@ -1,78 +1,71 @@
 # Sera ACT I — 実装ステータス台帳
 
-このファイルは「何を作るか」ではなく、**どこまでGitHub上で実在・検証しているか**だけを記録する。
+このファイルは「何を作るか」ではなく、**GitHub上に何が実在し、どの範囲まで自動検証済みか**を記録する。
+
+**更新日:** 2026-08-10
+**対象ブランチ:** `chatgpt/sera-act1-implementation`
 
 ## 現在地
 
-- branch: `chatgpt/sera-act1-implementation`
-- design source: `chatgpt/story-campaign-reboot@81936bb48afe019f62a460ce25a071df09794cce`
-- safe plan: `ae5a710164b1eca2405a33e77bfddf8d28bebb31`
-- current test-playable Sera M01: **NO**
-- latest verified GitHub HEAD before this ledger update: `5ce67878f10dc7e313090147328d453603600b7d`
+- M01 `FIRST CONTACT`: **自動E2Eでテストプレイ可能**
+- 人間による10〜12分の通しプレイ／難易度別バランス調整: **未完了**
+- M02〜M05: **未実装**
+- 開発起動URL:
 
-## GitHub上で実在確認済み
+```text
+index.html?payloads=payloads/map_renBay.payload.js,payloads/mission_sera_m01.payload.js
+```
 
-- [x] 三色IFF基盤
-- [x] `payloads/map_renBay.payload.js`
-- [x] `tools/check_map_ren_bay.mjs`
-- [x] `docs/implementation/sera_act1_safe_implementation_plan.md`
-- [x] `payloads/mission_sera_m01.payload.js` — M01置換ペイロードのチェックポイント
-- [x] `tools/check_sera_m01_payload.mjs` — 赤6／白10・置換順序の契約チェック
+## M01で実在・検証済み
 
-## 検証状態
+- [x] Ren Bayマップを使用
+- [x] キャンペーン選択→ミッション選択→ブリーフィング→機体選択→出撃の通常UI経路
+- [x] ROOK 1 CROWNとROOK 3 LARKを別々の青い僚機として生成
+- [x] 正史機体: CROWN=`f15c` / LARK=`f16`
+- [x] MERIDIAN / CROWN / LARKの個別無線話者
+- [x] 開幕の白いMiG-29×2と75秒clear-or-timeoutゲート
+- [x] 赤TGTのTu-22M3×6
+- [x] 白い非TGTのMiG-29×10（開幕2＋護衛8）
+- [x] 白敵はランク母数外で、残存していてもクリア可能
+- [x] 爆撃機0突破＝完全防衛
+- [x] 爆撃機1突破＝任務続行、S不可
+- [x] 爆撃機2突破＝MISSION FAILED
+- [x] 失敗後のRetryで突破数・僚機編成をリセットし、保存済みチェックポイントから再開
+- [x] クリーンクリア後、実ゲームの結果確定処理を通ってM02を選択・起動可能
+- [x] pageerror 0 / console error 0
+- [x] registry gate / 三色IFF / Ren Bay / M01 host契約がgreen
 
-- [x] M01ペイロードをGitHubへ保存
-- [x] 保存後にブランチHEADが更新されたことを確認
-- [x] commit SHA指定でM01ペイロードを再取得
-- [ ] `check_sera_m01_payload.mjs` 実行結果PASS
-- [ ] Ren Bay `worldPreview` E2E
-- [ ] M01 development payload起動E2E
-- [ ] M01クリア／失敗／リスタート通し確認
+## 永続回帰ゲート
 
-## まだ未完了
+`.github/workflows/verify-sera-m01-e2e.yml` は今後、M01・Ren Bay・host・検証コードの変更時に次を再確認する。
 
-- [ ] preflight gate
-- [ ] Ren Bay `worldPreview` E2E
-- [ ] 複数ROOK僚機 host extension
-- [ ] MERIDIAN / CROWN / LARK radio speaker extension
-- [ ] M01 bomber breach 0/1/2 logic
-- [ ] M01条件付き無線の実装
-- [ ] M01 10〜12分 tuning
-- [ ] M01通しプレイ
-- [ ] Amal Plain / M02
-- [ ] Sark Port接続 / M03
-- [ ] Nahar Strait / M04
-- [ ] Sark Port Ash / M05
+1. 静的契約
+2. registry消失検査
+3. Chromium実機起動
+4. 通常メニュー経路
+5. 失敗→Retry（チェックポイント対応）
+6. クリーンクリア→M02起動
+7. CROWN F-15C / LARK F-16C
 
-## 現在確認されているhost gap
+一時的なコード注入・自己削除・自動コミットは行わない、読み取り専用CIとする。
 
-1. `FRIENDLY_DEPLOYMENTS` は `wingman: true` -> `spawnFriendlyWingman()` 1回で、CROWN + LARKの2機編成をそのまま表現できない。
-2. `src/ui/radio.js` の標準話者は `command / wingman / enemy` で、USA表示は `SKYEYE / HAMMER 2` 固定。M01の `MERIDIAN / CROWN / LARK` を識別表示する互換拡張が必要。
-3. 現行の基地被害機能は投弾ごとの評価減点までは持つが、「2機突破で即MISSION FAILED」はM01専用の追加処理が必要。
+## M01を「完成」と呼ぶ前に残る作業
 
-## コミット台帳
+- [ ] 人間がNORMALを最初から最後まで飛び、標準10〜12分に収まるか確認
+- [ ] EASY / HARD / ACEの敵圧とSランク可能性を確認
+- [ ] 無線が実際の戦闘テンポに対して遅れないか耳で確認
+- [ ] Ren Bayの視認性・敵進入方向・爆撃機の投弾線を実画面で確認
+- [ ] BGM／効果音／音量の実耳確認
+- [ ] payload運用のまま次ミッションを作るか、本体へinlineする時期を決定
 
-| SHA | 状態 | 内容 |
-|---|---|---|
-| `fea681e98af8576d17858968b456d67920d6c578` | verified | 三色IFF基準 |
-| `9122cae18b265ca397ffff3a0d9ac7d0683495c3` | recovered | Ren Bay map draft回収 |
-| `fab7bee53570cf31e3ee52a4ae885cee5ffe462b` | recovered | Ren Bay static check回収 |
-| `ae5a710164b1eca2405a33e77bfddf8d28bebb31` | verified | 失敗回避実装計画 |
-| `adabf9b88c7322dfea444ee87baa590c1431417f` | verified | 実装ステータス台帳追加 |
-| `1197f725cf12390671cb98ce3be180a2d0f72dab` | saved/refetched | Sera M01ミッションペイロードのチェックポイント |
-| `5ce67878f10dc7e313090147328d453603600b7d` | saved | Sera M01ペイロード契約チェック追加 |
+## 次の実装
 
-## 次の一手
-
-**`tools/check_sera_m01_payload.mjs`を実行し、PASSを確認したら、その結果だけを台帳へ反映してコミットする。**
-
-その後、Ren Bayの`worldPreview`を実ブラウザで通す。E2Eが緑になるまで、複数僚機・無線話者拡張には進まない。
+M01の人間プレイ調整と並行して、M02 `SHATTERED MORNING`へ進む。M01のhost拡張（複数僚機、個別話者、三色IFF、突破ルール）は再実装せず再利用する。
 
 ## 報告判定
 
-- `GitHub保存済み`: commit SHA + HEAD + file refetch確認済み
-- `静的check済み`: 上記に加え構文/static gate green
-- `E2E済み`: 実ブラウザでpageerror 0、対象機能を実行済み
-- `テストプレイ可能`: mission selectから開始し、clear/fail/restartまで通る
-
-この区別を以後崩さない。
+- `GitHub保存済み`: commit SHA + branch HEAD + file refetch確認済み
+- `静的check済み`: 構文・契約check green
+- `E2E済み`: Chromiumで対象経路を実行し、pageerror 0
+- `テストプレイ可能`: 通常UIから開始し、clear / fail / retry / 次ミッション起動が自動E2Eで通る
+- `完成`: 上記に加え、人間の通しプレイと難易度／音／視認性の確認が終わった状態
