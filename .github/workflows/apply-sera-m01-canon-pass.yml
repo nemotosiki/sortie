@@ -1,0 +1,64 @@
+name: Apply Sera M01 canonical completion pass
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m01_canon_pass.py
+      - .github/workflows/apply-sera-m01-canon-pass.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sera-m01-canon-pass
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply canonical M01 wingmen and browser gate
+        run: python tools/apply_sera_m01_canon_pass.py
+
+      - name: Run M01 and shared static contracts
+        shell: bash
+        run: |
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run M01 Chromium and registry gates
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/check_sera_m01_browser.mjs
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs --payloads=payloads/map_renBay.payload.js,payloads/mission_sera_m01.payload.js
+
+      - name: Commit M01 completion pass
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add payloads/mission_sera_m01.payload.js \
+                  tools/check_sera_m01_payload.mjs \
+                  tools/check_sera_m01_browser.mjs
+          git rm tools/apply_sera_m01_canon_pass.py .github/workflows/apply-sera-m01-canon-pass.yml
+          git commit -m 'Complete M01 canonical wingman pass'
+          git push origin HEAD:chatgpt/sera-act1-implementation
