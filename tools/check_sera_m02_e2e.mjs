@@ -17,7 +17,20 @@ const browser = await chromium.launch({
 
 async function openMissionPage() {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-  await context.addInitScript(() => { navigator.getGamepads = () => []; });
+  await context.addInitScript(() => {
+    navigator.getGamepads = () => [];
+    // M02 is the second campaign sortie. The test enters it directly through
+    // the focused launcher, so seed only M01's normal prerequisite record.
+    // M02 itself must still write its own result before slot 3 can unlock.
+    const records = JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}");
+    records.m01 = records.m01 || {
+      cleared: true,
+      rank: "A",
+      scores: [0],
+      times: [0]
+    };
+    localStorage.setItem("sortieMissionRecords", JSON.stringify(records));
+  });
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
@@ -190,18 +203,29 @@ try {
     await page.evaluate(() => window.__game.seraM02Probe()));
   await waitForState(page, "missionComplete", 5_000);
 
-  // Clearing M02 should unlock the next stock sortie and its normal briefing.
+  // The reboot has implemented only the first two mission slots so far.
+  // The current third USA slot is still the stock `m-heli` placeholder; a
+  // future M03 payload will replace that slot. M02 must unlock the slot itself,
+  // not skip over it to the old stock key named `m03` in slot four.
   await page.evaluate(() => document.getElementById("changeMissionBtn")?.click());
   await waitForState(page, "missionSelect", 10_000);
   const nextMission = await page.evaluate(() => {
     const debug = window.__game.debug;
-    const m03Index = debug.missionIndexOf("m03");
-    const selected = m03Index >= 0 && debug.forceMissionCursor(m03Index);
+    const nextSlotKey = "m-heli";
+    const nextSlotIndex = debug.missionIndexOf(nextSlotKey);
+    const selected = nextSlotIndex >= 0 && debug.forceMissionCursor(nextSlotIndex);
     const confirmed = selected && debug.forceConfirmMission();
-    return { m03Index, selected, confirmed, state: document.body.dataset.gameState };
+    return {
+      nextSlotKey,
+      nextSlotIndex,
+      selected,
+      confirmed,
+      state: document.body.dataset.gameState,
+      records: JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}")
+    };
   });
-  assert(nextMission.m03Index >= 0 && nextMission.selected && nextMission.confirmed,
-    "clearing M02 did not allow M03 briefing selection", nextMission);
+  assert(nextMission.nextSlotIndex >= 0 && nextMission.selected && nextMission.confirmed,
+    "clearing M02 did not unlock the current third campaign slot", nextMission);
 
   assert(clean.pageErrors.length === 0, "pageerror occurred during clean scenario", clean.pageErrors);
   assert(clean.consoleErrors.length === 0, "console error occurred during clean scenario", clean.consoleErrors);

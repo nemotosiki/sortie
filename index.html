@@ -5956,7 +5956,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Tu-22M3 carries the reboot M01 strike contract. Keeping this in the
     // shared set means spawn, AI steering, first-kill radio and breach
     // detection all agree that the Backfire is a bomber, not a fighter.
-    const STRIKE_AIR_TYPES = Object.freeze(new Set(["bomber", "tu95", "tu22m3"]));
+    const STRIKE_AIR_TYPES = Object.freeze(new Set(["bomber", "tu95", "tu22m3", "su24m"]));
 
     // Enemy missiles follow the same airframe ranking as everything else and were
     // halved alongside the player's, so an F-4's missile is the weakest threat and
@@ -43011,9 +43011,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // already turned towards someone who may be nowhere near its business.
       // The fallback remains the player, for any spawn with no wave heading of
       // its own (the debug hooks).
-      const strikeSpawn = STRIKE_AIR_TYPES.has(spec.key) && friendlyBase;
-      if (strikeSpawn) tmpV1.set(friendlyBase.x, position.y, friendlyBase.z).sub(position).normalize();
-      else if (spawningForward) tmpV1.copy(spawningForward);
+      const strikeSpawnObjective = Number.isInteger(spawningFacilityIndex)
+        ? protectedFacilities[spawningFacilityIndex]
+        : friendlyBase;
+      const strikeSpawn = STRIKE_AIR_TYPES.has(spec.key) && strikeSpawnObjective;
+      if (strikeSpawn) {
+        tmpV1.set(
+          strikeSpawnObjective.x,
+          position.y,
+          strikeSpawnObjective.z
+        ).sub(position).normalize();
+      } else if (spawningForward) tmpV1.copy(spawningForward);
       else tmpV1.copy(player.position).sub(position).normalize();
       root.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
 
@@ -48174,9 +48182,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       const mission = MISSIONS[currentMissionIndex];
-      // A trailing run of non-TGT entries is not a wave the player must wait
-      // for, so "last" means "no designated targets left to spawn".
-      const tgtRemaining = mission.waves.slice(missionWaveIndex).some(isTgtEntry);
+      // A trailing non-TGT air wave is normally optional. M02's last white
+      // cover wave is different: spawning it reveals the red TEL ground phase,
+      // so its activation contract must keep the mission progression alive.
+      const tgtRemaining = mission.waves.slice(missionWaveIndex).some(
+        (wave) => isTgtEntry(wave) || Boolean(wave.activateGroundPhase)
+      );
       if (waveClearTimer < 0) {
         waveClearTimer = tgtRemaining ? 2.15 : 1.35;
         showBanner(tgtRemaining ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
