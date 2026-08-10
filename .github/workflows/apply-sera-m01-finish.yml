@@ -6,6 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/apply_sera_m01_finish.py
+      - tools/fix_sera_m01_retry_checkpoint.py
       - .github/workflows/apply-sera-m01-finish.yml
 
 permissions:
@@ -27,8 +28,11 @@ jobs:
 
       - name: Apply the M01 completion pass
         run: |
-          python -m py_compile tools/apply_sera_m01_finish.py tools/apply_sera_m01_debug_probe.py
+          python -m py_compile tools/apply_sera_m01_finish.py \
+                                   tools/fix_sera_m01_retry_checkpoint.py \
+                                   tools/apply_sera_m01_debug_probe.py
           python tools/apply_sera_m01_finish.py
+          python tools/fix_sera_m01_retry_checkpoint.py
           python tools/apply_sera_m01_debug_probe.py
 
       - name: Run static contracts
@@ -83,6 +87,7 @@ jobs:
           git rm tools/apply_sera_m01_debug_probe.py \
                  .github/workflows/diagnose-sera-m01-world-line.yml \
                  tools/apply_sera_m01_finish.py \
+                 tools/fix_sera_m01_retry_checkpoint.py \
                  .github/workflows/apply-sera-m01-finish.yml
           git diff --cached --check
           git commit -m 'Complete Sera M01 canonical vertical slice'
