@@ -45,7 +45,7 @@ jobs:
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Verify terrain coverage and capture previews
+      - name: Verify terrain coverage and mission regressions
         shell: bash
         run: |
           chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
@@ -59,6 +59,9 @@ jobs:
             sleep 1
           done
 
+          # Keep this probe to one normal-start page. Holding a full worldPreview
+          # scene open beside the game page exhausted the headless GL process on
+          # the first run and made the second page look like a game boot failure.
           node --input-type=module <<'NODE'
           import { chromium } from 'playwright';
           const browser = await chromium.launch({
@@ -69,28 +72,36 @@ jobs:
             if (!value) throw new Error(`${message}: ${JSON.stringify(details)}`);
           };
           try {
-            const preview = await browser.newPage({ viewport: { width: 1600, height: 900 } });
-            await preview.goto('http://127.0.0.1:8000/index.html?worldPreview=renBay', {
-              waitUntil: 'domcontentloaded', timeout: 120000
+            const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+            await context.addInitScript(() => { navigator.getGamepads = () => []; });
+            const page = await context.newPage();
+            const pageErrors = [];
+            const consoleErrors = [];
+            page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+            page.on('console', (message) => {
+              if (message.type() === 'error') consoleErrors.push(message.text());
             });
-            await preview.waitForSelector('canvas', { timeout: 120000 });
-            await preview.waitForTimeout(1200);
-            await preview.screenshot({ path: '/tmp/ren-bay-world-preview.png' });
 
-            const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
-            await page.addInitScript(() => { navigator.getGamepads = () => []; });
             await page.goto('http://127.0.0.1:8000/index.html', {
-              waitUntil: 'domcontentloaded', timeout: 120000
+              waitUntil: 'load', timeout: 120000
             });
             await page.waitForFunction(
-              () => Boolean(window.__game?.debug?.forceStartMissionByKey),
+              () => Boolean(
+                window.__game
+                && window.__game.debug
+                && typeof window.__game.debug.forceStartMissionByKey === 'function'
+                && typeof window.__game.debug.surfaceTopAt === 'function'
+                && typeof window.__game.debug.worldMountains === 'function'
+              ),
               null,
               { timeout: 120000 }
             );
+
             const started = await page.evaluate(() => window.__game.debug.forceStartMissionByKey('m01', 'f16'));
             assert(started, 'M01 debug launch failed', { started });
             await page.waitForFunction(() => document.body.dataset.gameState === 'playing', null, { timeout: 30000 });
             await page.waitForTimeout(900);
+
             const terrain = await page.evaluate(() => {
               const debug = window.__game.debug;
               return {
@@ -109,6 +120,9 @@ jobs:
               assert(terrain[key] >= 25, `${key} fell off the Ren Bay landmass`, terrain);
             }
             assert(terrain.playerStartWater === 0, 'M01 player start was covered by the land extension', terrain);
+            assert(pageErrors.length === 0, 'pageerror during terrain probe', pageErrors);
+            assert(consoleErrors.length === 0, 'console error during terrain probe', consoleErrors);
+
             await page.screenshot({ path: '/tmp/ren-bay-m01-start.png' });
             console.log('Ren Bay terrain coverage: PASS', terrain);
           } finally {
@@ -122,10 +136,8 @@ jobs:
       - name: Upload visual evidence
         uses: actions/upload-artifact@v4
         with:
-          name: ren-bay-horizon-previews
-          path: |
-            /tmp/ren-bay-world-preview.png
-            /tmp/ren-bay-m01-start.png
+          name: ren-bay-horizon-preview
+          path: /tmp/ren-bay-m01-start.png
           if-no-files-found: error
 
       - name: Commit verified horizon repair
