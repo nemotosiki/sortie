@@ -39737,14 +39737,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // the declaration, so either path leaves a fully decorated world up.
       applyWorldPreset(presetKey);
 
-      // "The middle of the land". A plateau IS the land on every map that has
-      // one (there is no heightfield), so its centre is the only defensible
-      // aim point; failing that, sceneryOrigin is where a map that moved its
-      // subject off the origin says the subject went. Origin last.
+      // A long coastal plateau may be shifted inland so its far edge stays
+      // beyond the flight horizon. `previewFocus` lets that map keep the camera
+      // aimed at the authored city/airfield rather than at empty back-country.
+      // Existing presets omit it and retain the old plateau/scenery fallback.
       const plateauAt = preset.mountains && preset.mountains.plateau
         ? preset.mountains.plateau.at
         : null;
-      const centre = plateauAt || preset.sceneryOrigin || [0, 0];
+      const centre = preset.previewFocus || plateauAt || preset.sceneryOrigin || [0, 0];
       const centreX = centre[0];
       const centreZ = centre[1];
       // surfaceTopAt, not surfaceHeightAt: the cap of a plateau sits at the full
@@ -56925,11 +56925,22 @@ varying vec2 vOceanUv;`
         const mountain = new THREE.Mesh(keepGeometry(buildMountainGeometry(rng, snowy, {
           palette: mountainConfig.palette,
           snowLine: mountainConfig.snowLine,
-          topRadius: plateau ? plateau.topRadius : 0.08
+          topRadius: plateau ? plateau.topRadius : 0.08,
+          radialSegments: plateau?.radialSegments,
+          edgeNoise: plateau?.edgeNoise
         })), snowy ? mountainMaterials.snow : mountainMaterials.bare);
-        const depth = radius * (0.75 + rng() * 0.35);
+        // The random draws are still consumed when a plateau authors an exact
+        // footprint. That keeps every later mountain, island and cloud in the
+        // same deterministic place on all existing maps.
+        const sampledDepth = radius * (0.75 + rng() * 0.35);
+        const depth = plateau && Number.isFinite(plateau.depth)
+          ? plateau.depth
+          : sampledDepth;
         mountain.scale.set(radius, height, depth);
-        mountain.rotation.y = rng() * Math.PI * 2;
+        const sampledRotationY = rng() * Math.PI * 2;
+        mountain.rotation.y = plateau && Number.isFinite(plateau.rotationY)
+          ? plateau.rotationY
+          : sampledRotationY;
         const angle = rng() * Math.PI * 2;
         const distance = mountainConfig.distance[0] + rng() * (mountainConfig.distance[1] - mountainConfig.distance[0]);
         let x = sceneryX + Math.cos(angle) * distance;
@@ -58012,7 +58023,8 @@ varying vec2 vOceanUv;`
     // map's base island). `snowy` is unused here and kept for the call sites,
     // which pass it on to the material choice.
     function buildMountainGeometry(rng, snowy, shape) {
-      const geo = new THREE.CylinderGeometry(shape.topRadius, 1, 1, 16, 5, false);
+      const radialSegments = Math.max(8, Math.round(shape.radialSegments || 16));
+      const geo = new THREE.CylinderGeometry(shape.topRadius, 1, 1, radialSegments, 5, false);
       geo.translate(0, 0.5, 0);
       const position = geo.attributes.position;
       const phase1 = rng() * Math.PI * 2;
@@ -58026,9 +58038,12 @@ varying vec2 vOceanUv;`
         const radius = Math.hypot(x, z);
         if (radius > 1e-5) {
           const theta = Math.atan2(z, x);
-          const displaced = 1 + amp1 * Math.sin(3 * theta + phase1) +
+          const edgeNoise = Number.isFinite(shape.edgeNoise) ? shape.edgeNoise : 1;
+          const displaced = 1 + edgeNoise * (
+            amp1 * Math.sin(3 * theta + phase1) +
             amp2 * Math.sin(7 * theta + phase2) +
-            0.05 * Math.sin(11 * theta + y * 9);
+            0.05 * Math.sin(11 * theta + y * 9)
+          );
           position.setX(i, x * displaced);
           position.setZ(i, z * displaced);
         }
