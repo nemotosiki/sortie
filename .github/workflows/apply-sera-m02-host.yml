@@ -6,6 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/apply_sera_m02_host.py
+      - tools/fix_sera_m02_host_continue.py
       - tools/diagnose_sera_m02_boot.mjs
       - .github/workflows/apply-sera-m02-host.yml
 
@@ -28,8 +29,9 @@ jobs:
 
       - name: Apply M02 host contracts
         run: |
-          python -m py_compile tools/apply_sera_m02_host.py
+          python -m py_compile tools/apply_sera_m02_host.py tools/fix_sera_m02_host_continue.py
           python tools/apply_sera_m02_host.py
+          python tools/fix_sera_m02_host_continue.py
 
       - name: Run M02 and shared static contracts
         run: |
