@@ -1,10 +1,11 @@
 # GIBOR闇ルート最終戦 — CROWN / LARK 無言TGT化 正本 v0.15
 
 > [v0.14 キャラクター正本](../v0.14/00_character_bible.md)  
-> [v0.14 キャラクター実装計画](../v0.14/01_character_route_implementation_plan.md)
+> [v0.14 キャラクター実装計画](../v0.14/01_character_route_implementation_plan.md)  
+> [CROWN / LARK 正史搭乗機](./03_crown_lark_aircraft_canon.md)
 
 **状態:** セラ編GIBOR闇ルート最終戦の上書き正本  
-**更新日:** 2026-08-08  
+**更新日:** 2026-08-10  
 **適用:** M20 `THE GUARANTOR` のGIBORルート最終局面  
 **優先:** 本書はv0.14以前にある「CROWNはGIBOR最終ボスにしない」「LARK／SPEAR／武装解除編隊のいずれかが止める」「帰投要求の無線で戦闘へ入る」という記述を上書きする。
 
@@ -35,12 +36,12 @@
 M20は通常ルート／GIBORルートのどちらでも、最終作戦開始時点では次の3機を青い味方として同じ空域に置く。
 
 ```text
-ROOK 1 "RAVEN"   PLAYER
-"CROWN"           BLUE FRIENDLY
-ROOK 2 "LARK"     BLUE FRIENDLY
+ROOK 1 "RAVEN"   PLAYER / FREE AIRCRAFT
+"CROWN"           BLUE FRIENDLY / F-15C EAGLE
+ROOK 2 "LARK"     BLUE FRIENDLY / F-15E STRIKE EAGLE
 ```
 
-CROWNはM06で重傷を負い前線を退いているが、M20だけは長期療養後の**一回限りの限定復帰**とする。
+CROWNはM06で重傷を負い前線を退く。M19でF-15Cにより**限定復帰**し、M20まで継続出撃する。復帰後も新型機へ換装しない。
 
 この復帰を大げさなイベントにしない。
 
@@ -49,7 +50,7 @@ CROWNはM06で重傷を負い前線を退いているが、M20だけは長期療
 - ブリーフィング上は普通に味方編成へ記載する。
 - 開戦時と同じ3人が最後の作戦でも同じ青い空を飛んでいる、という絵を優先する。
 
-通常ルートでは、この3機はそのまま味方として戦闘を終え、帰投する。
+通常ルートでは、この3機はそのまま味方として戦闘を終え、帰投する。CROWNはF-15C、LARKはF-15Eのまま最後まで飛ぶ。
 
 闇ルートだけが、作戦終了後に反転する。
 
