@@ -1,0 +1,54 @@
+name: Verify legacy airframe variants
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/check_legacy_airframe_variants.mjs
+      - .github/workflows/verify-legacy-airframe-variants.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-legacy-airframe-variants
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Run static contracts
+        run: |
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run browser registry gate
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+      - name: Record successful validation
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git rm .github/workflows/verify-legacy-airframe-variants.yml
+          git commit -m 'Validate F-15 and Hornet variants in Chromium'
+          git push origin HEAD:chatgpt/sera-act1-implementation
