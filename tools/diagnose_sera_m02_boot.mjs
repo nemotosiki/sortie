@@ -37,7 +37,9 @@ try {
   const consoleMessages = [];
   page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
   page.on("console", (message) => consoleMessages.push(`${message.type()}: ${message.text()}`));
-  const url = `http://127.0.0.1:${port}/index.html?payloads=payloads/ground_tel.payload.js,payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js`;
+  // TEL is already part of the branch's built-in ground registry. Loading the
+  // older additive payload again would correctly fail as a duplicate key.
+  const url = `http://127.0.0.1:${port}/index.html?payloads=payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js`;
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 120_000 });
   await page.waitForTimeout(5000);
   const snapshot = await page.evaluate(() => ({
