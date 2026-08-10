@@ -3166,7 +3166,7 @@
     // running weakest to strongest so the campaign filter yields a sane order
     // on either side.
     const AIRCRAFT_ORDER = [
-      "f16", "gripen", "f2a", "fa18", "f15c", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
+      "f16", "gripen", "f2a", "fa18a", "fa18", "f15c", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
       "mig21", "mig23", "mig29", "su25", "su33", "su47", "su35", "su57"
     ];
     const DEFAULT_AIRCRAFT_ID = "f16";
@@ -3192,7 +3192,7 @@
         locked: false,
         lockNote: "",
         aircraft: Object.freeze([
-          "f16", "gripen", "f2a", "fa18", "f15c", "f15", "f14", "rafale", "typhoon", "f35c", "f4", "a10", "f22"
+          "f16", "gripen", "f2a", "fa18a", "fa18", "f15c", "f15", "f14", "rafale", "typhoon", "f35c", "f4", "a10", "f22"
         ])
       }),
       Object.freeze({
@@ -3540,6 +3540,29 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1.02, variant: "viperzero"
       // 140 kt onto a moving deck actually demands. Sits between the F-16 and
       // the F-15 on aggregate, but not on every axis: pitch beats the Eagle,
       // roll does not.
+      // F/A-18A: CROWN's older carrier fighter. Smaller and lighter than
+      // the Super Hornet, single-seat, with less fuel and armour but crisp
+      // low-speed handling. LASM gives it the anti-ship job CROWN uses it for.
+      fa18a: Object.freeze({
+        id: "fa18a",
+        label: "F/A-18A HORNET",
+        role: "Legacy Carrier Multirole",
+        tag: "LEGACY NAVY",
+        blurb: "初期型の単座ホーネット。F/A-18Fより小さく軽く、航続・装甲・搭載量では劣るが、低中速の反応は鋭い。古い艦載機を知り尽くしたCROWNなら、対艦任務でもまだ第一線で使える。",
+        cruiseSpeed: 250, boostSpeed: 520, brakeSpeed: 124,
+        pitchRateDeg: 46, rollRateDeg: 156, yawRateDeg: 13, maxBankAngleDeg: 56,
+        normalRollSpring: 43, rollRateLimitDeg: 150, turnRateDeg: 34,
+        rollDamping: 11.4, stallWarnSpeed: 82, stallEntrySpeed: 70, stallAuthorityLoss: 0.49, structuralG: 3.05,
+        gunDamage: 20, missileDamage: 98,
+        boostResponse: 0.90, brakeResponse: 0.48, cruiseResponse: 0.57,
+        missileCapacity: 20, maxHealth: 120,
+        spw: Object.freeze({ key: "lasm", capacity: 10 }),
+        tipSpan: 7.2, tipZ: 2.6,
+        theme: Object.freeze({
+primary: 0xb8c0c7, secondary: 0x66717a, accent: 0x33475c,
+canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 0.94, variant: "legacyhornet"
+        })
+      }),
       fa18: Object.freeze({
         id: "fa18",
         label: "F/A-18F SUPER HORNET",
@@ -4928,6 +4951,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Carrier multirole, and the CAP the fleet missions field: middle of the
       // road on every axis, which is what makes it the honest step up from the
       // F-16 without being an Eagle.
+      fa18a: Object.freeze({
+        behavior: "formation",
+        hitboxScale: 0.92,
+        patrolSpeedScale: 0.98,
+        patrolPathScale: 1.06,
+        engageRange: 900,
+        fireMin: 1.3, fireSpread: 1.5,
+        damageMin: 6, damageMax: 10,
+        attackRange: 800, aimThreshold: 0.43,
+        breakChance: 0.31, breakTime: 1.45, breakTurnScale: 1.18,
+        verticalJink: 0.22,
+        turnScale: 1.02
+      }),
       fa18: Object.freeze({
         behavior: "formation",
         hitboxScale: 0.98,
@@ -5985,6 +6021,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         turnRate: THREE.MathUtils.degToRad(60),
         damage: 98,
         life: 7.9,
+        launchDot: 0.18
+      }),
+      fa18a: Object.freeze({
+        cooldownMin: 9.5,
+        cooldownSpread: 4.8,
+        range: 1260,
+        minRange: 190,
+        speed: 368,
+        turnRate: THREE.MathUtils.degToRad(62),
+        damage: 98,
+        life: 7.6,
         launchDot: 0.18
       }),
       fa18: Object.freeze({
@@ -9885,7 +9932,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // payload allowed to shadow that variant, so a new inline branch belongs
     // here in the same edit.
     const INLINE_AIRCRAFT_VARIANTS = new Set([
-      "viper", "viperzero", "lancer", "strikeeagle", "bison", "hornet", "tomcat", "foxhound",
+      "viper", "viperzero", "lancer", "strikeeagle", "bison", "legacyhornet", "hornet", "tomcat", "foxhound",
       "lightning", "terminator", "bomber", "transport", "uav", "felon",
       "berkut", "flogger", "frogfoot", "bear", "rafale", "typhoon", "gripen",
       "hog", "fishbed", "fulcrum", "flankerd", "flankere", "raptor"
@@ -35223,6 +35270,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const SILHOUETTE_PATHS = ({
       viper: "M20 1 L21.5 8 L23 15 L23 17 L34 26 L34 29 L23 28.5 L23 33 L30 37 L30 40 L22 38.5 L22 41 L23.5 43 L16.5 43 L18 41 L18 38.5 L10 40 L10 37 L17 33 L17 28.5 L6 29 L6 26 L17 17 L17 15 L18.5 8 Z",  // F-16
       viperzero: "M20 1 L21.5 8 L23 14 L23 16 L36 26 L36 29.5 L23 29 L23 33 L30 37 L30 40 L22 38.5 L22 41 L23.5 43 L16.5 43 L18 41 L18 38.5 L10 40 L10 37 L17 33 L17 29 L4 29.5 L4 26 L17 16 L17 14 L18.5 8 Z",  // F-2A
+      legacyhornet: "M20 1 L21 7 L24 17 L24 19 L36 24 L36 27 L24 28 L27 31 L27 33 L24 32 L24 34 L33 37 L33 40 L23 38 L23 43 L17 43 L17 38 L7 40 L7 37 L16 34 L16 32 L13 33 L13 31 L16 28 L4 27 L4 24 L16 19 L16 17 L19 7 Z",  // F/A-18A
       hornet: "M20 1 L21 7 L24 17 L24 19 L36 24 L36 27 L24 28 L27 31 L27 33 L24 32 L24 34 L33 37 L33 40 L23 38 L23 43 L17 43 L17 38 L7 40 L7 37 L16 34 L16 32 L13 33 L13 31 L16 28 L4 27 L4 24 L16 19 L16 17 L19 7 Z",  // F/A-18F
       lancer: "M20 1 L22 8 L23.5 14 L23.5 16 L37 23 L37 27 L24 27.5 L26.5 30 L26.5 33 L24 32 L24 34 L34 37 L34 40.5 L23 38.5 L23 43 L17 43 L17 38.5 L6 40.5 L6 37 L16 34 L16 32 L13.5 33 L13.5 30 L16 27.5 L3 27 L3 23 L16.5 16 L16.5 14 L18 8 Z",  // F-15
       strikeeagle: "M20 1 L22 8 L23.5 14 L23.5 16 L37 23 L37 27 L24 27.5 L26.5 30 L26.5 33 L24 32 L24 34 L34 37 L34 40.5 L23 38.5 L23 43 L17 43 L17 38.5 L6 40.5 L6 37 L16 34 L16 32 L13.5 33 L13.5 30 L16 27.5 L3 27 L3 23 L16.5 16 L16.5 14 L18 8 Z",  // F-15E
@@ -51456,6 +51504,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         add(geometry.panel, dark, 0, 1.12, -3.0, 0.92, 0.52, 0.16);
         add(geometry.canopy, navL, -9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
         add(geometry.canopy, navR, 9.1, 0.44, 2.35, 0.12, 0.12, 0.12);
+      } else if (theme.variant === "legacyhornet") {
+        // F/A-18A: visibly smaller first-generation Hornet. The single-seat
+        // canopy, narrower LERX and closer twin tails distinguish it from the
+        // F-model Super Hornet while retaining the same family planform.
+        add(geometry.fuselage, primary, 0, 0.02, -0.35, 0.96, 0.72, 0.92);
+        add(geometry.nose, primary, 0, 0.01, -7.55, 0.70, 0.62, 0.92);
+        add(geometry.canopy, canopy, 0, 0.88, -3.0, 0.66, 0.54, 1.55);
+        add(geometry.wingHornet, secondary, 0, 0.16, 0.65, 0.90, 1, 0.92);
+        add(geometry.panel, secondary, -1.42, 0.12, -4.15, 0.80, 0.09, 3.25);
+        add(geometry.panel, secondary, 1.42, 0.12, -4.15, 0.80, 0.09, 3.25);
+        add(geometry.tailWing, primary, 0, -0.04, 5.75, 0.86, 1, 0.84);
+        add(geometry.fin, secondary, -1.62, 0.46, 4.15, 0.72, 0.94, 0.76, 0.31);
+        add(geometry.fin, secondary, 1.62, 0.46, 4.15, 0.72, 0.94, 0.76, -0.31);
+        add(geometry.rearBody, secondary, -0.72, -0.05, 5.9, 0.72, 0.74, 1.05);
+        add(geometry.rearBody, secondary, 0.72, -0.05, 5.9, 0.72, 0.74, 1.05);
+        add(geometry.intake, accent, -1.30, -0.14, -1.45, 0.62, 0.86, 1.05);
+        add(geometry.intake, accent, 1.30, -0.14, -1.45, 0.62, 0.86, 1.05);
+        add(geometry.nozzle, accent, -0.72, -0.05, 7.65, 0.92, 0.92, 0.92);
+        add(geometry.nozzle, accent, 0.72, -0.05, 7.65, 0.92, 0.92, 0.92);
+        addFlame(-0.72, -0.05, 8.95);
+        addFlame(0.72, -0.05, 8.95);
+        // Wingtip rails and arrestor hook are the carrier identity.
+        add(geometry.missileBody, light, -7.05, -0.18, 2.45, 0.84, 0.84, 0.92);
+        add(geometry.missileBody, light, 7.05, -0.18, 2.45, 0.84, 0.84, 0.92);
+        add(geometry.panel, dark, 0, -0.74, 6.5, 0.10, 0.10, 2.0);
+        add(geometry.canopy, navL, -7.15, 0.28, 2.5, 0.12, 0.12, 0.12);
+        add(geometry.canopy, navR, 7.15, 0.28, 2.5, 0.12, 0.12, 0.12);
       } else if (theme.variant === "hornet") {
         // F/A-18F: broad forebody with big LERX strakes running back into the
         // wing root, twin outward-canted tails set wider and further forward
