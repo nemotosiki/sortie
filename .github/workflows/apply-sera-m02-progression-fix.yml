@@ -6,6 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/apply_sera_m02_progression_fix.py
+      - tools/fix_sera_m02_e2e_unlock_seed.py
       - .github/workflows/apply-sera-m02-progression-fix.yml
 
 permissions:
@@ -25,10 +26,13 @@ jobs:
           ref: chatgpt/sera-act1-implementation
           fetch-depth: 0
 
-      - name: Apply M02 strike and progression fix
+      - name: Apply M02 strike, progression and E2E prerequisite fixes
         run: |
-          python -m py_compile tools/apply_sera_m02_progression_fix.py
+          python -m py_compile \
+            tools/apply_sera_m02_progression_fix.py \
+            tools/fix_sera_m02_e2e_unlock_seed.py
           python tools/apply_sera_m02_progression_fix.py
+          python tools/fix_sera_m02_e2e_unlock_seed.py
 
       - name: Run static contracts
         run: |
@@ -83,8 +87,11 @@ jobs:
           rm -rf node_modules package-lock.json package.json
           git config user.name 'ChatGPT'
           git config user.email 'noreply@openai.com'
-          git add index.html tools/check_sera_m02_host.mjs
-          git rm tools/apply_sera_m02_progression_fix.py .github/workflows/apply-sera-m02-progression-fix.yml
+          git add index.html tools/check_sera_m02_host.mjs tools/check_sera_m02_e2e.mjs
+          git rm \
+            tools/apply_sera_m02_progression_fix.py \
+            tools/fix_sera_m02_e2e_unlock_seed.py \
+            .github/workflows/apply-sera-m02-progression-fix.yml
           git diff --cached --check
           git commit -m 'Fix Sera M02 strike progression'
           git push origin HEAD:chatgpt/sera-act1-implementation
