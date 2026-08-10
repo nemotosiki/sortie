@@ -34715,6 +34715,1058 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "ace_combat_polish"
     ); // @payload:ace_combat_polish
+    applyPayload(
+      function register(ctx) {
+        ctx.addWorldPreset("renBay", {
+          label: "REN BAY",
+          sceneryOrigin: [0, 4300],
+          clearColor: 0x8097ad,
+          sky: [[0, "#142846"], [0.3, "#355d84"], [0.58, "#9ab5ca"], [0.76, "#efc9a2"], [1, "#5a7187"]],
+          atmosphere: { seed: 0x724201, noise: 0.018, haze: 0.11, thinClouds: 13, cloudOpacity: 0.055, cloudBand: [0.42, 0.7], cloudTint: 0xeaf0f3 },
+          fog: { color: 0x8fa6b7, near: 2600, far: 12500 },
+          sun: {
+            position: [-3300, 1250, -5200], color: 0xffd7ad, radius: 82,
+            glare: [
+              { scale: 1500, color: 0xffc691, opacity: 0.45 },
+              { scale: 420, color: 0xfff1d4, opacity: 0.86 }
+            ]
+          },
+          moon: null,
+          stars: null,
+          sunRoad: { color: 0xffc985, opacity: 0.21, width: 620, length: 3600, rotationY: 0.55, position: [-900, 0.4, -800] },
+          ocean: {
+            base: "#183f59", bright: "132, 188, 213", dark: "9, 31, 48",
+            repeat: 24, roughness: 0.46, metalness: 0.19,
+            normalRepeat: 34, normalScale: [0.3, 0.48], normalSpeed: [0.009, 0.004], normalSeed: 0x724202
+          },
+          terrain: {
+            seed: 0x724203, sand: 0x9e967f, grass: 0x59684e, rock: 0x646862,
+            peak: 0x5d625e, snow: 0xe8edf0, textureProfile: "urban",
+            fineRepeat: 24, macroRepeat: 4.2, normalRepeat: 26,
+            normalStrength: 0.27, islandNormalStrength: 0.18, normalFade: [240, 1900],
+            rockSlope: [0.31, 0.72], shoreHeight: 0.2, snowSoftness: 0.08
+          },
+          lights: {
+            hemi: { sky: 0xb8d6ec, ground: 0x30332f, intensity: 1.85 },
+            key: { color: 0xffd8b5, intensity: 2.45, position: [-1500, 1150, -2500] },
+            fill: { color: 0x8ebce3, intensity: 0.62, position: [1000, 330, 1200] }
+          },
+          mountains: {
+            count: 8, radius: [190, 390], height: [100, 300], distance: [7300, 9100],
+            snowyAbove: 9999, snowLine: 0.68, roughness: 0.94,
+            palette: { low: 0x3f5142, mid: 0x556557, rock: 0x646862, peak: 0x5d625e, snow: 0xe8edf0 },
+            corridor: null,
+            plateau: { radius: [5600, 5600], height: [28, 28], topRadius: 0.92, at: [0, 4300], snowyAbove: 9999 }
+          },
+          islands: { count: 5, stone: 0x59645f, green: 0x4b6348 },
+          clouds: {
+            scale: 0.92, hero: false, color: 0xecf2f4, opacity: 0.64,
+            cirrusColor: 0xe9eef2, cirrusOpacity: 0.25,
+            texture: { seed: 0x724204, contrast: 1.03, underside: 0.39, softness: 1.04 }
+          },
+          decor: {
+            seed: 0x724205,
+            keepClear: [{ x: 0, z: 4300, r: 6300 }, { x: 0, z: -2500, r: 4500 }],
+            extraIslands: { count: 7, radius: [120, 280], height: [24, 80], distance: [7000, 9300] },
+            shore: { sand: 0xb9ae93, shallow: 0x5a9eb1, opacity: 0.78, width: 1.22 },
+            trees: { perIsland: 10, color: 0x365641, trunk: 0x493a2a, height: [9, 18] },
+            rocks: { count: 14, color: 0x4d5856, scale: [7, 18] },
+            // The city builder consumes radial bands (`r`) and height ranges rather
+            // than the older radius/minHeight draft shape. Dawn keeps the windows
+            // sparse; the low, broad skyline is carried by the wall mass, airport
+            // and hospital landmarks rather than a night-city light field.
+            city: {
+              at: [0, 4300],
+              cell: 118,
+              street: 32,
+              districts: [
+                { r: [0, 1150], height: [18, 88], fill: 0.66 },
+                { r: [1150, 2100], height: [10, 48], fill: 0.48 }
+              ],
+              maxHeight: 88,
+              wall: 0x6f7479,
+              roof: 0x565b60,
+              windows: {
+                warm: 0xffd5a0,
+                cold: 0xbfd8ff,
+                lit: 0.04,
+                rows: 18,
+                cols: 12,
+                repeat: 8
+              },
+              grid: null,
+              beacons: null
+            }
+          }
+        });
+
+        ctx.addWorldDecorator("renBayWorks", {
+          worlds: ["renBay"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "renBayWorks";
+            addRoot(root);
+
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const mats = new Map();
+            const mat = (color, opts = {}) => {
+              const key = `${color}:${opts.emissive || 0}:${opts.roughness || 0.76}:${opts.metalness || 0.04}`;
+              if (!mats.has(key)) mats.set(key, keepMaterial(new THREE.MeshStandardMaterial({ color, roughness: opts.roughness ?? 0.76, metalness: opts.metalness ?? 0.04, emissive: opts.emissive || 0, emissiveIntensity: opts.emissiveIntensity || 0 })));
+              return mats.get(key);
+            };
+            const box = (x, y, z, sx, sy, sz, color, ry = 0, opts) => {
+              const m = new THREE.Mesh(boxGeo, mat(color, opts));
+              m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.y = ry; root.add(m); return m;
+            };
+            const cyl = (x, y, z, r, h, color) => {
+              const m = new THREE.Mesh(cylGeo, mat(color));
+              m.position.set(x, y, z); m.scale.set(r, h, r); root.add(m); return m;
+            };
+            const groundY = (x, z) => Math.max(28, surfaceHeightAt(x, z));
+            void groundY;
+            const deck = 29.2;
+
+            // Airport: two parallel runways, taxiways, apron and terminal.
+            for (const x of [-2850, -2050]) {
+              box(x, deck, 5000, 64, 1.2, 3300, 0x30343a);
+              for (let z = 3500; z <= 6500; z += 300) box(x, deck + 0.7, z, 4, 0.35, 72, 0xe8e2ce);
+            }
+            box(-2450, deck, 3220, 1150, 1.1, 310, 0x45494d);
+            box(-2450, deck + 22, 3050, 850, 44, 170, 0x737980);
+            box(-2450, deck + 48, 3070, 890, 8, 190, 0x565d63);
+            box(-1450, deck, 4300, 620, 1.1, 52, 0x4a4e51, 0.18);
+            // Control tower.
+            cyl(-1500, deck + 43, 3300, 13, 86, 0x626a70);
+            box(-1500, deck + 91, 3300, 45, 18, 45, 0x8aa0aa);
+            box(-1500, deck + 102, 3300, 54, 5, 54, 0x4b555d);
+
+            // Medical aviation district and helipads.
+            const medX = 2700, medZ = 5000;
+            box(medX, deck + 26, medZ, 520, 52, 300, 0xd5d9d8);
+            box(medX + 360, deck + 16, medZ + 170, 260, 32, 230, 0xbfc8ca);
+            box(medX - 360, deck + 14, medZ - 150, 240, 28, 210, 0xc7cdcb);
+            for (const [hx, hz] of [[2250, 4450], [3100, 4450]]) {
+              box(hx, deck + 0.2, hz, 150, 0.5, 150, 0x555b5e);
+              box(hx, deck + 0.8, hz, 105, 0.5, 16, 0xe9e6da);
+              box(hx, deck + 0.8, hz, 16, 0.5, 105, 0xe9e6da);
+            }
+            cyl(3300, deck + 38, 5200, 10, 76, 0x677077);
+            box(3300, deck + 80, 5200, 35, 12, 35, 0x8ea8b0);
+
+            // Coastal roads and seawall, visually separating the city from the bay.
+            box(0, deck + 0.1, 1650, 7900, 0.8, 42, 0x404448);
+            box(-1100, deck + 0.1, 2500, 42, 0.8, 3300, 0x404448, -0.08);
+            box(1200, deck + 0.1, 2550, 42, 0.8, 3200, 0x404448, 0.06);
+            box(0, 17, 1300, 7600, 34, 34, 0x777a74);
+
+            // Breakwaters form the mouth of the bay without blocking the open southern airspace.
+            box(-3550, 9, 300, 1700, 18, 75, 0x666a66, -0.22);
+            box(3550, 9, 300, 1700, 18, 75, 0x666a66, 0.22);
+            for (const x of [-4300, 4300]) {
+              cyl(x, 33, 800, 24, 66, 0xe7e1d4);
+              box(x, 69, 800, 40, 10, 40, 0xc54a3f);
+            }
+
+            // Airport beacons and medical helipad lights: sparse dawn points, not a night-city field.
+            const beaconMat = mat(0xffc86b, { emissive: 0xff9b32, emissiveIntensity: 1.6, roughness: 0.5 });
+            for (const x of [-2850, -2050]) {
+              for (const z of [3350, 6650]) {
+                const m = new THREE.Mesh(cylGeo, beaconMat); m.position.set(x, deck + 2.5, z); m.scale.set(3.2, 5, 3.2); root.add(m);
+              }
+            }
+
+            root.traverse((node) => { if (node.isMesh) { node.castShadow = false; node.receiveShadow = true; } });
+          }
+        });
+      },
+      "map_renBay"
+    ); // @payload:map_renBay
+    applyPayload(
+      function register(ctx) {
+        const { MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+
+        if (!WORLD_PRESETS.renBay) {
+          throw new Error("[sera-m01] renBay is not registered; load map_renBay first");
+        }
+        for (const type of ["tu22m3", "mig29", "f16", "f15c"]) {
+          if (!AIRCRAFT_TYPES[type]) {
+            throw new Error(`[sera-m01] required aircraft not registered: ${type}`);
+          }
+        }
+        for (const type of ["tu22m3", "mig29"]) {
+          if (!ENEMY_AI_PROFILES[type]) {
+            throw new Error(`[sera-m01] required enemy profile not registered: ${type}`);
+          }
+        }
+
+        const at = MISSIONS.findIndex((mission) => mission.key === "m01");
+        if (at < 0) throw new Error("[sera-m01] stock m01 was not found");
+        const original = MISSIONS[at];
+
+        const replacement = {
+          ...original,
+          key: "m01",
+          campaign: original.campaign || "usa",
+          world: "renBay",
+          title: "FIRST CONTACT",
+          jp: "レン湾へ侵入するエレム爆撃隊を迎撃せよ。赤TGTの爆撃機を優先し、湾北岸への投弾を阻止する。",
+          act: 1,
+          storyNo: 1,
+          story: "WAR DAY 001。ROOK隊の初出撃。RAVENはCROWNとLARKとともに、レン湾へ接近する爆撃隊を迎撃する。",
+          epilogue: [
+            "レン湾への爆撃隊は撃退された。",
+            "ROOK隊は三機で帰投した。",
+            "RAVENの最初の任務は、まだ始まりにすぎない。"
+          ],
+
+          // Mission-owned friendly roster. The host falls back to the legacy
+          // FRIENDLY_DEPLOYMENTS table when this field is absent, so stock missions
+          // still field their original single campaign wingman.
+          friendlies: {
+            playerStart: {
+              x: -6200,
+              y: 2600,
+              z: -7600,
+              facing: { x: 0, z: 4300 }
+            },
+            wingmen: [
+              {
+                type: "f15c",
+                label: "ROOK 1 CROWN",
+                radioSpeaker: "crown",
+                // CROWN starts slightly ahead and left as the element lead.
+                offset: { back: -125, side: -95, up: 28 }
+              },
+              {
+                type: "f16",
+                label: "ROOK 3 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 95, side: 110, up: -12 }
+              }
+            ]
+          },
+
+          // The opening pair is white and rank-neutral. It is a tutorial phase, not
+          // part of ACCOMPLISHED: clear both, or survive 75 seconds, and MERIDIAN
+          // brings up the first bomber group. The remaining white contacts are the
+          // bomber escorts. 2 + 2 + 2 + 4 = 10 white hostiles in total.
+          sequence: [
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              band: 1,
+              idBase: 6,
+              label: "SCOUT",
+              role: "trash",
+              gate: { mode: "clearOrTimeout", timeout: 75 },
+              at: [8200, -2600],
+              altitude: 2500,
+              facing: [0, 2000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "NORMAL",
+                  text: "ROOK、東南東に未確認機2。白表示は敵性だが非TGT。まず迎撃し、識別規則を確認せよ。",
+                  id: "sera-m01-contact-meridian"
+                },
+                {
+                  speaker: "crown",
+                  priority: "NORMAL",
+                  text: "RAVEN、白は撃っていい。赤が本命だ——今はこの2機で手を慣らそう。",
+                  id: "sera-m01-contact-crown"
+                }
+              ]
+            },
+            {
+              types: ["tu22m3", "tu22m3"],
+              band: 1,
+              idBase: 0,
+              label: "BACKFIRE",
+              at: [-1200, -11000],
+              altitude: 3200,
+              facing: [-2450, 5000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "URGENT",
+                  text: "南方に爆撃機2。赤TGTへ更新。レン湾空港へ到達する前に撃墜せよ。",
+                  id: "sera-m01-wave-1-meridian"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              band: 1,
+              idBase: 8,
+              label: "ESCORT",
+              concurrent: true,
+              role: "trash",
+              at: [-900, -10600],
+              altitude: 3500,
+              facing: [-2450, 5000],
+              radio: [
+                {
+                  speaker: "crown",
+                  priority: "NORMAL",
+                  text: "護衛はこっちで見る。RAVEN、赤い爆撃機を頼む。",
+                  id: "sera-m01-wave-1-crown"
+                }
+              ]
+            },
+            {
+              types: ["tu22m3", "tu22m3"],
+              band: 2,
+              idBase: 2,
+              label: "BACKFIRE",
+              at: [12000, 700],
+              altitude: 2800,
+              facing: [-2450, 5000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "URGENT",
+                  text: "東方に第2爆撃隊。新たに2機を赤TGT指定。大きく右へ旋回せよ。",
+                  id: "sera-m01-wave-2-meridian"
+                },
+                {
+                  speaker: "lark",
+                  priority: "NORMAL",
+                  text: "RAVEN、東側はこっちからも見えてる。湾奥までまだ距離はあるよ。",
+                  id: "sera-m01-wave-2-lark"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              band: 2,
+              idBase: 10,
+              label: "ESCORT",
+              concurrent: true,
+              role: "trash",
+              at: [11600, 1000],
+              altitude: 3300,
+              facing: [-2450, 5000]
+            },
+            {
+              types: ["tu22m3", "tu22m3"],
+              band: 2,
+              idBase: 4,
+              label: "BACKFIRE",
+              at: [9000, -9000],
+              altitude: 3500,
+              facing: [-2450, 5000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "南東、大型編隊。最後の爆撃機2を赤TGT指定。護衛4、突破を許すな。",
+                  id: "sera-m01-wave-3-meridian"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29", "mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              band: 2,
+              idBase: 12,
+              label: "ESCORT",
+              concurrent: true,
+              role: "trash",
+              at: [8500, -8500],
+              altitude: 3900,
+              facing: [-2450, 5000],
+              radio: [
+                {
+                  speaker: "crown",
+                  priority: "NORMAL",
+                  text: "護衛が増えたな。焦らなくていい、赤い方だけ見ていろ。",
+                  id: "sera-m01-wave-3-crown"
+                }
+              ]
+            }
+          ],
+
+          // Existing strike AI increments friendlyBase.hits when a bomber reaches
+          // the release line. The host interprets this small mission contract:
+          // one breach caps the rank at A, two end the sortie immediately.
+          bomberBreach: {
+            sCapAt: 1,
+            failAt: 2,
+            failBanner: "REN BAY DEFENCE FAILED",
+            farRadio: {
+              speaker: "meridian",
+              priority: "NORMAL",
+              text: "爆撃隊はレン湾北岸へ直進中。赤TGTを優先せよ。",
+              id: "sera-m01-bomber-far"
+            },
+            closeRadio: {
+              speaker: "lark",
+              priority: "URGENT",
+              text: "爆撃機、投弾線まで近い！ RAVEN、今すぐ赤を止めて！",
+              id: "sera-m01-bomber-close"
+            },
+            hitRadio: {
+              speaker: "meridian",
+              priority: "URGENT",
+              text: "爆撃機1機が投弾。任務は続行するが完全防衛は失われた。残る赤TGTを撃墜せよ。",
+              id: "sera-m01-bomber-breach-one"
+            }
+          },
+          bomberFirstKillRadio: {
+            speaker: "lark",
+            priority: "NORMAL",
+            text: "爆撃機1機撃墜！ そのまま赤を追って、RAVEN。",
+            id: "sera-m01-bomber-first-down"
+          },
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "レン湾上空クリア。ROOK全機、帰投せよ。",
+            id: "sera-m01-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "爆撃機2機が投弾線を突破。レン湾防空任務を中止、ROOKは離脱せよ。",
+            id: "sera-m01-failure"
+          },
+
+          // Eleven minutes is the first tuning target. It is intentionally kept in
+          // mission data so later playtest adjustment does not touch the host.
+          parTime: 660,
+          hasOutro: false,
+          map: { x: 0.19, y: 0.28 },
+
+          friendlyBase: {
+            x: -2450,
+            z: 5000,
+            heading: 0,
+            label: "REN BAY AIRPORT",
+            failRadius: 520
+          },
+          battleCenter: { x: 0, z: 0 },
+          battleRadius: 15000,
+
+          briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-29は敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n護衛のMiG-29は白表示だ。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
+          introRadio: [
+            {
+              speaker: "meridian",
+              priority: "NORMAL",
+              text: "ROOK、こちらMERIDIAN。レン湾へ進入、識別情報を送る。",
+              id: "sera-m01-intro-meridian"
+            },
+            {
+              speaker: "crown",
+              priority: "NORMAL",
+              text: "RAVEN、初日は俺たちの近くにいれば十分だ。手柄は赤い方に取っておけ。",
+              id: "sera-m01-intro-crown"
+            },
+            {
+              speaker: "lark",
+              priority: "NORMAL",
+              text: "湾の北に滑走路が見える。あそこまで爆撃機を通さなければいい。",
+              id: "sera-m01-intro-lark"
+            }
+          ]
+        };
+
+        // addMission appends when `after` is omitted. Remove the stock entry, pass
+        // the replacement through the normal normalizer, then move the normalized
+        // result back to the original index so campaign order does not change.
+        MISSIONS.splice(at, 1);
+        try {
+          const normalized = ctx.addMission(replacement);
+          const appendedAt = MISSIONS.indexOf(normalized);
+          if (appendedAt < 0) throw new Error("[sera-m01] normalized mission was not inserted");
+          MISSIONS.splice(appendedAt, 1);
+          MISSIONS.splice(at, 0, normalized);
+        } catch (error) {
+          MISSIONS.splice(at, 0, original);
+          throw error;
+        }
+      },
+      "mission_sera_m01"
+    ); // @payload:mission_sera_m01
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.desertBasin;
+        if (!base) throw new Error("[amalPlain] desertBasin base preset is missing");
+
+        ctx.addWorldPreset("amalPlain", {
+          ...base,
+          label: "AMAL PLAIN",
+          sceneryOrigin: [0, 0],
+          clearColor: 0xa9b5b3,
+          sky: [
+            [0, "#152946"],
+            [0.28, "#426b8a"],
+            [0.5, "#9bb5bf"],
+            [0.58, "#e5c39a"],
+            [0.68, "#c8b69a"],
+            [1, "#687778"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x4a6d2101,
+            noise: 0.015,
+            haze: 0.12,
+            thinClouds: 10,
+            cloudOpacity: 0.045,
+            cloudBand: [0.44, 0.68],
+            cloudTint: 0xe9edef
+          },
+          fog: { color: 0xaeb9b4, near: 2100, far: 11800 },
+          sun: {
+            position: [-2850, 980, -4700],
+            color: 0xffd2a1,
+            radius: 76,
+            glare: [
+              { scale: 1380, color: 0xffbf84, opacity: 0.38 },
+              { scale: 390, color: 0xffead0, opacity: 0.82 }
+            ]
+          },
+          moon: null,
+          stars: null,
+          sunRoad: null,
+
+          // The engine's ocean plane is reused as dry land, following desertBasin's
+          // proven contract. Both normal speeds remain zero so the fields never crawl.
+          ocean: {
+            ...base.ocean,
+            base: "#5b6046",
+            bright: "137, 143, 96",
+            dark: "54, 60, 42",
+            repeat: 18,
+            roughness: 0.98,
+            metalness: 0,
+            textureProfile: "sand",
+            normalRepeat: 22,
+            normalScale: [0.12, 0.18],
+            normalSpeed: [0, 0],
+            normalSeed: 0x4a6d2102
+          },
+          terrain: {
+            ...base.terrain,
+            seed: 0x4a6d2103,
+            sand: 0x827c58,
+            grass: 0x596443,
+            rock: 0x666454,
+            peak: 0x696858,
+            snow: 0xdde1dc,
+            textureProfile: "grassland",
+            fineRepeat: 20,
+            macroRepeat: 3.8,
+            normalRepeat: 22,
+            normalStrength: 0.2,
+            islandNormalStrength: 0.15,
+            normalFade: [220, 1900],
+            rockSlope: [0.38, 0.78],
+            shoreHeight: 0.2,
+            snowSoftness: 0.08
+          },
+          lights: {
+            hemi: { sky: 0xb8d1df, ground: 0x34362d, intensity: 1.72 },
+            key: { color: 0xffd5ac, intensity: 2.2, position: [-1600, 950, -2400] },
+            fill: { color: 0x87b3d0, intensity: 0.54, position: [1100, 260, 900] }
+          },
+          mountains: {
+            ...base.mountains,
+            count: 9,
+            radius: [180, 360],
+            height: [70, 190],
+            distance: [7600, 9800],
+            snowyAbove: 9999,
+            snowLine: 0.72,
+            roughness: 0.95,
+            palette: {
+              low: 0x4f5942,
+              mid: 0x5c6249,
+              rock: 0x666454,
+              peak: 0x696858,
+              snow: 0xdde1dc
+            },
+            corridor: null,
+            plateau: null
+          },
+          islands: { count: 0, stone: 0x666454, green: 0x596443 },
+          clouds: {
+            ...base.clouds,
+            scale: 0.88,
+            hero: false,
+            color: 0xeaf0f1,
+            opacity: 0.55,
+            cirrusColor: 0xe6ebed,
+            cirrusOpacity: 0.21,
+            texture: { seed: 0x4a6d2104, contrast: 1.02, underside: 0.42, softness: 1.05 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x4a6d2105,
+            keepClear: [{ x: 0, z: 0, r: 7200 }],
+            extraIslands: { count: 8, radius: [100, 240], height: [20, 80], distance: [7600, 9400] },
+            shore: null,
+            trees: { perIsland: 7, color: 0x364b2f, trunk: 0x453625, height: [8, 17] },
+            rocks: { count: 10, color: 0x55574d, scale: [6, 16] },
+            city: null,
+            extraClouds: null
+          }
+        });
+
+        ctx.addWorldDecorator("amalPlainWorks", {
+          worlds: ["amalPlain"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "amalPlainWorks";
+            addRoot(root);
+
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const mats = new Map();
+            const material = (color, roughness = 0.9, metalness = 0.02, emissive = 0) => {
+              const key = `${color}:${roughness}:${metalness}:${emissive}`;
+              if (!mats.has(key)) {
+                mats.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color, roughness, metalness,
+                  emissive,
+                  emissiveIntensity: emissive ? 0.9 : 0
+                })));
+              }
+              return mats.get(key);
+            };
+            const box = (x, y, z, sx, sy, sz, color, ry = 0, roughness = 0.9, metalness = 0.02) => {
+              const mesh = new THREE.Mesh(boxGeo, material(color, roughness, metalness));
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.y = ry;
+              root.add(mesh);
+              return mesh;
+            };
+            const cylinder = (x, y, z, radius, height, color, emissive = 0) => {
+              const mesh = new THREE.Mesh(cylGeo, material(color, 0.76, 0.08, emissive));
+              mesh.position.set(x, y, z);
+              mesh.scale.set(radius, height, radius);
+              root.add(mesh);
+              return mesh;
+            };
+            const groundY = (x, z) => surfaceHeightAt(x, z) + 0.55;
+
+            // Broad farm parcels. Thin boxes avoid adding a texture dependency and
+            // remain legible from both high altitude and low attack runs.
+            const fieldColors = [0x697348, 0x77754a, 0x59683f, 0x8a8155, 0x626b43];
+            const fields = [
+              [-4400, -2600, 1700, 900, -0.05], [-2300, -2800, 1500, 820, 0.03],
+              [200, -2850, 1900, 760, -0.02], [2700, -2600, 1500, 900, 0.04],
+              [4550, -2300, 1100, 720, -0.06], [-4200, -700, 1450, 760, 0.02],
+              [-1900, -650, 1650, 720, -0.03], [550, -620, 1750, 760, 0.02],
+              [3100, -720, 1600, 700, -0.04], [-3900, 1350, 1500, 780, -0.02],
+              [-1450, 1450, 1700, 820, 0.04], [1100, 1450, 1800, 780, -0.03],
+              [3650, 1450, 1450, 820, 0.03], [-3200, 3350, 1800, 760, 0.02],
+              [-650, 3400, 1900, 820, -0.03], [2350, 3300, 1900, 780, 0.04]
+            ];
+            fields.forEach(([x, z, sx, sz, ry], index) => {
+              box(x, groundY(x, z), z, sx, 0.32, sz, fieldColors[index % fieldColors.length], ry, 0.98, 0);
+            });
+
+            // East-west military highway. TELs use the same authored line in mission
+            // data, so their movement reads as driving on the visible road.
+            box(0, groundY(0, 180), 180, 13200, 0.8, 34, 0x3c4140, 0, 0.96, 0.02);
+            box(0, groundY(0, 180) + 0.55, 180, 13200, 0.16, 2.6, 0xd8d1b8, 0, 0.9, 0);
+            for (let x = -6200; x <= 6200; x += 240) {
+              box(x, groundY(x, 180) + 0.8, 180, 82, 0.18, 1.5, 0xe3dfca, 0, 0.88, 0);
+            }
+
+            // Two north-south service roads join the friendly radar facilities.
+            for (const x of [2200, 3300]) {
+              box(x, groundY(x, 900), 900, 22, 0.65, 3500, 0x444846, 0, 0.96, 0.02);
+            }
+            box(2750, groundY(2750, 2500), 2500, 2200, 0.65, 24, 0x444846, 0, 0.96, 0.02);
+
+            function radarFacility(x, z, heading, labelOffset) {
+              const y = groundY(x, z);
+              box(x, y, z, 340, 1.1, 260, 0x555a58, heading, 0.98, 0);
+              box(x - 70, y + 18, z, 130, 36, 105, 0x7c817d, heading, 0.82, 0.04);
+              box(x + 95, y + 13, z + 45, 95, 26, 78, 0x6f7572, heading, 0.84, 0.04);
+              cylinder(x + 40, y + 55, z - 45, 8, 105, 0x6a706e);
+              const dish = new THREE.Mesh(cylGeo, material(0xb9c2c0, 0.72, 0.22));
+              dish.position.set(x + 40, y + 112, z - 45);
+              dish.scale.set(42, 4.5, 42);
+              dish.rotation.z = Math.PI * 0.5;
+              dish.rotation.y = heading + 0.35;
+              root.add(dish);
+              cylinder(x - 118, y + 34, z - 78, 3.5, 68, 0x767d79, 0xe46645);
+              box(x + labelOffset, y + 4, z - 125, 56, 8, 18, 0x58615c, heading, 0.88, 0.02);
+            }
+
+            // Coordinates are shared with M02's protected-facility contract.
+            radarFacility(2450, -1280, 0.08, -145);
+            radarFacility(3350, 2080, -0.06, 145);
+
+            // Sparse farm settlements and windbreaks; enough to establish scale but
+            // never dense enough to hide ground targets.
+            const hamlets = [[-3300, -1500], [-1150, 2300], [850, -1900], [4450, 850]];
+            for (const [hx, hz] of hamlets) {
+              const y = groundY(hx, hz);
+              for (let i = 0; i < 7; i += 1) {
+                const ox = (i % 3) * 48 - 48;
+                const oz = Math.floor(i / 3) * 58 - 58;
+                box(hx + ox, y + 8, hz + oz, 30, 16, 42, i % 2 ? 0x8b8171 : 0x77796e, 0.05 * i, 0.92, 0.01);
+                box(hx + ox, y + 17, hz + oz, 34, 3, 46, 0x594c43, 0.05 * i, 0.9, 0.01);
+              }
+            }
+
+            root.traverse((node) => {
+              if (!node.isMesh) return;
+              node.castShadow = false;
+              node.receiveShadow = true;
+            });
+          }
+        });
+      },
+      "map_amalPlain"
+    ); // @payload:map_amalPlain
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, GROUND_TYPES
+        } = ctx.tables;
+
+        if (!WORLD_PRESETS.amalPlain) {
+          throw new Error("[sera-m02] amalPlain is not registered; load map_amalPlain first");
+        }
+        for (const type of ["f4", "f16", "mig29", "su24m"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m02] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["mig29", "su24m"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m02] required enemy profile not registered: ${type}`);
+        }
+        for (const type of ["tel", "aaGun", "adTank", "tank"]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m02] required ground unit not registered: ${type}`);
+        }
+
+        const at = MISSIONS.findIndex((mission) => mission.key === "m02");
+        if (at < 0) throw new Error("[sera-m02] stock m02 was not found");
+        const original = MISSIONS[at];
+
+        // The visible military highway on Amal Plain runs east -> west. Positive
+        // route distance therefore carries the TELs toward the escape boundary.
+        const convoyRoad = [
+          [2250, 180], [1450, 170], [500, 190], [-600, 175],
+          [-1750, 190], [-3000, 170], [-4300, 185], [-5550, 170], [-6900, 180]
+        ];
+
+        const replacement = {
+          ...original,
+          key: "m02",
+          campaign: original.campaign || "usa",
+          world: "amalPlain",
+          title: "SHATTERED MORNING",
+          jp: "前夜の残存航空戦力を掃討し、アマル平原を西へ逃走する移動式弾道ミサイル部隊を阻止せよ。",
+          act: 1,
+          storyNo: 2,
+          story: "WAR DAY 002。レン湾襲撃の翌朝。ROOK隊はアマル平原へ進出し、残存航空隊と移動中のミサイル部隊を捜索する。",
+          epilogue: [
+            "アマル平原の残存航空隊は排除された。",
+            "逃走を図った移動式ミサイル部隊も道路上で停止した。",
+            "CROWNは短い時間だけ、戦場の順番をRAVENへ任せた。"
+          ],
+
+          friendlies: {
+            playerStart: {
+              x: -2500,
+              y: 2350,
+              z: 5200,
+              facing: { x: 400, z: 400 }
+            },
+            wingmen: [
+              {
+                type: "f4",
+                label: "ROOK 1 CROWN",
+                radioSpeaker: "crown",
+                offset: { back: -135, side: -105, up: 24 }
+              },
+              {
+                type: "f16",
+                label: "ROOK 3 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 105, side: 115, up: -10 }
+              }
+            ]
+          },
+
+          // M02 uses two blue installations rather than M01's single friendlyBase.
+          // Su-24M waves name the facility they attack through facilityIndex.
+          protectedFacilities: [
+            {
+              id: "amal-radar-south",
+              label: "AMAL RADAR SOUTH",
+              x: 2450,
+              z: -1280,
+              heading: 0.08,
+              maxHealth: 100,
+              hitRadius: 115
+            },
+            {
+              id: "amal-relay-north",
+              label: "AMAL RELAY NORTH",
+              x: 3350,
+              z: 2080,
+              heading: -0.06,
+              maxHealth: 100,
+              hitRadius: 115
+            }
+          ],
+          facilityContract: {
+            rankCapAfterLoss: "A",
+            failWhenAllLost: false,
+            hitDamage: 34,
+            lossRadio: {
+              speaker: "lark",
+              priority: "URGENT",
+              text: "通信施設が一つ落ちた。任務は続けられる、残る攻撃機を止めよう。",
+              id: "sera-m02-facility-lost"
+            }
+          },
+
+          sequence: [
+            // Phase 1: the designated remnants. The white fighters are dangerous but
+            // optional, preserving the red/white lesson from M01.
+            {
+              types: ["mig29", "mig29", "mig29", "mig29"],
+              // Preserve the stock mission sequence schema. A zero delay keeps the
+              // opening immediate while retaining sequence[].delay for registry QA.
+              delay: 0,
+              band: 1,
+              idBase: 0,
+              label: "REARGUARD",
+              at: [2400, -5200],
+              altitude: 2600,
+              facing: [0, 500],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "NORMAL",
+                  text: "ROOK、平原南東に赤TGT4。昨夜の残存戦闘隊だ。掃討を開始せよ。",
+                  id: "sera-m02-sweep-meridian"
+                },
+                {
+                  speaker: "crown",
+                  priority: "NORMAL",
+                  text: "RAVEN、まず赤を片付ける。白を深追いして朝を丸ごと使うな。",
+                  id: "sera-m02-sweep-crown"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29", "mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 20,
+              label: "SCREEN",
+              role: "trash",
+              at: [3000, -4700],
+              altitude: 3000,
+              facing: [0, 500]
+            },
+
+            // Phase 2A: first strike pair attacks the southern radar site.
+            {
+              types: ["su24m", "su24m"],
+              band: 2,
+              idBase: 4,
+              label: "FENCER",
+              facilityIndex: 0,
+              at: [9300, -2600],
+              altitude: 1550,
+              facing: [2450, -1280],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "URGENT",
+                  text: "東から攻撃機2。赤TGT、アマル南レーダーへ低空進入中。",
+                  id: "sera-m02-strike-a-meridian"
+                },
+                {
+                  speaker: "crown",
+                  priority: "NORMAL",
+                  text: "ここから先はお前が決めろ、RAVEN。攻撃機、護衛、対空網――先に危険だと思うものを落とせ。",
+                  id: "sera-m02-command-transfer-crown"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 2,
+              idBase: 24,
+              label: "ESCORT",
+              role: "trash",
+              at: [8800, -2200],
+              altitude: 2150,
+              facing: [2450, -1280]
+            },
+
+            // Phase 2B: the second pair bends north toward the communications relay.
+            {
+              types: ["su24m", "su24m"],
+              band: 2,
+              idBase: 6,
+              label: "FENCER",
+              facilityIndex: 1,
+              at: [9800, 3600],
+              altitude: 1750,
+              facing: [3350, 2080],
+              radio: [
+                {
+                  speaker: "lark",
+                  priority: "URGENT",
+                  text: "北東にも攻撃機2。二つ目の通信施設へ向かってる。残存TGT、こちらで数える。",
+                  id: "sera-m02-strike-b-lark"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 2,
+              idBase: 26,
+              label: "ESCORT",
+              role: "trash",
+              at: [9300, 3200],
+              altitude: 2350,
+              facing: [3350, 2080]
+            },
+
+            // Phase 3: white air cover appears with the TEL reveal. This principal
+            // non-TGT wave is held open by the four ground TGTs rather than by itself.
+            {
+              types: ["mig29", "mig29", "mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              band: 3,
+              idBase: 28,
+              label: "COVER",
+              role: "trash",
+              at: [-800, -3900],
+              altitude: 2450,
+              facing: [-3600, 180],
+              gate: { mode: "groundMarkClear", mark: "m02Tel" },
+              activateGroundPhase: "m02-tel-column",
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "西へ移動する車列を捕捉。赤TGTはTEL4。戦域を離脱する前に全車破壊せよ。",
+                  id: "sera-m02-tel-reveal-meridian"
+                },
+                {
+                  speaker: "lark",
+                  priority: "URGENT",
+                  text: "対空車両6、上空にも白4。だけど逃がせないのは赤いTELだけだよ。",
+                  id: "sera-m02-tel-reveal-lark"
+                }
+              ]
+            }
+          ],
+
+          convoyRoad,
+          convoySpeed: 12,
+          groundUnits: [
+            // The entire column remains dormant until the final principal wave.
+            { id: 41, type: "tel", label: "9K720 TEL", mark: "m02Tel", phase: "m02-tel-column", pathOffset: 30 },
+            { id: 42, type: "tel", label: "9K720 TEL", mark: "m02Tel", phase: "m02-tel-column", pathOffset: 125 },
+            { id: 43, type: "tel", label: "9K720 TEL", mark: "m02Tel", phase: "m02-tel-column", pathOffset: 220 },
+            { id: 44, type: "tel", label: "9K720 TEL", mark: "m02Tel", phase: "m02-tel-column", pathOffset: 315 },
+            { id: 45, type: "aaGun", label: "ZSU-23-4 SHILKA", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 410 },
+            { id: 46, type: "adTank", label: "SA-13 GOPHER", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 505 },
+            { id: 47, type: "tank", label: "T-72", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 600 },
+            { id: 48, type: "aaGun", label: "ZSU-23-4 SHILKA", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 695 },
+            { id: 49, type: "adTank", label: "SA-13 GOPHER", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 790 },
+            { id: 50, type: "tank", label: "T-72", tgt: false, rankNeutral: true, phase: "m02-tel-column", pathOffset: 885 }
+          ],
+          groundPhaseContract: {
+            id: "m02-tel-column",
+            activeInitially: false,
+            failMark: "m02Tel",
+            failAtRouteEnd: true,
+            failBanner: "MISSILE COLUMN ESCAPED",
+            holdAfterClear: 4,
+            failureRadio: {
+              speaker: "meridian",
+              priority: "CRITICAL",
+              text: "TELが西部戦域を離脱。ミサイル部隊の追跡を中止、ROOKは帰投せよ。",
+              id: "sera-m02-tel-escaped"
+            }
+          },
+
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "TEL全車停止。アマル平原の脅威は排除された。ROOK、帰投せよ。",
+            id: "sera-m02-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "移動式ミサイル部隊を阻止できなかった。作戦を中止する。",
+            id: "sera-m02-failure"
+          },
+
+          parTime: 720,
+          hasOutro: false,
+          map: { x: 0.31, y: 0.34 },
+          battleCenter: { x: 0, z: 200 },
+          battleRadius: 10800,
+          briefing: "レン湾襲撃の翌朝、アマル平原に敵残存部隊を確認。\n第一目標は赤表示の残存戦闘機4。白表示の護衛は交戦可能だが撃墜必須ではない。\n続いて東方からSu-24M攻撃機が二つのレーダー／通信施設へ侵入する。施設喪失だけでは任務失敗にならないが、完全防衛評価は失われる。\n最終目標は西へ逃走する9K720 TEL 4両。対空車両と戦車、白い上空援護が随伴する。\nTELを1両でも戦域外へ逃がすとMISSION FAILED。赤TGTを優先せよ。\nROOK 1 CROWNはF-4E、ROOK 3 LARKはF-16Cで同行する。",
+          introRadio: [
+            {
+              speaker: "meridian",
+              priority: "NORMAL",
+              text: "ROOK、こちらMERIDIAN。アマル平原へ進入、残存航空戦力を捜索せよ。",
+              id: "sera-m02-intro-meridian"
+            },
+            {
+              speaker: "crown",
+              priority: "NORMAL",
+              text: "昨日の続きだが、同じ戦い方はするな。平原全体を見ておけ、RAVEN。",
+              id: "sera-m02-intro-crown"
+            },
+            {
+              speaker: "lark",
+              priority: "NORMAL",
+              text: "東にレーダー施設が二つ。道路は西へ一直線……何か逃がすには都合がいいね。",
+              id: "sera-m02-intro-lark"
+            }
+          ]
+        };
+
+        MISSIONS.splice(at, 1);
+        try {
+          const normalized = ctx.addMission(replacement);
+          const appendedAt = MISSIONS.indexOf(normalized);
+          if (appendedAt < 0) throw new Error("[sera-m02] normalized mission was not inserted");
+          MISSIONS.splice(appendedAt, 1);
+          MISSIONS.splice(at, 0, normalized);
+        } catch (error) {
+          MISSIONS.splice(at, 0, original);
+          throw error;
+        }
+      },
+      "mission_sera_m02"
+    ); // @payload:mission_sera_m02
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`

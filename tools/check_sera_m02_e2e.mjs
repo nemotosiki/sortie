@@ -2,7 +2,7 @@
 import { chromium } from "playwright";
 
 const baseUrl = process.env.SORTIE_BASE_URL || "http://127.0.0.1:8000";
-const missionUrl = `${baseUrl}/index.html?payloads=payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js`;
+const missionUrl = `${baseUrl}/index.html`;
 
 function assert(condition, message, details = null) {
   if (condition) return;
