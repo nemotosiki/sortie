@@ -1,0 +1,85 @@
+name: Apply Ren Bay horizon repair
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_ren_bay_horizon_fix.py
+      - .github/workflows/apply-ren-bay-horizon-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-ren-bay-horizon-fix
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply reusable plateau controls
+        run: |
+          python -m py_compile tools/apply_ren_bay_horizon_fix.py
+          python tools/apply_ren_bay_horizon_fix.py engine
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Verify and checkpoint plateau controls
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html
+          git diff --cached --check
+          git commit -m 'Support authored coastal plateau footprints'
+          git push origin HEAD:chatgpt/sera-act1-implementation
+
+      - name: Extend Ren Bay landmass
+        run: |
+          python tools/apply_ren_bay_horizon_fix.py map
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_map_amal_plain.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          git diff --check
+
+      - name: Verify normal-start M01 and M02
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
+            sleep 1
+          done
+          node tools/check_sera_m01_e2e.mjs
+          node tools/check_sera_m02_e2e.mjs
+
+      - name: Commit verified Ren Bay horizon repair
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json package.json
+          git add index.html payloads/map_renBay.payload.js tools/check_map_ren_bay.mjs
+          git rm tools/apply_ren_bay_horizon_fix.py
+          git diff --cached --check
+          git commit -m 'Extend Ren Bay landmass beyond the flight horizon'
+          git push origin HEAD:chatgpt/sera-act1-implementation
