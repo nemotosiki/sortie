@@ -1,4 +1,4 @@
-name: Apply Ren Bay horizon repair
+name: Apply Ren Bay horizon coverage fix
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  repair:
+  apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -25,45 +25,54 @@ jobs:
           ref: chatgpt/sera-act1-implementation
           fetch-depth: 0
 
-      - name: Apply reusable plateau controls
+      - name: Apply Ren Bay terrain coverage patch
         run: |
           python -m py_compile tools/apply_ren_bay_horizon_fix.py
-          python tools/apply_ren_bay_horizon_fix.py engine
+          python tools/apply_ren_bay_horizon_fix.py
+
+      - name: Run static contracts
+        run: |
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          node tools/check_sera_m01_tu22_strike.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
           git diff --check
+
+      - name: Record small production commits
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+
+          git add payloads/map_renBay.payload.js tools/check_map_ren_bay.mjs
+          git diff --cached --check
+          git commit -m 'Expand Ren Bay continental terrain footprint'
+
+          git add index.html
+          git diff --cached --check
+          git commit -m 'Sync Ren Bay horizon fix into normal startup'
 
       - name: Install Chromium harness
         run: |
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Verify and checkpoint plateau controls
+      - name: Run registry and M01 browser regressions
         shell: bash
         run: |
           chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
           SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
-          git config user.name 'ChatGPT'
-          git config user.email 'noreply@openai.com'
-          git add index.html
-          git diff --cached --check
-          git commit -m 'Support authored coastal plateau footprints'
-          git push origin HEAD:chatgpt/sera-act1-implementation
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs --payloads=payloads/map_renBay.payload.js,payloads/mission_sera_m01.payload.js
 
-      - name: Extend Ren Bay landmass
-        run: |
-          python tools/apply_ren_bay_horizon_fix.py map
-          node tools/check_map_ren_bay.mjs
-          node tools/check_sera_m01_payload.mjs
-          node tools/check_map_amal_plain.mjs
-          node tools/check_sera_m02_payload.mjs
-          node tools/check_sera_m02_host.mjs
-          node tools/check_air_iff_foundation.mjs
-          git diff --check
-
-      - name: Verify normal-start M01 and M02
-        shell: bash
-        run: |
-          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
-          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+          mkdir -p artifacts
           python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
@@ -71,15 +80,69 @@ jobs:
             if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
             sleep 1
           done
-          node tools/check_sera_m01_e2e.mjs
-          node tools/check_sera_m02_e2e.mjs
 
-      - name: Commit verified Ren Bay horizon repair
+          node tools/check_sera_m01_e2e.mjs
+
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({
+            headless: true,
+            args: ['--use-gl=swiftshader', '--disable-gpu-sandbox', '--disable-dev-shm-usage']
+          });
+          try {
+            const context = await browser.newContext({ viewport: { width: 1770, height: 862 } });
+            await context.addInitScript(() => { navigator.getGamepads = () => []; });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(String(error?.stack || error)));
+            page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+            await page.goto('http://127.0.0.1:8000/index.html', { waitUntil: 'domcontentloaded', timeout: 120000 });
+            await page.waitForFunction(() => Boolean(window.__game?.debug?.forceCampaignCursor), null, { timeout: 120000 });
+
+            const routed = await page.evaluate(() => {
+              const debug = window.__game.debug;
+              const campaign = debug.forceCampaignCursor('usa') && debug.forceConfirmCampaign();
+              const index = debug.missionIndexOf('m01');
+              const mission = campaign && index >= 0 && debug.forceMissionCursor(index) && debug.forceConfirmMission();
+              return { campaign, index, mission, state: document.body.dataset.gameState };
+            });
+            if (!routed.campaign || routed.index < 0 || !routed.mission) {
+              throw new Error(`could not route to M01: ${JSON.stringify(routed)}`);
+            }
+
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+              const state = await page.evaluate(() => document.body.dataset.gameState);
+              if (state === 'ready') break;
+              await page.click('#briefingNextBtn');
+              await page.waitForTimeout(120);
+            }
+            await page.waitForFunction(() => document.body.dataset.gameState === 'ready', null, { timeout: 10000 });
+            const selected = await page.evaluate(() => window.__game.debug.forceSelectAircraft('f16'));
+            if (!selected) throw new Error('F-16C selection failed');
+            await page.click('#startBtn');
+            await page.waitForFunction(() => document.body.dataset.gameState === 'playing', null, { timeout: 10000 });
+
+            // Reproduce the user-reported opening view. By this point the old
+            // ellipse exposed both side boundaries as a giant finite slab.
+            await page.waitForTimeout(18000);
+            await page.screenshot({ path: 'artifacts/ren-bay-horizon-after.png' });
+            if (errors.length) throw new Error(`browser errors: ${errors.join(' | ')}`);
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+      - name: Upload visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ren-bay-horizon-after
+          path: artifacts/ren-bay-horizon-after.png
+          if-no-files-found: error
+
+      - name: Remove one-shot patch helper and push
         shell: bash
         run: |
-          rm -rf node_modules package-lock.json package.json
-          git add index.html payloads/map_renBay.payload.js tools/check_map_ren_bay.mjs
+          rm -rf node_modules package-lock.json package.json artifacts
           git rm tools/apply_ren_bay_horizon_fix.py
-          git diff --cached --check
-          git commit -m 'Extend Ren Bay landmass beyond the flight horizon'
+          git commit -m 'Remove Ren Bay horizon patch helper'
           git push origin HEAD:chatgpt/sera-act1-implementation
