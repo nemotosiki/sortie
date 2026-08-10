@@ -1,0 +1,89 @@
+name: Finish Sera M01 canonical vertical slice
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m01_finish.py
+      - .github/workflows/apply-sera-m01-finish.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finish-sera-m01
+  cancel-in-progress: false
+
+jobs:
+  finish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply the M01 completion pass
+        run: |
+          python -m py_compile tools/apply_sera_m01_finish.py tools/apply_sera_m01_debug_probe.py
+          python tools/apply_sera_m01_finish.py
+          python tools/apply_sera_m01_debug_probe.py
+
+      - name: Run static contracts
+        run: |
+          node --check tools/check_sera_m01_e2e.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          node tools/check_sera_m01_tu22_strike.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run registry gate
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+      - name: Run full M01 browser E2E
+        shell: bash
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
+            sleep 1
+          done
+          node tools/check_sera_m01_e2e.mjs
+
+      - name: Commit the verified M01 vertical slice
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json package.json
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html \
+                  payloads/mission_sera_m01.payload.js \
+                  tools/check_sera_m01_payload.mjs \
+                  tools/check_sera_m01_e2e.mjs \
+                  docs/implementation/sera_act1_status.md \
+                  .github/workflows/verify-sera-m01-e2e.yml
+          git rm tools/apply_sera_m01_debug_probe.py \
+                 .github/workflows/diagnose-sera-m01-world-line.yml \
+                 tools/apply_sera_m01_finish.py \
+                 .github/workflows/apply-sera-m01-finish.yml
+          git diff --cached --check
+          git commit -m 'Complete Sera M01 canonical vertical slice'
+          git push origin HEAD:chatgpt/sera-act1-implementation
