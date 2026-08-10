@@ -30,11 +30,11 @@ assert(fa18a.includes('spw: Object.freeze({ key: "lasm", capacity: 10 })'), "fa1
 
 assert(f15c.includes('label: "F-15C EAGLE"'), "f15c label wrong");
 assert(f15c.includes('variant: "lancer"'), "f15c must use the single-seat Eagle model");
-assert(f15c.includes('spw: Object.freeze({ key: "xlaa", capacity: 14 })'), "f15c must carry XLAA");
+assert(f15c.includes('spw: Object.freeze({ key: "aam4", capacity: 14 })'), "f15c must carry 4AAM");
 
 assert(f15e.includes('label: "F-15E STRIKE EAGLE"'), "legacy f15 key is not F-15E");
 assert(f15e.includes('variant: "strikeeagle"'), "f15/F-15E model variant wrong");
-assert(f15e.includes('spw: Object.freeze({ key: "agm4", capacity: 16 })'), "F-15E must carry 4AGM");
+assert(f15e.includes('spw: Object.freeze({ key: "aam4", capacity: 16 })'), "F-15E must carry 4AAM");
 assert(!source.includes('label: "F-15 EAGLE"'), "old ambiguous F-15 label remains");
 
 const expectedOrder = '"f2a", "fa18a", "fa18", "f15c", "f15", "f14"';
