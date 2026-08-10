@@ -108,6 +108,16 @@ e2e = replace_once(
 )
 e2e = replace_once(
     e2e,
+    '  await page.click("#changeMissionBtn");',
+    '''  // The full-screen result transform can leave the button outside the
+  // headless viewport even though it is visible and enabled. HTMLElement.click()
+  // still exercises the production button handler without introducing a test-only
+  // state mutation.
+  await page.evaluate(() => document.getElementById("changeMissionBtn").click());''',
+    "headless-safe change-mission click",
+)
+e2e = replace_once(
+    e2e,
     '  console.log("  real menu flow -> Ren Bay M01 -> fail -> retry -> clean clear -> M02 boot");',
     '  console.log("  real menu flow -> Ren Bay M01 -> fail -> checkpoint-safe retry -> clean clear -> M02 boot");',
     "E2E summary",
@@ -135,4 +145,4 @@ status = replace_once(
 )
 STATUS.write_text(status, encoding="utf-8")
 
-print("fix_sera_m01_retry_checkpoint: aligned retry and result timing with production contracts")
+print("fix_sera_m01_retry_checkpoint: aligned retry, result timing, and result navigation with production contracts")
