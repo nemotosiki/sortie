@@ -25,3 +25,9 @@ jobs:
       - name: Print failure neighborhood
         run: |
           nl -ba tools/check_sera_m01_e2e.mjs | sed -n '225,245p'
+      - name: Print outcome transition code
+        shell: bash
+        run: |
+          grep -n -C 10 'outcomePending' index.html | head -n 260
+          echo '--- completeMission definitions/calls ---'
+          grep -n -C 8 'completeMission' index.html | head -n 260
