@@ -34720,6 +34720,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ctx.addWorldPreset("renBay", {
           label: "REN BAY",
           sceneryOrigin: [0, 4300],
+          // The gameplay plateau is shifted inland to place its north/side edges
+          // beyond fog, but previews must keep looking at the airport and city.
+          previewFocus: [0, 4300],
           clearColor: 0x8097ad,
           sky: [[0, "#142846"], [0.3, "#355d84"], [0.58, "#9ab5ca"], [0.76, "#efc9a2"], [1, "#5a7187"]],
           atmosphere: { seed: 0x724201, noise: 0.018, haze: 0.11, thinClouds: 13, cloudOpacity: 0.055, cloudBand: [0.42, 0.7], cloudTint: 0xeaf0f3 },
@@ -34756,7 +34759,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             snowyAbove: 9999, snowLine: 0.68, roughness: 0.94,
             palette: { low: 0x3f5142, mid: 0x556557, rock: 0x646862, peak: 0x5d625e, snow: 0xe8edf0 },
             corridor: null,
-            plateau: { radius: [5600, 5600], height: [28, 28], topRadius: 0.92, at: [0, 4300], snowyAbove: 9999 }
+            // Wide coastal back-country. The old 5.6 km random ellipse ended inside
+          // the 12.5 km fog range, exposing its polygon edge from normal M01 altitude.
+          // Keep the south shoreline in the same place while moving every other edge
+          // well past the visible horizon. Low edge noise and extra radial segments
+          // remove the giant faceted silhouette without meaningful GPU cost.
+          plateau: {
+            radius: [16000, 16000], depth: 10500, height: [28, 28],
+            topRadius: 0.92, at: [0, 9200], rotationY: 0,
+            radialSegments: 48, edgeNoise: 0.18, snowyAbove: 9999
+          }
           },
           islands: { count: 5, stone: 0x59645f, green: 0x4b6348 },
           clouds: {
