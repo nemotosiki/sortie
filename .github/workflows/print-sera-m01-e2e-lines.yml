@@ -26,8 +26,10 @@ jobs:
         run: |
           nl -ba tools/check_sera_m01_e2e.mjs | sed -n '225,245p'
       - name: Print outcome transition code
-        shell: bash
         run: |
-          grep -n -C 10 'outcomePending' index.html | head -n 260
-          echo '--- completeMission definitions/calls ---'
-          grep -n -C 8 'completeMission' index.html | head -n 260
+          echo '--- outcome timer references ---'
+          grep -n 'outcomePending.timer' index.html || true
+          echo '--- animation loop outcome section ---'
+          sed -n '38735,38845p' index.html
+          echo '--- mission completion section ---'
+          sed -n '47690,47980p' index.html
