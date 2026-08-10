@@ -2387,6 +2387,12 @@
           <div class="menuRecordHeader">[ AIRCRAFT SPECIFICATIONS ]</div>
           <p class="menuBlurb hangarPurchaseLine hidden" id="hangarPurchaseLine">—</p>
           <div id="specBars"></div>
+          <div class="menuRecordHeader hidden" id="spwLoadoutHeader">[ SPECIAL WEAPON SELECT ]</div>
+          <div class="difficultySelector hidden" id="spwLoadoutSelect" aria-label="Select F/A-18F special weapon">
+            <span class="difficultyArrow" id="spwLoadoutPrev" role="button" tabindex="0" aria-label="Previous special weapon">◀</span>
+            <span class="difficultyValue" id="spwLoadoutValue">4AAM / AIR</span>
+            <span class="difficultyArrow" id="spwLoadoutNext" role="button" tabindex="0" aria-label="Next special weapon">▶</span>
+          </div>
           <div class="menuRecordHeader">[ WEAPONS AMMO ]</div>
           <dl class="ammoGrid" id="ammoGrid"></dl>
         </aside>
@@ -2394,6 +2400,7 @@
       <p class="menuBlurb" id="aircraftBlurbLine">—</p>
       <footer class="menuLegend">
         <span><span class="legendKey">↑↓ / D-PAD</span> 機体</span>
+        <span id="hangarSpwHint" class="hidden"><span class="legendKey">X / L3</span> 特殊兵装</span>
         <span><span class="legendKey">ENTER / ○</span> 出撃</span>
         <span><span class="legendKey">ESC / □</span> ミッション選択</span>
         <span><span class="legendKey">W/S</span>ピッチ <span class="legendKey">A/D</span>ロール <span class="legendKey">Q/E</span>ヨー <span class="legendKey">SHIFT/CTRL</span>加減速 <span class="legendKey">TAB</span>目標切替</span>
@@ -3568,7 +3575,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 0.94, variant: "legacyhornet"
         label: "F/A-18F SUPER HORNET",
         role: "Carrier Multirole",
         tag: "NAVY",
-        blurb: "空母運用を前提に鍛えられた複座の艦載機。最高速度は上位機に譲るが、中速域の機動と姿勢の安定は随一で、狙った位置に留まり続ける。",
+        blurb: "空母運用を前提に鍛えられた複座の艦載機。出撃前に4AAM・4AGM・LASMを選び、制空・対地・対艦へ任務ごとに構成を変えられる。最高速度は上位機に譲るが、中速域の機動と姿勢の安定は随一。",
         cruiseSpeed: 265, boostSpeed: 550, brakeSpeed: 126,
         pitchRateDeg: 47, rollRateDeg: 150, yawRateDeg: 13, maxBankAngleDeg: 57,
         normalRollSpring: 42, rollRateLimitDeg: 145, turnRateDeg: 33,
@@ -3576,7 +3583,12 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 0.94, variant: "legacyhornet"
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.89, brakeResponse: 0.5, cruiseResponse: 0.58,
         missileCapacity: 24, maxHealth: 135,
-        spw: Object.freeze({ key: "qaam", capacity: 4 }),
+        spw: Object.freeze({ key: "aam4", capacity: 16 }),
+        spwChoices: Object.freeze([
+          Object.freeze({ key: "aam4", capacity: 16 }),
+          Object.freeze({ key: "agm4", capacity: 12 }),
+          Object.freeze({ key: "lasm", capacity: 12 })
+        ]),
         tipSpan: 7.9, tipZ: 2.9,
         theme: Object.freeze({
 primary: 0xb9c2ca, secondary: 0x707a85, accent: 0x2f4f75,
@@ -35160,6 +35172,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hangarMissionTag: document.getElementById("hangarMissionTag"),
       hangarWallet: document.getElementById("hangarWallet"),
       hangarPurchaseLine: document.getElementById("hangarPurchaseLine"),
+      spwLoadoutHeader: document.getElementById("spwLoadoutHeader"),
+      spwLoadoutSelect: document.getElementById("spwLoadoutSelect"),
+      spwLoadoutPrev: document.getElementById("spwLoadoutPrev"),
+      spwLoadoutValue: document.getElementById("spwLoadoutValue"),
+      spwLoadoutNext: document.getElementById("spwLoadoutNext"),
+      hangarSpwHint: document.getElementById("hangarSpwHint"),
       score: document.getElementById("score"),
       highscore: document.getElementById("highscore"),
       health: document.getElementById("health"),
@@ -35510,6 +35528,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let sortieDifficulty = readDifficulty();
     let health = 100;
     let selectedAircraftId = DEFAULT_AIRCRAFT_ID;
+    const aircraftSpwSelection = new Map();
     let aircraftSpecBarCache = null;
     // Aircraft id awaiting a second confirm before purchaseAircraft() spends
     // real credits. Cleared on every selection change so switching jets always
@@ -36353,6 +36372,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceDeployFlare: () => deployFlare(),
         forceSelectAircraft: (id) => selectAircraft(id),
+        forceSelectAircraftSpw: (key) => selectAircraftSpw(key),
+        aircraftSpwProbe: () => {
+          const spec = AIRCRAFT_TYPES[selectedAircraftId];
+          const options = aircraftSpwOptions(spec);
+          const selected = resolveAircraftSpwLoadout(spec);
+          return {
+            aircraftId: spec ? spec.id : null,
+            options: options.map((entry) => ({ key: entry.key, capacity: entry.capacity })),
+            selectedKey: selected ? selected.key : null,
+            selectedCapacity: selected ? selected.capacity : 0,
+            activeKey: PLAYER_SPW ? PLAYER_SPW.key : null,
+            activeCapacity: PLAYER_SPW_CAPACITY,
+            selectorVisible: Boolean(ui.spwLoadoutSelect && !ui.spwLoadoutSelect.classList.contains("hidden"))
+          };
+        },
         forceSelectWeapon: (key) => {
           const next = key === "spw" || key === "msl" ? key : null;
           if (!next || gameState !== STATE_PLAYING) return false;
@@ -37898,6 +37932,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ensureAudio();
       setState(STATE_MISSION_SELECT);
     });
+    for (const [id, delta] of [["spwLoadoutPrev", -1], ["spwLoadoutNext", 1]]) {
+      const arrow = document.getElementById(id);
+      if (!arrow) continue;
+      arrow.addEventListener("click", () => {
+        ensureAudio();
+        cycleAircraftSpw(delta);
+      });
+      arrow.addEventListener("keydown", (event) => {
+        if (event.code !== "Enter" && event.code !== "Space") return;
+        event.preventDefault();
+        ensureAudio();
+        cycleAircraftSpw(delta);
+      });
+    }
     window.addEventListener("pointerdown", ensureAudio, { passive: true });
 
     window.addEventListener("keydown", (event) => {
@@ -37916,6 +37964,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       if (event.code === "KeyX" && !event.repeat) {
         if (gameState === STATE_PLAYING) toggleWeapon();
+        else if (gameState === STATE_READY) cycleAircraftSpw(1);
         return;
       }
 
@@ -38823,6 +38872,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (wasPlaying && missilePressed && !gamepadInput.previousMissile) fireWeapon();
       if (wasPlaying && flarePressed && !gamepadInput.previousFlare) deployFlare();
       if (wasPlaying && weaponTogglePressed && !gamepadInput.previousWeaponToggle) toggleWeapon();
+      else if (gameState === STATE_READY && weaponTogglePressed && !gamepadInput.previousWeaponToggle) cycleAircraftSpw(1);
       // Also allowed on the result screen: otherwise a gamepad-only player can
       // never change aircraft, because retry restarts with the current one and
       // #changeAircraftBtn is mouse-only.
@@ -53322,6 +53372,60 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playerModel.group.visible = cameraMode !== "cockpit";
     }
 
+    function aircraftSpwOptions(spec) {
+      if (!spec) return [];
+      if (Array.isArray(spec.spwChoices) && spec.spwChoices.length > 0) return spec.spwChoices;
+      return spec.spw ? [spec.spw] : [];
+    }
+
+    function resolveAircraftSpwLoadout(spec) {
+      const options = aircraftSpwOptions(spec);
+      if (options.length === 0) return null;
+      const stored = aircraftSpwSelection.get(spec.id);
+      const index = Number.isInteger(stored) && stored >= 0 && stored < options.length ? stored : 0;
+      if (stored !== index) aircraftSpwSelection.set(spec.id, index);
+      return options[index];
+    }
+
+    function aircraftSpwRoleLabel(key) {
+      if (key === "aam4") return "AIR";
+      if (key === "agm4") return "GROUND";
+      if (key === "lasm") return "SHIP";
+      return "SPECIAL";
+    }
+
+    function spwGroundRating(loadout) {
+      const weapon = loadout ? SPW_TYPES[loadout.key] : null;
+      if (!weapon) return 0.25;
+      if ((weapon.lockKind === "surface" || weapon.lockKind === "ground") && weapon.multi > 1) return 1.0;
+      if (weapon.kind === "bomb") return 0.95;
+      if (weapon.lockKind === "surface" || weapon.lockKind === "ship" || weapon.lockKind === "ground") return 0.8;
+      return 0.25;
+    }
+
+    function selectAircraftSpw(key) {
+      if (gameState === STATE_PLAYING) return false;
+      const spec = AIRCRAFT_TYPES[selectedAircraftId];
+      const options = aircraftSpwOptions(spec);
+      const index = options.findIndex((entry) => entry.key === key);
+      if (index < 0) return false;
+      aircraftSpwSelection.set(spec.id, index);
+      updateHangarScreen();
+      return true;
+    }
+
+    function cycleAircraftSpw(delta) {
+      if (gameState !== STATE_READY) return false;
+      const spec = AIRCRAFT_TYPES[selectedAircraftId];
+      const options = aircraftSpwOptions(spec);
+      if (options.length <= 1) return false;
+      const current = aircraftSpwSelection.get(spec.id) || 0;
+      const next = (current + delta + options.length) % options.length;
+      aircraftSpwSelection.set(spec.id, next);
+      updateHangarScreen();
+      return true;
+    }
+
     function applyAircraftLoadout(id) {
       const spec = AIRCRAFT_TYPES[id] || AIRCRAFT_TYPES[DEFAULT_AIRCRAFT_ID];
       selectedAircraftId = spec.id;
@@ -53341,15 +53445,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
       PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
       PLAYER_MAX_HEALTH = spec.maxHealth;
-      // SP.W is part of the airframe, so picking a jet picks the special weapon
-      // with it - and always hands the pilot the standard missile first.
-      // Guarded like the two selector paths already are: enemy-only airframes
-      // (bomber, transports, every payload jet) carry no `spw`, and the raw
-      // read crashed forceLoadout halfway - flight constants swapped, weapons
-      // not - leaving the loadout in a half-applied state.
-      const spwSpec = spec.spw ? SPW_TYPES[spec.spw.key] || null : null;
+      // Most aircraft keep one fixed SP.W. F/A-18F alone resolves the choice
+      // made in the hangar, then applies it through the same generic launcher.
+      // Enemy-only airframes have no loadout and safely resolve to null.
+      const spwLoadout = resolveAircraftSpwLoadout(spec);
+      const spwSpec = spwLoadout ? SPW_TYPES[spwLoadout.key] || null : null;
       PLAYER_SPW = spwSpec;
-      PLAYER_SPW_CAPACITY = spwSpec ? spec.spw.capacity : 0;
+      PLAYER_SPW_CAPACITY = spwSpec ? spwLoadout.capacity : 0;
       spwAmmo = PLAYER_SPW_CAPACITY;
       resetSpwTubes();
       selectedWeapon = "msl";
@@ -53656,6 +53758,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateHangarScreen() {
       const spec = AIRCRAFT_TYPES[selectedAircraftId];
       if (!spec) return;
+      const spwOptions = aircraftSpwOptions(spec);
+      const spwLoadout = resolveAircraftSpwLoadout(spec);
+      const spwSpec = spwLoadout ? SPW_TYPES[spwLoadout.key] || null : null;
       for (const item of ui.aircraftList.children) {
         const active = item.dataset.aircraft === selectedAircraftId;
         item.classList.toggle("selected", active);
@@ -53670,7 +53775,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       renderHangarPurchaseLine();
       ui.specRole.textContent = spec.role.toUpperCase();
       ui.specName.textContent = spec.label;
-      const bars = (aircraftSpecBarCache || {})[spec.id] || {};
+      const selectableSpw = spwOptions.length > 1;
+      for (const node of [ui.spwLoadoutHeader, ui.spwLoadoutSelect, ui.hangarSpwHint]) {
+        if (node) node.classList.toggle("hidden", !selectableSpw);
+      }
+      if (ui.spwLoadoutValue) {
+        ui.spwLoadoutValue.textContent = spwSpec
+          ? `${spwSpec.label} / ${aircraftSpwRoleLabel(spwSpec.key)}`
+          : "---";
+      }
+      const bars = { ...((aircraftSpecBarCache || {})[spec.id] || {}) };
+      bars.ground = spwGroundRating(spwLoadout);
       const rows = [
         ["SPEED", "speed"],
         ["ACCEL", "accel"],
@@ -53683,10 +53798,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.specBars.innerHTML = rows.map(([label, key]) =>
         `<div class="specRow"><span>${label}</span><div class="specBarTrack"><i style="--v:${(bars[key] || 0).toFixed(2)}"></i></div></div>`
       ).join("");
-      const spwSpec = SPW_TYPES[spec.spw && spec.spw.key];
       ui.ammoGrid.innerHTML =
         `<dt>GUN</dt><dd>---</dd><dt>MSL</dt><dd>${String(spec.missileCapacity)}</dd>` +
-        `<dt>SP.W</dt><dd>${spwSpec ? `${spwSpec.label} ×${spec.spw.capacity}` : "---"}</dd>` +
+        `<dt>SP.W</dt><dd>${spwSpec ? `${spwSpec.label} ×${spwLoadout.capacity}` : "---"}</dd>` +
         `<dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
       ui.aircraftBlurbLine.textContent = spec.blurb;
       ui.hangarMissionTag.textContent =
