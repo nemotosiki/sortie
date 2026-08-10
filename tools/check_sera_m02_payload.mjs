@@ -20,6 +20,7 @@ assert(fs.existsSync(payloadPath), "payloads/mission_sera_m02.payload.js is miss
 const source = fs.readFileSync(payloadPath, "utf8");
 assert(!source.includes("\r"), "payload must be LF-only");
 assert(source.includes('world: "amalPlain"'), "M02 does not select Amal Plain");
+assert(source.includes('delay: 0,'), "stock sequence[].delay schema was not preserved");
 assert(source.includes('type: "f4",\n          label: "ROOK 1 CROWN"'), "CROWN F-4E assignment missing");
 assert(source.includes('type: "f16",\n          label: "ROOK 3 LARK"'), "LARK F-16C assignment missing");
 assert(source.includes('gate: { mode: "groundMarkClear", mark: "m02Tel" }'), "TEL ground-clear gate missing");

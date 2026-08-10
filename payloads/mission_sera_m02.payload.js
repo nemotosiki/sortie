@@ -1,7 +1,7 @@
 // Sera M02 SHATTERED MORNING — combined air/ground mission definition.
 //
 // Development load order:
-//   index.html?payloads=payloads/ground_tel.payload.js,payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js
+//   index.html?payloads=payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js
 //
 // Host contracts authored here and implemented by the M02 completion pass:
 //   - two damageable blue radar facilities; losing one caps S but does not fail
@@ -115,6 +115,9 @@ export default function register(ctx) {
       // optional, preserving the red/white lesson from M01.
       {
         types: ["mig29", "mig29", "mig29", "mig29"],
+        // Preserve the stock mission sequence schema. A zero delay keeps the
+        // opening immediate while retaining sequence[].delay for registry QA.
+        delay: 0,
         band: 1,
         idBase: 0,
         label: "REARGUARD",
