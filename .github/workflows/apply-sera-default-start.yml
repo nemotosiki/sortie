@@ -1,0 +1,64 @@
+name: Apply Sera normal startup
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_default_start.py
+      - .github/workflows/apply-sera-default-start.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply normal-start Sera payloads
+        run: python tools/apply_sera_default_start.py
+
+      - name: Static contracts
+        run: |
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_map_amal_plain.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          git diff --check
+
+      - name: Install Chromium
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Browser regressions
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          sleep 2
+          node tools/check_sera_m01_e2e.mjs
+          node tools/check_sera_m02_e2e.mjs
+
+      - name: Commit verified normal-start integration
+        run: |
+          rm -rf node_modules package-lock.json package.json
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html tools/check_sera_m01_e2e.mjs tools/check_sera_m02_e2e.mjs
+          git rm tools/apply_sera_default_start.py
+          git commit -m 'Make Sera M01-M02 active on normal startup'
+          git push origin HEAD:chatgpt/sera-act1-implementation
