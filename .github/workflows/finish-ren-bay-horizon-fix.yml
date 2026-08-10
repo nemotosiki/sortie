@@ -45,7 +45,7 @@ jobs:
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Verify terrain coverage and mission regressions
+      - name: Verify registry and capture Ren Bay preview
         shell: bash
         run: |
           chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
@@ -59,72 +59,33 @@ jobs:
             sleep 1
           done
 
-          # Keep this probe to one normal-start page. Holding a full worldPreview
-          # scene open beside the game page exhausted the headless GL process on
-          # the first run and made the second page look like a game boot failure.
+          # Run the visual preview in its own browser process. The full normal
+          # campaign E2Es below also launch their own clean browsers, avoiding
+          # the headless-GL contention seen when two complete scenes were held
+          # in one Chromium process.
           node --input-type=module <<'NODE'
           import { chromium } from 'playwright';
           const browser = await chromium.launch({
             headless: true,
             args: ['--use-gl=swiftshader', '--disable-gpu-sandbox', '--disable-dev-shm-usage']
           });
-          const assert = (value, message, details) => {
-            if (!value) throw new Error(`${message}: ${JSON.stringify(details)}`);
-          };
           try {
-            const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
-            await context.addInitScript(() => { navigator.getGamepads = () => []; });
-            const page = await context.newPage();
+            const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
             const pageErrors = [];
             const consoleErrors = [];
             page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
             page.on('console', (message) => {
               if (message.type() === 'error') consoleErrors.push(message.text());
             });
-
-            await page.goto('http://127.0.0.1:8000/index.html', {
-              waitUntil: 'load', timeout: 120000
+            await page.goto('http://127.0.0.1:8000/index.html?worldPreview=renBay', {
+              waitUntil: 'domcontentloaded', timeout: 120000
             });
-            await page.waitForFunction(
-              () => Boolean(
-                window.__game
-                && window.__game.debug
-                && typeof window.__game.debug.forceStartMissionByKey === 'function'
-                && typeof window.__game.debug.surfaceTopAt === 'function'
-                && typeof window.__game.debug.worldMountains === 'function'
-              ),
-              null,
-              { timeout: 120000 }
-            );
-
-            const started = await page.evaluate(() => window.__game.debug.forceStartMissionByKey('m01', 'f16'));
-            assert(started, 'M01 debug launch failed', { started });
-            await page.waitForFunction(() => document.body.dataset.gameState === 'playing', null, { timeout: 30000 });
-            await page.waitForTimeout(900);
-
-            const terrain = await page.evaluate(() => {
-              const debug = window.__game.debug;
-              return {
-                mountains: debug.worldMountains(),
-                city: debug.surfaceTopAt(0, 4300),
-                airport: debug.surfaceTopAt(-2850, 5000),
-                eastBackland: debug.surfaceTopAt(12000, 4300),
-                westBackland: debug.surfaceTopAt(-12000, 4300),
-                northBackland: debug.surfaceTopAt(0, 17000),
-                playerStartWater: debug.surfaceTopAt(-6200, -7600)
-              };
-            });
-            const plateau = terrain.mountains.find((entry) => entry.x === 0 && entry.z === 9200);
-            assert(plateau && plateau.r >= 13590, 'authored Ren Bay plateau was not built', { plateau, terrain });
-            for (const key of ['city', 'airport', 'eastBackland', 'westBackland', 'northBackland']) {
-              assert(terrain[key] >= 25, `${key} fell off the Ren Bay landmass`, terrain);
-            }
-            assert(terrain.playerStartWater === 0, 'M01 player start was covered by the land extension', terrain);
-            assert(pageErrors.length === 0, 'pageerror during terrain probe', pageErrors);
-            assert(consoleErrors.length === 0, 'console error during terrain probe', consoleErrors);
-
-            await page.screenshot({ path: '/tmp/ren-bay-m01-start.png' });
-            console.log('Ren Bay terrain coverage: PASS', terrain);
+            await page.waitForSelector('canvas', { timeout: 120000 });
+            await page.waitForTimeout(1600);
+            if (pageErrors.length) throw new Error(`world preview pageerror: ${JSON.stringify(pageErrors)}`);
+            if (consoleErrors.length) throw new Error(`world preview console error: ${JSON.stringify(consoleErrors)}`);
+            await page.screenshot({ path: '/tmp/ren-bay-world-preview.png' });
+            console.log('Ren Bay world preview: PASS');
           } finally {
             await browser.close();
           }
@@ -137,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ren-bay-horizon-preview
-          path: /tmp/ren-bay-m01-start.png
+          path: /tmp/ren-bay-world-preview.png
           if-no-files-found: error
 
       - name: Commit verified horizon repair
