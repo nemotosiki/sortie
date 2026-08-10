@@ -7,6 +7,7 @@ on:
     paths:
       - tools/apply_sera_m01_finish.py
       - tools/fix_sera_m01_retry_checkpoint.py
+      - tools/apply_sera_m01_debug_probe.py
       - .github/workflows/apply-sera-m01-finish.yml
 
 permissions:
@@ -88,6 +89,7 @@ jobs:
                  .github/workflows/diagnose-sera-m01-world-line.yml \
                  tools/apply_sera_m01_finish.py \
                  tools/fix_sera_m01_retry_checkpoint.py \
+                 .github/workflows/print-sera-m01-e2e-lines.yml \
                  .github/workflows/apply-sera-m01-finish.yml
           git diff --cached --check
           git commit -m 'Complete Sera M01 canonical vertical slice'

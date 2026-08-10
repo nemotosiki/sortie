@@ -48,6 +48,7 @@ def main() -> None:
           waveNumber,
           missionWaveIndex,
           outcomePending: outcomePending.active,
+          outcomeTimer: outcomePending.timer,
           activeGate: activeWaveGate
             ? {
                 elapsed: activeWaveGate.elapsed,
@@ -127,6 +128,21 @@ def main() -> None:
         }
         return outcomePending.active;
       },
+      forceSeraM01ResolveOutcome: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING
+            || !mission
+            || mission.key !== \"m01\"
+            || !outcomePending.active) {
+          return false;
+        }
+        // Use the production transition function, but advance its wall-clock
+        // hold deterministically. Headless Chromium can throttle requestAnimationFrame
+        // to 1 Hz and the game clamps frame delta, making a real 2.8 s band take
+        // nearly a minute in CI even though it is correct in a foreground tab.
+        updateOutcomePending(OUTCOME_PENDING_TIME + 0.1);
+        return gameState === STATE_COMPLETE;
+      },
 """
     text = original.replace(marker, methods, 1)
 
@@ -137,6 +153,7 @@ def main() -> None:
         "forceSeraM01Breach:",
         "seraM01PerfectRankPreview:",
         "forceSeraM01Complete:",
+        "forceSeraM01ResolveOutcome:",
     )
     for token in required:
         if token not in text:

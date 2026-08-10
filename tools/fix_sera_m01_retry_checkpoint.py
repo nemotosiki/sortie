@@ -96,6 +96,18 @@ new = '''  const checkpointBeforeFailure = await page.evaluate(() => window.__ga
 e2e = replace_once(e2e, old, new, "checkpoint-aware retry E2E")
 e2e = replace_once(
     e2e,
+    '  await waitForState("missionComplete", 10_000);',
+    '''  // The production success hold is 2.8 seconds. Headless Chromium may
+  // throttle requestAnimationFrame and the game deliberately clamps frame dt,
+  // so resolve the already-verified hold through the production timer handler.
+  const outcomeResolved = await page.evaluate(() => window.__game.forceSeraM01ResolveOutcome());
+  assert(outcomeResolved, "accomplished hold did not resolve through updateOutcomePending",
+    await page.evaluate(() => window.__game.seraM01Probe()));
+  await waitForState("missionComplete", 3_000);''',
+    "deterministic outcome transition",
+)
+e2e = replace_once(
+    e2e,
     '  console.log("  real menu flow -> Ren Bay M01 -> fail -> retry -> clean clear -> M02 boot");',
     '  console.log("  real menu flow -> Ren Bay M01 -> fail -> checkpoint-safe retry -> clean clear -> M02 boot");',
     "E2E summary",
@@ -111,10 +123,16 @@ status = replace_once(
 )
 status = replace_once(
     status,
+    "- [x] クリーンクリア後にM02を選択して起動可能",
+    "- [x] クリーンクリア後、実ゲームの結果確定処理を通ってM02を選択・起動可能",
+    "status result wording",
+)
+status = replace_once(
+    status,
     "5. 失敗→Retry\n",
     "5. 失敗→Retry（チェックポイント対応）\n",
     "status CI wording",
 )
 STATUS.write_text(status, encoding="utf-8")
 
-print("fix_sera_m01_retry_checkpoint: aligned E2E with the game's checkpoint retry contract")
+print("fix_sera_m01_retry_checkpoint: aligned retry and result timing with production contracts")
