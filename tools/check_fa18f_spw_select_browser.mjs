@@ -98,6 +98,18 @@ try {
     states.loadAir = hook.forceLoadout("fa18");
     states.airApplied = { probe: hook.aircraftSpwProbe(), ui: readUi() };
 
+    states.selectedF35 = hook.forceSelectAircraft("f35c");
+    states.f35Default = { probe: hook.aircraftSpwProbe(), ui: readUi() };
+    states.f35SelectGround = hook.forceSelectAircraftSpw("agm4");
+    states.f35LoadGround = hook.forceLoadout("f35c");
+    states.f35GroundApplied = { probe: hook.aircraftSpwProbe(), ui: readUi() };
+    states.f35SelectShip = hook.forceSelectAircraftSpw("lasm");
+    states.f35LoadShip = hook.forceLoadout("f35c");
+    states.f35ShipApplied = { probe: hook.aircraftSpwProbe(), ui: readUi() };
+    states.f35SelectAir = hook.forceSelectAircraftSpw("aam4");
+    states.f35LoadAir = hook.forceLoadout("f35c");
+    states.f35AirApplied = { probe: hook.aircraftSpwProbe(), ui: readUi() };
+
     states.selectedF16 = hook.forceSelectAircraft("f16");
     states.loadF16 = hook.forceLoadout("f16");
     states.fixedAircraft = { probe: hook.aircraftSpwProbe(), ui: readUi() };
@@ -129,13 +141,29 @@ try {
   assert(result.selectAir === true && result.loadAir === true, "4AAM re-selection/apply failed");
   assert(result.airApplied.probe.activeKey === "aam4" && result.airApplied.probe.activeCapacity === 16, "4AAM was not reapplied");
 
+  assert(result.selectedF35 === true, "could not select F-35C");
+  assert(JSON.stringify(result.f35Default.probe.options) === JSON.stringify([
+    { key: "aam4", capacity: 16 },
+    { key: "agm4", capacity: 12 },
+    { key: "lasm", capacity: 14 }
+  ]), "F-35C option order or capacities are wrong");
+  assert(result.f35Default.probe.selectedKey === "aam4", "F-35C 4AAM is not the default");
+  assert(result.f35Default.ui.hidden === false && result.f35Default.ui.hintHidden === false, "selector is hidden for F-35C");
+  assert(result.f35SelectGround === true && result.f35LoadGround === true, "F-35C 4AGM selection/apply failed");
+  assert(result.f35GroundApplied.probe.activeKey === "agm4" && result.f35GroundApplied.probe.activeCapacity === 12, "F-35C 4AGM was not applied");
+  assert(result.f35SelectShip === true && result.f35LoadShip === true, "F-35C LASM selection/apply failed");
+  assert(result.f35ShipApplied.probe.activeKey === "lasm" && result.f35ShipApplied.probe.activeCapacity === 14, "F-35C LASM was not applied");
+  assert(result.f35ShipApplied.ui.value.includes("LASM") && result.f35ShipApplied.ui.value.includes("SHIP"), "F-35C LASM preview label is wrong");
+  assert(result.f35SelectAir === true && result.f35LoadAir === true, "F-35C 4AAM re-selection/apply failed");
+  assert(result.f35AirApplied.probe.activeKey === "aam4" && result.f35AirApplied.probe.activeCapacity === 16, "F-35C 4AAM was not reapplied");
+
   assert(result.selectedF16 === true && result.loadF16 === true, "fixed-loadout aircraft test setup failed");
   assert(result.fixedAircraft.probe.aircraftId === "f16", "F-16 probe is not active");
   assert(result.fixedAircraft.probe.options.length === 1 && result.fixedAircraft.probe.selectedKey === "qaam", "fixed F-16 SP.W contract changed");
   assert(result.fixedAircraft.ui.hidden === true && result.fixedAircraft.ui.hintHidden === true, "selector leaked to a non-F/A-18F aircraft");
 
   console.log("check_fa18f_spw_select_browser: PASS");
-  console.log("  4AAM, 4AGM and LASM all preview and apply before mission start");
+  console.log("  F/A-18F and F-35C both preview and apply 4AAM / 4AGM / LASM before mission start");
   console.log("  selector remains hidden for fixed-loadout aircraft");
 } finally {
   await browser.close();

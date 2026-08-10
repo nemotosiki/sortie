@@ -27,7 +27,16 @@ assert(fa18.includes('spw: Object.freeze({ key: "aam4", capacity: 16 })'), "F/A-
 assert(fa18.includes('Object.freeze({ key: "aam4", capacity: 16 })'), "air-to-air choice missing");
 assert(fa18.includes('Object.freeze({ key: "agm4", capacity: 12 })'), "air-to-ground choice missing");
 assert(fa18.includes('Object.freeze({ key: "lasm", capacity: 12 })'), "anti-ship choice missing");
-assert((source.match(/spwChoices:/g) || []).length === 1, "SP.W selection must remain exclusive to F/A-18F");
+
+const f35Match = source.match(/      f35c: Object\.freeze\(\{\n        id: "f35c",[\s\S]*?\n      \}\),/);
+assert(f35Match, "AIRCRAFT_TYPES.f35c missing");
+const f35c = f35Match[0];
+assert(f35c.includes('label: "F-35C LIGHTNING II"'), "F-35C label missing");
+assert(f35c.includes('spw: Object.freeze({ key: "aam4", capacity: 16 })'), "F-35C default must be 4AAM x16");
+assert(f35c.includes('Object.freeze({ key: "aam4", capacity: 16 })'), "F-35C air-to-air choice missing");
+assert(f35c.includes('Object.freeze({ key: "agm4", capacity: 12 })'), "F-35C air-to-ground choice missing");
+assert(f35c.includes('Object.freeze({ key: "lasm", capacity: 14 })'), "F-35C anti-ship choice missing");
+assert((source.match(/spwChoices:/g) || []).length === 2, "SP.W selection must remain exclusive to F/A-18F and F-35C");
 
 for (const id of [
   "spwLoadoutHeader", "spwLoadoutSelect", "spwLoadoutPrev",
@@ -52,4 +61,5 @@ assert(source.includes("aircraftSpwProbe: () =>"), "browser loadout probe missin
 
 console.log("check_fa18f_spw_select: PASS");
 console.log("  fa18: 4AAM x16 / 4AGM x12 / LASM x12, selectable before launch");
+console.log("  f35c: 4AAM x16 / 4AGM x12 / LASM x14, selectable before launch");
 console.log("  every other aircraft: fixed SP.W contract unchanged");
