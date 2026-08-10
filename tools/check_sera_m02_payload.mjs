@@ -77,7 +77,7 @@ try {
   assert(mission.waves.length === 7, `expected 7 sequence entries, got ${mission.waves.length}`);
   assert(mission.waveCount === 4, `expected 4 principal phases, got ${mission.waveCount}`);
   assert(mission.totalTargets === 12, `expected 12 red TGT contacts, got ${mission.totalTargets}`);
-  assert(mission.totalContacts === 34, `expected 34 total contacts, got ${mission.totalContacts}`);
+  assert(mission.totalContacts === 30, `expected 30 total contacts, got ${mission.totalContacts}`);
 
   const airTgt = mission.waves
     .filter((wave) => wave.tgt !== false)
