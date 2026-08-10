@@ -66,10 +66,14 @@ try {
   page.on("pageerror", (error) => pageErrors.push(String(error)));
 
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
-  await page.waitForFunction(() => window.__game && window.__game.aircraftSpwProbe, null, { timeout: 45000 });
+  await page.waitForFunction(
+    () => window.__game && window.__game.debug && window.__game.debug.aircraftSpwProbe,
+    null,
+    { timeout: 45000 }
+  );
 
   const result = await page.evaluate(() => {
-    const hook = window.__game;
+    const hook = window.__game.debug;
     const readUi = () => ({
       value: document.getElementById("spwLoadoutValue")?.textContent || "",
       ammo: document.getElementById("ammoGrid")?.textContent || "",
