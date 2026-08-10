@@ -1,6 +1,6 @@
 name: Verify Sera M02 in Chromium
 
-# Read-only regression gate for the committed M02 vertical slice.
+# Permanent read-only regression gate for the committed M02 vertical slice.
 on:
   workflow_dispatch:
   push:
@@ -14,7 +14,6 @@ on:
       - tools/check_sera_m02_payload.mjs
       - tools/check_sera_m02_host.mjs
       - tools/check_sera_m02_e2e.mjs
-      - tools/diagnose_sera_m02_phases.mjs
       - .github/workflows/verify-sera-m02-e2e.yml
 
 permissions:
@@ -42,7 +41,6 @@ jobs:
           node tools/check_fa18f_spw_select.mjs
           node tools/check_multirole_mobility_balance.mjs
           node --check tools/check_sera_m02_e2e.mjs
-          node --check tools/diagnose_sera_m02_phases.mjs
           git diff --check
 
       - name: Install Chromium harness
@@ -68,9 +66,6 @@ jobs:
           done
           cat /tmp/sortie-http.log
           exit 1
-
-      - name: Trace M02 phase transitions
-        run: node tools/diagnose_sera_m02_phases.mjs
 
       - name: Run full M02 browser E2E
         run: node tools/check_sera_m02_e2e.mjs
