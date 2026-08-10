@@ -1,0 +1,141 @@
+name: Finish Ren Bay horizon repair
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/finish_ren_bay_horizon_fix.py
+      - .github/workflows/finish-ren-bay-horizon-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finish-ren-bay-horizon-fix
+  cancel-in-progress: false
+
+jobs:
+  finish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply Ren Bay landmass extension
+        run: |
+          python -m py_compile tools/finish_ren_bay_horizon_fix.py
+          python tools/finish_ren_bay_horizon_fix.py
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_map_amal_plain.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Verify terrain coverage and capture previews
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
+            sleep 1
+          done
+
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({
+            headless: true,
+            args: ['--use-gl=swiftshader', '--disable-gpu-sandbox', '--disable-dev-shm-usage']
+          });
+          const assert = (value, message, details) => {
+            if (!value) throw new Error(`${message}: ${JSON.stringify(details)}`);
+          };
+          try {
+            const preview = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+            await preview.goto('http://127.0.0.1:8000/index.html?worldPreview=renBay', {
+              waitUntil: 'domcontentloaded', timeout: 120000
+            });
+            await preview.waitForSelector('canvas', { timeout: 120000 });
+            await preview.waitForTimeout(1200);
+            await preview.screenshot({ path: '/tmp/ren-bay-world-preview.png' });
+
+            const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+            await page.addInitScript(() => { navigator.getGamepads = () => []; });
+            await page.goto('http://127.0.0.1:8000/index.html', {
+              waitUntil: 'domcontentloaded', timeout: 120000
+            });
+            await page.waitForFunction(
+              () => Boolean(window.__game?.debug?.forceStartMissionByKey),
+              null,
+              { timeout: 120000 }
+            );
+            const started = await page.evaluate(() => window.__game.debug.forceStartMissionByKey('m01', 'f16'));
+            assert(started, 'M01 debug launch failed', { started });
+            await page.waitForFunction(() => document.body.dataset.gameState === 'playing', null, { timeout: 30000 });
+            await page.waitForTimeout(900);
+            const terrain = await page.evaluate(() => {
+              const debug = window.__game.debug;
+              return {
+                mountains: debug.worldMountains(),
+                city: debug.surfaceTopAt(0, 4300),
+                airport: debug.surfaceTopAt(-2850, 5000),
+                eastBackland: debug.surfaceTopAt(12000, 4300),
+                westBackland: debug.surfaceTopAt(-12000, 4300),
+                northBackland: debug.surfaceTopAt(0, 17000),
+                playerStartWater: debug.surfaceTopAt(-6200, -7600)
+              };
+            });
+            const plateau = terrain.mountains.find((entry) => entry.x === 0 && entry.z === 9200);
+            assert(plateau && plateau.r >= 13590, 'authored Ren Bay plateau was not built', { plateau, terrain });
+            for (const key of ['city', 'airport', 'eastBackland', 'westBackland', 'northBackland']) {
+              assert(terrain[key] >= 25, `${key} fell off the Ren Bay landmass`, terrain);
+            }
+            assert(terrain.playerStartWater === 0, 'M01 player start was covered by the land extension', terrain);
+            await page.screenshot({ path: '/tmp/ren-bay-m01-start.png' });
+            console.log('Ren Bay terrain coverage: PASS', terrain);
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+          node tools/check_sera_m01_e2e.mjs
+          node tools/check_sera_m02_e2e.mjs
+
+      - name: Upload visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ren-bay-horizon-previews
+          path: |
+            /tmp/ren-bay-world-preview.png
+            /tmp/ren-bay-m01-start.png
+          if-no-files-found: error
+
+      - name: Commit verified horizon repair
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json package.json
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html payloads/map_renBay.payload.js tools/check_map_ren_bay.mjs
+          git rm tools/apply_ren_bay_horizon_fix.py tools/finish_ren_bay_horizon_fix.py
+          git diff --cached --check
+          git commit -m 'Extend Ren Bay landmass beyond the flight horizon'
+          git push origin HEAD:chatgpt/sera-act1-implementation
