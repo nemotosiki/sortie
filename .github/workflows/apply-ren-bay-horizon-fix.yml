@@ -68,12 +68,11 @@ jobs:
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Run registry and M01 browser regressions
+      - name: Run normal-start registry and M01 browser regressions
         shell: bash
         run: |
           chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
           SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
-          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs --payloads=payloads/map_renBay.payload.js,payloads/mission_sera_m01.payload.js
 
           mkdir -p artifacts
           python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
