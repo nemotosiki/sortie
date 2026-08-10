@@ -1,0 +1,62 @@
+name: Apply F/A-18F pre-sortie loadout selection
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_fa18f_spw_select.py
+      - tools/check_fa18f_spw_select.mjs
+      - tools/check_fa18f_spw_select_browser.mjs
+      - .github/workflows/apply-fa18f-spw-select.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-fa18f-spw-select
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Apply F/A-18F loadout selector
+        run: python tools/apply_fa18f_spw_select.py
+
+      - name: Run static regression contracts
+        run: |
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run browser loadout and registry gates
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/check_fa18f_spw_select_browser.mjs
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+      - name: Commit selectable F/A-18F loadouts
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html tools/check_fa18f_spw_select.mjs tools/check_fa18f_spw_select_browser.mjs
+          git rm tools/apply_fa18f_spw_select.py .github/workflows/apply-fa18f-spw-select.yml
+          git commit -m 'Add selectable F/A-18F mission loadouts'
+          git push origin HEAD:chatgpt/sera-act1-implementation
