@@ -60,35 +60,60 @@ try {
   must(Number.isFinite(city.wall) && Number.isFinite(city.roof), "city materials are missing");
   must(city.windows && Number.isFinite(city.windows.lit), "city window sheet is missing");
   must(city.districts.at(-1).r[1] <= 2200, "city extends past the intended low-rise bay district");
+
   const plateau = preset.mountains?.plateau;
   must(plateau, "coastal plateau is missing");
-  must(plateau.radius?.[0] === 16000 && plateau.radius?.[1] === 16000,
-    "coastal plateau lateral range regressed");
-  must(plateau.depth === 10500 && plateau.rotationY === 0,
-    "coastal plateau depth/heading regressed");
-  must(plateau.at?.[0] === 0 && plateau.at?.[1] === 9200,
-    "coastal plateau inland shift regressed");
-  must(plateau.topRadius === 0.92 && plateau.radialSegments === 48 && plateau.edgeNoise === 0.18,
-    "coastal plateau silhouette controls regressed");
+  must(plateau.radius?.[0] === 60000 && plateau.radius?.[1] === 60000,
+    "continental plateau lateral range regressed");
+  must(plateau.depth === 24000 && plateau.rotationY === 0,
+    "continental plateau depth/heading regressed");
+  must(plateau.at?.[0] === 0 && plateau.at?.[1] === 18000,
+    "continental plateau inland shift regressed");
+  must(plateau.topRadius === 0.96 && plateau.radialSegments === 96 && plateau.edgeNoise === 0.04,
+    "continental plateau silhouette controls regressed");
   must(preset.previewFocus?.[0] === city.at[0] && preset.previewFocus?.[1] === city.at[1],
     "preview focus must remain on the city/airport");
 
-  // Even at the maximum authored edge contraction, the lateral land edge is
-  // outside 12.5 km fog. The z shift preserves the southern coast at -1.3 km
-  // while moving the rear edge to 19.7 km.
   const fogFar = preset.fog?.far;
-  const lateralEdge = plateau.radius[0] * (1 - 0.48 * plateau.edgeNoise);
-  const southEdge = plateau.at[1] - plateau.depth;
+  must(Number.isFinite(fogFar), "fog far distance is missing");
+
+  // buildMountainGeometry can contract an edge by at most
+  // edgeNoise * (0.27 + 0.16 + 0.05). Test the ellipse where the player
+  // actually sees it, not only at its widest centre. The previous test checked
+  // the centre span and missed the narrow southern cross-section visible in the
+  // user screenshot.
+  const worstEdgeScale = 1 - 0.48 * plateau.edgeNoise;
+  const halfWidthAt = (z) => {
+    const zn = (z - plateau.at[1]) / plateau.depth;
+    const squared = worstEdgeScale ** 2 - zn ** 2;
+    return squared > 0 ? plateau.radius[0] * Math.sqrt(squared) : 0;
+  };
+  const approachSamples = [
+    { label: "coastline pass", x: -6200, z: -4000 },
+    { label: "18-second M01 approach", x: -4200, z: -3200 },
+    { label: "bay crossing", x: -2500, z: 0 },
+    { label: "airport/city", x: 0, z: city.at[1] }
+  ];
+  for (const sample of approachSamples) {
+    const halfWidth = halfWidthAt(sample.z);
+    const sideClearance = halfWidth - Math.abs(sample.x);
+    must(sideClearance > fogFar + 1000,
+      `${sample.label}: side edge clearance ${sideClearance.toFixed(1)}m is inside fog ${fogFar}m`);
+  }
+
+  const nominalSouthEdge = plateau.at[1] - plateau.depth;
+  const flatSouthEdge = plateau.at[1] - plateau.depth * plateau.topRadius;
   const northEdge = plateau.at[1] + plateau.depth;
-  must(lateralEdge > fogFar, `plateau side edge ${lateralEdge}m is still inside fog ${fogFar}m`);
-  must(southEdge === -1300, `south shoreline moved to ${southEdge}m`);
-  must(northEdge > fogFar + 6000, `north edge ${northEdge}m is still too close`);
+  must(nominalSouthEdge === -6000, `south coast moved to ${nominalSouthEdge}m`);
+  must(flatSouthEdge - nominalSouthEdge <= 1200,
+    `coastal slope became too deep: ${flatSouthEdge - nominalSouthEdge}m`);
+  must(northEdge > fogFar + 25000, `north edge ${northEdge}m is still too close`);
 
   const cityRho = Math.hypot(
     (city.at[0] - plateau.at[0]) / plateau.radius[0],
     (city.at[1] - plateau.at[1]) / plateau.depth
   );
-  must(cityRho < plateau.topRadius * 0.6, "city/airport no longer sits safely on the flat cap");
+  must(cityRho < plateau.topRadius * 0.7, "city/airport no longer sits safely on the flat cap");
 
   for (const token of [
     "const radialSegments = Math.max(8, Math.round(shape.radialSegments || 16));",
@@ -99,15 +124,18 @@ try {
   ]) {
     must(hostSource.includes(token), `host lacks ${token}`);
   }
-  must(hostSource.includes('radialSegments: 48, edgeNoise: 0.18'),
-    "normal-start index does not contain the repaired Ren Bay footprint");
+  must(hostSource.includes('radius: [60000, 60000], depth: 24000, height: [28, 28]'),
+    "normal-start index does not contain the continental Ren Bay footprint");
+  must(hostSource.includes('radialSegments: 96, edgeNoise: 0.04'),
+    "normal-start index does not contain the repaired Ren Bay silhouette controls");
   must(Array.isArray(decorator.worlds) && decorator.worlds.includes("renBay"),
     "decorator is not scoped to Ren Bay");
   must(typeof decorator.build === "function", "decorator build is missing");
 
   console.log("check_map_ren_bay: PASS");
   console.log(`  districts=${city.districts.length} outer=${city.districts.at(-1).r[1]}m maxHeight=${city.maxHeight}m`);
-  console.log(`  plateau=16000x10500m south=-1300m north=19700m fog=${preset.fog.far}m`);
+  console.log(`  plateau=60000x24000m south=-6000m north=42000m fog=${fogFar}m`);
+  console.log(`  approach side clearances=${approachSamples.map((sample) => Math.round(halfWidthAt(sample.z) - Math.abs(sample.x))).join("/")}m`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

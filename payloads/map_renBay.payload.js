@@ -45,16 +45,16 @@ export default function register(ctx) {
       snowyAbove: 9999, snowLine: 0.68, roughness: 0.94,
       palette: { low: 0x3f5142, mid: 0x556557, rock: 0x646862, peak: 0x5d625e, snow: 0xe8edf0 },
       corridor: null,
-      // Wide coastal back-country. The old 5.6 km random ellipse ended inside
-    // the 12.5 km fog range, exposing its polygon edge from normal M01 altitude.
-    // Keep the south shoreline in the same place while moving every other edge
-    // well past the visible horizon. Low edge noise and extra radial segments
-    // remove the giant faceted silhouette without meaningful GPU cost.
-    plateau: {
-      radius: [16000, 16000], depth: 10500, height: [28, 28],
-      topRadius: 0.92, at: [0, 9200], rotationY: 0,
-      radialSegments: 48, edgeNoise: 0.18, snowyAbove: 9999
-    }
+      // Continental back-country, not a finite island. The earlier 16 km
+      // ellipse was wide only at its centre; near the southern approach it
+      // tapered to a narrow point, so both side edges were visible in the M01
+      // opening shot. Keep a real coast just ahead of the spawn, then move the
+      // side and rear boundaries far beyond the 12.5 km fog horizon.
+      plateau: {
+        radius: [60000, 60000], depth: 24000, height: [28, 28],
+        topRadius: 0.96, at: [0, 18000], rotationY: 0,
+        radialSegments: 96, edgeNoise: 0.04, snowyAbove: 9999
+      }
     },
     islands: { count: 5, stone: 0x59645f, green: 0x4b6348 },
     clouds: {
