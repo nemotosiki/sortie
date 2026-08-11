@@ -44428,6 +44428,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function surfaceHeightAt(x, z) {
       surfaceSamples += 1;
       let height = 0;
+      for (const sheet of world.groundSheets || []) {
+        height = Math.max(height, continentalSheetHeightAt(sheet, x, z));
+      }
       for (const mountain of world.mountains) {
         const dx = x - mountain.x;
         const dz = z - mountain.z;
@@ -44454,6 +44457,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function surfaceTopAt(x, z) {
       surfaceSamples += 1;
       let height = 0;
+      for (const sheet of world.groundSheets || []) {
+        height = Math.max(height, continentalSheetHeightAt(sheet, x, z));
+      }
       for (const mountain of world.mountains) {
         const dx = x - mountain.x;
         const dz = z - mountain.z;
@@ -44477,6 +44483,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const cameraSurfaceRayOrigin = new THREE.Vector3();
     function cameraSurfaceTopAt(x, z) {
       let height = 0;
+      for (const sheet of world.groundSheets || []) {
+        height = Math.max(height, continentalSheetHeightAt(sheet, x, z));
+      }
       for (const mountain of world.mountains) {
         const dx = x - mountain.x;
         const dz = z - mountain.z;
@@ -47809,6 +47818,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // rises continuously and the clamp only ever nudges by metres.
     function terrainFloorAt(position) {
       let floorHeight = 0;
+      for (const sheet of world.groundSheets || []) {
+        floorHeight = Math.max(floorHeight, continentalSheetHeightAt(sheet, position.x, position.z));
+      }
       for (const mountain of world.mountains) {
         const mdx = position.x - mountain.x;
         const mdz = position.z - mountain.z;
@@ -56506,6 +56518,37 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       return Math.round(baseLevel * (mipmaps ? 4 / 3 : 1));
     }
 
+    // A coastal map needs one real shoreline, not a finite island whose
+    // other three edges can be flown around. The authored sheet is a huge,
+    // low-cost inland surface whose side and rear limits sit well beyond fog.
+    // The near edge is a gently varying beach; the local plateau remains above
+    // it and keeps all of Ren Bay's airport/city shaping.
+    function continentalSheetCoastZ(sheet, x) {
+      const centerX = Number.isFinite(sheet.centerX) ? sheet.centerX : 0;
+      const localX = x - centerX;
+      let coastZ = Number.isFinite(sheet.coastZ) ? sheet.coastZ : 0;
+      for (const wave of sheet.coastWaves || []) {
+        const amplitude = Number.isFinite(wave.amplitude) ? wave.amplitude : 0;
+        const wavelength = Math.max(1, Number.isFinite(wave.wavelength) ? wave.wavelength : 1);
+        const phase = Number.isFinite(wave.phase) ? wave.phase : 0;
+        coastZ += amplitude * Math.sin(localX * Math.PI * 2 / wavelength + phase);
+      }
+      return coastZ;
+    }
+
+    function continentalSheetHeightAt(sheet, x, z) {
+      const centerX = Number.isFinite(sheet.centerX) ? sheet.centerX : 0;
+      const width = Math.max(1, Number.isFinite(sheet.width) ? sheet.width : 1);
+      if (Math.abs(x - centerX) > width * 0.5) return 0;
+      const coastZ = continentalSheetCoastZ(sheet, x);
+      const depth = Math.max(1, Number.isFinite(sheet.depth) ? sheet.depth : 1);
+      if (z < coastZ || z > coastZ + depth) return 0;
+      const beachDepth = Math.max(1, Number.isFinite(sheet.beachDepth) ? sheet.beachDepth : 1);
+      const t = THREE.MathUtils.clamp((z - coastZ) / beachDepth, 0, 1);
+      const smooth = t * t * (3 - 2 * t);
+      return Math.max(0, Number.isFinite(sheet.height) ? sheet.height : 0) * smooth;
+    }
+
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
     // returned record so disposeWorld() can hand it all back when a mission
     // switches maps - otherwise each swap would leak a whole world.
@@ -56911,6 +56954,73 @@ varying vec2 vOceanUv;`
           terrainDetailTexture, terrainNormalTexture, mountainConfig, terrainStyle, true
         ))
       };
+      const groundSheets = [];
+      const sheetConfig = preset.continentalSheet;
+      if (sheetConfig) {
+        const segments = Math.max(32, Math.round(sheetConfig.segments || 256));
+        const centerX = Number.isFinite(sheetConfig.centerX) ? sheetConfig.centerX : 0;
+        const width = Math.max(1, sheetConfig.width || 1);
+        const depth = Math.max(1, sheetConfig.depth || 1);
+        const beachDepth = Math.max(1, sheetConfig.beachDepth || 1);
+        const sheetHeight = Math.max(0.1, sheetConfig.height || 0.1);
+        const uvWorldScale = Math.max(64, sheetConfig.uvWorldScale || 10800);
+        // More rows are spent on the beach transition; the rest is a flat
+        // continental cap and therefore needs only one far row.
+        const rowDistances = [0, beachDepth * 0.28, beachDepth * 0.68, beachDepth, depth];
+        const rows = rowDistances.length;
+        const vertexCount = (segments + 1) * rows;
+        const positions = new Float32Array(vertexCount * 3);
+        const uvs = new Float32Array(vertexCount * 2);
+        let p = 0;
+        let uv = 0;
+        for (let column = 0; column <= segments; column += 1) {
+          const x = centerX - width * 0.5 + width * (column / segments);
+          const coastZ = continentalSheetCoastZ(sheetConfig, x);
+          for (const distance of rowDistances) {
+            const z = coastZ + distance;
+            const normalizedHeight = continentalSheetHeightAt(sheetConfig, x, z) / sheetHeight;
+            positions[p++] = x;
+            positions[p++] = normalizedHeight;
+            positions[p++] = z;
+            // World-scaled UVs keep texture density stable even though this
+            // sheet is orders of magnitude wider than an ordinary island.
+            uvs[uv++] = (x - centerX) / uvWorldScale;
+            uvs[uv++] = (z - sheetConfig.coastZ) / uvWorldScale;
+          }
+        }
+        const indices = [];
+        for (let column = 0; column < segments; column += 1) {
+          for (let row = 0; row < rows - 1; row += 1) {
+            const a = column * rows + row;
+            const b = a + 1;
+            const c = (column + 1) * rows + row;
+            const d = c + 1;
+            // Counter-clockwise from above: both triangles face +Y.
+            indices.push(a, b, c, c, b, d);
+          }
+        }
+        const sheetGeometry = keepGeometry(new THREE.BufferGeometry());
+        sheetGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        sheetGeometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+        sheetGeometry.setIndex(indices);
+        sheetGeometry.computeVertexNormals();
+        const sheetMaterial = keepMaterial(makeTerrainMaterial(
+          terrainDetailTexture, terrainNormalTexture, mountainConfig, terrainStyle, false
+        ));
+        // The shaped local plateau sits a few centimetres above the sheet in
+        // the depth buffer wherever they overlap. That removes z-fighting while
+        // letting the sheet take over seamlessly beyond the plateau's rim.
+        sheetMaterial.polygonOffset = true;
+        sheetMaterial.polygonOffsetFactor = 1;
+        sheetMaterial.polygonOffsetUnits = 1;
+        const sheetMesh = new THREE.Mesh(sheetGeometry, sheetMaterial);
+        sheetMesh.scale.y = sheetHeight;
+        sheetMesh.receiveShadow = true;
+        sheetMesh.frustumCulled = false;
+        addRoot(sheetMesh);
+        groundSheets.push({ ...sheetConfig, mesh: sheetMesh });
+      }
+
       // Where the origin-relative scenery rings are centred. Every preset that
       // shipped before this leaves it unset and gets (0,0) - the literal
       // origin - so their mountain ring, scenery islands, sea stacks and
@@ -57903,7 +58013,7 @@ varying vec2 vOceanUv;`
       }
 
       return {
-        preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains, cameraSurfaces,
+        preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains, groundSheets, cameraSurfaces,
         ocean, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
         textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
