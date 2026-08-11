@@ -35,6 +35,23 @@ export default function register(ctx) {
       normalStrength: 0.27, islandNormalStrength: 0.18, normalFade: [240, 1900],
       rockSlope: [0.31, 0.72], shoreHeight: 0.2, snowSoftness: 0.08
     },
+    continentalSheet: {
+      // A true inland backfill. The local plateau still shapes the bay,
+      // airport and city, while this surface continues behind it so no
+      // side or rear polygon edge can enter the 12.5 km visibility range.
+      width: 180000,
+      depth: 120000,
+      centerX: 0,
+      coastZ: -6100,
+      beachDepth: 1400,
+      height: 28,
+      segments: 320,
+      uvWorldScale: 10800,
+      coastWaves: [
+        { amplitude: 260, wavelength: 18000, phase: 0.6 },
+        { amplitude: 110, wavelength: 5200, phase: 1.7 }
+      ]
+    },
     lights: {
       hemi: { sky: 0xb8d6ec, ground: 0x30332f, intensity: 1.85 },
       key: { color: 0xffd8b5, intensity: 2.45, position: [-1500, 1150, -2500] },
