@@ -1,0 +1,207 @@
+name: Apply Ren Bay continental sheet repair
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_ren_bay_continent_sheet.py
+      - .github/workflows/apply-ren-bay-continent-sheet.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-ren-bay-continent-sheet
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+
+      - name: Add reusable continental sheet support
+        run: |
+          python -m py_compile tools/apply_ren_bay_continent_sheet.py
+          python tools/apply_ren_bay_continent_sheet.py engine
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Validate and commit the engine support
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+          node tools/check_map_ren_bay.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html \
+                  .github/workflows/verify-sera-m01-e2e.yml \
+                  .github/workflows/verify-sera-m02-e2e.yml
+          git diff --cached --check
+          git commit -m 'Add continental terrain-sheet support'
+          git push origin HEAD:chatgpt/sera-act1-implementation
+
+      - name: Author the Ren Bay inland sheet
+        run: |
+          python tools/apply_ren_bay_continent_sheet.py map
+          node tools/check_map_ren_bay.mjs
+          node tools/check_ren_bay_continent.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          node tools/check_sera_m01_tu22_strike.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_map_amal_plain.mjs
+          node tools/check_sera_m02_payload.mjs
+          node tools/check_sera_m02_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          git diff --check
+
+      - name: Run normal-start browser regressions and capture the repaired horizon
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+          mkdir -p artifacts
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then break; fi
+            sleep 1
+          done
+
+          node tools/check_sera_m01_e2e.mjs
+          node tools/check_sera_m02_e2e.mjs
+
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+
+          const assert = (condition, message, details = null) => {
+            if (condition) return;
+            throw new Error(`${message}${details === null ? '' : `\n${JSON.stringify(details, null, 2)}`}`);
+          };
+
+          const browser = await chromium.launch({
+            headless: true,
+            args: ['--use-gl=swiftshader', '--disable-gpu-sandbox', '--disable-dev-shm-usage']
+          });
+          try {
+            const context = await browser.newContext({ viewport: { width: 1842, height: 862 } });
+            await context.addInitScript(() => { navigator.getGamepads = () => []; });
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(String(error?.stack || error)));
+            page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+            await page.goto('http://127.0.0.1:8000/index.html', { waitUntil: 'domcontentloaded', timeout: 120000 });
+            await page.waitForFunction(() => Boolean(window.__game?.debug?.forceCampaignCursor), null, { timeout: 120000 });
+
+            const routed = await page.evaluate(() => {
+              const debug = window.__game.debug;
+              const campaign = debug.forceCampaignCursor('usa') && debug.forceConfirmCampaign();
+              const index = debug.missionIndexOf('m01');
+              const mission = campaign && index >= 0 && debug.forceMissionCursor(index) && debug.forceConfirmMission();
+              return { campaign, index, mission, state: document.body.dataset.gameState };
+            });
+            assert(routed.campaign && routed.index >= 0 && routed.mission, 'could not route to M01', routed);
+
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+              const state = await page.evaluate(() => document.body.dataset.gameState);
+              if (state === 'ready') break;
+              await page.click('#briefingNextBtn');
+              await page.waitForTimeout(120);
+            }
+            await page.waitForFunction(() => document.body.dataset.gameState === 'ready', null, { timeout: 10000 });
+            assert(await page.evaluate(() => window.__game.debug.forceSelectAircraft('f16')), 'F-16C selection failed');
+            await page.click('#startBtn');
+            await page.waitForFunction(() => document.body.dataset.gameState === 'playing', null, { timeout: 10000 });
+
+            const terrain = await page.evaluate(() => {
+              const debug = window.__game.debug;
+              const samples = [
+                [78000, 20000], [-78000, 20000], [0, 70000], [42000, 60000]
+              ].map(([x, z]) => ({ x, z, top: debug.surfaceTopAt(x, z), probe: debug.terrainProbe(x, z) }));
+              return {
+                samples,
+                ocean: debug.surfaceTopAt(0, -10000),
+                beach: debug.surfaceTopAt(0, -5500)
+              };
+            });
+            for (const sample of terrain.samples) {
+              assert(sample.top > 27.5, 'continental visual surface is missing', sample);
+              assert(sample.probe.floor > 27.5, 'continental AI floor is missing', sample);
+            }
+            assert(terrain.ocean < 1, 'open sea south of Ren Bay was filled', terrain);
+            assert(terrain.beach > 0 && terrain.beach < 28.1, 'coastal transition is missing', terrain);
+
+            // Move to the same no-airframe cockpit view as the user screenshot.
+            for (let attempt = 0; attempt < 4; attempt += 1) {
+              const camera = await page.evaluate(() => document.body.dataset.camera);
+              if (camera === 'cockpit') break;
+              await page.keyboard.press('KeyC');
+              await page.waitForTimeout(120);
+            }
+            assert(await page.evaluate(() => document.body.dataset.camera === 'cockpit'), 'could not select cockpit camera');
+
+            // Give the sortie enough time to reach the reported coastal view,
+            // then inspect three inland headings. The sheet has no side/rear
+            // boundary inside fog in any of them.
+            await page.waitForTimeout(18000);
+            for (const [name, yaw] of [['ne', 39], ['north', 0], ['nw', 321]]) {
+              assert(await page.evaluate(([heading]) => window.__game.debug.forceAttitude(heading, -8, 0), [yaw]),
+                `could not set ${name} inspection attitude`);
+              await page.waitForTimeout(500);
+              await page.screenshot({ path: `artifacts/ren-bay-continent-${name}.png` });
+            }
+            assert(errors.length === 0, 'browser errors during Ren Bay proof', errors);
+            console.log('ren_bay_continent_browser: PASS');
+            console.log(JSON.stringify(terrain));
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+      - name: Commit and push the verified Ren Bay repair
+        shell: bash
+        run: |
+          git add index.html \
+                  payloads/map_renBay.payload.js \
+                  tools/check_ren_bay_continent.mjs \
+                  .github/workflows/verify-sera-m01-e2e.yml \
+                  .github/workflows/verify-sera-m02-e2e.yml
+          git diff --cached --check
+          git commit -m 'Backfill Ren Bay terrain beyond the horizon'
+          git push origin HEAD:chatgpt/sera-act1-implementation
+
+      - name: Upload visual proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: ren-bay-continent-proof
+          path: artifacts/ren-bay-continent-*.png
+          if-no-files-found: error
+
+      - name: Remove one-shot repair scaffolding
+        shell: bash
+        run: |
+          rm -rf node_modules package-lock.json package.json artifacts tools/__pycache__
+          git rm tools/apply_ren_bay_continent_sheet.py .github/workflows/apply-ren-bay-continent-sheet.yml
+          git commit -m 'Remove Ren Bay continent repair scaffolding'
+          git push origin HEAD:chatgpt/sera-act1-implementation
