@@ -2676,10 +2676,12 @@
     const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21" });
     const PURCHASES_STORAGE_KEY = "sortieHangarPurchases";
     const RADAR_RANGE = 1400;
-    // The ocean is a finite plane that rides with the camera, so this only has
-    // to out-reach the fog (far 2600-3350 by preset) with margin for the
-    // horizon at altitude - not cover the playable area.
+    // Reference/minimum size for the camera-following ocean. createWorld
+    // expands it per preset so the nearest rim stays beyond fog far. Texture
+    // repeat counts scale with the mesh, preserving the established physical
+    // wave size instead of stretching the sea on long-visibility maps.
     const OCEAN_PLANE_SIZE = 12000;
+    const OCEAN_FOG_MARGIN = 2.8;
     // Battle area, AC style. Measured basis: every objective in the campaign
     // sits inside r=3000 (waves spawn 820-1160m off the player's nose, the
     // night base is at (900,-1200), the glacier corridor ends at z=-2600,
@@ -38896,6 +38898,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         oceanProbe: () => ({
           planeX: world.ocean ? world.ocean.position.x : null,
           planeZ: world.ocean ? world.ocean.position.z : null,
+          size: world.oceanPlaneSize || null,
           camX: camera.position.x,
           camZ: camera.position.z,
           tile: world.oceanTileSize || null,
@@ -50267,11 +50270,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       oceanNormalDriftU2 += dt * oceanNormalSpeeds[2][0];
       oceanNormalDriftV2 += dt * oceanNormalSpeeds[2][1];
 
-      // The ocean plane is finite (OCEAN_PLANE_SIZE), so left alone its rim
-      // shows up as "the world ends" after ~18s of boost. Snap it under the
-      // camera every frame and cancel the snap in UV space: the mesh follows,
-      // the wave pattern stays pinned to the world, so the player still reads
-      // motion across the water.
+      // The ocean plane is finite, but createWorld sizes it from this map's
+      // fog range so its rim is already fully hidden. It still snaps under the
+      // camera every frame; the UV cancellation keeps the wave field pinned to
+      // world space while the geometry follows the player.
       const camX = camera.position.x;
       const camZ = camera.position.z;
       const ocean = world.ocean;
@@ -56572,6 +56574,10 @@ diffuseColor.rgb = terrainBase * terrainShade;`
     function createWorld(presetKey) {
       const key = WORLD_PRESETS[presetKey] ? presetKey : DEFAULT_WORLD_PRESET;
       const preset = WORLD_PRESETS[key];
+      const oceanPlaneSize = Math.ceil(
+        Math.max(OCEAN_PLANE_SIZE, preset.fog.far * OCEAN_FOG_MARGIN) / 1000
+      ) * 1000;
+      const oceanRepeatScale = oceanPlaneSize / OCEAN_PLANE_SIZE;
       const roots = [];
       const geometries = [];
       const materials = [];
@@ -56732,7 +56738,8 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       const oceanTexture = keepTexture(new THREE.CanvasTexture(oceanCanvas), "oceanColor", estimateWorldTextureBytes(256, 256));
       oceanTexture.wrapS = THREE.RepeatWrapping;
       oceanTexture.wrapT = THREE.RepeatWrapping;
-      oceanTexture.repeat.set(preset.ocean.repeat, preset.ocean.repeat);
+      const oceanColorRepeat = preset.ocean.repeat * oceanRepeatScale;
+      oceanTexture.repeat.set(oceanColorRepeat, oceanColorRepeat);
       oceanTexture.colorSpace = THREE.SRGBColorSpace;
       oceanTexture.generateMipmaps = true;
       oceanTexture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -56740,10 +56747,10 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       oceanTexture.anisotropy = maxAnisotropy;
       oceanTexture.needsUpdate = true;
 
-      const oceanNormalRepeat = preset.ocean.normalRepeat || preset.ocean.repeat * 1.62;
+      const oceanNormalRepeat = (preset.ocean.normalRepeat || preset.ocean.repeat * 1.62) * oceanRepeatScale;
       const oceanNormalMultipliers = preset.ocean.normalMultipliers || [1, 2.35, 5.6];
       const oceanNormalRepeats = oceanNormalMultipliers.map((factor) => oceanNormalRepeat * factor);
-      const oceanNormalTiles = oceanNormalRepeats.map((repeat) => OCEAN_PLANE_SIZE / repeat);
+      const oceanNormalTiles = oceanNormalRepeats.map((repeat) => oceanPlaneSize / repeat);
       const oceanNormalTexture = keepTexture(makeOceanNormalTexture(oceanSeed, oceanProfile), "oceanNormal", estimateWorldTextureBytes(256, 256));
       oceanNormalTexture.repeat.set(oceanNormalRepeats[0], oceanNormalRepeats[0]);
       oceanNormalTexture.anisotropy = maxAnisotropy;
@@ -56766,7 +56773,7 @@ diffuseColor.rgb = terrainBase * terrainShade;`
         [160, Math.min(1250, preset.fog.far * 0.36)]
       ];
       const oceanWaveFades = oceanFadeConfig.map((range) => new THREE.Vector2(range[0], range[1]));
-      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(OCEAN_PLANE_SIZE, OCEAN_PLANE_SIZE, 1, 1));
+      const oceanGeometry = keepGeometry(new THREE.PlaneGeometry(oceanPlaneSize, oceanPlaneSize, 1, 1));
       oceanGeometry.rotateX(-Math.PI / 2);
       const oceanMaterial = keepMaterial(new THREE.MeshStandardMaterial({
         map: oceanTexture,
@@ -56887,7 +56894,7 @@ varying vec2 vOceanUv;`
       // World units covered by one texture tile. The first normal octave retains
       // the established probe contract; the other two use the same camera-lock
       // equation at independent scales.
-      const oceanTileSize = OCEAN_PLANE_SIZE / preset.ocean.repeat;
+      const oceanTileSize = oceanPlaneSize / oceanColorRepeat;
       const oceanNormalTileSize = oceanNormalTiles[0];
 
       let sunRoad = null;
@@ -58031,7 +58038,7 @@ varying vec2 vOceanUv;`
 
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains, groundSheets, cameraSurfaces,
-        ocean, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
+        ocean, oceanPlaneSize, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
         textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
       };
