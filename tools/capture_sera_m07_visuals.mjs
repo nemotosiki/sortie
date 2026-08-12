@@ -84,8 +84,17 @@ try {
   if (!moved) throw new Error("could not stage approach");
   await page.waitForTimeout(220);
   await page.screenshot({ path: path.join(output, "02-gameplay-approach.png") });
+  if (!(await page.evaluate(() => window.__game.forceSeraM07DamageGuard(245)))) {
+    throw new Error("could not stage SEALIGHT HP damage");
+  }
+  await page.waitForFunction(() => {
+    const probe = window.__game.seraM07Probe?.();
+    return probe?.recoveryGauge?.value === "735/980"
+      && Number.parseFloat(probe.recoveryGauge?.width) === 75;
+  }, null, { timeout: 15_000 });
+  await page.screenshot({ path: path.join(output, "03-sealight-hp-gauge.png") });
   if (errors.length) throw new Error(`browser errors:\n${errors.join("\n")}`);
-  console.log(`capture_sera_m07_visuals: PASS - rescue detail + gameplay approach -> ${output}`);
+  console.log(`capture_sera_m07_visuals: PASS - rescue detail + gameplay approach + SEALIGHT HP gauge -> ${output}`);
 } finally {
   await context.close();
   await browser.close();

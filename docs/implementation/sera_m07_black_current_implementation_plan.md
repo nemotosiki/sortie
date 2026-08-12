@@ -1,108 +1,81 @@
 # Sera M07 BLACK CURRENT — implementation plan
 
-**Branch:** `codex/sera-m07-black-current`
+**Branch:** `chatgpt/sera-act1-implementation`
 
-**Base:** `4202187` (`chatgpt/sera-act1-implementation`)
+**Revision:** 2026-08-13 escort-rescue redesign
 
-**Date:** 2026-08-12
+## 1. Sources and approved override
 
-## 1. Canonical sources
-
-- Mission story and choice: `docs/story_reboot/11_sera_act2.md`
+- Story baseline: `docs/story_reboot/11_sera_act2.md`
 - Region/world key: `docs/story_reboot/v0.12/01_map_mission_matrix.md`
-- RAVEN/LARK post-M06 identities: `docs/story_reboot/v0.14/01_character_route_implementation_plan.md`
-- Aircraft availability and difficulty: `docs/story_reboot/v0.17/00_player_aircraft_unlock_schedule_and_mission_difficulty.md`
+- RAVEN/LARK identity: `docs/story_reboot/v0.14/01_character_route_implementation_plan.md`
+- Aircraft timing/difficulty: `docs/story_reboot/v0.17/00_player_aircraft_unlock_schedule_and_mission_difficulty.md`
 
-M06 is not implemented on the base branch. M07 is therefore inserted after the
-latest implemented Sera sortie (`sera-m05`) while retaining canonical
-`campaignOrder: 7`, `storyNo: 7`, and the post-M06 ROOK 1/ROOK 2 identities.
-When M06 lands at `campaignOrder: 6`, campaign sorting and predecessor-based
-unlocking will place it between M05 and M07 without rewriting M07.
+The earlier player-operated low-pass pickup and rescue/data choice are retired by
+the approved playability redesign. M07 is now a pure escort/interception sortie:
+the rescue unit performs every pickup while RAVEN protects the operation.
 
-## 2. Playable vertical slice
+## 2. Final mission contract
 
-### Map
+### Rescue operation
 
-Create `damarSeaStorm`, not an alias of `stormOcean`.
+- SEALIGHT 1 automatically flies to CROWN, CREW B, and CREW C in order.
+- At each site it holds for ten seconds and performs the rescue without player
+  proximity, altitude, speed, or input checks.
+- Survivor sites do not appear as player-facing HUD/radar search markers.
+- MERIDIAN reports rescue start and progress at 1/3, 2/3, and 3/3 over radio.
+- After 3/3, SEALIGHT leaves by its authored egress route.
 
-- inherit the proven storm water, fog, ceiling, and lighting
-- register `regionId: damar_sea`, west rescue-lane sector, storm-evening variant
-- add the Damar navigation platform, shipping-lane lights, three survivor rafts,
-  one black data capsule, and two visible SAR helicopters
-- add wind-driven rain and intermittent lightning through a small generic
-  decorator animation hook owned and disposed with the world
+### FRIENDS panel
 
-### Mission
+- One green SAR flying-boat silhouette represents SEALIGHT.
+- The green bar and numeric value show SEALIGHT HP, not rescue progress.
+- Rescue progress is deliberately kept in radio traffic rather than a second
+  progress bar.
 
-- player: RAVEN as ROOK 1; LARK as ROOK 2 in an F/A-18F
-- friendly support: SAR flying boat and maritime patrol aircraft
-- initial threats: Su-33 fleet CAP and two missile boats
-- rescue sites are visible in-world and on friendly HUD/radar markers
-- pickup is a low pass within the authored radius and altitude ceiling
+### Enemy roles
 
-### Choice contract
-
-The first recovered object locks the route for this sortie.
-
-- **RESCUE FIRST:** the data capsule is lost; recover all three survivor sites
-- **DATA FIRST:** the far survivor beacon is lost; recover the data and the two
-  remaining survivor sites; MiG-31 reinforcements launch
-
-Both routes are valid mission clears and persist distinct marks. CROWN survives
-in both routes; rescue-first records early recovery, while data-first represents
-the delayed-recovery branch required by the character canon.
+- **Red TGT:** Su-33 x6. They arrive as three flights of two at 0, 30, and 60
+  seconds. Every pair uses the rescue-asset hunt path and directly attacks
+  SEALIGHT. Their red status means they are the mission-priority kills.
+- The Su-33 entry point is 1.5x farther from the battle centre than the original
+  map anchor (`[5400, -4800]` instead of `[3600, -3200]`), giving RAVEN time to
+  intercept each pair before it reaches the rescue aircraft.
+- **White recurring interference:** regular MiG-29A x2 every 34 seconds, capped
+  at four live aircraft. They pursue RAVEN and never select SEALIGHT or LARK.
+- **White mid-mission reinforcement:** veteran MiG-29A x2, spawned once after
+  the first rescue. They also pursue RAVEN.
+- **White surface interference:** missile boats x2; optional and rank-neutral.
+- All white reinforcement spawning stops after rescue reaches 3/3.
 
 ### Completion and failure
 
-- completion requires the chosen recovery route and all red TGT aircraft
-- non-TGT escorts and missile boats never hold completion or rank denominator
-- losing every guarded rescue aircraft fails the mission
-- leaving the battle area and normal player death retain existing failure paths
-- retry restarts the choice cleanly; this single-engagement mission has no
-  mid-sortie checkpoint
+- Success requires all three rescues and all six red Su-33s destroyed.
+- White contacts never hold completion or enter the required-kill denominator.
+- SEALIGHT HP reaching zero produces immediate MISSION FAILED.
+- Clearing red TGTs early keeps the sortie running and explicitly orders RAVEN
+  to continue the escort.
+- Retry resets SEALIGHT to full HP, rescue 0/3, the first destination, and all
+  reinforcement timers.
 
-## 3. Implementation order
+## 3. Acceptance criteria
 
-1. Add `map_damarSeaStorm.payload.js` and its static/visual gate.
-2. Add the generic world-decorator animation hook.
-3. Add the M07 recovery runtime and focused debug probes.
-4. Add `mission_sera_m07.payload.js` and its contract gate.
-5. Inline the map and mission payloads, update the registry snapshot.
-6. Run syntax, payload, map, campaign, IFF, registry, and existing Sera gates.
-7. Run Chromium E2E for both choice routes, guard failure, retry, completion,
-   persistent marks, and page/console errors.
-8. Perform a real browser visual/play pass and save evidence.
+- campaign UI can select and launch `sera-m07`
+- no player pickup/search marker contract remains
+- SEALIGHT moves and rescues while the player is elsewhere
+- FRIENDS bar reads `SEALIGHT HP` and follows actual damage
+- red Su-33s target SEALIGHT in distant 2 + 2 + 2 staggered flights
+- recurring and veteran MiG-29As target RAVEN
+- radio events report 1/3, 2/3, and 3/3
+- mission waits when red TGTs are cleared before rescue completion
+- rescue completion stops recurring reinforcements
+- SEALIGHT loss fails; Retry restores a clean attempt
+- pageerror 0, console error 0, inline payload synchronized
 
-## 4. Acceptance criteria
+## 4. Verification
 
-- normal campaign UI can select and launch `sera-m07`
-- `damarSeaStorm` is visibly a Damar rescue lane, not a renamed stock map
-- rain, lightning, beacon lights, rafts, capsule, and SAR silhouettes render
-- rescue-first and data-first produce different live encounters and saved marks
-- data-first adds the two MiG-31 TGTs and expires exactly one survivor beacon
-- mission cannot clear before its recovery route is complete
-- all rescue aircraft lost produces MISSION FAILED and Retry resets the route
-- success records `m07Route`, survivor count, data state, and CROWN recovery state
-- pageerror 0, console error 0, registry loss 0
-- existing M01–M05 payload/static gates remain green
-
-## 5. Completion labels
-
-- **Static complete:** source, syntax, registry, and contract gates pass.
-- **Test-playable:** both routes plus failure/retry pass in Chromium.
-- **Complete:** test-playable plus a human-feel pass for visibility, pickup radius,
-  threat pressure, radio cadence, and mission length.
-
-## 6. Completion record — 2026-08-12
-
-- **Static complete:** PASS. Syntax, M07 map/mission contracts, available
-  M01–M05 static regressions, campaign shell/economy/records, IFF,
-  registry-loss, and inline payload checks are green.
-- **Test-playable:** PASS. Chromium launches M07 through the normal campaign
-  UI and completes rescue-first, data-first, SAR-loss failure, and Retry with
-  zero page or console errors.
-- **Visual pass:** PASS. The Damar storm scene was inspected at gameplay
-  resolution; the sun disc and arena-centred low cloud banks were removed so
-  rain, sea state, SAR silhouettes, and rescue markers remain readable.
-- **Implementation status:** COMPLETE. Subjective difficulty and mission-length
-  tuning can continue as balance work without changing the route contract.
+- `node tools/check_sera_m07_payload.mjs`
+- `node tools/check_sera_m07_e2e.mjs`
+- `node tools/sync_inlined_payload.mjs payloads/mission_sera_m07.payload.js --check`
+- browser visual pass of the green HP panel, rescue radio cadence, and enemy
+  pressure

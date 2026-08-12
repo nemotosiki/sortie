@@ -34,7 +34,8 @@ async function serve() {
   const server = http.createServer((req, res) => {
     const pathname = decodeURIComponent((req.url || "/").split("?")[0]);
     const file = path.resolve(root, pathname === "/" ? "index.html" : `.${pathname}`);
-    if (!file.startsWith(root)) { res.writeHead(403); res.end(); return; }
+    const relative = path.relative(root, file);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) { res.writeHead(403); res.end(); return; }
     fs.readFile(file, (error, data) => {
       if (error) { res.writeHead(404); res.end(); return; }
       res.writeHead(200, { "Content-Type": mime[path.extname(file)] || "application/octet-stream" });
@@ -76,9 +77,11 @@ async function openPage() {
   await page.waitForFunction(() => Boolean(
     window.__game?.forceStartMissionByKey
     && window.__game?.seraM07Probe
-    && window.__game?.forceSeraM07Recover
-    && window.__game?.forceSeraM07FlyToSite
+    && window.__game?.forceSeraM07AdvanceRescue
+    && window.__game?.forceSeraM07DeployNextRedPair
+    && window.__game?.forceSeraM07DamageGuard
     && window.__game?.forceSeraM07DestroyTargets
+    && window.__game?.forceSeraM07Interference
   ), null, { timeout: 120_000 });
   return { context, page, pageErrors, consoleErrors };
 }
@@ -101,11 +104,11 @@ async function selectThroughMenu(page) {
     const confirm = debug.forceConfirmMission();
     return { cardState, index, cursor, title, confirm, state: document.body.dataset.gameState };
   });
-  assert(!selected.error, "Sera campaign could not be entered from the production campaign screen", selected);
+  assert(!selected.error, "Sera campaign could not be entered", selected);
   assert(selected.cardState && !selected.cardState.locked && selected.cardState.disabled === "false",
     "Sera campaign card is still locked", selected);
   assert(selected.index >= 0 && selected.cursor && selected.title === "BLACK CURRENT" && selected.confirm,
-    "M07 could not be selected through the production mission screen", selected);
+    "M07 could not be selected through the mission screen", selected);
   assert(selected.state === "briefing", "M07 selection did not open its briefing", selected);
 }
 
@@ -116,152 +119,171 @@ async function startM07(page) {
   await page.waitForTimeout(300);
 }
 
-async function flyPickup(page, id) {
-  const moved = await page.evaluate((siteId) => window.__game.forceSeraM07FlyToSite(siteId), id);
-  assert(moved, `could not position the player at ${id}`);
-  await page.waitForFunction((siteId) => {
-    const probe = window.__game.seraM07Probe();
-    return probe && (probe.recovered.includes(siteId) || probe.expiredSite === siteId);
-  }, id, { timeout: 5_000 });
-}
-
-async function destroyTargetsAndResolve(page) {
-  const destroyed = await page.evaluate(() => window.__game.forceSeraM07DestroyTargets());
-  assert(destroyed > 0, "no red M07 targets were available to destroy");
-  await page.waitForFunction(() => window.__game.seraM07Probe()?.outcomePending, null, { timeout: 8_000 });
-  const resolved = await page.evaluate(() => window.__game.forceSeraM07ResolveOutcome());
-  assert(resolved, "M07 accomplished hold did not resolve");
-  await waitState(page, "missionComplete");
-}
-
 function assertNoErrors(run, label) {
   assert(run.pageErrors.length === 0, `${label}: pageerror`, run.pageErrors);
   assert(run.consoleErrors.length === 0, `${label}: console error`, run.consoleErrors);
 }
 
 try {
-  // Route A: enter through normal menus and make a real low-pass rescue-first pickup.
-  const rescue = await openPage();
-  const payloads = await rescue.page.evaluate(() => window.__APPLIED_PAYLOADS__ || []);
-  for (const id of ["map_naharStrait", "mission_sera_m04", "map_sarkPortAsh", "mission_sera_m05", "map_damarSeaStorm", "mission_sera_m07"]) {
+  const escort = await openPage();
+  const payloads = await escort.page.evaluate(() => window.__APPLIED_PAYLOADS__ || []);
+  for (const id of ["map_damarSeaStorm", "mission_sera_m07"]) {
     assert(payloads.includes(id), `normal startup did not apply ${id}`, payloads);
   }
-  await selectThroughMenu(rescue.page);
-  await startM07(rescue.page);
-  let probe = await rescue.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.liveTargets.length === 4 && probe.liveTargets.every((type) => type === "su33"),
-    "opening red CAP is not four Su-33s", probe);
+  await selectThroughMenu(escort.page);
+  await startM07(escort.page);
+  await escort.page.waitForFunction(() => {
+    const probe = window.__game.seraM07Probe?.();
+    return probe?.redTargeting?.length === 2
+      && probe.redTargeting.every((entry) => entry.charge === "SEALIGHT 1");
+  }, null, { timeout: 8_000 });
+
+  let probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+  assert(probe.liveTargets.length === 2 && probe.liveTargets.every((type) => type === "su33")
+      && probe.pendingRedWaves.length === 2
+      && probe.pendingRedWaves.every((wave) => wave.types.length === 2 && wave.types.every((type) => type === "su33")),
+    "red TGT board is not opening Su-33 x2 plus two delayed pairs", probe);
+  assert(probe.redTargeting.length === 2 && probe.redTargeting.every((entry) => (
+    entry.hunt === "air" && entry.charge === "SEALIGHT 1"
+  )), "red TGT Su-33s are not prioritizing the protected rescue asset", probe.redTargeting);
+  assert(probe.redTargeting.every((entry) => (
+    Math.hypot(entry.position[0], entry.position[2]) > 6500
+  )), "opening Su-33 pair did not spawn at the farther 1.5x entry", probe.redTargeting);
   assert(probe.liveWhite.filter((type) => type === "missileBoat").length === 2,
     "two optional missile boats are not alive", probe);
-  assert(probe.liveRecoveryMarkers.length === 4, "four recovery HUD markers were not created", probe);
-  assert(probe.friendlies.some((friendly) => friendly.type === "fa18" && friendly.label === "ROOK 2 LARK"),
-    "post-M06 LARK wingman is missing", probe.friendlies);
-  assert(probe.friendlies.some((friendly) => friendly.label === "SEALIGHT 1" && friendly.vulnerable),
-    "guarded SAR flying boat is missing", probe.friendlies);
-  assert(probe.friendlies.some((friendly) => friendly.label === "MERIDIAN 1" && !friendly.vulnerable),
-    "maritime patrol aircraft is missing", probe.friendlies);
+  assert(probe.liveRecoveryMarkers.length === 0,
+    "rescue sites remained player-facing HUD search contacts", probe.liveRecoveryMarkers);
+  assert(probe.route === "rescue" && probe.rescueIndex === 0 && probe.rescuePhase === "transit",
+    "SEALIGHT automatic rescue route was not armed", probe);
+  assert(probe.guarded.length === 1 && probe.guarded[0].label === "SEALIGHT 1"
+      && probe.guarded[0].hp === 980 && probe.guarded[0].maxHp === 980,
+    "guarded SEALIGHT HP contract is wrong", probe.guarded);
+  assert(Math.round(probe.guarded[0].destination[0]) === -1450
+      && Math.round(probe.guarded[0].destination[2]) === -250,
+    "SEALIGHT is not navigating to the first rescue point", probe.guarded[0]);
+  assert(probe.recoveryGauge.label === "SEALIGHT HP" && probe.recoveryGauge.value === "980/980"
+      && Number.parseFloat(probe.recoveryGauge.width) === 100 && probe.recoveryGauge.status === "ESCORT SEALIGHT",
+    "green FRIENDS panel is not an aircraft HP gauge", probe.recoveryGauge);
 
-  const screenshot = process.env.SORTIE_M07_SCREENSHOT;
-  if (screenshot) {
-    await rescue.page.evaluate(() => {
-      window.__game.debug.forceTeleport(-1450, 700, 900);
-      window.__game.debug.forceAttitude(0, -24, 0);
-    });
-    await rescue.page.waitForTimeout(180);
-    await rescue.page.screenshot({ path: screenshot, fullPage: false });
+  const movedFromAuthoredStart = Math.hypot(
+    probe.guarded[0].position[0] - (-3400),
+    probe.guarded[0].position[2] - 1800
+  );
+  assert(movedFromAuthoredStart > 1,
+    "SEALIGHT did not begin its automatic route while RAVEN was far from the rescue point", probe.guarded[0]);
+
+  assert(await escort.page.evaluate(() => window.__game.forceSeraM07DamageGuard(245)),
+    "could not apply controlled SEALIGHT damage");
+  probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+  assert(probe.guarded[0].hp === 735 && probe.recoveryGauge.value === "735/980"
+      && Number.parseFloat(probe.recoveryGauge.width) === 75,
+    "FRIENDS gauge did not follow SEALIGHT HP", probe);
+
+  const interference = await escort.page.evaluate(() => [
+    window.__game.forceSeraM07Interference(),
+    window.__game.forceSeraM07Interference(),
+    window.__game.forceSeraM07Interference()
+  ]);
+  probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+  assert(JSON.stringify(interference) === JSON.stringify([2, 2, 0])
+      && probe.liveInterference.length === 4
+      && probe.liveInterference.every((type) => type === "mig29"),
+    "recurring SAR interference or its live cap is wrong", { interference, probe });
+  assert(probe.interferenceTargeting.length === 4 && probe.interferenceTargeting.every((entry) => (
+    entry.hunt === null && !entry.wingmanHunter && entry.charge === null && entry.targetsPlayer
+  )), "white MiG-29A reinforcements are not dedicated to RAVEN", probe.interferenceTargeting);
+
+  const killedEarly = await escort.page.evaluate(() => window.__game.forceSeraM07DestroyTargets());
+  assert(killedEarly === 2, "opening target clear did not remove exactly the first Su-33 pair", killedEarly);
+  await escort.page.waitForTimeout(250);
+  probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+  assert(probe.state === "playing" && !probe.outcomePending && !probe.recoveryComplete
+      && !probe.combatCleared && probe.pendingRedWaves.length === 2,
+    "M07 declared red-board clear before its delayed Su-33 pairs arrived", probe);
+
+  for (const expectedDelay of [30, 60]) {
+    assert((await escort.page.evaluate(() => window.__game.forceSeraM07DeployNextRedPair())) === 2,
+      `could not deploy delayed Su-33 pair at ${expectedDelay}s`);
+    await escort.page.waitForFunction(() => {
+      const probe = window.__game.seraM07Probe?.();
+      return probe?.redTargeting?.length === 2
+        && probe.redTargeting.every((entry) => entry.charge === "SEALIGHT 1");
+    }, null, { timeout: 8_000 });
+    probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+    assert(probe.liveTargets.length === 2 && probe.liveTargets.every((type) => type === "su33")
+        && probe.redTargeting.every((entry) => entry.hunt === "air" && entry.charge === "SEALIGHT 1")
+        && probe.redTargeting.every((entry) => Math.hypot(entry.position[0], entry.position[2]) > 6500),
+      `delayed Su-33 pair at ${expectedDelay}s has wrong composition, target, or distance`, probe);
+    assert((await escort.page.evaluate(() => window.__game.forceSeraM07DestroyTargets())) === 2,
+      `could not destroy delayed Su-33 pair at ${expectedDelay}s`);
   }
+  await escort.page.waitForTimeout(250);
+  probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+  assert(probe.liveTargets.length === 0 && probe.pendingRedWaves.length === 0 && probe.combatCleared,
+    "red board did not clear after all six staggered Su-33s were destroyed", probe);
 
-  await flyPickup(rescue.page, "crown");
-  probe = await rescue.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.route === "rescue" && probe.expiredSite === "data" && probe.recovered.includes("crown"),
-    "rescue-first route did not lock from the real proximity pass", probe);
-  assert(probe.marks.crown1Recovered === 1 && probe.marks.m07Route === "rescue",
-    "early CROWN recovery marks were not set", probe.marks);
-  assert(!(await rescue.page.evaluate(() => window.__game.forceSeraM07Recover("data"))),
-    "expired data capsule remained recoverable");
-  assert(await rescue.page.evaluate(() => window.__game.forceSeraM07Recover("crew-b")), "crew-b recovery failed");
-  assert(await rescue.page.evaluate(() => window.__game.forceSeraM07Recover("crew-c")), "crew-c recovery failed");
-  probe = await rescue.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.recoveryComplete && probe.marks.m07SurvivorsRecovered === 3 && !probe.reinforcementsSpawned,
-    "rescue-first completion or marks are wrong", probe);
+  for (const [index, expected] of ["crown", "crew-b", "crew-c"].entries()) {
+    assert(await escort.page.evaluate(() => window.__game.forceSeraM07AdvanceRescue()),
+      `could not advance automatic rescue at ${expected}`);
+    probe = await escort.page.evaluate(() => window.__game.seraM07Probe());
+    assert(probe.recovered.includes(expected), `SEALIGHT did not recover ${expected}`, probe);
+    if (index === 0) {
+      assert(probe.midInterferenceSpawned && probe.midInterferenceTargeting.length === 2
+          && probe.midInterferenceTargeting.every((entry) => (
+            entry.type === "mig29" && entry.hunt === null && !entry.wingmanHunter
+            && entry.charge === null && entry.targetsPlayer
+          )),
+      "mid-mission veteran MiG-29A flight did not pursue RAVEN", probe.midInterferenceTargeting);
+    }
+  }
+  assert(probe.recoveryComplete && probe.rescuePhase === "egress"
+      && probe.marks.m07Route === "rescue" && probe.marks.m07SurvivorsRecovered === 3,
+    "automatic three-site rescue did not complete", probe);
+  assert(probe.radioEvents?.includes("m07_rescue_progress_1")
+      && probe.radioEvents?.includes("m07_rescue_progress_2")
+      && probe.radioEvents?.includes("m07_mid_interference")
+      && probe.radioEvents?.includes("m07_recovery_complete"),
+    "1/3, 2/3 and 3/3 rescue radio reports did not fire", probe.radioEvents);
+  assert((await escort.page.evaluate(() => window.__game.forceSeraM07Interference())) === 0,
+    "SAR interference continued after rescue completed");
 
-  await destroyTargetsAndResolve(rescue.page);
-  const rescueResult = await rescue.page.evaluate(() => ({
-    records: JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}"),
-    epilogue: window.__game.epilogue
-  }));
-  assert(rescueResult.records["sera-m07"]?.cleared, "rescue-first M07 record was not saved", rescueResult.records["sera-m07"]);
-  assert(rescueResult.records["sera-m07"].marks?.m07Route === "rescue"
-      && rescueResult.records["sera-m07"].marks?.m07SurvivorsRecovered === 3
-      && rescueResult.records["sera-m07"].marks?.damarDataRecovered === undefined,
-    "rescue-first persistent marks are wrong", rescueResult.records["sera-m07"]);
-  assert(rescueResult.epilogue.lines?.[0]?.includes("三つの救難信号"),
-    "rescue-first route epilogue was not selected", rescueResult.epilogue);
-  assertNoErrors(rescue, "rescue-first");
-  await rescue.context.close();
-
-  // Route B: data-first loses one beacon and adds two designated Foxhounds.
-  const intel = await openPage();
-  await startM07(intel.page);
-  await flyPickup(intel.page, "data");
-  probe = await intel.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.route === "intel" && probe.expiredSite === "crew-c" && probe.reinforcementsSpawned,
-    "data-first route did not lock and launch reinforcements", probe);
-  assert(probe.liveTargets.filter((type) => type === "su33").length === 4
-      && probe.liveTargets.filter((type) => type === "mig31").length === 2,
-    "data-first live TGT composition is not Su-33 x4 plus MiG-31 x2", probe.liveTargets);
-  assert(!(await intel.page.evaluate(() => window.__game.forceSeraM07Recover("crew-c"))),
-    "expired survivor beacon remained recoverable");
-  assert(await intel.page.evaluate(() => window.__game.forceSeraM07Recover("crown")), "data route CROWN recovery failed");
-  assert(await intel.page.evaluate(() => window.__game.forceSeraM07Recover("crew-b")), "data route crew-b recovery failed");
-  probe = await intel.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.recoveryComplete && probe.marks.m07SurvivorsRecovered === 2
-      && probe.marks.damarDataRecovered === 1 && probe.marks.crown1Recovered === undefined,
-    "data-first completion or consequences are wrong", probe);
-  await destroyTargetsAndResolve(intel.page);
-  const intelResult = await intel.page.evaluate(() => ({
+  await escort.page.waitForFunction(() => window.__game.seraM07Probe()?.outcomePending, null, { timeout: 8_000 });
+  assert(await escort.page.evaluate(() => window.__game.forceSeraM07ResolveOutcome()),
+    "M07 accomplished hold did not resolve");
+  await waitState(escort.page, "missionComplete");
+  const result = await escort.page.evaluate(() => ({
     record: JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}")["sera-m07"],
     epilogue: window.__game.epilogue
   }));
-  assert(intelResult.record?.marks?.m07Route === "intel"
-      && intelResult.record?.marks?.m07SurvivorsRecovered === 2
-      && intelResult.record?.marks?.damarDataRecovered === 1,
-    "data-first persistent marks are wrong", intelResult.record);
-  assert(intelResult.epilogue.lines?.[0]?.includes("記録球"),
-    "data-first route epilogue was not selected", intelResult.epilogue);
-  assertNoErrors(intel, "data-first");
-  await intel.context.close();
+  assert(result.record?.cleared && result.record.marks?.m07SurvivorsRecovered === 3,
+    "escort M07 record was not saved", result.record);
+  assert(result.epilogue.lines?.[0]?.includes("SEALIGHT"),
+    "escort-route epilogue was not selected", result.epilogue);
+  assertNoErrors(escort, "escort-success");
+  await escort.context.close();
 
-  // Failure and Retry: clearing the red board is insufficient, losing SAR is terminal,
-  // and a new attempt has a clean route/marker ledger.
   const retry = await openPage();
   await startM07(retry.page);
-  const killedEarly = await retry.page.evaluate(() => window.__game.forceSeraM07DestroyTargets());
-  assert(killedEarly === 4, "pre-recovery target clear did not remove the four Su-33s", killedEarly);
-  await retry.page.waitForTimeout(250);
-  probe = await retry.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.state === "playing" && !probe.outcomePending && !probe.recoveryComplete,
-    "M07 cleared before a recovery route was complete", probe);
-  const lost = await retry.page.evaluate(() => window.__game.forceSeraM07LoseGuard());
-  assert(lost === 1, "guard failure did not destroy exactly the SAR flying boat", lost);
+  assert((await retry.page.evaluate(() => window.__game.forceSeraM07LoseGuard())) === 1,
+    "guard failure did not destroy exactly SEALIGHT");
   await waitState(retry.page, "gameover");
   await retry.page.evaluate(() => document.getElementById("retryBtn")?.click());
   await waitState(retry.page, "playing");
   await retry.page.waitForTimeout(250);
   probe = await retry.page.evaluate(() => window.__game.seraM07Probe());
-  assert(probe.route === null && probe.recovered.length === 0 && probe.expiredSite === null
-      && !probe.recoveryComplete && probe.liveRecoveryMarkers.length === 4,
-    "Retry carried recovery choice/state into the new attempt", probe);
-  assert(probe.guarded.length === 1 && probe.guarded[0].alive,
-    "Retry did not restore the guarded SAR flying boat", probe.guarded);
+  assert(probe.route === "rescue" && probe.recovered.length === 0 && probe.rescueIndex === 0
+      && probe.rescuePhase === "transit" && probe.liveRecoveryMarkers.length === 0,
+    "Retry carried rescue progress into the new attempt", probe);
+  assert(probe.guarded.length === 1 && probe.guarded[0].alive && probe.guarded[0].hp === 980,
+    "Retry did not restore SEALIGHT at full HP", probe.guarded);
   assertNoErrors(retry, "failure-retry");
   await retry.context.close();
 
   console.log("check_sera_m07_e2e: PASS");
-  console.log("  campaign UI -> M07 briefing -> Damar storm world -> Su-33 x4 / optional boats / SAR support");
-  console.log("  rescue-first low pass -> 3 survivors / no data / no reinforcement -> route epilogue + persistent marks");
-  console.log("  data-first low pass -> one beacon lost / MiG-31 x2 -> 2 survivors + data -> route epilogue + persistent marks");
-  console.log("  red-board clear held by recovery -> SAR loss failure -> clean Retry");
+  console.log("  campaign UI -> BLACK CURRENT -> SEALIGHT auto-route with no player search markers");
+  console.log("  green FRIENDS silhouette gauge -> exact SEALIGHT HP -> damage reflected at 75%");
+  console.log("  rescue radio 1/3 -> veteran MiG-29A mid-wave -> 2/3 -> 3/3 -> recurring waves stop");
+  console.log("  Su-33 x6 -> distant 2 + 2 + 2 stagger -> red-board clear held by escort -> success and clean Retry");
 } finally {
   server.close();
   await browser.close();
