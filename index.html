@@ -962,6 +962,17 @@
       border-color: currentColor;
     }
 
+    /* Protected ground contacts share the shootable contact pool so the player
+       can deliberately inspect them, but their IFF stays blue even while
+       selected or locked. This is the M09 convoy-identification contract. */
+    .enemyMarker.friendlyContact,
+    .enemyMarker.friendlyContact.locked,
+    .enemyMarker.friendlyContact.multiLocked {
+      color: #68beff;
+      border-color: currentColor;
+      filter: drop-shadow(0 0 5px rgba(104, 190, 255, 0.66));
+    }
+
     /* Retired: the range moved under the name tag, and keeping this would show
        the same distance twice. Left as a no-op so the node can stay in the
        pool without being rebuilt. */
@@ -36455,6 +36466,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m04Cap = m04RankCap(mission);
       if (m04Cap && RANK_ORDER[rank] > RANK_ORDER[m04Cap]) rank = m04Cap;
 
+      const m09Cap = m09RankCap(mission);
+      if (m09Cap && RANK_ORDER[rank] > RANK_ORDER[m09Cap]) rank = m09Cap;
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -36474,6 +36488,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         || (breachCapped && rank === "A")
         || (m03RankCapped && rank === "A")
         || (m04Cap && rank === m04Cap)
+        || (m09Cap && rank === m09Cap)
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -37874,6 +37889,112 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const fleet = enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet);
         for (const enemy of fleet) damageEnemy(enemy, enemy.hp + 1, true, false);
         return fleet.length > 0;
+      },
+      seraM09Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m09") return null;
+        const contacts = enemies.map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          alive: enemy.alive,
+          tgt: isTgtEntry(enemy),
+          disposition: contactDisposition(enemy),
+          rankNeutral: Boolean(enemy.rankNeutral),
+          friendly: Boolean(enemy.friendly),
+          protected: Boolean(enemy.protected),
+          missionRole: enemy.missionRole || null,
+          routeDistance: Number(enemy.routeDistance) || 0,
+          routeEnd: enemy.route && enemy.route.length ? enemy.route[enemy.route.length - 1].d : null,
+          position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
+        }));
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          outcomePending: outcomePending.active,
+          score,
+          kills,
+          totalTargets: mission.totalTargets,
+          totalContacts: mission.totalContacts,
+          m09: {
+            active: m09State.active,
+            mlrsTimer: m09State.mlrsTimer,
+            warningFired: m09State.warningFired,
+            volleys: m09State.volleys,
+            friendlyArmorLost: m09State.friendlyArmorLost,
+            civilianLosses: m09State.civilianLosses,
+            commandDestroyed: m09State.commandDestroyed,
+            dispersedArmor: m09State.dispersedArmor,
+            failed: m09State.failed
+          },
+          contacts
+        };
+      },
+      forceSeraM09MlrsVolley: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m09") return false;
+        return fireM09MlrsVolley();
+      },
+      forceSeraM09DeployPending: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m09") return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        return pendingWaves.length === 0;
+      },
+      forceSeraM09DestroyCommand: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m09") return false;
+        const command = enemies.find((enemy) => enemy.alive && enemy.missionRole === mission.m09Contract.roles.command);
+        if (!command) return false;
+        damageEnemy(command, command.hp + 1, true, false);
+        return m09State.commandDestroyed;
+      },
+      forceSeraM09CivilianLoss: (count = 1) => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m09") return 0;
+        let lost = 0;
+        const civilians = enemies.filter((enemy) => (
+          enemy.alive && enemy.missionRole === mission.m09Contract.roles.civilian
+        )).slice(0, Math.max(0, Number(count) || 0));
+        for (const civilian of civilians) {
+          damageEnemy(civilian, civilian.hp + 1, true, false);
+          lost += 1;
+          if (gameState !== STATE_PLAYING) break;
+        }
+        return lost;
+      },
+      seraM09PerfectRankPreview: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m09") return null;
+        const oldKill = rankStats.playerKillValue;
+        const oldElapsed = missionElapsed;
+        rankStats.playerKillValue = rankStats.spawnedValue;
+        missionElapsed = Math.min(missionElapsed, mission.parTime * 0.5);
+        const rank = computeMissionRank().rank;
+        rankStats.playerKillValue = oldKill;
+        missionElapsed = oldElapsed;
+        return rank;
+      },
+      forceSeraM09Complete: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m09") return false;
+        for (let pass = 0; pass < 12 && gameState === STATE_PLAYING && !outcomePending.active; pass += 1) {
+          for (const queued of pendingWaves) queued.timer = 0;
+          updatePendingWaves(999);
+          const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+          for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+          waveClearTimer = 0;
+          updateMission(0.016, 5.0);
+        }
+        return outcomePending.active;
+      },
+      forceSeraM09ResolveOutcome: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m09" || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
       },
       // Focused vertical-slice probes. They are intentionally generic enough
       // to remain useful while M01 is tuned, but refuse every other mission so
@@ -42076,6 +42197,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       groundPhaseFailureFired = false;
       spawningFacilityIndex = null;
       resetM03State(MISSIONS[currentMissionIndex]);
+      resetM09State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -44171,6 +44293,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
+        // Blue ground traffic is inspectable through manual target cycling, but
+        // it must never steal the automatic seeker or enter a multi-lock salvo.
+        // A deliberately selected blue contact remains lockable, preserving the
+        // identification/risk contract instead of making civilians intangible.
+        const manuallySelectedFriendly = enemy.friendly === true
+          && preferred
+          && enemy.id === preferred.id;
+        if (enemy.friendly === true && !manuallySelectedFriendly) continue;
         if (!canLock(enemy, lockKind)) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
@@ -44183,7 +44313,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // gun tub 50 m in front of a hull would trade lock with the ship every
         // few frames, and every missile meant for the hull would go to it.
         // Manual selection is untouched: preferredCandidate below still wins.
-        if (!enemy.subsystem) inCone.push({ id: enemy.id, distance, enemy });
+        if (!enemy.subsystem && enemy.friendly !== true) inCone.push({ id: enemy.id, distance, enemy });
         let selectionScore = dot * 4 - distance / lockRange;
         if (enemy.subsystem) selectionScore -= SUBSYSTEM_LOCK_PENALTY;
         if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
@@ -44741,6 +44871,186 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       m03State.landingRadioFired = Boolean(saved.landingRadioFired);
       m03State.arrivalRadioFired = Boolean(saved.arrivalRadioFired);
       m03State.failed = Boolean(saved.failed);
+    }
+
+    // SERA M09 RUNTIME CONTRACT
+    //
+    // The generic ground host already owns moving vehicles, IFF, target counts
+    // and wrecks. M09 adds only the authored relationship between them: live
+    // MLRS batteries periodically remove Kedem armour, destroying the command
+    // vehicle sends surviving enemy tanks toward the civilian lane, and losses
+    // of protected contacts alter the result rather than awarding bonus score.
+    const m09State = {
+      active: false,
+      mlrsTimer: 0,
+      warningFired: false,
+      volleys: 0,
+      friendlyArmorLost: 0,
+      civilianLosses: 0,
+      commandDestroyed: false,
+      dispersedArmor: 0,
+      failed: false
+    };
+
+    function m09Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m09Contract ? mission : null;
+    }
+
+    function resetM09State(mission) {
+      const contract = mission && mission.m09Contract;
+      m09State.active = Boolean(contract);
+      m09State.mlrsTimer = Number(contract && contract.mlrs && contract.mlrs.firstVolleyDelay) || 0;
+      m09State.warningFired = false;
+      m09State.volleys = 0;
+      m09State.friendlyArmorLost = 0;
+      m09State.civilianLosses = 0;
+      m09State.commandDestroyed = false;
+      m09State.dispersedArmor = 0;
+      m09State.failed = false;
+    }
+
+    function livingM09Role(role) {
+      return enemies.filter((enemy) => enemy.alive && enemy.missionRole === role);
+    }
+
+    function failM09Mission(banner) {
+      const mission = m09Mission();
+      if (!mission || m09State.failed || gameState !== STATE_PLAYING) return false;
+      m09State.failed = true;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      if (banner) showBanner(banner, 2.0, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function disperseM09EnemyArmor() {
+      const mission = m09Mission();
+      const contract = mission && mission.m09Contract;
+      if (!mission || !contract) return 0;
+      let changed = 0;
+      for (const enemy of livingM09Role(contract.roles.enemyArmor)) {
+        if (!Array.isArray(enemy.dispersePath) || enemy.dispersePath.length === 0) continue;
+        const current = [enemy.group.position.x, enemy.group.position.z];
+        const path = [current, ...enemy.dispersePath.map((point) => [Number(point[0]) || 0, Number(point[1]) || 0])];
+        enemy.route = groundRoute(path);
+        enemy.routeDistance = 0;
+        enemy.routeIndex = 0;
+        enemy.speed = Number(contract.command.disperseSpeed) || enemy.speed || 12;
+        enemy.mode = "convoy";
+        changed += 1;
+      }
+      m09State.dispersedArmor += changed;
+      if (changed > 0) showBanner(contract.command.banner || "ENEMY ARMOUR DISPERSING", 1.8, "danger");
+      return changed;
+    }
+
+    function handleM09GroundDestroyed(enemy, byWingman) {
+      const mission = m09Mission();
+      const contract = mission && mission.m09Contract;
+      if (!mission || !contract || !enemy || !enemy.ground) return null;
+      const roles = contract.roles || {};
+
+      if (enemy.missionRole === roles.command && !m09State.commandDestroyed) {
+        m09State.commandDestroyed = true;
+        m09State.mlrsTimer += Number(contract.command && contract.command.firepowerDelay) || 0;
+        for (const spaag of enemies) {
+          if (spaag.alive && spaag.type === "spaag") {
+            spaag.aaCooldown += Number(contract.command && contract.command.firepowerDelay) || 0;
+          }
+        }
+        disperseM09EnemyArmor();
+        fireFixedRadioEvent((contract.command && contract.command.event) || "commandDestroyed");
+      }
+
+      if (enemy.missionRole === roles.mlrs && livingM09Role(roles.mlrs).length === 0) {
+        fireFixedRadioEvent("mlrsClear");
+      }
+
+      if (enemy.missionRole === roles.civilian) {
+        m09State.civilianLosses += 1;
+        const lossMark = contract.civilians && contract.civilians.lossMark;
+        if (lossMark) sortieMarks[lossMark] = m09State.civilianLosses;
+        fireFixedRadioEvent("civilianLoss");
+        const failAt = Math.max(1, Number(contract.civilians && contract.civilians.failAtLosses) || 3);
+        return {
+          protectedLoss: true,
+          penalty: byWingman ? 0 : Math.max(0, Number(enemy.lossPenalty) || Number(contract.civilians.lossPenalty) || 0),
+          failBanner: m09State.civilianLosses >= failAt ? "CIVILIAN COLUMN LOST" : null
+        };
+      }
+
+      if (enemy.missionRole === roles.friendlyArmor) {
+        m09State.friendlyArmorLost += 1;
+        const failAt = Math.max(1, Number(contract.mlrs && contract.mlrs.failWhenFriendlyArmorLost) || 4);
+        return {
+          protectedLoss: true,
+          penalty: byWingman ? 0 : Math.max(0, Number(enemy.lossPenalty) || 0),
+          failBanner: m09State.friendlyArmorLost >= failAt ? "KEDEM ARMOUR LOST" : null
+        };
+      }
+      return null;
+    }
+
+    function fireM09MlrsVolley() {
+      const mission = m09Mission();
+      const contract = mission && mission.m09Contract;
+      if (!mission || !contract || m09State.failed) return false;
+      const batteries = livingM09Role(contract.roles.mlrs);
+      const armour = livingM09Role(contract.roles.friendlyArmor);
+      if (batteries.length === 0 || armour.length === 0) return false;
+
+      const battery = batteries[m09State.volleys % batteries.length];
+      const victim = armour[0];
+      tmpV8.copy(battery.group.position);
+      tmpV8.y += battery.spec.smokeHeight || 5;
+      tmpV9.copy(victim.group.position);
+      tmpV9.y += 3;
+      createTracer(tmpV8, tmpV9, 0xffa45c, 0.75, 0.8);
+      createImpactBurst(tmpV9, 0xffa45c, 1.25);
+      damageEnemy(victim, victim.hp + 1, false, true);
+      m09State.volleys += 1;
+      fireFixedRadioEvent("mlrsVolley");
+      return true;
+    }
+
+    function updateM09MissionThreat(dt) {
+      const mission = m09Mission();
+      const contract = mission && mission.m09Contract;
+      if (!mission || !contract || m09State.failed) return false;
+      const limit = Number(contract.timeLimit);
+      if (Number.isFinite(limit) && limit > 0 && missionElapsed >= limit) {
+        return failM09Mission("CLOSE AIR SUPPORT TIMED OUT");
+      }
+      const batteries = livingM09Role(contract.roles.mlrs);
+      const armour = livingM09Role(contract.roles.friendlyArmor);
+      if (armour.length === 0) return failM09Mission("KEDEM ARMOUR LOST");
+      if (batteries.length === 0) return false;
+
+      m09State.mlrsTimer -= dt;
+      const warningAt = Math.max(1, Number(contract.mlrs && contract.mlrs.warningAt) || 10);
+      if (!m09State.warningFired && m09State.mlrsTimer <= warningAt) {
+        m09State.warningFired = true;
+        fireFixedRadioEvent("mlrsWarning");
+      }
+      if (m09State.mlrsTimer > 0) return false;
+      fireM09MlrsVolley();
+      m09State.warningFired = false;
+      m09State.mlrsTimer = m09State.commandDestroyed
+        ? Math.max(1, Number(contract.mlrs.intervalAfterCommandLoss) || 48)
+        : Math.max(1, Number(contract.mlrs.volleyInterval) || 32);
+      return m09State.failed;
+    }
+
+    function m09RankCap(mission) {
+      const contract = mission && mission.m09Contract;
+      if (!contract || !m09State.active) return null;
+      if (m09State.civilianLosses >= 2) return contract.civilians.secondLossRankCap || "B";
+      if (m09State.civilianLosses >= 1) return contract.civilians.firstLossRankCap || "A";
+      const alive = livingM09Role(contract.roles.friendlyArmor).length;
+      if (alive < (Number(contract.rank.aFriendlyArmorAlive) || 3)) return "B";
+      if (alive < (Number(contract.rank.sFriendlyArmorAlive) || 4)) return "A";
+      return null;
     }
 
     function m03CommandFacility(mission = m03Mission()) {
@@ -47993,7 +48303,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             speed: unit.speed || spec.mobile.speed
           }
         : null;
-      return spawnGroundUnit(
+      const spawnedId = spawnGroundUnit(
         unit.type,
         unit.x,
         unit.z,
@@ -48004,6 +48314,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         unit.mark || null,
         Boolean(unit.rankNeutral)
       );
+      if (spawnedId === null) return null;
+      const spawned = enemies.find((enemy) => enemy.id === spawnedId);
+      if (!spawned) return spawnedId;
+      // Mission-authored relationship fields are inert on every existing unit.
+      // M09 uses them to keep protected vehicles in the normal shootable pool
+      // while giving IFF, scoring and the mission controller enough context to
+      // treat a blue bus differently from a white optional enemy truck.
+      spawned.friendly = Boolean(unit.friendly);
+      spawned.protected = Boolean(unit.protected);
+      spawned.lossPenalty = Math.max(0, Number(unit.lossPenalty) || 0);
+      spawned.missionRole = typeof unit.missionRole === "string" ? unit.missionRole : null;
+      spawned.dispersePath = Array.isArray(unit.dispersePath)
+        ? unit.dispersePath.map((point) => [Number(point[0]) || 0, Number(point[1]) || 0])
+        : null;
+      return spawnedId;
     }
 
     function activateGroundPhase(phaseId) {
@@ -50150,6 +50475,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Banked for checkpoint restores: the board rebuild must know which
       // installations this sortie already destroyed.
       if (enemy.ground) destroyedGroundIds.add(enemy.id);
+      const m09Outcome = handleM09GroundDestroyed(enemy, byWingman);
       let chainBlast = null;
       if (enemy.subsystem) {
         // A mount neither sinks nor leaves a hulk in the sky: it blows up where
@@ -50240,7 +50566,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // crediting the wingman here would grade the player on someone else's
       // shooting - which is exactly what the whole `byWingman` flag exists to
       // prevent.
-      if (!byWingman) {
+      if (!byWingman && m09Outcome && m09Outcome.protectedLoss) {
+        const penalty = Math.max(0, Number(m09Outcome.penalty) || 0);
+        score = Math.max(0, score - penalty);
+        if (penalty > 0) showBanner(`PROTECTED VEHICLE LOST · -${penalty} PTS`, 1.8, "danger");
+      } else if (!byWingman) {
         const isTgtKill = isTgtEntry(enemy);
         const killScore = contactScoreValue(enemy);
         if (isTgtKill) kills += 1;
@@ -50293,8 +50623,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       // Keyed off the player's running tally, which a wingman kill did not
       // move - calling it here would replay the last callout on a stale count.
-      if (!byWingman) onKillRadio(kills);
+      if (!byWingman && !(m09Outcome && m09Outcome.protectedLoss)) onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
+      if (m09Outcome && m09Outcome.failBanner) failM09Mission(m09Outcome.failBanner);
     }
 
     // Feedback for the two mount kills that change how the fight is flown: the
@@ -50560,6 +50891,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
       if (updateM04MissionThreat()) return;
+      if (updateM09MissionThreat(dt)) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -52287,6 +52619,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         marker.classList.toggle(
           "hostileOptional",
           disposition === CONTACT_DISPOSITION.HOSTILE_OPTIONAL
+        );
+        marker.classList.toggle(
+          "friendlyContact",
+          disposition === CONTACT_DISPOSITION.FRIENDLY
         );
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
         // Who gets a name and a range: the main selection, and every target
