@@ -41,7 +41,8 @@ requireText(heliPack, 'addGroundType("spaag"', "SPAAG registration");
 for (const marker of [
   "protectedFacilities",
   "spawnProtectedFacilities",
-  "resetGroundPhaseState",
+  "activeGroundPhaseId",
+  "groundPhaseFailureFired",
   "activateGroundPhase",
   "waveDef.activateGroundPhase",
   "GROUND_PHASE_CONTRACT.failAtRouteEnd",
@@ -55,12 +56,10 @@ for (const marker of ["wingmen:", "radioSpeaker:", "rankNeutral"]) {
   }
 }
 
-if (!index.includes("m-heli")) {
-  throw new Error("[sera-m03-preflight] stock third mission slot m-heli not found");
-}
+requireText(index, "m-heli", "stock third mission slot");
 
 const aircraftSource = `${index}\n${m01}\n${m02}`;
-const mig21Key = firstCandidate(aircraftSource, ["mig21bis", "mig21", "mig-21"], "MiG-21 key");
+const mig21Key = firstCandidate(aircraftSource, ["mig21", "mig21bis", "mig-21"], "MiG-21 key");
 const su25Key = firstCandidate(aircraftSource, ["su25", "su25t", "frogfoot"], "Su-25 key");
 const groundKey = firstCandidate(index, ["apc", "ifv", "tank"], "APC-capable ground template");
 
