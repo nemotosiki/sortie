@@ -38,9 +38,10 @@ try {
     },
     addMission(def) {
       assert(!MISSIONS.some((mission) => mission.key === def.key), `duplicate key ${def.key}`);
+      const entries = (wave) => wave.kind === "naval" ? wave.fleet : wave.types;
       const totalTargets = def.sequence.filter((wave) => wave.tgt !== false)
-        .reduce((sum, wave) => sum + wave.types.length, 0);
-      const totalContacts = def.sequence.reduce((sum, wave) => sum + wave.types.length, 0);
+        .reduce((sum, wave) => sum + entries(wave).length, 0);
+      const totalContacts = def.sequence.reduce((sum, wave) => sum + entries(wave).length, 0);
       added = { ...def, totalTargets, totalContacts };
       MISSIONS.push(added);
       return added;
@@ -51,7 +52,9 @@ try {
   assert(added?.title === "NARROW SEA", `unexpected title ${added?.title}`);
   assert(added?.totalTargets === 6, `expected 6 red TGT, got ${added?.totalTargets}`);
   assert(added?.totalContacts === 20, `expected 20 contacts, got ${added?.totalContacts}`);
-  const count = (type) => added.sequence.flatMap((wave) => wave.types).filter((entry) => entry === type).length;
+  const count = (type) => added.sequence
+    .flatMap((wave) => wave.kind === "naval" ? wave.fleet : wave.types)
+    .filter((entry) => entry === type).length;
   assert(count("cruiser") === 1 && count("lhd") === 3 && count("missileBoat") === 4,
     "fleet composition changed");
   assert(count("su33") === 6 && count("su34") === 2 && count("mig29") === 4,
@@ -64,6 +67,7 @@ try {
   assert(added.friendlies?.wingmen?.length === 2, "CROWN/LARK wingmen missing");
   const contract = added.m04FleetContract;
   assert(contract?.redFleet?.failAtBreaches === 2, "two-breach failure missing");
+  assert(contract?.shipRoute?.speed === 14, "authored fleet transit speed missing");
   assert(contract?.missionUpdate?.afterRedFleetDestroyed === true, "mission update gate missing");
   assert(contract?.rank?.sTime === 990 && contract?.rank?.sEpochHpPercent === 70, "S-rank contract changed");
   assert(added.fixedRadio?.some((line) => line.id === "m04_missile_01"), "anti-ship warning radio missing");

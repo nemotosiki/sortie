@@ -37,9 +37,12 @@ try {
     },
     addMission(def) {
       assert(!MISSIONS.some((mission) => mission.key === def.key), `duplicate key ${def.key}`);
+      const ground = Array.isArray(def.groundUnits) ? def.groundUnits : [];
       const totalTargets = def.sequence.filter((wave) => wave.tgt !== false)
-        .reduce((sum, wave) => sum + wave.types.length, 0);
-      const totalContacts = def.sequence.reduce((sum, wave) => sum + wave.types.length, 0);
+        .reduce((sum, wave) => sum + wave.types.length, 0)
+        + ground.filter((unit) => unit.tgt !== false).length;
+      const totalContacts = def.sequence.reduce((sum, wave) => sum + wave.types.length, 0)
+        + ground.length;
       added = { ...def, totalTargets, totalContacts };
       MISSIONS.push(added);
       return added;
@@ -50,14 +53,20 @@ try {
   assert(added?.title === "PORT OF ASH", `unexpected title ${added?.title}`);
   assert(added?.totalTargets === 17, `expected 17 red TGT, got ${added?.totalTargets}`);
   assert(added?.totalContacts === 26, `expected 26 contacts, got ${added?.totalContacts}`);
-  const count = (type) => added.sequence.flatMap((wave) => wave.types).filter((entry) => entry === type).length;
+  const count = (type) => [
+    ...added.sequence.flatMap((wave) => wave.types),
+    ...(added.groundUnits || []).map((unit) => unit.type)
+  ].filter((entry) => entry === type).length;
   assert(count("autonomousSam") === 2 && count("spaag") === 3, "phase 1 composition changed");
   assert(count("tank") === 8 && count("ifv") === 3, "ground armor composition changed");
   assert(count("mobileCommand") === 1 && count("ka52") === 2 && count("mig29") === 4,
     "phase 3 composition changed");
-  const white = added.sequence.filter((wave) => wave.tgt === false);
-  assert(white.length === 3 && white.every((wave) => wave.rankNeutral === true),
-    "all white formations must remain rank-neutral");
+  const whiteWaves = added.sequence.filter((wave) => wave.tgt === false);
+  const whiteGround = added.groundUnits.filter((unit) => unit.tgt === false);
+  assert(whiteWaves.length === 1 && whiteWaves.every((wave) => wave.rankNeutral === true),
+    "white air formation must remain rank-neutral");
+  assert(whiteGround.length === 5 && whiteGround.every((unit) => unit.rankNeutral === true),
+    "white ground contacts must remain rank-neutral");
   assert(added.friendlies?.wingmen?.length === 2, "CROWN/LARK wingmen missing");
   assert(added.friendlies?.playerStart?.x === -4200 && added.friendlies?.playerStart?.z === -5000,
     "local-to-world player start translation changed");
@@ -65,6 +74,9 @@ try {
   assert(contract?.origin?.[1] === -3000, "Sark origin changed");
   assert(contract?.friendlyGround?.route?.length === 8, "friendly ground route incomplete");
   assert(contract?.phase3?.commandRoute?.length === 6, "command escape route incomplete");
+  assert(added.groundPhaseContracts?.length === 3, "three ground phases missing");
+  assert(added.sequence.every((wave) => !wave.types.some((type) => groundKeys.includes(type))),
+    "ground type leaked into aircraft sequence");
   assert(contract?.carryover?.m03?.zeroLandingsIfvDelta === -1, "M03 zero-landing carryover missing");
   assert(contract?.carryover?.m04?.oneBreachTankDelta === 1, "M04 breach carryover missing");
   assert(contract?.rank?.sFriendlyTanksAlive === 3 && contract?.rank?.sTime === 930,

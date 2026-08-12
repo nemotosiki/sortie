@@ -36492,6 +36492,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m03RankCapped = m03RankShouldCapS(mission);
       if (m03RankCapped && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
 
+      const m04Cap = m04RankCap(mission);
+      if (m04Cap && RANK_ORDER[rank] > RANK_ORDER[m04Cap]) rank = m04Cap;
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -36510,6 +36513,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B")
         || (breachCapped && rank === "A")
         || (m03RankCapped && rank === "A")
+        || (m04Cap && rank === m04Cap)
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -37386,6 +37390,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // mission needs to read is not a kill count but whether a specific thing was
     // done. Written to the mission record on completion; see recordMissionResult.
     let sortieMarks = {};
+    // Timed and event-authored mission lines share one one-shot ledger. Payload
+    // missions can therefore schedule chatter without adding mission-specific
+    // booleans to the frame loop for every single line.
+    const fixedRadioFired = new Set();
     // Every ground unit killed this sortie, by id. The checkpoint banks it so
     // a restore can re-kill exactly the installations the restored `kills`
     // already paid for. Reset alongside sortieMarks in startMission.
@@ -37872,6 +37880,35 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         outcomePending.timer = 0;
         updateOutcomePending(99);
         return gameState === STATE_COMPLETE;
+      },
+      seraM04Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m04") return null;
+        const mark = mission.m04FleetContract.redFleet.breachMark;
+        return {
+          wave: waveNumber,
+          breaches: Number(sortieMarks[mark]) || 0,
+          redFleetDestroyed: Number(sortieMarks.m04RedFleetDestroyed) || 0,
+          redStrikeDestroyed: Number(sortieMarks.m04RedStrikeDestroyed) || 0,
+          epochIntegrity: guardState.active ? guardIntegrity() : null,
+          liveFleet: enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet).map((enemy) => enemy.type),
+          liveStrike: enemies.filter((enemy) => enemy.alive && enemy.m04RedStrike).map((enemy) => enemy.type)
+        };
+      },
+      forceSeraM04Breach: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m04") return false;
+        const ship = enemies.find((enemy) => enemy.alive && enemy.m04BreachEligible);
+        if (!ship) return false;
+        ship.group.position.x = mission.m04FleetContract.shipRoute.breachLineX - 1;
+        return updateM04ShipTransit(ship);
+      },
+      forceSeraM04AdvancePhase: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m04") return false;
+        const fleet = enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet);
+        for (const enemy of fleet) damageEnemy(enemy, enemy.hp + 1, true, false);
+        return fleet.length > 0;
       },
       // Focused vertical-slice probes. They are intentionally generic enough
       // to remain useful while M01 is tuned, but refuse every other mission so
@@ -41871,6 +41908,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       missileKills = 0;
       damageTaken = 0;
       sortieMarks = {};
+      fixedRadioFired.clear();
       destroyedGroundIds = new Set();
       // Zeroed before any spawner runs, so the field this sortie is ranked
       // against is this sortie's field and not the previous one's.
@@ -44807,6 +44845,103 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return false;
     }
 
+    function fireFixedRadioEvent(eventId) {
+      const mission = MISSIONS[currentMissionIndex];
+      if (!mission || !Array.isArray(mission.fixedRadio) || !eventId) return false;
+      const line = mission.fixedRadio.find((entry) => entry && entry.event === eventId);
+      if (!line || fixedRadioFired.has(line.id)) return false;
+      fixedRadioFired.add(line.id);
+      playAuthoredRadio(line);
+      return true;
+    }
+
+    function updateFixedRadioSchedule() {
+      const mission = MISSIONS[currentMissionIndex];
+      if (!mission || !Array.isArray(mission.fixedRadio)) return;
+      for (const line of mission.fixedRadio) {
+        const at = Number(line && line.at);
+        if (!line || !line.id || fixedRadioFired.has(line.id) || !Number.isFinite(at) || missionElapsed < at) continue;
+        fixedRadioFired.add(line.id);
+        playAuthoredRadio(line);
+      }
+    }
+
+    function failM04Mission(banner) {
+      const mission = MISSIONS[currentMissionIndex];
+      if (!mission || !mission.m04FleetContract || gameState !== STATE_PLAYING) return false;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      if (banner) showBanner(banner, 2.0, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function updateM04MissionThreat() {
+      const mission = MISSIONS[currentMissionIndex];
+      const contract = mission && mission.m04FleetContract;
+      if (!contract) return false;
+      const limit = Number(contract.timeLimit);
+      if (Number.isFinite(limit) && limit > 0 && missionElapsed >= limit) {
+        return failM04Mission("STRAIT DEFENSE TIMED OUT");
+      }
+      return false;
+    }
+
+    function m04RankCap(mission) {
+      const contract = mission && mission.m04FleetContract;
+      if (!contract) return null;
+      const rank = contract.rank || {};
+      const breachMark = contract.redFleet && contract.redFleet.breachMark;
+      const breaches = breachMark ? Number(sortieMarks[breachMark]) || 0 : 0;
+      if (breaches > (Number(rank.aMaxBreaches) || 0)) return "B";
+      const epochHp = guardState.active ? guardIntegrity() * 100 : 100;
+      if (epochHp < (Number(rank.bEpochHpPercent) || 40)) return "B";
+      if (epochHp < (Number(rank.sEpochHpPercent) || 70)) return "A";
+      return null;
+    }
+
+    function retireM04BreachedShip(enemy) {
+      enemy.alive = false;
+      enemy.speed = 0;
+      enemy.deadTimer = 0;
+      enemy.hitbox.visible = false;
+      enemy.group.visible = false;
+      if (enemy.subsystems) {
+        for (const sub of enemy.subsystems) {
+          sub.alive = false;
+          sub.deadTimer = 0;
+          sub.hitbox.visible = false;
+        }
+      }
+      if (isTgtEntry(enemy)) kills += 1;
+      if (lock.targetId === enemy.id) resetLock();
+      if (preferredTargetId === enemy.id) preferredTargetId = null;
+    }
+
+    function updateM04ShipTransit(enemy) {
+      const mission = MISSIONS[currentMissionIndex];
+      const contract = mission && mission.m04FleetContract;
+      if (!contract || !enemy.m04BreachEligible) return false;
+      const route = contract.shipRoute || {};
+      const bridgeX = Array.isArray(route.bridge) ? Number(route.bridge[0]) : NaN;
+      if (!enemy.m04BridgeCrossed && Number.isFinite(bridgeX) && enemy.group.position.x <= bridgeX) {
+        enemy.m04BridgeCrossed = true;
+        fireFixedRadioEvent("firstLhdCrossesBridge");
+      }
+      const breachX = Number(route.breachLineX);
+      if (!Number.isFinite(breachX) || enemy.group.position.x > breachX) return false;
+
+      enemy.m04BreachEligible = false;
+      const mark = contract.redFleet && contract.redFleet.breachMark;
+      const breaches = mark ? ((sortieMarks[mark] || 0) + 1) : 1;
+      if (mark) sortieMarks[mark] = breaches;
+      const failAt = Math.max(1, Number(contract.redFleet && contract.redFleet.failAtBreaches) || 2);
+      if (breaches >= failAt) return failM04Mission("LANDING FORCE BROKE THROUGH");
+
+      retireM04BreachedShip(enemy);
+      showBanner("LHD BREACHED · MISSION CONTINUES", 1.8, "danger");
+      return true;
+    }
+
     function m03RankShouldCapS(mission) {
       const contract = mission && mission.m03RankContract;
       if (!contract || !m03State.active) return false;
@@ -45195,7 +45330,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
-      registerSpawnedValue(enemies[enemies.length - 1]);
+      const spawned = enemies[enemies.length - 1];
+      registerSpawnedValue(spawned);
+      const activeMission = MISSIONS[currentMissionIndex];
+      const m04Contract = activeMission && activeMission.m04FleetContract;
+      if (m04Contract && spawned.tgt && spawned.type === "su34") {
+        spawned.m04RedStrike = true;
+        spawned.missileCooldown = Math.max(
+          spawned.missileCooldown,
+          Number(m04Contract.missionUpdate && m04Contract.missionUpdate.firstMissileNotBefore) || 0
+        );
+      }
 
       // A bomber flown against a mission that is defending an airfield is on a
       // strike run: it aims at the field and holds that line until it is shot
@@ -45297,6 +45442,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const ship = enemies[enemies.length - 1];
       registerSpawnedValue(ship);
       if (spec.subsystems) spawnShipSubsystems(ship);
+      return ship;
     }
 
     // Children of a ship, spawned with it and owned by it. They carry no model
@@ -47724,9 +47870,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return spawned;
     }
 
+    function groundPhaseContractsFor(mission) {
+      if (!mission) return [];
+      if (Array.isArray(mission.groundPhaseContracts)) return mission.groundPhaseContracts;
+      return mission.groundPhaseContract ? [mission.groundPhaseContract] : [];
+    }
+
     function failEscapingGroundTarget(enemy) {
       const mission = MISSIONS[currentMissionIndex];
-      const contract = mission.groundPhaseContract || null;
+      const contract = groundPhaseContractsFor(mission).find((entry) => (
+        entry
+        && entry.failAtRouteEnd
+        && enemy
+        && enemy.mark === entry.failMark
+      )) || null;
       if (
         groundPhaseFailureFired
         || !contract
@@ -47754,18 +47911,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (mission.railLine) spawnRailLine(mission.railLine);
       pendingGroundUnits.length = 0;
       if (mission.groundUnits) {
-        const contract = mission.groundPhaseContract || null;
+        const contracts = groundPhaseContractsFor(mission);
         for (const unit of mission.groundUnits) {
+          const contract = contracts.find((entry) => entry && entry.id === unit.phase) || null;
           const dormant = Boolean(
             unit.phase
             && contract
-            && unit.phase === contract.id
             && contract.activeInitially === false
           );
           if (dormant) pendingGroundUnits.push(unit);
           else spawnMissionGroundUnit(unit);
         }
-        if (contract && contract.activeInitially !== false) activateGroundPhase(contract.id);
+        for (const contract of contracts) {
+          if (contract && contract.activeInitially !== false) activateGroundPhase(contract.id);
+        }
       }
       if (mission.floodlights) {
         for (const light of mission.floodlights) spawnFloodlight(light.x, light.z);
@@ -48018,7 +48177,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         }
       }
 
-      for (let i = 0; i < fleet.length; i += 1) spawnShip(positions[i], fleetHeading, i, fleet[i], idBase);
+      const activeMission = MISSIONS[currentMissionIndex];
+      const m04Contract = activeMission && activeMission.m04FleetContract;
+      for (let i = 0; i < fleet.length; i += 1) {
+        const ship = spawnShip(positions[i], fleetHeading, i, fleet[i], idBase);
+        if (!ship) continue;
+        // An authored start/facing pair is a course, not just an initial pose.
+        // Keep that heading instead of letting the generic inner-sea fence turn
+        // the formation back toward the origin on its first frame.
+        ship.authoredCourse = anchored && !ship.spec.landing;
+        if (m04Contract && spawningTgt) {
+          ship.m04RedFleet = true;
+          ship.m04BreachEligible = ship.type === "lhd";
+          const routeSpeed = Number(m04Contract.shipRoute && m04Contract.shipRoute.speed);
+          if (Number.isFinite(routeSpeed) && routeSpeed > 0) {
+            ship.speed = routeSpeed;
+            ship.targetSpeed = routeSpeed;
+          }
+        }
+      }
 
       // AC-style checkpoint resupply: the anti-ship leg starts with full tubes
       // and a full SP.W launcher - the leg the UGB exists for.
@@ -48103,6 +48280,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : null;
       }
       if (wave.activateGroundPhase) activateGroundPhase(wave.activateGroundPhase);
+      const activeMission = MISSIONS[currentMissionIndex];
+      if (activeMission && activeMission.key === "sera-m04" && !wave.concurrent && wave.band === 2) {
+        fireFixedRadioEvent("strikeInbound");
+      }
       // Designated targets only - the dev hooks below equate this with `kills`
       // to fast-forward a mission, and a bonus contact must not satisfy the
       // objective counter.
@@ -49070,7 +49251,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // has already stopped it.
       let desiredHeading = enemy.baseHeading;
       const originDistance = Math.hypot(enemy.group.position.x, enemy.group.position.z);
-      if (spec.landing) {
+      if (enemy.authoredCourse) {
+        // The payload owns this transit line. It may deliberately cross the
+        // generic 1.9km inner-sea fence (M04 spans the whole Nahar Strait).
+      } else if (spec.landing) {
         if (friendlyBase && !enemy.beached) {
           // atan2(-x, -z): pointing a -Z-nosed hull at a direction. See the
           // convention note in placeOnRoute.
@@ -49124,6 +49308,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.group.position.x += tmpV4.x * enemy.speed * dt;
       enemy.group.position.z += tmpV4.z * enemy.speed * dt;
       enemy.group.position.y = Math.sin(time * 0.5 + enemy.seed) * 0.35;
+      if (updateM04ShipTransit(enemy)) return;
 
       // Wake: stern foam plus a little bow spray. Skipped on a hull that is
       // not making way - i.e. a beached landing ship, the only ship in the
@@ -49788,6 +49973,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       enemy.alive = false;
       enemy.hitbox.visible = false;
+      if (enemy.m04RedFleet) {
+        const destroyed = (sortieMarks.m04RedFleetDestroyed || 0) + 1;
+        sortieMarks.m04RedFleetDestroyed = destroyed;
+        if (destroyed === 1) fireFixedRadioEvent("firstRedShipDestroyed");
+        if (destroyed >= 4) fireFixedRadioEvent("redFleetDestroyed");
+      }
+      if (enemy.m04RedStrike) {
+        const destroyed = (sortieMarks.m04RedStrikeDestroyed || 0) + 1;
+        sortieMarks.m04RedStrikeDestroyed = destroyed;
+        if (destroyed >= 2) fireFixedRadioEvent("redStrikeDestroyed");
+      }
       if (enemy.m03Landing) enemy.m03Landing.state = "DESTROYED";
       if (enemy.m03Apc && !enemy.m03Arrived) m03State.apcDestroyed += 1;
       // Manoeuvre state dies with the aircraft, so a wreck never reports itself
@@ -50210,9 +50406,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
       updatePendingWaves(dt);
+      updateFixedRadioSchedule();
       if (updateStrikeThreat()) return;
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
+      if (updateM04MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -50251,7 +50449,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         (wave) => isTgtEntry(wave) || Boolean(wave.activateGroundPhase)
       );
       if (waveClearTimer < 0) {
-        waveClearTimer = tgtRemaining ? 2.15 : 1.35;
+        const m04Quiet = mission.m04FleetContract && waveNumber === 1 && tgtRemaining
+          ? mission.m04FleetContract.missionUpdate.quietDelay
+          : null;
+        waveClearTimer = m04Quiet
+          ? (Number(m04Quiet[0]) + Math.random() * Math.max(0, Number(m04Quiet[1]) - Number(m04Quiet[0])))
+          : (tgtRemaining ? 2.15 : 1.35);
         showBanner(tgtRemaining ? `WAVE ${waveNumber} CLEAR` : "ALL TARGETS DESTROYED", 1.35, "success");
         // A wave still to come means a checkpoint is about to be banked below.
         // Queued rather than shown, so it FOLLOWS the clear banner on the same

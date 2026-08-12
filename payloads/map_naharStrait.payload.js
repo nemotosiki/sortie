@@ -159,6 +159,59 @@ export default function register(ctx) {
         }
         return materials.get(key);
       };
+      const capeMaterials = new Map();
+      const capeMaterial = (color) => {
+        if (capeMaterials.has(color)) return capeMaterials.get(color);
+        const mat = keepMaterial(new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.94,
+          metalness: 0.01
+        }));
+        // MeshStandardMaterial keeps the engine's lighting and fog, while this
+        // GLSL injection breaks the capes' single flat colour into kilometre-
+        // scale geology, scrub and fine soil variation. It costs no texture
+        // download and remains deterministic across reloads.
+        mat.onBeforeCompile = (shader) => {
+          shader.vertexShader = shader.vertexShader
+            .replace("#include <common>", `#include <common>
+              varying vec3 vNaharWorld;`)
+            .replace("#include <begin_vertex>", `#include <begin_vertex>
+              vNaharWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+          shader.fragmentShader = shader.fragmentShader
+            .replace("#include <common>", `#include <common>
+              varying vec3 vNaharWorld;
+              float naharHash(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+              }
+              float naharNoise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(naharHash(i), naharHash(i + vec2(1.0, 0.0)), f.x),
+                  mix(naharHash(i + vec2(0.0, 1.0)), naharHash(i + vec2(1.0)), f.x), f.y);
+              }
+              float naharFbm(vec2 p) {
+                float value = 0.0;
+                float amp = 0.55;
+                for (int i = 0; i < 4; i++) {
+                  value += amp * naharNoise(p);
+                  p = p * 2.03 + vec2(17.2, 9.7);
+                  amp *= 0.48;
+                }
+                return value;
+              }`)
+            .replace("#include <color_fragment>", `#include <color_fragment>
+              float broad = naharFbm(vNaharWorld.xz * 0.00042);
+              float scrub = naharNoise(vNaharWorld.xz * 0.0045);
+              float strata = 0.5 + 0.5 * sin(vNaharWorld.x * 0.0022 + broad * 5.0);
+              vec3 earth = mix(vec3(0.69, 0.60, 0.47), vec3(0.34, 0.43, 0.31), broad);
+              earth *= mix(0.86, 1.13, scrub) * mix(0.94, 1.06, strata);
+              diffuseColor.rgb *= earth * 1.62;`);
+        };
+        mat.customProgramCacheKey = () => `nahar-cape-${color}-v1`;
+        capeMaterials.set(color, mat);
+        return mat;
+      };
       const box = (x, y, z, sx, sy, sz, color, rotation = [0, 0, 0], options) => {
         const mesh = new THREE.Mesh(boxGeometry, material(color, options));
         mesh.position.set(x, y, z);
@@ -201,7 +254,7 @@ export default function register(ctx) {
           curveSegments: 1
         }));
         geometry.rotateX(Math.PI * 0.5);
-        const mesh = new THREE.Mesh(geometry, material(color, { roughness: 0.96 }));
+        const mesh = new THREE.Mesh(geometry, capeMaterial(color));
         mesh.name = name;
         mesh.position.y = 34;
         root.add(mesh);
@@ -216,6 +269,91 @@ export default function register(ctx) {
       const southCoast = northCoast.map(([x, z]) => [x, -z]).reverse();
       makeCape("naharNorthCape", northCoast, 0x59604a);
       makeCape("naharSouthCape", southCoast, 0x514c42);
+
+      // High cloud sheets use a small procedural FBM shader instead of the
+      // old hard-edged sphere silhouette. The existing volumetric puffs remain
+      // for fly-through depth; these translucent layers supply ragged anvils,
+      // soft holes and slow wind drift across the sunset.
+      const cloudGeometry = keepGeometry(new THREE.PlaneGeometry(1, 1));
+      const cloudVertex = `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `;
+      const cloudFragment = `
+        precision highp float;
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform float uSeed;
+        uniform float uOpacity;
+        float hash21(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453);
+        }
+        float noise21(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+            mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0)), f.x), f.y);
+        }
+        float fbm21(vec2 p) {
+          float value = 0.0;
+          float amp = 0.55;
+          for (int i = 0; i < 5; i++) {
+            value += amp * noise21(p);
+            p = p * 2.07 + vec2(13.1, 7.9);
+            amp *= 0.47;
+          }
+          return value;
+        }
+        void main() {
+          vec2 centred = vUv * 2.0 - 1.0;
+          vec2 drift = vec2(uTime * 0.010, uTime * 0.0025);
+          float body = fbm21(vUv * vec2(4.2, 7.0) + drift + uSeed);
+          float detail = fbm21(vUv * vec2(11.0, 8.0) - drift * 0.7 + uSeed * 2.0);
+          float edge = smoothstep(1.0, 0.54, length(centred * vec2(0.78, 1.22)));
+          float density = smoothstep(0.48, 0.72, body * 0.77 + detail * 0.23) * edge;
+          if (density < 0.012) discard;
+          vec3 shade = mix(vec3(0.47, 0.39, 0.43), vec3(1.0, 0.73, 0.57),
+            smoothstep(0.45, 0.9, body + vUv.y * 0.16));
+          gl_FragColor = vec4(shade, density * uOpacity);
+        }
+      `;
+      const cloudSheets = [
+        [-10300, 2450, -5200, 5200, 1850, 0.31, 1.0],
+        [-4600, 2850, 6100, 4300, 1500, -0.18, 2.7],
+        [1800, 2550, -6900, 5000, 1700, 0.12, 4.3],
+        [7200, 3050, 5200, 5700, 1750, -0.28, 6.1],
+        [11400, 2350, -3800, 3900, 1350, 0.22, 8.4]
+      ];
+      for (const [x, y, z, width, depth, yaw, seed] of cloudSheets) {
+        const uniforms = {
+          uTime: { value: 0 },
+          uSeed: { value: seed },
+          uOpacity: { value: 0.48 }
+        };
+        const cloudMaterial = keepMaterial(new THREE.ShaderMaterial({
+          uniforms,
+          vertexShader: cloudVertex,
+          fragmentShader: cloudFragment,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        }));
+        const sheet = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        sheet.name = "naharShaderCloud";
+        sheet.position.set(x, y, z);
+        sheet.scale.set(width, depth, 1);
+        // Oblique rather than perfectly horizontal: at combat altitude a flat
+        // sheet collapses to a one-pixel line on the horizon. This angle keeps
+        // its long windward footprint while exposing a soft, deep cloud face.
+        sheet.rotation.set(-1.22, yaw, 0);
+        sheet.renderOrder = 2;
+        sheet.onBeforeRender = () => { uniforms.uTime.value = performance.now() * 0.001; };
+        root.add(sheet);
+      }
 
       // Coastal roads follow the shoreline but stop outside the ship lane.
       const road = 0x3f4140;

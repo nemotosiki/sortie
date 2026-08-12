@@ -1,8 +1,8 @@
 // Sera M05 PORT OF ASH — canonical mission-data staging payload.
 //
-// Enemy waves are registry-valid now. `m05GroundBattleContract` holds the
-// friendly advance, phase gates, escape route and M03/M04 carry-over that need
-// dedicated host support after M03 campaign isolation is merged.
+// Ground contacts are authored as groundUnits so the host creates their real
+// vehicle models instead of routing their type keys through the aircraft
+// spawner. `m05GroundBattleContract` remains the canonical campaign contract.
 export default function register(ctx) {
   const {
     MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES,
@@ -146,13 +146,72 @@ export default function register(ctx) {
       ]
     },
 
+    groundPhaseContracts: [
+      {
+        id: "m05-phase1",
+        activeInitially: true
+      },
+      {
+        id: "m05-phase2",
+        activeInitially: false
+      },
+      {
+        id: "m05-command",
+        activeInitially: false,
+        failMark: "m05Command",
+        failAtRouteEnd: true,
+        failBanner: "COMMAND VEHICLE ESCAPED",
+        failureRadio: {
+          speaker: "meridian",
+          priority: "CRITICAL",
+          text: "敵指揮車が港外へ離脱。サルク奪還作戦を中止する。",
+          id: "m05-command-escaped"
+        }
+      }
+    ],
+
+    groundUnits: [
+      { id: 1, type: "autonomousSam", label: "MOBILE SAM", x: -700, z: -2400, phase: "m05-phase1", mark: "m05Phase1" },
+      { id: 2, type: "autonomousSam", label: "MOBILE SAM", x: -1350, z: -3250, phase: "m05-phase1", mark: "m05Phase1" },
+      { id: 3, type: "spaag", x: -150, z: -2950, phase: "m05-phase1", mark: "m05Phase1" },
+      { id: 4, type: "spaag", x: 420, z: -4060, phase: "m05-phase1", mark: "m05Phase1" },
+      { id: 5, type: "spaag", x: -80, z: -3720, phase: "m05-phase1", mark: "m05Phase1" },
+      { id: 10, type: "tank", x: -350, z: -2850, phase: "m05-phase1", tgt: false, rankNeutral: true },
+      { id: 11, type: "tank", x: -100, z: -3100, phase: "m05-phase1", tgt: false, rankNeutral: true },
+
+      { id: 20, type: "tank", x: 200, z: -3000, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 21, type: "tank", x: -200, z: -3100, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 22, type: "tank", x: -600, z: -3200, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 23, type: "tank", x: -950, z: -3000, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 24, type: "tank", x: -1200, z: -3400, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 25, type: "tank", x: -1450, z: -3150, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 26, type: "ifv", x: -500, z: -2750, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 27, type: "ifv", x: -900, z: -3600, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 28, type: "ifv", x: -1300, z: -2800, phase: "m05-phase2", mark: "m05Phase2" },
+      { id: 35, type: "aaGun", x: -850, z: -3150, phase: "m05-phase2", tgt: false, rankNeutral: true },
+      { id: 36, type: "aaGun", x: -1150, z: -3500, phase: "m05-phase2", tgt: false, rankNeutral: true },
+      { id: 37, type: "aaGun", x: -550, z: -3700, phase: "m05-phase2", tgt: false, rankNeutral: true },
+
+      {
+        id: 40,
+        type: "mobileCommand",
+        label: "MOBILE COMMAND",
+        x: 300,
+        z: -3900,
+        phase: "m05-command",
+        mark: "m05Command",
+        speed: 12,
+        path: [[300, -3900], [480, -4080], [650, -4200], [980, -4280], [1450, -4280], [2100, -4280]]
+      }
+    ],
+
     sequence: [
       {
-        types: ["autonomousSam", "autonomousSam", "spaag", "spaag", "spaag"],
+        types: [],
         band: 1,
         idBase: 0,
-        label: "AIR DEFENCE",
-        at: [-700, -2400],
+        label: "OPEN AIR CORRIDOR",
+        gate: { mode: "groundMarkClear", mark: "m05Phase1" },
         radio: [
           {
             speaker: "meridian",
@@ -163,21 +222,12 @@ export default function register(ctx) {
         ]
       },
       {
-        types: ["tank", "tank"],
-        tgt: false,
-        rankNeutral: true,
-        concurrent: true,
-        band: 1,
-        idBase: 10,
-        label: "ARMOR PICKET",
-        at: [-250, -2950]
-      },
-      {
-        types: ["tank", "tank", "tank", "tank", "tank", "tank", "ifv", "ifv", "ifv"],
+        types: [],
         band: 2,
         idBase: 20,
-        label: "OCCUPATION ARMOR",
-        at: [-150, -2950],
+        label: "SUPPORT GROUND ADVANCE",
+        activateGroundPhase: "m05-phase2",
+        gate: { mode: "groundMarkClear", mark: "m05Phase2" },
         radio: [
           {
             speaker: "meridian",
@@ -188,21 +238,12 @@ export default function register(ctx) {
         ]
       },
       {
-        types: ["aaGun", "aaGun", "aaGun"],
-        tgt: false,
-        rankNeutral: true,
-        concurrent: true,
-        band: 2,
-        idBase: 35,
-        label: "FIXED GUN",
-        at: [-850, -3150]
-      },
-      {
-        types: ["mobileCommand"],
+        types: [],
         band: 3,
         idBase: 40,
-        label: "MOBILE COMMAND",
-        at: [300, -3900],
+        label: "DESTROY COMMAND VEHICLE",
+        activateGroundPhase: "m05-command",
+        gate: { mode: "groundMarkClear", mark: "m05Command" },
         radio: [
           {
             speaker: "meridian",

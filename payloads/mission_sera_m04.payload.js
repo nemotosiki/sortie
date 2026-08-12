@@ -30,6 +30,7 @@ export default function register(ctx) {
       start: Object.freeze([11500, 0]),
       bridge: Object.freeze([0, 0]),
       breachLineX: -6500,
+      speed: 14,
       heading: "west"
     }),
     redFleet: Object.freeze({
@@ -135,7 +136,8 @@ export default function register(ctx) {
     // PHASE 2: two red strike aircraft hunting EPOCH with four white escorts.
     sequence: [
       {
-        types: ["cruiser", "lhd", "lhd", "lhd"],
+        kind: "naval",
+        fleet: ["cruiser", "lhd", "lhd", "lhd"],
         band: 1,
         idBase: 0,
         label: "LANDING FLEET",
@@ -151,7 +153,8 @@ export default function register(ctx) {
         ]
       },
       {
-        types: ["missileBoat", "missileBoat", "missileBoat", "missileBoat"],
+        kind: "naval",
+        fleet: ["missileBoat", "missileBoat", "missileBoat", "missileBoat"],
         tgt: false,
         rankNeutral: true,
         concurrent: true,
