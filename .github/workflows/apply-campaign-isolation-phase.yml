@@ -7,6 +7,7 @@ on:
     paths:
       - tools/apply_campaign_isolation_phase.mjs
       - tools/phases/**
+      - tools/migrate_registry_mission_snapshot.mjs
       - .github/workflows/apply-campaign-isolation-phase.yml
 
 permissions:
@@ -37,7 +38,21 @@ jobs:
           npm install --no-save --package-lock=false playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Commit generated record migration locally
+      - name: Capture and selectively migrate the registry snapshot
+        run: |
+          cp tools/registry_snapshot.json /tmp/registry_snapshot.before.json
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs --update
+          node tools/migrate_registry_mission_snapshot.mjs \
+            --baseline=/tmp/registry_snapshot.before.json \
+            --current=tools/registry_snapshot.json \
+            --mission=m-heli:sera-m03
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs
+          git diff --check
+
+      - name: Commit checked generated change locally
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -56,7 +71,7 @@ jobs:
           cat /tmp/sortie-http.log
           exit 1
 
-      - name: Run record migration and economy browser gates
+      - name: Run campaign isolation browser gates
         run: |
           node tools/check_campaign_records_e2e.mjs
           node tools/check_campaign_economy_e2e.mjs
