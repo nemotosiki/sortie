@@ -35549,9 +35549,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (!GROUND_TYPES[type]) throw new Error(`[sera-m02] required ground unit not registered: ${type}`);
         }
 
-        const at = MISSIONS.findIndex((mission) => mission.key === "m02");
-        if (at < 0) throw new Error("[sera-m02] stock m02 was not found");
-        const original = MISSIONS[at];
+        const original = MISSIONS.find((mission) => mission.key === "m02");
+        if (!original) throw new Error("[sera-m02] stock m02 template was not found");
 
         // The visible military highway on Amal Plain runs east -> west. Positive
         // route distance therefore carries the TELs toward the escape boundary.
@@ -35560,10 +35559,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           [-1750, 190], [-3000, 170], [-4300, 185], [-5550, 170], [-6900, 180]
         ];
 
-        const replacement = {
+        const mission = {
           ...original,
-          key: "m02",
-          campaign: original.campaign || "usa",
+          key: "sera-m02",
+          campaign: "sera",
+          campaignOrder: 2,
           world: "amalPlain",
           title: "SHATTERED MORNING",
           jp: "前夜の残存航空戦力を掃討し、アマル平原を西へ逃走する移動式弾道ミサイル部隊を阻止せよ。",
@@ -35851,17 +35851,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ]
         };
 
-        MISSIONS.splice(at, 1);
-        try {
-          const normalized = ctx.addMission(replacement);
-          const appendedAt = MISSIONS.indexOf(normalized);
-          if (appendedAt < 0) throw new Error("[sera-m02] normalized mission was not inserted");
-          MISSIONS.splice(appendedAt, 1);
-          MISSIONS.splice(at, 0, normalized);
-        } catch (error) {
-          MISSIONS.splice(at, 0, original);
-          throw error;
-        }
+        // Add-only registration keeps the legacy A02 story runtime attached to
+        // `m02`; Sera receives its own persistent key and never triggers DAGGER/HAMMER.
+        ctx.addMission(mission);
       },
       "mission_sera_m02"
     ); // @payload:mission_sera_m02
@@ -37789,7 +37781,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02AdvancePhase: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy) && !enemy.ground);
         for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
         if (activeWaveGate && activeWaveGate.mode === "clearOrTimeout") {
@@ -37800,7 +37792,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02FacilityLoss: (index = 0) => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         const facility = protectedFacilities[index];
         if (!facility) return false;
         while (facility.alive) damageProtectedFacility(facility);
@@ -37808,13 +37800,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02ActivateGround: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         const id = mission.groundPhaseContract && mission.groundPhaseContract.id;
         return activateGroundPhase(id) > 0 || activeGroundPhaseId === id;
       },
       forceSeraM02EscapeTel: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         const id = mission.groundPhaseContract && mission.groundPhaseContract.id;
         activateGroundPhase(id);
         const tel = enemies.find((enemy) => enemy.alive && enemy.mark === mission.groundPhaseContract.failMark);
@@ -37826,7 +37818,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02DestroyTels: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         const id = mission.groundPhaseContract && mission.groundPhaseContract.id;
         activateGroundPhase(id);
         const tels = enemies.filter((enemy) => enemy.alive && enemy.mark === mission.groundPhaseContract.failMark);
@@ -37836,7 +37828,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       seraM02PerfectRankPreview: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (!mission || mission.key !== "m02") return null;
+        if (!mission || mission.key !== "sera-m02") return null;
         const oldKill = rankStats.playerKillValue;
         const oldElapsed = missionElapsed;
         rankStats.playerKillValue = rankStats.spawnedValue;
@@ -37848,7 +37840,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02Complete: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m02") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m02") return false;
         for (let pass = 0; pass < 16 && gameState === STATE_PLAYING && !outcomePending.active; pass += 1) {
           if (activeWaveGate && activeWaveGate.mode === "clearOrTimeout") {
             activeWaveGate.elapsed = activeWaveGate.timeout;
@@ -37861,7 +37853,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM02ResolveOutcome: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (!mission || mission.key !== "m02" || !outcomePending.active) return false;
+        if (!mission || mission.key !== "sera-m02" || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
         return gameState === STATE_COMPLETE;

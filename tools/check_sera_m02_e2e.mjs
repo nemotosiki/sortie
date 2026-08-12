@@ -19,11 +19,10 @@ async function openMissionPage() {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   await context.addInitScript(() => {
     navigator.getGamepads = () => [];
-    // M02 is the second campaign sortie. The test enters it directly through
-    // the focused launcher, so seed only M01's normal prerequisite record.
-    // M02 itself must still write its own result before slot 3 can unlock.
+    // Seed only the namespaced Sera prerequisite. The legacy USA M01 record
+    // must remain absent so this test can detect cross-campaign writes.
     const records = JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}");
-    records.m01 = records.m01 || {
+    records["sera-m01"] = records["sera-m01"] || {
       cleared: true,
       rank: "A",
       scores: [0],
@@ -71,8 +70,8 @@ async function waitForState(page, expected, timeout = 30_000) {
 }
 
 async function startM02(page) {
-  const started = await page.evaluate(() => window.__game.forceStartMissionByKey("m02", "f16"));
-  assert(started, "M02 could not be started through the production mission launcher");
+  const started = await page.evaluate(() => window.__game.forceStartMissionByKey("sera-m02", "f16"));
+  assert(started, "Sera M02 could not be started through the production mission launcher");
   await waitForState(page, "playing");
   await page.waitForTimeout(350);
 }
@@ -109,8 +108,8 @@ try {
   await startM02(page);
 
   let probe = await page.evaluate(() => window.__game.seraM02Probe());
-  assert(probe.missionKey === "m02" && probe.worldKey === "amalPlain",
-    "wrong mission or world booted", probe);
+  assert(probe.missionKey === "sera-m02" && probe.worldKey === "amalPlain",
+    "wrong Sera mission or world booted", probe);
   assert(probe.facilities.length === 2 && probe.facilities.every((facility) => facility.alive),
     "M02 did not start with two live protected facilities", probe.facilities);
   assert(probe.pendingGroundUnits.length === 10 && probe.activeGroundPhaseId === null,
@@ -203,29 +202,24 @@ try {
     await page.evaluate(() => window.__game.seraM02Probe()));
   await waitForState(page, "missionComplete", 5_000);
 
-  // The reboot has implemented only the first two mission slots so far.
-  // The current third USA slot is still the stock `m-heli` placeholder; a
-  // future M03 payload will replace that slot. M02 must unlock the slot itself,
-  // not skip over it to the old stock key named `m03` in slot four.
-  await page.evaluate(() => document.getElementById("changeMissionBtn")?.click());
-  await waitForState(page, "missionSelect", 10_000);
-  const nextMission = await page.evaluate(() => {
-    const debug = window.__game.debug;
-    const nextSlotKey = "m-heli";
-    const nextSlotIndex = debug.missionIndexOf(nextSlotKey);
-    const selected = nextSlotIndex >= 0 && debug.forceMissionCursor(nextSlotIndex);
-    const confirmed = selected && debug.forceConfirmMission();
-    return {
-      nextSlotKey,
-      nextSlotIndex,
-      selected,
-      confirmed,
-      state: document.body.dataset.gameState,
-      records: JSON.parse(localStorage.getItem("sortieMissionRecords") || "{}")
-    };
-  });
-  assert(nextMission.nextSlotIndex >= 0 && nextMission.selected && nextMission.confirmed,
-    "clearing M02 did not unlock the current third campaign slot", nextMission);
+  const records = await page.evaluate(() => JSON.parse(
+    localStorage.getItem("sortieMissionRecords") || "{}"
+  ));
+  assert(records["sera-m02"]?.cleared,
+    "Sera M02 result was not stored under its namespaced key", records);
+  assert(records.m02 === undefined,
+    "clearing Sera M02 wrote into the legacy USA M02 record", records);
+
+  const legacyStarted = await page.evaluate(() => window.__game.forceStartMissionByKey("m02", "f16"));
+  assert(legacyStarted, "legacy USA M02 could not start after the Sera clear");
+  await waitForState(page, "playing", 10_000);
+  await page.waitForTimeout(250);
+  probe = await page.evaluate(() => window.__game.seraM02Probe());
+  const legacyWingmen = probe.friendlies.filter((friendly) => friendly.kind === "wingman");
+  assert(probe.missionKey === "m02" && probe.worldKey === "archipelagoDay",
+    "legacy M02 still resolves to Sera content", probe);
+  assert(!legacyWingmen.some((wingman) => wingman.label.includes("CROWN") || wingman.label.includes("LARK")),
+    "ROOK wingmen leaked into legacy M02", legacyWingmen);
 
   assert(clean.pageErrors.length === 0, "pageerror occurred during clean scenario", clean.pageErrors);
   assert(clean.consoleErrors.length === 0, "console error occurred during clean scenario", clean.consoleErrors);
@@ -248,8 +242,8 @@ try {
   assert(escaped, "a surviving TEL reaching the western boundary did not fail M02");
   await waitForState(failurePage, "gameover", 10_000);
   probe = await failurePage.evaluate(() => window.__game.seraM02Probe());
-  assert(probe.missionKey === "m02" && probe.state === "gameover",
-    "TEL escape did not terminate the correct mission", probe);
+  assert(probe.missionKey === "sera-m02" && probe.state === "gameover",
+    "TEL escape did not terminate the namespaced Sera mission", probe);
 
   await retryCurrentMission(failurePage);
   await failurePage.waitForFunction(
@@ -277,6 +271,7 @@ try {
   await failure.context.close();
 
   console.log("check_sera_m02_e2e: PASS");
+  console.log("  legacy m02 + namespaced sera-m02 coexist / independent result key / legacy mission still boots");
   console.log("  Amal Plain -> CROWN F-4E / LARK F-16C -> two strike sites -> TEL reveal");
   console.log("  one facility loss caps S at A without failure; red TELs clear with white survivors");
   console.log("  one TEL escape=FAILED; Retry restores a clean two-facility ROOK sortie");

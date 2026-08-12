@@ -3,6 +3,8 @@
 // Development load order:
 //   index.html?payloads=payloads/map_amalPlain.payload.js,payloads/mission_sera_m02.payload.js
 //
+// Contract:
+//   - adds an independent `sera-m02` mission and leaves legacy USA `m02` untouched
 // Host contracts authored here and implemented by the M02 completion pass:
 //   - two damageable blue radar facilities; losing one caps S but does not fail
 //   - air phases first, then the ground column and its white air cover activate
@@ -26,9 +28,8 @@ export default function register(ctx) {
     if (!GROUND_TYPES[type]) throw new Error(`[sera-m02] required ground unit not registered: ${type}`);
   }
 
-  const at = MISSIONS.findIndex((mission) => mission.key === "m02");
-  if (at < 0) throw new Error("[sera-m02] stock m02 was not found");
-  const original = MISSIONS[at];
+  const original = MISSIONS.find((mission) => mission.key === "m02");
+  if (!original) throw new Error("[sera-m02] stock m02 template was not found");
 
   // The visible military highway on Amal Plain runs east -> west. Positive
   // route distance therefore carries the TELs toward the escape boundary.
@@ -37,10 +38,11 @@ export default function register(ctx) {
     [-1750, 190], [-3000, 170], [-4300, 185], [-5550, 170], [-6900, 180]
   ];
 
-  const replacement = {
+  const mission = {
     ...original,
-    key: "m02",
-    campaign: original.campaign || "usa",
+    key: "sera-m02",
+    campaign: "sera",
+    campaignOrder: 2,
     world: "amalPlain",
     title: "SHATTERED MORNING",
     jp: "前夜の残存航空戦力を掃討し、アマル平原を西へ逃走する移動式弾道ミサイル部隊を阻止せよ。",
@@ -328,15 +330,7 @@ export default function register(ctx) {
     ]
   };
 
-  MISSIONS.splice(at, 1);
-  try {
-    const normalized = ctx.addMission(replacement);
-    const appendedAt = MISSIONS.indexOf(normalized);
-    if (appendedAt < 0) throw new Error("[sera-m02] normalized mission was not inserted");
-    MISSIONS.splice(appendedAt, 1);
-    MISSIONS.splice(at, 0, normalized);
-  } catch (error) {
-    MISSIONS.splice(at, 0, original);
-    throw error;
-  }
+  // Add-only registration keeps the legacy A02 story runtime attached to
+  // `m02`; Sera receives its own persistent key and never triggers DAGGER/HAMMER.
+  ctx.addMission(mission);
 }

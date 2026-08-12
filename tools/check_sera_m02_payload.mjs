@@ -68,10 +68,15 @@ try {
 
   register(ctx);
 
-  assert(MISSIONS.length === 3, `replacement changed mission count to ${MISSIONS.length}`);
-  assert(MISSIONS[0] === stockM01 && MISSIONS[2] === stockM03, "M02 replacement changed campaign order");
-  const mission = MISSIONS[1];
-  assert(mission.key === "m02", `unexpected mission key ${mission.key}`);
+  assert(MISSIONS.length === 4, `expected stock missions + Sera M02, got ${MISSIONS.length}`);
+  assert(MISSIONS[0] === stockM01 && MISSIONS[1] === stockM02 && MISSIONS[2] === stockM03,
+    "stock USA campaign order or objects changed");
+  assert(stockM02.title === "OLD M02" && stockM02.world === "archipelagoDay",
+    "stock USA M02 was modified");
+  const mission = MISSIONS.find((entry) => entry.key === "sera-m02");
+  assert(mission, "namespaced Sera M02 was not registered");
+  assert(mission.campaign === "sera", `unexpected campaign ${mission.campaign}`);
+  assert(mission.campaignOrder === 2, `unexpected campaign order ${mission.campaignOrder}`);
   assert(mission.title === "SHATTERED MORNING", `unexpected title ${mission.title}`);
   assert(mission.world === "amalPlain", `unexpected world ${mission.world}`);
   assert(mission.parTime === 720, `unexpected parTime ${mission.parTime}`);
@@ -124,7 +129,8 @@ try {
   }
 
   console.log("check_sera_m02_payload: PASS");
-  console.log(`  TGT=${mission.totalTargets} contacts=${mission.totalContacts} air=${airTgt}/${airWhite} ground=4/6`);
+  console.log(`  stock=m02 mission=${mission.key} campaign=${mission.campaign} TGT=${mission.totalTargets} contacts=${mission.totalContacts}`);
+  console.log(`  air=${airTgt}/${airWhite} ground=4/6`);
   console.log(`  wingmen=${crown.type}/${lark.type} facilities=${mission.protectedFacilities.length} TEL escape=${mission.groundPhaseContract.failAtRouteEnd}`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
