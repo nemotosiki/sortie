@@ -54,7 +54,6 @@ jobs:
 
       - name: Commit checked generated change locally
         run: |
-          rm -rf node_modules package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           message=$(cat .git/campaign-isolation-message)
@@ -82,6 +81,11 @@ jobs:
           node tools/check_sera_m03_e2e.mjs
           node tools/check_sera_m02_e2e.mjs
           node tools/check_sera_m01_e2e.mjs
+
+      - name: Verify clean tracked worktree
+        run: |
+          rm -rf node_modules package-lock.json
+          test -z "$(git status --porcelain)"
 
       - name: Push checked commit
         run: git push origin HEAD:chatgpt/sera-act1-implementation
