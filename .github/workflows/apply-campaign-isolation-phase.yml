@@ -35,7 +35,7 @@ jobs:
 
       - name: Install Chromium harness
         run: |
-          npm install --no-save playwright@1.54.2
+          npm install --no-save --package-lock=false playwright@1.54.2
           npx playwright install --with-deps chromium
 
       - name: Capture and selectively migrate the registry snapshot
@@ -54,6 +54,7 @@ jobs:
 
       - name: Commit checked generated change locally
         run: |
+          rm -rf node_modules package-lock.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           message=$(cat .git/campaign-isolation-message)
