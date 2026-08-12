@@ -72,17 +72,132 @@ export const SHIP_FUSE_SCALE = 0.85;
 export const TERRAIN_CLEARANCE = 90;
 export const TERRAIN_SAMPLES = 6;
 
+// Guidance state is kept separate from steering geometry so the pass count and
+// overshoot contract can be exercised without constructing a Three.js scene.
+// Physical turn authority is NOT seeker authority: reaching the 100 deg/s turn
+// cap merely means the airframe cannot bend any harder. It keeps tracking until
+// it has actually flown past the target and the range is opening.
+export const SEEKER_STATE = Object.freeze({
+  TRACKING: 0,
+  REACQUIRING: 1,
+  REACQUIRED: 2,
+  RETRY_STARTED: 3,
+  LOST_NOW: 4,
+  LOST: 5
+});
+
+// A confirmed miss is deliberately geometric and hysteretic. The target must
+// be behind the missile, the missile must previously have been closing, and it
+// must have opened at least 20 m from closest approach for 0.1 s. This avoids
+// spending a QAAM pass on a one-frame distance wobble or a hard crossing that
+// the missile has not physically flown through yet.
+export const OVERSHOOT_CONFIRM_TIME = 0.1;
+export const OVERSHOOT_MIN_SEPARATION = 20;
+export const OVERSHOOT_MIN_OPENING_SPEED = 20;
+export const OVERSHOOT_REAR_DOT = -0.1;
+
+export function resetMissileOvershootTracking(missile) {
+  missile.closing = false;
+  missile.wasClosing = false;
+  missile.lastTargetDistance = Infinity;
+  missile.minTargetDistance = Infinity;
+  missile.openingSpeed = 0;
+  missile.targetForwardDot = 1;
+  missile.overshootTime = 0;
+}
+
+export function sampleMissileOvershoot(
+  missile,
+  dt,
+  distance,
+  targetForwardDot,
+  skipSample = false
+) {
+  const elapsed = Math.max(0, Number(dt) || 0);
+  const range = Math.max(0, Number(distance) || 0);
+  const previous = Number(missile.lastTargetDistance);
+  const previousValid = Number.isFinite(previous);
+
+  missile.targetForwardDot = Number.isFinite(targetForwardDot) ? targetForwardDot : 1;
+  missile.minTargetDistance = Math.min(
+    Number.isFinite(missile.minTargetDistance) ? missile.minTargetDistance : Infinity,
+    range
+  );
+
+  // The first terminal substep sees a full frame of target motion divided by
+  // one eighth of a frame. Establish the new range baseline but do not turn
+  // that artificial rate spike into either a closing or opening observation.
+  if (skipSample || elapsed <= 0 || !previousValid) {
+    missile.lastTargetDistance = range;
+    missile.closing = false;
+    missile.openingSpeed = 0;
+    return false;
+  }
+
+  const rangeRate = (range - previous) / elapsed;
+  missile.lastTargetDistance = range;
+  missile.closing = range < previous;
+  if (missile.closing) missile.wasClosing = true;
+  missile.openingSpeed = Math.max(0, rangeRate);
+
+  const openedPastClosest = range >= missile.minTargetDistance + OVERSHOOT_MIN_SEPARATION;
+  const confirmedGeometry = Boolean(
+    missile.wasClosing &&
+    missile.targetForwardDot < OVERSHOOT_REAR_DOT &&
+    missile.openingSpeed >= OVERSHOOT_MIN_OPENING_SPEED &&
+    openedPastClosest
+  );
+
+  if (confirmedGeometry) missile.overshootTime += elapsed;
+  else missile.overshootTime = 0;
+  return missile.overshootTime >= OVERSHOOT_CONFIRM_TIME;
+}
+
+export function updateSeekerState(missile, dt, overshot) {
+  if (missile.lost) return SEEKER_STATE.LOST;
+
+  const elapsed = Math.max(0, Number(dt) || 0);
+  const reacquireTimer = Math.max(0, Number(missile.reacquireTimer) || 0);
+  if (reacquireTimer > 0) {
+    missile.reacquireTimer = Math.max(0, reacquireTimer - elapsed);
+    if (missile.reacquireTimer <= 0) {
+      // Pass two starts with fresh closest-approach history. Without this reset,
+      // the opening range from pass one immediately spends the second pass too.
+      resetMissileOvershootTracking(missile);
+      return SEEKER_STATE.REACQUIRED;
+    }
+    return SEEKER_STATE.REACQUIRING;
+  }
+
+  if (!overshot) return SEEKER_STATE.TRACKING;
+
+  // Count total tracking passes, not "retries remaining". QAAM maxPasses=2
+  // therefore means initial pursuit plus exactly one reacquisition; there is no
+  // ambiguous off-by-one that can accidentally produce a third attack.
+  const maxPasses = Math.max(1, Math.floor(Number(missile.maxPasses) || 1));
+  const passesStarted = Math.max(1, Math.floor(Number(missile.passesStarted) || 1));
+  if (passesStarted < maxPasses) {
+    missile.passesStarted = passesStarted + 1;
+    missile.reacquireTimer = Math.max(0, Number(missile.reacquireDelay) || 0);
+    resetMissileOvershootTracking(missile);
+    return SEEKER_STATE.RETRY_STARTED;
+  }
+
+  missile.lost = true;
+  return SEEKER_STATE.LOST_NOW;
+}
+
 export function createMissileGuidance({
   THREE,
   localForward,
   forwardOf,
   damping,
   defaultTurnRate,
+  maxTurnRate = Infinity,
   defaultMaxSpeed,
   defaultFuse,
   terminalRange,
   terminalSubsteps,
-  seekerLossTime,
   surfaceHeightAt = () => -Infinity
 }) {
   const toTarget = new THREE.Vector3();
@@ -94,7 +209,9 @@ export function createMissileGuidance({
     direction,
     travel: 0,
     hit: false,
-    seekerLostNow: false
+    guidanceEndedNow: false,
+    reattackStartedNow: false,
+    reacquiredNow: false
   };
 
   function stepsFor(missile, target) {
@@ -212,39 +329,50 @@ export function createMissileGuidance({
     return defaultFuse;
   }
 
-  function step(missile, target, slice) {
+  function step(missile, target, slice, skipSeekerSample = false) {
     result.hit = false;
-    result.seekerLostNow = false;
+    result.guidanceEndedNow = false;
+    result.reattackStartedNow = false;
+    result.reacquiredNow = false;
 
     if (target) {
       toTarget.copy(target.group.position).sub(missile.mesh.position);
       const distance = toTarget.length();
-      missile.closing = distance < missile.lastTargetDistance;
-      missile.lastTargetDistance = distance;
       toTarget.normalize();
 
-      const seekerRate = missile.turnRate ?? defaultTurnRate;
-      if (!missile.lost) {
-        // Seeker loss exists so a break turn can shake a missile. A ship or a
-        // battery cannot fly a break turn, so against surface targets the
-        // seeker never gives up - the turn-rate limit still applies, so a
-        // round that overshoots must physically come around for another pass
-        // instead of tracking through the miss. This is the "it stops guiding
-        // after the dive" bug: the steep terminal dive swung the sight line
-        // faster than 55 deg/s for 0.08s and the round went ballistic.
-        if (!missile.reattack && !target.surface) {
-          if (missile.losValid && slice > 0 && missile.los.angleTo(toTarget) / slice > seekerRate) {
-            missile.lostTime += slice;
-            if (missile.lostTime >= seekerLossTime) {
-              missile.lost = true;
-              result.seekerLostNow = true;
-            }
-          } else {
-            missile.lostTime = 0;
-          }
+      // Last-line safety for every player-guided path. Launchers already clamp
+      // authored values, but guidance itself owns the actual rotateTowards()
+      // budget and therefore enforces the global ceiling too.
+      const seekerRate = Math.min(missile.turnRate ?? defaultTurnRate, maxTurnRate);
+      let canSteer = !missile.lost;
+      if (canSteer) {
+        // A surface-bound round owns its terminal profile and does not use the
+        // air-to-air pass counter. An air-to-air round gives up only after a
+        // confirmed physical overshoot; exceeding turn authority by itself is
+        // never a lock-loss event.
+        if (!target.surface) {
+          forwardOf(missile.mesh, direction);
+          const waitingToReacquire = (missile.reacquireTimer || 0) > 0;
+          const overshot = waitingToReacquire ? false : sampleMissileOvershoot(
+            missile,
+            slice,
+            distance,
+            direction.dot(toTarget),
+            skipSeekerSample
+          );
+          const seekerState = updateSeekerState(
+            missile,
+            slice,
+            overshot
+          );
+          result.guidanceEndedNow = seekerState === SEEKER_STATE.LOST_NOW;
+          result.reattackStartedNow = seekerState === SEEKER_STATE.RETRY_STARTED;
+          result.reacquiredNow = seekerState === SEEKER_STATE.REACQUIRED;
+          canSteer = seekerState === SEEKER_STATE.TRACKING || seekerState === SEEKER_STATE.REACQUIRED;
+        } else {
+          missile.closing = distance < missile.lastTargetDistance;
+          missile.lastTargetDistance = distance;
         }
-        missile.los.copy(toTarget);
-        missile.losValid = true;
 
         let aim = toTarget;
         if (target.surface && !missile.diving) {
@@ -316,8 +444,10 @@ export function createMissileGuidance({
             if (slope > 0) aim = climbAim(slope, groundRange);
           }
         }
-        targetQuaternion.setFromUnitVectors(localForward, aim);
-        missile.mesh.quaternion.rotateTowards(targetQuaternion, seekerRate * slice);
+        if (canSteer) {
+          targetQuaternion.setFromUnitVectors(localForward, aim);
+          missile.mesh.quaternion.rotateTowards(targetQuaternion, seekerRate * slice);
+        }
       }
     }
 
