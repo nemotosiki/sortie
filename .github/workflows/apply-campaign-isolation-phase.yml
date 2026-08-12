@@ -32,23 +32,27 @@ jobs:
           git diff --check
           test -n "$(git status --porcelain)"
 
-      - name: Commit generated change locally
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Migrate the intended mission snapshot and run no-loss gate
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs --migrate-mission=m01:sera-m01
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs
+          git diff --check
+
+      - name: Commit checked generated change locally
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           message=$(cat .git/campaign-isolation-message)
           git add -A
           git commit -m "$message"
-
-      - name: Install Chromium harness
-        run: |
-          npm install --no-save playwright@1.54.2
-          npx playwright install --with-deps chromium
-
-      - name: Run registry no-loss gate
-        run: |
-          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
-          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
 
       - name: Start local game server
         run: |
