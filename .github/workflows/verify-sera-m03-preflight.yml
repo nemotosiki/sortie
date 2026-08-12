@@ -8,7 +8,7 @@ on:
       - tools/check_sera_m03_preflight.mjs
       - tools/check_sera_m03_payload.mjs
       - tools/check_map_sark_port.mjs
-      - tools/inspect_sera_m03_host.mjs
+      - tools/inspect_sera_m03_rank.mjs
       - tools/extract_sera_m03_host_functions.mjs
       - .github/workflows/verify-sera-m03-preflight.yml
       - payloads/map_sarkPort.payload.js
@@ -35,7 +35,7 @@ jobs:
         run: node tools/check_map_sark_port.mjs
       - name: Verify M03 mission payload
         run: node tools/check_sera_m03_payload.mjs
-      - name: Extract rank accounting functions
-        run: node tools/extract_sera_m03_host_functions.mjs rank
+      - name: Inspect rank accounting markers
+        run: node tools/inspect_sera_m03_rank.mjs
       - name: Check M03 prerequisites
         run: node tools/check_sera_m03_preflight.mjs
