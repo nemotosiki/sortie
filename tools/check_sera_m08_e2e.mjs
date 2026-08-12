@@ -60,7 +60,7 @@ const browser = await chromium.launch({
   headless: true,
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
 });
-const missionUrl = `http://127.0.0.1:${port}/index.html?seraDev=1&payloads=payloads/map_ormBasin.payload.js,payloads/mission_sera_m08.payload.js`;
+const missionUrl = `http://127.0.0.1:${port}/index.html?seraDev=1`;
 
 function registryLosses(before, after) {
   const losses = [];
@@ -106,7 +106,7 @@ async function captureMapPreview() {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error?.stack || error)));
-  const url = `http://127.0.0.1:${port}/index.html?payloads=payloads/map_ormBasin.payload.js&worldPreview=ormBasinNight`;
+  const url = `http://127.0.0.1:${port}/index.html?worldPreview=ormBasinNight`;
   await page.goto(url, { waitUntil: "load", timeout: 120_000 });
   await page.waitForFunction(
     () => window.__game?.debug?.worldDecorators?.().activeOn === "ormBasinNight",
@@ -142,9 +142,8 @@ async function openMissionPage() {
     && window.__game?.forceSeraM08ResolveOutcome
   ), null, { timeout: 120_000 });
   const payloads = await page.evaluate(() => window.__APPLIED_PAYLOADS__ || []);
-  assert(payloads.includes("payloads/map_ormBasin.payload.js")
-      && payloads.includes("payloads/mission_sera_m08.payload.js"),
-    "external M08 payloads did not register", payloads);
+  assert(payloads.includes("map_ormBasin") && payloads.includes("mission_sera_m08"),
+    "integrated M08 payloads did not register", payloads);
   return { context, page, pageErrors, consoleErrors };
 }
 
@@ -209,9 +208,9 @@ try {
       && m08Snapshot.WORLD_PRESETS?.ormBasinNight
       && m08Snapshot.ACE_PROFILES?.vesper,
     "M08 registry additions are incomplete");
-  assert(baseRuntime.campaigns.find((campaign) => campaign.id === "sera")?.playable === false
+  assert(baseRuntime.campaigns.find((campaign) => campaign.id === "sera")?.playable === true
       && m08Runtime.campaigns.find((campaign) => campaign.id === "sera")?.playable === true,
-    "seraDev did not remain an explicit development-only campaign unlock", {
+    "integrated Sera campaign is not playable in both normal and dev loads", {
       base: baseRuntime.campaigns,
       m08: m08Runtime.campaigns
     });

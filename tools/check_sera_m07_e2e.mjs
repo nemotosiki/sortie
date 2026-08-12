@@ -60,7 +60,7 @@ async function openPage() {
   await context.addInitScript(() => {
     navigator.getGamepads = () => [];
     const records = {};
-    for (const key of ["sera-m01", "sera-m02", "sera-m03", "sera-m04", "sera-m05"]) {
+    for (const key of ["sera-m01", "sera-m02", "sera-m03", "sera-m04", "sera-m05", "sera-m06"]) {
       records[key] = { cleared: true, rank: "A", scores: [0], times: [0], marks: {} };
     }
     localStorage.setItem("sortieMissionRecords", JSON.stringify(records));
