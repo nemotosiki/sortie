@@ -9,6 +9,8 @@
 3. [キャンペーン分離計画](architecture/campaign_isolation_plan.md) — 旧USA/RUSとセラ編を完全分離する次工程
 4. [セラACT I安全実装計画](implementation/sera_act1_safe_implementation_plan.md) — M01〜M05を安全に積み上げる実装原則
 5. [M03 LOW WATER安全実装計画](implementation/sera_m03_low_water_safe_implementation_plan.md) — M03の実装判断と検証契約
+6. [M08 NIGHT AUDIT実装計画](implementation/sera_m08_night_audit_implementation_plan.md) — 夜間基地、燃料／決済分岐、検証契約
+7. [M08 NIGHT AUDIT完成報告](implementation/sera_m08_night_audit_report.md) — プレイURL、完成範囲、検証結果、統合境界
 
 ## 文書の優先順位
 
@@ -39,6 +41,8 @@
 - [sera_act1_status.md](implementation/sera_act1_status.md) — 現在地の正本
 - [sera_act1_safe_implementation_plan.md](implementation/sera_act1_safe_implementation_plan.md) — ACT I全体の安全実装方針
 - [sera_m03_low_water_safe_implementation_plan.md](implementation/sera_m03_low_water_safe_implementation_plan.md) — M03個別計画
+- [sera_m08_night_audit_implementation_plan.md](implementation/sera_m08_night_audit_implementation_plan.md) — M08個別計画
+- [sera_m08_night_audit_report.md](implementation/sera_m08_night_audit_report.md) — M08完成報告と検証結果
 - [air_iff_foundation.md](implementation/air_iff_foundation.md) — 三色IFF基盤
 
 ### `spec_*.md`
