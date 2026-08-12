@@ -6,7 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/apply_campaign_isolation_phase.mjs
-      - tools/campaign_isolation_phase.patch
+      - tools/phases/**
       - tools/migrate_registry_mission_snapshot.mjs
       - .github/workflows/apply-campaign-isolation-phase.yml
 
@@ -47,7 +47,7 @@ jobs:
           node tools/migrate_registry_mission_snapshot.mjs \
             --baseline=/tmp/registry_snapshot.before.json \
             --current=tools/registry_snapshot.json \
-            --mission=m01:sera-m01
+            --mission=m02:sera-m02
           SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
             node tools/registry_gate.mjs
           git diff --check
