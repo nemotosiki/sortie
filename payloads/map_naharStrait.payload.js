@@ -47,9 +47,11 @@ export default function register(ctx) {
       cloudBand: [0.34, 0.6],
       cloudTint: 0xffc09a
     },
-    // The whole 32 km strait must remain readable. The original sunset map's
-    // 4.6 km fog works for one carrier group, not for an east-west fleet race.
-    fog: { color: 0x9d7059, near: 5200, far: 20500 },
+    // The whole 32 km strait must remain readable. M04 opens with the player
+    // about 19.2km from the landing group: 5.2/20.5km left those hulls only 9%
+    // visible even after the old 7km clip plane was removed. A 12/40km band
+    // keeps sunset depth while leaving that first contact roughly 74% visible.
+    fog: { color: 0x9d7059, near: 12000, far: 40000 },
     // West is -X on this authored map. Looking east silhouettes the incoming
     // Elem ships against the last warm light without putting glare over HUD.
     sun: {

@@ -2682,6 +2682,12 @@
     // wave size instead of stretching the sea on long-visibility maps.
     const OCEAN_PLANE_SIZE = 12000;
     const OCEAN_FOG_MARGIN = 2.8;
+    // The original 7km camera far plane predates long-range payload maps. Fog
+    // later grew to 9.5-20.5km, but geometry was still clipped at 7km before
+    // that fog could hide it. Size the camera from each preset and leave a
+    // margin beyond fog so disappearance is atmospheric, never a hard pop.
+    const CAMERA_BASE_FAR = 7000;
+    const CAMERA_FOG_FAR_MARGIN = 1.2;
     // Battle area, AC style. Measured basis: every objective in the campaign
     // sits inside r=3000 (waves spawn 820-1160m off the player's nose, the
     // night base is at (900,-1200), the glacier corridor ends at z=-2600,
@@ -36947,7 +36953,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x7ba8ba, 650, 3350);
 
-    const camera = new THREE.PerspectiveCamera(BASE_CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 7000);
+    const camera = new THREE.PerspectiveCamera(
+      BASE_CAMERA_FOV,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      CAMERA_BASE_FAR
+    );
     scene.add(camera);
     // Camera-space wind streaks - thin lines that rush past at high speed.
     const WIND_STREAK_COUNT = 26;
@@ -39532,6 +39543,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           mountain: world.mountains[0],
           cloudVeil: cloudVeilLevel
         }),
+        renderDistanceProbe: () => {
+          camera.updateMatrixWorld();
+          const clip = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+          const frustum = new THREE.Frustum().setFromProjectionMatrix(clip);
+          const fogNear = scene.fog ? scene.fog.near : camera.far;
+          const fogFar = scene.fog ? scene.fog.far : camera.far;
+          const fogSpan = Math.max(1, fogFar - fogNear);
+          return {
+            cameraNear: camera.near,
+            cameraFar: camera.far,
+            fogNear,
+            fogFar,
+            oceanSize: world.oceanPlaneSize || null,
+            contacts: enemies
+              .filter((enemy) => enemy.alive && !enemy.subsystem)
+              .map((enemy) => {
+                const distance = camera.position.distanceTo(enemy.group.position);
+                return {
+                  id: enemy.id,
+                  type: enemy.type,
+                  distance: Number(distance.toFixed(1)),
+                  insideCameraFar: distance < camera.far,
+                  fogVisibility: Number(THREE.MathUtils.clamp((fogFar - distance) / fogSpan, 0, 1).toFixed(3)),
+                  inFrustum: frustum.intersectsObject(enemy.hitbox || enemy.group)
+                };
+              })
+          };
+        },
         // Waterline rings, straight off the live meshes. The z-fighting fix is a
         // material setting with no visible geometry change, so the only way to
         // confirm it reached every preset is to read it back from the scene.
@@ -57774,6 +57813,13 @@ diffuseColor.rgb = terrainBase * terrainShade;`
     function createWorld(presetKey) {
       const key = WORLD_PRESETS[presetKey] ? presetKey : DEFAULT_WORLD_PRESET;
       const preset = WORLD_PRESETS[key];
+      const cameraFar = Math.ceil(
+        Math.max(CAMERA_BASE_FAR, preset.fog.far * CAMERA_FOG_FAR_MARGIN) / 1000
+      ) * 1000;
+      if (camera.far !== cameraFar) {
+        camera.far = cameraFar;
+        camera.updateProjectionMatrix();
+      }
       const oceanPlaneSize = Math.ceil(
         Math.max(OCEAN_PLANE_SIZE, preset.fog.far * OCEAN_FOG_MARGIN) / 1000
       ) * 1000;
@@ -59238,7 +59284,7 @@ varying vec2 vOceanUv;`
 
       return {
         preset: key, label: preset.label, skyGroup, oceanTexture, oceanNormalTexture, cloudVolumes, mountains, groundSheets, cameraSurfaces,
-        ocean, oceanPlaneSize, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad,
+        ocean, oceanPlaneSize, oceanTileSize, oceanColorSpeed, oceanNormalTileSize, oceanNormalTiles, oceanNormalSpeeds, oceanWaveOffsets, sunRoad, cameraFar,
         textureStats, textureBytes: textureStats.reduce((sum, entry) => sum + entry.bytes, 0),
         roots, geometries, materials, textures
       };
