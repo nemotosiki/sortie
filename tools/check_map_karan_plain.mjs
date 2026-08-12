@@ -20,8 +20,16 @@ for (const token of [
   'normalSpeed: [0, 0]',
   '"karan-river"',
   '"karan-bridge-deck"',
-  '"karan-military-road"',
-  '"karan-evacuation-road"'
+  '"karan-military-road-south"',
+  '"karan-military-road-north"',
+  '"karan-evacuation-road-south"',
+  '"karan-evacuation-road-north"',
+  '"karan-west-tributary"',
+  '"karan-irrigation-pond-south"',
+  '"karan-paddy-south"',
+  '"karan-village-southeast"',
+  'new THREE.InstancedMesh',
+  'surfaceQa: Object.freeze(['
 ]) {
   assert(source.includes(token), `missing source contract ${token}`);
 }
@@ -53,6 +61,7 @@ try {
   assert(world?.mountains?.plateau === null, "open plain acquired a central plateau");
   assert(world?.decor?.city === null, "procedural city must remain disabled");
   assert(world?.decor?.keepClear?.[0]?.r >= 9000, "combat corridor is not kept clear");
+  assert(world?.previewSheets?.surfaceQa?.length === 4, "surface QA camera sheet changed");
   assert(decorators.karanPlainWorks?.worlds?.includes("karanPlain"), "decorator world binding missing");
   assert(typeof decorators.karanPlainWorks?.build === "function", "decorator build function missing");
 

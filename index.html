@@ -59846,6 +59846,10 @@ varying vec2 vOceanUv;`
         addRoot: (node) => { scene.add(node); target.roots.push(node); return node; },
         keepGeometry: (item) => { target.geometries.push(item); return item; },
         keepMaterial: (item) => { target.materials.push(item); return item; },
+        // Payload ground decals need polygon offset only on the classic depth
+        // fallback. Applying the same signed offset under reversed-Z can push
+        // a shallow-angle road behind the ground instead of in front of it.
+        classicDepthBuffer: !renderer.capabilities.reversedDepthBuffer,
         keepTexture: (item, label = "decorator", bytes = 0) => {
           target.textures.push(item);
           if (target.textureStats) target.textureStats.push({ label, bytes });

@@ -11,6 +11,7 @@ const requestedPort = Number(process.env.SORTIE_M09_PORT || 0);
 const externalBaseUrl = String(process.env.SORTIE_BASE_URL || "").replace(/\/$/, "");
 const artifactDir = path.resolve(process.env.SORTIE_M09_ARTIFACTS || path.join(root, "artifacts"));
 const mapScreenshot = path.join(artifactDir, "karan-plain-quality.png");
+const mapSurfaceScreenshot = path.join(artifactDir, "karan-plain-surface-qa.png");
 const missionScreenshot = path.join(artifactDir, "sera-m09-gameplay.png");
 
 const playwrightCandidates = [
@@ -146,6 +147,21 @@ try {
   assert(map.consoleErrors.length === 0, "console error during Karan preview", map.consoleErrors);
   await map.context.close();
 
+  const mapSurface = await openPage(
+    `${baseUrl}/index.html?payloads=payloads/map_karanPlain.payload.js&worldPreview=karanPlain&worldPreviewDetail=surfaceQa`
+  );
+  await mapSurface.page.waitForFunction(
+    () => window.__game?.debug?.worldDecorators?.().activeOn === "karanPlain",
+    null,
+    { timeout: 90_000 }
+  );
+  await mapSurface.page.waitForTimeout(1200);
+  await mapSurface.page.screenshot({ path: mapSurfaceScreenshot, fullPage: false });
+  assert(mapSurface.pageErrors.length === 0, "page error during Karan surface QA preview", mapSurface.pageErrors);
+  assert(mapSurface.consoleErrors.length === 0,
+    "console error during Karan surface QA preview", mapSurface.consoleErrors);
+  await mapSurface.context.close();
+
   // Success route: all authored contacts, MLRS pressure, command dispersal and
   // the final ACCOMPLISHED transition run in the real browser host.
   const success = await openMission();
@@ -246,6 +262,7 @@ try {
   console.log("check_sera_m09_e2e: PASS");
   console.log("  Karan preview + 33-contact three-colour board + MLRS/command/civilian success and failure routes");
   console.log(`  screenshots: ${mapScreenshot}`);
+  console.log(`               ${mapSurfaceScreenshot}`);
   console.log(`               ${missionScreenshot}`);
 } finally {
   await browser.close();
