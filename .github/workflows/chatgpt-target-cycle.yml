@@ -1,0 +1,45 @@
+name: Apply visible target cycling
+
+on:
+  push:
+    branches:
+      - agent/target-cycle-screen-priority
+    paths:
+      - .github/workflows/chatgpt-target-cycle.yml
+      - tools/chatgpt_target_cycle_patch.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chatgpt-target-cycle-screen-priority
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/target-cycle-screen-priority
+          fetch-depth: 0
+
+      - name: Apply target-cycle fix
+        run: python tools/chatgpt_target_cycle_patch.py
+
+      - name: Static checks
+        shell: bash
+        run: git diff --check
+
+      - name: Remove integration scaffolding
+        run: git rm tools/chatgpt_target_cycle_patch.py .github/workflows/chatgpt-target-cycle.yml
+
+      - name: Commit and push integrated result
+        shell: bash
+        run: |
+          git config user.name 'ChatGPT'
+          git config user.email 'noreply@openai.com'
+          git add index.html
+          git commit -m 'Prefer visible contacts when cycling targets'
+          git push origin HEAD:agent/target-cycle-screen-priority
