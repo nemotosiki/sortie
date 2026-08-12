@@ -93,33 +93,28 @@ try {
   assert(hasPayload("mission_sera_m01", "payloads/mission_sera_m01.payload.js"),
     "M01 payload did not load", payloads);
 
-  // Exercise the real campaign -> mission -> briefing -> hangar -> launch flow,
-  // rather than jumping directly into startMission().
+  // During the staged migration the Sera card remains locked. Start the
+  // namespaced mission through the production launcher, then prove the legacy
+  // USA mission still exists beside it instead of being replaced.
   const routed = await page.evaluate(() => {
     const debug = window.__game.debug;
-    const campaignSelected = debug.forceCampaignCursor("usa");
-    const campaignConfirmed = campaignSelected && debug.forceConfirmCampaign();
-    const m01Index = debug.missionIndexOf("m01");
-    const missionSelected = campaignConfirmed && m01Index >= 0 && debug.forceMissionCursor(m01Index);
-    const missionConfirmed = missionSelected && debug.forceConfirmMission();
     return {
-      campaignSelected,
-      campaignConfirmed,
-      m01Index,
-      missionSelected,
-      missionConfirmed,
-      state: document.body.dataset.gameState
+      legacyIndex: debug.missionIndexOf("m01"),
+      seraIndex: debug.missionIndexOf("sera-m01"),
+      legacyCampaign: debug.campaignOf("m01"),
+      seraCampaign: debug.campaignOf("sera-m01"),
+      started: window.__game.forceStartMissionByKey("sera-m01", "f16")
     };
   });
-  assert(routed.campaignSelected && routed.campaignConfirmed, "USA campaign could not be opened", routed);
-  assert(routed.m01Index >= 0 && routed.missionSelected && routed.missionConfirmed,
-    "M01 could not be selected through the mission screen", routed);
-
-  await advanceBriefingToHangar();
-  await startCurrentSortie();
+  assert(routed.legacyIndex >= 0 && routed.legacyCampaign === "usa",
+    "legacy USA M01 was removed or reassigned", routed);
+  assert(routed.seraIndex >= 0 && routed.seraCampaign === "sera" && routed.started,
+    "namespaced Sera M01 could not be launched", routed);
+  await waitForState("playing");
+  await page.waitForTimeout(300);
 
   let probe = await page.evaluate(() => window.__game.seraM01Probe());
-  assert(probe.missionKey === "m01", "wrong mission booted", probe);
+  assert(probe.missionKey === "sera-m01", "wrong mission booted", probe);
   assert(probe.worldKey === "renBay", "M01 did not use Ren Bay", probe);
 
   const wingmen = probe.friendlies.filter((friendly) => friendly.kind === "wingman");
@@ -199,7 +194,7 @@ try {
   );
   probe = await page.evaluate(() => window.__game.seraM01Probe());
   const checkpointAfterRetry = await page.evaluate(() => window.__game.debug.checkpointProbe());
-  assert(probe.missionKey === "m01" && probe.state === "playing", "retry did not restart M01", probe);
+  assert(probe.missionKey === "sera-m01" && probe.state === "playing", "retry did not restart Sera M01", probe);
   assert(probe.base?.hits === 0, "retry did not reset bomber breaches", probe.base);
   const openingRestart = probe.activeGate?.timeout === 75
     && probe.enemies.length === 2
@@ -241,40 +236,31 @@ try {
     await page.evaluate(() => window.__game.seraM01Probe()));
   await waitForState("missionComplete", 3_000);
 
-  // The full-screen result transform can leave the button outside the
-  // headless viewport even though it is visible and enabled. HTMLElement.click()
-  // still exercises the production button handler without introducing a test-only
-  // state mutation.
-  await page.evaluate(() => document.getElementById("changeMissionBtn").click());
-  await waitForState("missionSelect", 10_000);
-  const nextMission = await page.evaluate(() => {
-    const debug = window.__game.debug;
-    const m02Index = debug.missionIndexOf("m02");
-    const selected = m02Index >= 0 && debug.forceMissionCursor(m02Index);
-    const confirmed = selected && debug.forceConfirmMission();
-    return {
-      m02Index,
-      selected,
-      confirmed,
-      state: document.body.dataset.gameState
-    };
-  });
-  assert(nextMission.m02Index >= 0 && nextMission.selected,
-    "clearing M01 did not unlock/select M02", nextMission);
-  assert(nextMission.confirmed, "M02 could not enter its briefing", nextMission);
+  const records = await page.evaluate(() => JSON.parse(
+    localStorage.getItem("sortieMissionRecords") || "{}"
+  ));
+  assert(records["sera-m01"]?.cleared,
+    "Sera M01 result was not stored under its namespaced key", records);
+  assert(records.m01 === undefined,
+    "clearing Sera M01 wrote into the legacy USA M01 record", records);
 
-  await advanceBriefingToHangar();
-  await startCurrentSortie();
+  const legacyStarted = await page.evaluate(() => window.__game.forceStartMissionByKey("m01", "f16"));
+  assert(legacyStarted, "legacy USA M01 could not start after the Sera clear");
+  await waitForState("playing", 10_000);
+  await page.waitForTimeout(250);
   probe = await page.evaluate(() => window.__game.seraM01Probe());
-  assert(probe.missionKey === "m02" && probe.state === "playing",
-    "the stock mission after M01 no longer boots", probe);
+  const legacyWingmen = probe.friendlies.filter((friendly) => friendly.kind === "wingman");
+  assert(probe.missionKey === "m01" && probe.worldKey === "archipelagoDay",
+    "legacy M01 still resolves to Sera content", probe);
+  assert(!legacyWingmen.some((wingman) => wingman.label.includes("CROWN") || wingman.label.includes("LARK")),
+    "ROOK wingmen leaked into legacy M01", legacyWingmen);
 
   assert(pageErrors.length === 0, "pageerror occurred", pageErrors);
   assert(consoleErrors.length === 0, "console error occurred", consoleErrors);
   console.log("check_sera_m01_e2e: PASS");
-  console.log("  real menu flow -> Ren Bay M01 -> fail -> checkpoint-safe retry -> clean clear -> M02 boot");
+  console.log("  legacy m01 + namespaced sera-m01 coexist / independent result key / legacy mission still boots");
   console.log("  CROWN=f15c / LARK=f16 / white tutorial / red bomber phases");
-  console.log("  one breach removes S / two breaches=FAILED / white survivors allowed on clear");
+  console.log("  one breach removes S / two breaches=FAILED / checkpoint-safe Retry / white survivors allowed");
 } finally {
   await browser.close();
 }

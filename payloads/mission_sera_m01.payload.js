@@ -4,7 +4,7 @@
 //   index.html?payloads=payloads/map_renBay.payload.js,payloads/mission_sera_m01.payload.js
 //
 // Contract:
-//   - replaces the stock USA m01 in place without changing the campaign order
+//   - adds an independent `sera-m01` mission and leaves legacy USA `m01` untouched
 //   - uses the recovered `renBay` world
 //   - teaches the three-colour IFF contract: red TGT / white hostile / blue ally
 //   - fields CROWN in an F-15C and LARK in an F-16C as distinct blue wingmen
@@ -28,14 +28,14 @@ export default function register(ctx) {
     }
   }
 
-  const at = MISSIONS.findIndex((mission) => mission.key === "m01");
-  if (at < 0) throw new Error("[sera-m01] stock m01 was not found");
-  const original = MISSIONS[at];
+  const original = MISSIONS.find((mission) => mission.key === "m01");
+  if (!original) throw new Error("[sera-m01] stock m01 template was not found");
 
-  const replacement = {
+  const mission = {
     ...original,
-    key: "m01",
-    campaign: original.campaign || "usa",
+    key: "sera-m01",
+    campaign: "sera",
+    campaignOrder: 1,
     world: "renBay",
     title: "FIRST CONTACT",
     jp: "レン湾へ侵入するエレム爆撃隊を迎撃せよ。赤TGTの爆撃機を優先し、湾北岸への投弾を阻止する。",
@@ -305,18 +305,7 @@ export default function register(ctx) {
     ]
   };
 
-  // addMission appends when `after` is omitted. Remove the stock entry, pass
-  // the replacement through the normal normalizer, then move the normalized
-  // result back to the original index so campaign order does not change.
-  MISSIONS.splice(at, 1);
-  try {
-    const normalized = ctx.addMission(replacement);
-    const appendedAt = MISSIONS.indexOf(normalized);
-    if (appendedAt < 0) throw new Error("[sera-m01] normalized mission was not inserted");
-    MISSIONS.splice(appendedAt, 1);
-    MISSIONS.splice(at, 0, normalized);
-  } catch (error) {
-    MISSIONS.splice(at, 0, original);
-    throw error;
-  }
+  // Add-only registration is the isolation boundary: the legacy USA mission
+  // remains addressable as `m01`, while Sera owns a distinct persistent key.
+  ctx.addMission(mission);
 }

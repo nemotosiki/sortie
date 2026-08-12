@@ -2,8 +2,8 @@
 // Runtime-contract check for payloads/mission_sera_m01.payload.js.
 //
 // This imports a temporary .mjs copy of the payload, supplies the smallest
-// compatible registry context, and proves that the stock first mission is
-// replaced in place with the canonical M01 encounter.
+// compatible registry context, and proves that the canonical Sera mission is
+// added under its own key without modifying the stock USA first mission.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -75,9 +75,13 @@ try {
 
   register(ctx);
 
-  assert(MISSIONS.length === 1, `expected one mission after replacement, got ${MISSIONS.length}`);
-  const mission = MISSIONS[0];
-  assert(mission.key === "m01", `first mission key changed to ${mission.key}`);
+  assert(MISSIONS.length === 2, `expected stock + Sera missions, got ${MISSIONS.length}`);
+  assert(MISSIONS[0] === stockMission && MISSIONS[0].title === "OLD FIRST CONTACT",
+    "stock USA M01 was modified or removed");
+  const mission = MISSIONS.find((entry) => entry.key === "sera-m01");
+  assert(mission, "namespaced Sera M01 was not registered");
+  assert(mission.campaign === "sera", `unexpected campaign ${mission.campaign}`);
+  assert(mission.campaignOrder === 1, `unexpected campaign order ${mission.campaignOrder}`);
   assert(mission.title === "FIRST CONTACT", `unexpected title ${mission.title}`);
   assert(mission.world === "renBay", `unexpected world ${mission.world}`);
   assert(mission.parTime === 660, `unexpected parTime ${mission.parTime}`);
@@ -130,7 +134,7 @@ try {
   }
 
   console.log("check_sera_m01_payload: PASS");
-  console.log(`  mission=${mission.key} world=${mission.world} TGT=${tgt} WHITE=${optional} phases=${mission.waveCount}`);
+  console.log(`  stock=m01 mission=${mission.key} campaign=${mission.campaign} world=${mission.world} TGT=${tgt} WHITE=${optional} phases=${mission.waveCount}`);
   console.log(`  wingmen=CROWN:${crown.type} / LARK:${lark.type} breach=${mission.bomberBreach.sCapAt}/${mission.bomberBreach.failAt}`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });

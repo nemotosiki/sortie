@@ -35009,14 +35009,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         }
 
-        const at = MISSIONS.findIndex((mission) => mission.key === "m01");
-        if (at < 0) throw new Error("[sera-m01] stock m01 was not found");
-        const original = MISSIONS[at];
+        const original = MISSIONS.find((mission) => mission.key === "m01");
+        if (!original) throw new Error("[sera-m01] stock m01 template was not found");
 
-        const replacement = {
+        const mission = {
           ...original,
-          key: "m01",
-          campaign: original.campaign || "usa",
+          key: "sera-m01",
+          campaign: "sera",
+          campaignOrder: 1,
           world: "renBay",
           title: "FIRST CONTACT",
           jp: "レン湾へ侵入するエレム爆撃隊を迎撃せよ。赤TGTの爆撃機を優先し、湾北岸への投弾を阻止する。",
@@ -35286,20 +35286,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ]
         };
 
-        // addMission appends when `after` is omitted. Remove the stock entry, pass
-        // the replacement through the normal normalizer, then move the normalized
-        // result back to the original index so campaign order does not change.
-        MISSIONS.splice(at, 1);
-        try {
-          const normalized = ctx.addMission(replacement);
-          const appendedAt = MISSIONS.indexOf(normalized);
-          if (appendedAt < 0) throw new Error("[sera-m01] normalized mission was not inserted");
-          MISSIONS.splice(appendedAt, 1);
-          MISSIONS.splice(at, 0, normalized);
-        } catch (error) {
-          MISSIONS.splice(at, 0, original);
-          throw error;
-        }
+        // Add-only registration is the isolation boundary: the legacy USA mission
+        // remains addressable as `m01`, while Sera owns a distinct persistent key.
+        ctx.addMission(mission);
       },
       "mission_sera_m01"
     ); // @payload:mission_sera_m01
@@ -37940,14 +37929,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM01AdvancePhase: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m01") return false;
         if (activeWaveGate) activeWaveGate.elapsed = activeWaveGate.timeout;
         updateMission(0.016, 3.0);
         return true;
       },
       forceSeraM01Breach: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01" || !friendlyBase) {
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m01" || !friendlyBase) {
           return false;
         }
         const bomber = enemies.find(
@@ -37960,7 +37949,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       seraM01PerfectRankPreview: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (!mission || mission.key !== "m01") return null;
+        if (!mission || mission.key !== "sera-m01") return null;
         const oldKill = rankStats.playerKillValue;
         const oldElapsed = missionElapsed;
         rankStats.playerKillValue = rankStats.spawnedValue;
@@ -37972,7 +37961,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM01Complete: () => {
         const mission = MISSIONS[currentMissionIndex];
-        if (gameState !== STATE_PLAYING || !mission || mission.key !== "m01") return false;
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m01") return false;
         for (let pass = 0; pass < 12 && gameState === STATE_PLAYING && !outcomePending.active; pass += 1) {
           if (activeWaveGate) activeWaveGate.elapsed = activeWaveGate.timeout;
           const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
@@ -37985,7 +37974,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const mission = MISSIONS[currentMissionIndex];
         if (gameState !== STATE_PLAYING
             || !mission
-            || mission.key !== "m01"
+            || mission.key !== "sera-m01"
             || !outcomePending.active) {
           return false;
         }
