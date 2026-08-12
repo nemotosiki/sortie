@@ -76,10 +76,10 @@ export default function register(ctx) {
     // a gun. `aa` itself is the frigate's, unchanged.
     aaMounts: Object.freeze([-30]),
     aaHeight: 20,
-    // NEXT-target walk: hull, then the two hatch rows, then the sail.
+    // Destructible records for the two hatch rows and the sail.
     //
     // Every offset is a part this file actually draws, and the y values are the
-    // coaming crowns rather than the casing, so a lock box sits ON the hardware:
+    // coaming crowns rather than the casing, so each hit box sits ON the hardware:
     //   vls-port  x -7.4 / z  0  = centre of the PORT hatch row (6 coamings at
     //                              x -7.4, z -34..+34), coaming crown y 8.3
     //   vls-stbd  x  7.4 / z  0  = centre of the STARBOARD row, same numbers
@@ -87,9 +87,9 @@ export default function register(ctx) {
     //                              y 16 is mid-fin, not the crown, so the box
     //                              covers the fin rather than floating over it
     subsystems: Object.freeze([
-      Object.freeze({ key: "vls-port", kind: "vls", offset: Object.freeze({ x: -7.4, y: 8.3, z: 0 }) }),
-      Object.freeze({ key: "vls-stbd", kind: "vls", offset: Object.freeze({ x: 7.4, y: 8.3, z: 0 }) }),
-      Object.freeze({ key: "aa-sail", kind: "aa", offset: Object.freeze({ x: 0, y: 16, z: -30 }) })
+      Object.freeze({ key: "vls-port", kind: "vls", hitBox: Object.freeze({ x: 9, y: 7, z: 76 }), offset: Object.freeze({ x: -7.4, y: 8.3, z: 0 }) }),
+      Object.freeze({ key: "vls-stbd", kind: "vls", hitBox: Object.freeze({ x: 9, y: 7, z: 76 }), offset: Object.freeze({ x: 7.4, y: 8.3, z: 0 }) }),
+      Object.freeze({ key: "aa-sail", kind: "aa", hitBox: Object.freeze({ x: 16, y: 22, z: 38 }), offset: Object.freeze({ x: 0, y: 16, z: -30 }) })
     ]),
     // Cooler than the surface fleet's ambers, which is the radar's own way of
     // saying "different class of target".

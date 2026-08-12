@@ -8,3 +8,44 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+
+/* Surface targets use the AC-style flat-top hexagonal target frame. */
+:root {
+  --ground-target-hex-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Cpolygon%20points='25,3%2075,3%2097,50%2075,97%2025,97%203,50'%20fill='none'%20stroke='white'%20stroke-width='2.2'%20stroke-linejoin='miter'/%3E%3C/svg%3E");
+  --subsystem-target-hex-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Cpolygon%20points='25,3%2075,3%2097,50%2075,97%2025,97%203,50'%20fill='none'%20stroke='white'%20stroke-width='2.4'%20stroke-dasharray='13%209'%20stroke-linecap='butt'%20stroke-linejoin='miter'/%3E%3C/svg%3E");
+}
+
+/* Keep the hexagon through normal, selected and locked surface contacts. */
+.enemyMarker.ground {
+  border-color: transparent !important;
+}
+
+.enemyMarker.ground::before {
+  display: block;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  border: 0;
+  transform: none;
+  opacity: 0.92;
+  background: currentColor;
+  -webkit-mask-image: var(--ground-target-hex-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  mask-image: var(--ground-target-hex-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: 100% 100%;
+}
+
+/* Ship mounts keep the original dashed distinction after the square border is
+   replaced by the surface-target hexagon. Hulls remain solid. */
+.enemyMarker.ground.subsystem::before {
+  -webkit-mask-image: var(--subsystem-target-hex-mask);
+  mask-image: var(--subsystem-target-hex-mask);
+}

@@ -2215,7 +2215,7 @@
 
   </style>
   <link rel="stylesheet" href="./styles/radio.css">
-  <link rel="stylesheet" href="./styles/hud-polish.css">
+  <link rel="stylesheet" href="./styles/hud-polish.css?v=20260813-surface-hex-5">
 
   <script type="importmap">
   {
@@ -2563,7 +2563,7 @@
       GUN_RANGE,
       GUN_RATE,
       createPlayerGunController
-    } from "./src/combat/player-gun.js";
+    } from "./src/combat/player-gun.js?v=20260813-ship-collision-3";
     import { createMissileGuidance } from "./src/combat/missile-guidance.js";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
@@ -2672,8 +2672,6 @@
       getPlayer: () => player,
       getPlayerSpeed: () => playerSpeed,
       getEnemies: () => enemies,
-      getPreferredTargetId: () => preferredTargetId,
-      getLockTargetId: () => lock.targetId,
       getCamera: () => camera,
       getUi: () => ui,
       getDamage: () => GUN_DAMAGE,
@@ -3374,6 +3372,13 @@
     // tube per target it can latch and spends one per ROUND, so a full 8AAM
     // volley empties all eight and puts all eight on the 12 s clock; with only
     // three back, the next trigger pull is a three-round volley.
+    // 556 m/s = 2001.6 km/h. This is the common cruise-speed floor for every
+    // ordinary guided missile in the game: the player's MSL, QAAM and salvo
+    // rounds, plus hostile AAM/SAM rounds. Explicitly special flight profiles
+    // (anti-ship cruise missiles and helicopter rockets) keep their authored
+    // speeds because their slow run-in is part of how the weapon is identified.
+    const STANDARD_MISSILE_MAX_SPEED = 556;
+
     const SPW_TYPES = Object.freeze({
       // F-16: dogfight round. Turns hard enough to follow a break.
       // `reattack` exempts it from the seeker lock-loss clock, so a break that
@@ -3387,7 +3392,7 @@
         kind: "aam",
         damage: 98,
         turnRateDeg: 300,
-        maxSpeed: 520,
+        maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 9.5,
         reattack: true,
         multi: 1,
@@ -3471,7 +3476,7 @@
         kind: "aam",
         damage: 90,
         turnRateDeg: 190,
-        maxSpeed: 556,
+        maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 9.5,
         multi: 4,
         multiLockTime: 0.22,
@@ -3490,7 +3495,7 @@
         kind: "aam",
         damage: 78,
         turnRateDeg: 48,
-        maxSpeed: 556,
+        maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 9.5,
         multi: 8,
         multiLockTime: 0.22,
@@ -3513,7 +3518,7 @@
         kind: "aam",
         damage: 84,
         turnRateDeg: 95,
-        maxSpeed: 556,
+        maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 9.5,
         multi: 6,
         // 0.22 は 4AAM/8AAM/4AGM と同じ刻み。ここだけ 0.45 のままだと 6 目標に
@@ -3560,7 +3565,7 @@
         kind: "aam",
         damage: 120,
         turnRateDeg: 120,
-        maxSpeed: 556,
+        maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 11,
         multi: 4,
         // 0.22 s a step for the same reason the 4AAM has it: 0.45 wanted all four
@@ -6570,21 +6575,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // ---- Ship subsystems ----------------------------------------------------
     // AC lets you shoot a warship's mounts off before you sink the hull, and
     // that is what these are: AA mounts, VLS cell fields and CIWS drums that
-    // live in enemies[] as children of their ship, so lock-on, the gun raycast,
-    // missile guidance and the whole kill flow come for free - the same trick
-    // the ships themselves already play on the aircraft code.
+    // live in enemies[] as children of their ship. They remain visible and
+    // destructible, but target selection and missile lock stay on the hull.
     //
     // Three rules keep them from leaking into everything else:
     //   * subsystem:true / tgt:false - never a designated target, never on the
     //     radar, never worth a hull's score, never gating a wave.
-    //   * never auto-locked (SUBSYSTEM_LOCK_PENALTY): the reticle still finds
-    //     the hull by itself, and only a deliberate NEXT press walks onto a
-    //     mount. A ship-killing round can therefore never be stolen by the gun
-    //     tub standing in front of the ship.
+    //   * never selected or locked: machine-gun fire reaches one only by
+    //     physically crossing its oriented hit box.
     //   * a ship with no `subsystems` entry is untouched - every path below
     //     falls back to the pre-subsystem constants.
     const SUBSYSTEM_SCORE = 150;
-    const SUBSYSTEM_LOCK_PENALTY = 1000;
     const SUBSYSTEM_WRECK_TIME = 4.5;
     const SUBSYSTEM_ID_BASE = 1000;
     // HP is quantised the way the hulls are: 49 dies to one missile or a short
@@ -6594,19 +6595,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const SUBSYSTEM_KINDS = Object.freeze({
       aa: Object.freeze({
         kind: "aa", label: "AA GUN", role: "Ship AA Mount",
-        hp: 49, hitRadius: 14, hitBox: Object.freeze({ x: 16, y: 16, z: 16 }),
+        hp: 49, hitRadius: 14, hitBox: Object.freeze({ x: 8, y: 8, z: 12 }),
         smokeHeight: 4, explosionColor: 0xffa348, tracerColor: 0xffb04a,
         radarColor: "#ffb46a", surface: true
       }),
       vls: Object.freeze({
         kind: "vls", label: "VLS", role: "Vertical Launch Cells",
-        hp: 98, hitRadius: 16, hitBox: Object.freeze({ x: 20, y: 12, z: 20 }),
+        hp: 98, hitRadius: 16, hitBox: Object.freeze({ x: 14, y: 5, z: 14 }),
         smokeHeight: 3, explosionColor: 0xffd35f, tracerColor: 0xffb04a,
         radarColor: "#ffb46a", surface: true
       }),
       ciws: Object.freeze({
         kind: "ciws", label: "CIWS", role: "Close-In Weapon System",
-        hp: 49, hitRadius: 12, hitBox: Object.freeze({ x: 14, y: 14, z: 14 }),
+        hp: 49, hitRadius: 12, hitBox: Object.freeze({ x: 7, y: 8, z: 7 }),
         smokeHeight: 4, explosionColor: 0xffa348, tracerColor: 0xfff0a0,
         radarColor: "#ffb46a", surface: true,
         // The reason to take a mount off before the hull, and the reason the
@@ -6657,16 +6658,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // the SAMs already launch out of. Array order is the NEXT-target
         // walk: hull, AA, AA, VLS, VLS, CIWS.
         subsystems: Object.freeze([
-          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: -48 }) }),
+          Object.freeze({ key: "aa-fore", kind: "aa", hitBox: Object.freeze({ x: 8, y: 8, z: 12 }), offset: Object.freeze({ x: 0, y: 13, z: -48 }) }),
           // aa-aft sits where the aft gun actually FIRES from (aaMounts z=50,
           // aaHeight 13) and ciws sits on the drawn hangar-roof drum (z=51) -
           // the old pair had the lock boxes swapped off the hardware: "AA GUN"
           // labelled the visible drum while the live CIWS floated as an
           // invisible box over the empty deck at z=64.
-          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 13, z: 50 }) }),
-          Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: -37 }) }),
-          Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 11, z: 33 }) }),
-          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 0, y: 19.5, z: 51 }) })
+          Object.freeze({ key: "aa-aft", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 9 }), offset: Object.freeze({ x: 0, y: 13, z: 50 }) }),
+          Object.freeze({ key: "vls-fore", kind: "vls", hitBox: Object.freeze({ x: 14, y: 5, z: 12 }), offset: Object.freeze({ x: 0, y: 11, z: -37 }) }),
+          Object.freeze({ key: "vls-aft", kind: "vls", hitBox: Object.freeze({ x: 14, y: 5, z: 12 }), offset: Object.freeze({ x: 0, y: 11, z: 33 }) }),
+          Object.freeze({ key: "ciws", kind: "ciws", hitBox: Object.freeze({ x: 6, y: 8, z: 7 }), offset: Object.freeze({ x: 0, y: 19.5, z: 51 }) })
         ]),
         radarColor: "#ffb46a",
         tracerColor: 0xffb04a,
@@ -6748,8 +6749,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // and no CIWS - a landing ship carries neither - so a strafing pass
         // can silence one completely before the missile run goes in.
         subsystems: Object.freeze([
-          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: 0, y: 14, z: -54 }) }),
-          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 0, y: 19, z: 57 }) })
+          Object.freeze({ key: "aa-fore", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 11 }), offset: Object.freeze({ x: 0, y: 14, z: -54 }) }),
+          Object.freeze({ key: "aa-aft", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 11 }), offset: Object.freeze({ x: 0, y: 19, z: 57 }) })
         ]),
         radarColor: "#ffd08a",
         tracerColor: 0xffb04a,
@@ -6788,10 +6789,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // deck-edge sponsons fore and aft, one gun forward of the island, and
         // the drum on the existing starboard sponson.
         subsystems: Object.freeze([
-          Object.freeze({ key: "aa-fore", kind: "aa", offset: Object.freeze({ x: -40.5, y: 19, z: -130 }) }),
-          Object.freeze({ key: "aa-aft", kind: "aa", offset: Object.freeze({ x: 40.5, y: 19, z: 120 }) }),
-          Object.freeze({ key: "aa-island", kind: "aa", offset: Object.freeze({ x: 34, y: 24.5, z: 14 }) }),
-          Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: 40.5, y: 19.5, z: 78 }) })
+          Object.freeze({ key: "aa-fore", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 12 }), offset: Object.freeze({ x: -40.5, y: 19, z: -130 }) }),
+          Object.freeze({ key: "aa-aft", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 12 }), offset: Object.freeze({ x: 40.5, y: 19, z: 120 }) }),
+          Object.freeze({ key: "aa-island", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 11 }), offset: Object.freeze({ x: 34, y: 24.5, z: 14 }) }),
+          Object.freeze({ key: "ciws", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 8, z: 8 }), offset: Object.freeze({ x: 40.5, y: 19.5, z: 78 }) })
         ]),
         radarColor: "#ff8a6a",
         tracerColor: 0xff9a52,
@@ -17233,17 +17234,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           subsystems: Object.freeze([
             // Forward VLS grid on the forecastle - the 4x5 cell field at z -58,
             // y 15 = the hatch deck on top of its plinth.
-            Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -58 }) }),
+            Object.freeze({ key: "vls-fore", kind: "vls", hitBox: Object.freeze({ x: 18, y: 5, z: 20 }), offset: Object.freeze({ x: 0, y: 15, z: -58 }) }),
             // Second VLS grid immediately aft of it at z -38, ahead of the bridge.
-            Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -38 }) }),
+            Object.freeze({ key: "vls-aft", kind: "vls", hitBox: Object.freeze({ x: 18, y: 5, z: 20 }), offset: Object.freeze({ x: 0, y: 15, z: -38 }) }),
             // Amidships gun mounts, port and starboard, on tier 1's shoulder roof.
-            Object.freeze({ key: "aa-port", kind: "aa", offset: Object.freeze({ x: -12.5, y: 30, z: -16 }) }),
-            Object.freeze({ key: "aa-stbd", kind: "aa", offset: Object.freeze({ x: 12.5, y: 30, z: -16 }) }),
-            // Two of the four CIWS drums are lockable: the forward pair on the beam
-            // sponsons at z +42. The aft pair at z +70 are drawn but not lockable, so
-            // the NEXT walk stays six stops long instead of eight.
-            Object.freeze({ key: "ciws-port", kind: "ciws", offset: Object.freeze({ x: -15.5, y: 19, z: 42 }) }),
-            Object.freeze({ key: "ciws-stbd", kind: "ciws", offset: Object.freeze({ x: 15.5, y: 19, z: 42 }) })
+            Object.freeze({ key: "aa-port", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: -12.5, y: 30, z: -16 }) }),
+            Object.freeze({ key: "aa-stbd", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: 12.5, y: 30, z: -16 }) }),
+            // Two of the four CIWS drums are destructible: the forward pair on the
+            // beam sponsons at z +42. The aft pair at z +70 remain visual detail.
+            Object.freeze({ key: "ciws-port", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: -15.5, y: 19, z: 42 }) }),
+            Object.freeze({ key: "ciws-stbd", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: 15.5, y: 19, z: 42 }) })
           ]),
 
           radarColor: "#ffa878",
@@ -17457,7 +17457,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // so four of them read as "four of those" and not as a new part.
             //   forward pair z +42  -> subsystems "ciws-port"/"ciws-stbd"
             //                          { x -/+15.5, y 19, z 42 }
-            //   aft pair     z +70  -> drawn only; not lockable (see subsystems note)
+            //   aft pair     z +70  -> drawn only; no destructible subsystem record
             for (const side of [-1, 1]) {
               for (const dz of [42, 70]) {
                 add(geometry.panel, dark, side * 15.5, 14.4, dz, 7, 4.5, 13);
@@ -17541,22 +17541,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // not correspond to hardware this hull draws. It exists only because the
           // spread carries it; the live mounts are the `subsystems` entries below.
 
-          // ---- Subsystems: NEXT-target walk = hull, VLS x4, CIWS ------------------
+          // ---- Destructible subsystems: VLS x4, CIWS -------------------------------
           // Every offset is the centre of a part build() actually draws, so a player
-          // who locks one is aiming at hardware they can see.
+          // who strafes one is hitting hardware they can see.
           //   vls-1 { 0, 9.4, -73 }  hatch field drawn at z -73 ( 80 cells,  8x10)
           //   vls-2 { 0, 9.4, -34 }  hatch field drawn at z -34 (168 cells, 12x14)
           //   vls-3 { 0, 9.4,  18 }  hatch field drawn at z  18 (168 cells, 12x14)
           //   vls-4 { 0, 9.4,  62 }  hatch field drawn at z  62 (120 cells, 12x10)
           //   ciws  { -18, 13.4, 78 } port drum, on its tub at x -18 / z +78
-          // y 9.4 is the deck plane (8.4) plus the hatch coaming: the lock box sits
+          // y 9.4 is the deck plane (8.4) plus the hatch coaming: the hit box sits
           // on the cell mouths rather than inside the hull.
           subsystems: Object.freeze([
-            Object.freeze({ key: "vls-1", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -73 }) }),
-            Object.freeze({ key: "vls-2", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -34 }) }),
-            Object.freeze({ key: "vls-3", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 18 }) }),
-            Object.freeze({ key: "vls-4", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 62 }) }),
-            Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: -18, y: 13.4, z: 78 }) })
+            Object.freeze({ key: "vls-1", kind: "vls", hitBox: Object.freeze({ x: 26, y: 3, z: 32 }), offset: Object.freeze({ x: 0, y: 9.4, z: -73 }) }),
+            Object.freeze({ key: "vls-2", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 44 }), offset: Object.freeze({ x: 0, y: 9.4, z: -34 }) }),
+            Object.freeze({ key: "vls-3", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 44 }), offset: Object.freeze({ x: 0, y: 9.4, z: 18 }) }),
+            Object.freeze({ key: "vls-4", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 32 }), offset: Object.freeze({ x: 0, y: 9.4, z: 62 }) }),
+            Object.freeze({ key: "ciws", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 8, z: 10 }), offset: Object.freeze({ x: -18, y: 13.4, z: 78 }) })
           ])
         });
 
@@ -17790,8 +17790,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             add(geometry.shipCylinder, light, -18, 13.4, 78, 2.1, 2.4, 2.1);
             add(geometry.panel, dark, -18, 15.4, 74.4, 0.55, 0.55, 6.4, -0.3);
             // Starboard drum: hardware only, no subsystem entry — the design intent
-            // is a single lockable CIWS, and a second lock box on a 250m hull whose
-            // point is its cell fields would dilute the NEXT walk.
+            // is a single destructible CIWS record; the other remains visual detail.
             add(geometry.panel, house, 15.6, 15.2, 92, 6, 3.2, 8);
             add(geometry.shipCylinder, light, 15.6, 17.5, 92, 2, 2.3, 2);
             add(geometry.panel, dark, 15.6, 19.4, 88.6, 0.5, 0.5, 6, -0.3);
@@ -17853,13 +17852,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // position up on the island, and a CIWS drum at each end of the deck.
           subsystems: Object.freeze([
             // -> island gun tub: shipCylinder at (18, 24.4, -20), barrel above it.
-            Object.freeze({ key: "aa-island", kind: "aa", offset: Object.freeze({ x: 18, y: 25, z: -20 }) }),
+            Object.freeze({ key: "aa-island", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: 18, y: 25, z: -20 }) }),
             // -> forward CIWS drum: shipCylinder at (-24, 23.6, -108) on the port
             //    bow deck-edge sponson.
-            Object.freeze({ key: "ciws-fore", kind: "ciws", offset: Object.freeze({ x: -24, y: 24, z: -108 }) }),
+            Object.freeze({ key: "ciws-fore", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: -24, y: 24, z: -108 }) }),
             // -> aft CIWS drum: shipCylinder at (24, 23.6, 110) on the starboard
             //    quarter sponson.
-            Object.freeze({ key: "ciws-aft", kind: "ciws", offset: Object.freeze({ x: 24, y: 24, z: 110 }) })
+            Object.freeze({ key: "ciws-aft", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: 24, y: 24, z: 110 }) })
           ])
         });
 
@@ -18138,10 +18137,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // a gun. `aa` itself is the frigate's, unchanged.
           aaMounts: Object.freeze([-30]),
           aaHeight: 20,
-          // NEXT-target walk: hull, then the two hatch rows, then the sail.
+          // Destructible records for the two hatch rows and the sail.
           //
           // Every offset is a part this file actually draws, and the y values are the
-          // coaming crowns rather than the casing, so a lock box sits ON the hardware:
+          // coaming crowns rather than the casing, so each hit box sits ON the hardware:
           //   vls-port  x -7.4 / z  0  = centre of the PORT hatch row (6 coamings at
           //                              x -7.4, z -34..+34), coaming crown y 8.3
           //   vls-stbd  x  7.4 / z  0  = centre of the STARBOARD row, same numbers
@@ -18149,9 +18148,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           //                              y 16 is mid-fin, not the crown, so the box
           //                              covers the fin rather than floating over it
           subsystems: Object.freeze([
-            Object.freeze({ key: "vls-port", kind: "vls", offset: Object.freeze({ x: -7.4, y: 8.3, z: 0 }) }),
-            Object.freeze({ key: "vls-stbd", kind: "vls", offset: Object.freeze({ x: 7.4, y: 8.3, z: 0 }) }),
-            Object.freeze({ key: "aa-sail", kind: "aa", offset: Object.freeze({ x: 0, y: 16, z: -30 }) })
+            Object.freeze({ key: "vls-port", kind: "vls", hitBox: Object.freeze({ x: 9, y: 7, z: 76 }), offset: Object.freeze({ x: -7.4, y: 8.3, z: 0 }) }),
+            Object.freeze({ key: "vls-stbd", kind: "vls", hitBox: Object.freeze({ x: 9, y: 7, z: 76 }), offset: Object.freeze({ x: 7.4, y: 8.3, z: 0 }) }),
+            Object.freeze({ key: "aa-sail", kind: "aa", hitBox: Object.freeze({ x: 16, y: 22, z: 38 }), offset: Object.freeze({ x: 0, y: 16, z: -30 }) })
           ]),
           // Cooler than the surface fleet's ambers, which is the radar's own way of
           // saying "different class of target".
@@ -37824,7 +37823,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (const type of ["mig21", "mig29", "su34"]) {
           if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m04] required enemy profile not registered: ${type}`);
         }
-        for (const type of ["cruiser", "lhd", "missileBoat", "carrier", "frigate"]) {
+        for (const type of ["cruiser", "aegis", "missileBoat", "carrier", "frigate"]) {
           if (!SHIP_TYPES[type]) throw new Error(`[sera-m04] required ship type not registered: ${type}`);
         }
 
@@ -37838,12 +37837,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             heading: "west"
           }),
           redFleet: Object.freeze({
-            targetTypes: Object.freeze(["cruiser", "lhd", "lhd", "lhd"]),
+            targetTypes: Object.freeze(["cruiser", "aegis", "aegis", "aegis"]),
+            breachTypes: Object.freeze(["aegis"]),
             updateArmedAtDestroyed: 2,
             updateArmedAtSeconds: 360,
             failAtBreaches: 2,
             continueAtBreaches: 1,
-            breachMark: "m04LhdBreach"
+            breachMark: "m04FleetBreach"
           }),
           missionUpdate: Object.freeze({
             afterRedFleetDestroyed: true,
@@ -37883,12 +37883,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           campaignOrder: 4,
           world: "naharStrait",
           title: "NARROW SEA",
-          jp: "ナハル海峡を西進するエレム揚陸艦隊を阻止し、その後の対艦航空攻撃からセラ艦隊を守れ。",
+          jp: "ナハル海峡を西進するエレム水上打撃群を阻止し、その後の対艦航空攻撃からセラ艦隊を守れ。",
           act: 1,
           storyNo: 4,
-          story: "WAR DAY 022。エレム揚陸艦隊がナハル海峡を西進している。\nROOKは海峡内で主力艦を止め、空母EPOCHの退路を維持する。",
+          story: "WAR DAY 022。エレム水上打撃群がナハル海峡を西進している。\nROOKは海峡内で主力艦を止め、空母EPOCHの退路を維持する。",
           epilogue: [
-            "ナハル海峡の揚陸艦隊は阻止された。",
+            "ナハル海峡の水上打撃群は阻止された。",
             "直後の対艦航空攻撃も失敗し、EPOCHは航空運用を継続した。",
             "海峡に残った艦影は、夕陽の中で一隻ずつ消えていった。"
           ],
@@ -37943,17 +37943,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               kind: "naval",
-              fleet: ["cruiser", "lhd", "lhd", "lhd"],
+              fleet: ["cruiser", "aegis", "aegis", "aegis"],
               band: 1,
               idBase: 0,
-              label: "LANDING FLEET",
+              label: "SURFACE STRIKE GROUP",
               at: [11500, 0],
               facing: [-6500, 0],
               radio: [
                 {
                   speaker: "meridian",
                   priority: "CRITICAL",
-                  text: "敵艦隊を確認。防空巡洋艦一、強襲揚陸艦三をTGT指定。",
+                  text: "敵艦隊を確認。防空巡洋艦一、イージス艦三をTGT指定。",
                   id: "m04_contact_01"
                 }
               ]
@@ -38023,12 +38023,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
           m04FleetContract,
           fixedRadio: [
-            { id: "m04_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル海峡西部へ進入。敵揚陸艦隊は東から西進中。" },
+            { id: "m04_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル海峡西部へ進入。敵水上打撃群は東から西進中。" },
             { id: "m04_intro_02", at: 9, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。護衛陣形を維持、ROOKへ目標情報を送る。" },
             { id: "m04_intro_03", at: 15, speaker: "lark", priority: "NORMAL", text: "中央橋を確認。艦隊はその東側。" },
             { id: "m04_intro_04", at: 20, speaker: "crown", priority: "NORMAL", text: "今日は相手が大きいな。撃った後の出口だけ決めとこう。" },
             { id: "m04_ship_01", event: "firstRedShipDestroyed", speaker: "lark", priority: "NORMAL", text: "赤艦一隻、沈没。残り三。" },
-            { id: "m04_phase2_03", event: "firstLhdCrossesBridge", speaker: "lark", priority: "URGENT", text: "一隻、橋を越えた。突破線へ向かってる。" },
+            { id: "m04_phase2_03", event: "firstRedShipCrossesBridge", speaker: "lark", priority: "URGENT", text: "イージス艦一隻、橋を越えた。突破線へ向かってる。" },
             { id: "m04_clear_01", event: "redFleetDestroyed", speaker: "meridian", priority: "NORMAL", text: "敵主力艦、全滅。海峡内の赤TGTなし。" },
             { id: "m04_update_01", event: "strikeInbound", speaker: "epoch", priority: "CRITICAL", text: "南東に高速接近。対艦攻撃機を確認！" },
             { id: "m04_missile_01", event: "antiShipMissileLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦ミサイル発射を確認！ 迎撃開始！" },
@@ -38037,13 +38037,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           successRadio: {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "敵揚陸艦隊と対艦攻撃隊を排除。EPOCHの生存を確認。ROOK、帰投せよ。",
+            text: "敵水上打撃群と対艦攻撃隊を排除。EPOCHの生存を確認。ROOK、帰投せよ。",
             id: "m04-success"
           },
           failureRadio: {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "EPOCH喪失、または揚陸艦二隻が突破。ナハル海峡阻止任務を中止する。",
+            text: "EPOCH喪失、またはイージス艦二隻が突破。ナハル海峡阻止任務を中止する。",
             id: "m04-failure"
           },
           parTime: 990,
@@ -38051,7 +38051,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.54, y: 0.34 },
           battleCenter: { x: 0, z: 0 },
           battleRadius: 18000,
-          briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、強襲揚陸艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。揚陸艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
+          briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、イージス艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。イージス艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
         };
 
         ctx.addMission(mission);
@@ -38465,7 +38465,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             }),
             m04: Object.freeze({
               missionKey: "sera-m04",
-              breachMark: "m04LhdBreach",
+              breachMark: "m04FleetBreach",
               oneBreachTankDelta: 1
             })
           }),
@@ -42043,9 +42043,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     ui.gameRoot.appendChild(renderer.domElement);
 
     const clock = new THREE.Clock();
-    const raycaster = new THREE.Raycaster();
-    raycaster.near = 0;
-    raycaster.far = GUN_RANGE;
 
     const tmpV1 = new THREE.Vector3();
     const tmpV2 = new THREE.Vector3();
@@ -42234,7 +42231,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // would have taxed every ordinary shot in the game to buy that nothing, so
     // the break is paid for at the fuse instead - see proximityFuseFor().
     const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(190);
-    const MISSILE_MAX_SPEED = 556;
+    const MISSILE_MAX_SPEED = STANDARD_MISSILE_MAX_SPEED;
     const MISSILE_LIFE = 9.5;
     // Proximity fuse against an aircraft, and the one lever that makes a break
     // turn worth flying. No airframe in the table can drag the miss distance past
@@ -44072,15 +44069,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // to leave the area to reach the objective" is a claim about two
         // numbers - the arena radius and the range to the furthest target -
         // and neither is visible from a screenshot.
-        // The radius the gun tests against, per live contact. A contact whose
-        // radius is zero is one the gun cannot hit at all - which is exactly
-        // what happened to every aeroplane when the hit test only knew how to
-        // read hitBox and hitRadius.
+        // The analytic radius used by aircraft/ground fallback tests and
+        // missile-era diagnostics. Ship gunfire now uses the rendered hull or
+        // the oriented subsystem box; `source` calls that distinction out.
         hitRadiusProbe: () => enemies.filter((enemy) => enemy.alive).map((enemy) => ({
           id: enemy.id,
           type: enemy.type,
           radius: Number(enemyHitSphereRadius(enemy).toFixed(2)),
-          source: enemy.spec.hitBox ? "hitBox" : (enemy.spec.hitRadius ? "hitRadius" : "sphere")
+          source: enemy.surface && !enemy.ground
+            ? (enemy.subsystem ? "oriented-hitBox" : "rendered-mesh")
+            : (enemy.spec.hitBox ? "hitBox" : (enemy.spec.hitRadius ? "hitRadius" : "sphere"))
         })),
         // Fire one burst straight down the barrel at a named contact and
         // report whether the hit test found it. Asked directly because the
@@ -44102,14 +44100,65 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const along = tmpV5.dot(tmpV6);
           const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
           const radius = enemyHitSphereRadius(enemy) * gunAimForgiveness(range);
+          const direct = playerGun.intersectEnemy(start, tmpV6, enemy);
+          const resolved = playerGun.resolveHit(start, tmpV6);
           return {
             id, type: enemy.type, range: Number(range.toFixed(1)),
             radius: Number(radius.toFixed(2)),
             missDistance: Number(missDistance.toFixed(3)),
             inRange: range <= playerGun.getProfile().range,
-            wouldHit: range <= playerGun.getProfile().range && along > 0 && missDistance <= radius
+            wouldHit: Boolean(direct && resolved && resolved.enemy.id === id),
+            directHit: Boolean(direct),
+            resolvedId: resolved ? resolved.enemy.id : null,
+            resolvedType: resolved ? resolved.enemy.type : null,
+            precise: Boolean(resolved && resolved.precise),
+            hitDistance: resolved ? Number(resolved.distance.toFixed(2)) : null
           };
         },
+        // Arbitrary world-space ray through the production gun resolver. This
+        // lets a browser test prove both halves of the ship contract: rendered
+        // steel is solid, and empty water inside the old radius is not.
+        gunRayTest: (origin, direction, maxRange = playerGun.getProfile().range) => {
+          if (!origin || !direction) return null;
+          tmpV4.set(Number(origin.x), Number(origin.y), Number(origin.z));
+          tmpV5.set(Number(direction.x), Number(direction.y), Number(direction.z));
+          if (!Number.isFinite(tmpV4.x + tmpV4.y + tmpV4.z + tmpV5.x + tmpV5.y + tmpV5.z) || tmpV5.lengthSq() < 1e-10) return null;
+          tmpV5.normalize();
+          const hit = playerGun.resolveHit(tmpV4, tmpV5, Number(maxRange) || playerGun.getProfile().range);
+          return hit ? {
+            id: hit.enemy.id,
+            type: hit.enemy.type,
+            subsystem: Boolean(hit.enemy.subsystem),
+            parentId: hit.enemy.parentId ?? null,
+            distance: Number(hit.distance.toFixed(3)),
+            point: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+            precise: Boolean(hit.precise)
+          } : null;
+        },
+        forceFireGun: () => {
+          if (gameState !== STATE_PLAYING) return null;
+          const id = playerGun.fire();
+          const enemy = enemies.find((entry) => entry.id === id);
+          return enemy ? { id, hp: enemy.hp, alive: enemy.alive } : null;
+        },
+        shipColliderProbe: () => enemies
+          .filter((enemy) => enemy.alive && enemy.surface && !enemy.ground)
+          .map((enemy) => {
+            enemy.hitbox.updateWorldMatrix(true, false);
+            const size = new THREE.Vector3();
+            const centre = new THREE.Vector3();
+            const bounds = new THREE.Box3().setFromObject(enemy.hitbox);
+            bounds.getSize(size);
+            bounds.getCenter(centre);
+            return {
+              id: enemy.id,
+              type: enemy.type,
+              subsystem: Boolean(enemy.subsystem),
+              parentId: enemy.parentId ?? null,
+              size: { x: size.x, y: size.y, z: size.z },
+              centre: { x: centre.x, y: centre.y, z: centre.z }
+            };
+          }),
         __strikeProbe: () => enemies.filter((e) => e.alive && e.strikeTarget).map((e) => ({
           id: e.id, type: e.type, tgt: e.tgt !== false, fired: Boolean(e.bombRunFired),
           arenaRange: Math.hypot(e.group.position.x - battleArea.centerX, e.group.position.z - battleArea.centerZ),
@@ -44669,6 +44718,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           propSpinners: enemy.model.propSpinners.length,
           propRotation: enemy.model.propSpinners.length ? enemy.model.propSpinners[0].rotation.z : null
         })),
+        // The authored and effective speed tables in one place. Ordinary enemy
+        // rounds are floored at the same 556 m/s as the player's MSL; the
+        // special flag makes the deliberately slower cruise/rocket profiles
+        // visible instead of hiding the exception inside launch code.
+        missileSpeedProbe: () => ({
+          floorMps: STANDARD_MISSILE_MAX_SPEED,
+          floorKph: STANDARD_MISSILE_MAX_SPEED * 3.6,
+          player: {
+            mslMps: MISSILE_MAX_SPEED,
+            mslKph: MISSILE_MAX_SPEED * 3.6,
+            qaamMps: SPW_TYPES.qaam.maxSpeed,
+            qaamKph: SPW_TYPES.qaam.maxSpeed * 3.6
+          },
+          enemy: Object.fromEntries(Object.entries(ENEMY_MISSILE_PROFILES).map(([id, profile]) => {
+            const mockEnemy = { type: id, heli: Boolean(HELI_TYPES[id]) };
+            const effective = enemyMissileMaxSpeed(mockEnemy, null, profile);
+            return [id, {
+              initialMps: profile.speed,
+              authoredMaxMps: profile.maxSpeed ?? null,
+              effectiveMaxMps: effective,
+              effectiveMaxKph: effective * 3.6,
+              special: mockEnemy.heli
+            }];
+          })),
+          antiShip: {
+            initialMps: ANTI_SHIP_MISSILE_PROFILE.speed,
+            maxMps: ANTI_SHIP_MISSILE_PROFILE.maxSpeed,
+            special: true
+          }
+        }),
         // Player rounds in flight, with the range to the aircraft each one is
         // tracking - the number the proximity fuse and the break turn argue over.
         missileProbe: () => missilesInFlight.map((missile) => {
@@ -46706,15 +46785,41 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return base * 100 + (enemy.subsystem ? enemy.subsystemIndex + 1 : 0);
     }
 
+    function visibleTargetCycleEntry(enemy) {
+      // Triangle/Tab uses the actual camera viewport, not the HUD's loose
+      // draw margin. A strict 1.0 NDC limit excludes contacts outside the image.
+      tmpV6.copy(enemy.group.position).applyMatrix4(camera.matrixWorldInverse);
+      tmpV7.copy(enemy.group.position).project(camera);
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.0)) return null;
+
+      return {
+        enemy,
+        centerDistSq: tmpV7.x * tmpV7.x + tmpV7.y * tmpV7.y,
+      };
+    }
+
     function cycleTarget() {
       if (gameState !== STATE_PLAYING) return;
-      const living = enemies.filter((enemy) => enemy.alive)
-        .sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
-      if (living.length === 0) return;
+      // Mounts remain visible and destructible, but manual target cycling
+      // treats each vessel as one target and never selects a subsystem.
+      const visible = enemies
+        .filter((enemy) => enemy.alive && !enemy.subsystem)
+        .map(visibleTargetCycleEntry)
+        .filter(Boolean)
+        .sort((a, b) => {
+          const centerDelta = a.centerDistSq - b.centerDistSq;
+          if (Math.abs(centerDelta) > 1e-9) return centerDelta;
+          return targetCycleKey(a.enemy) - targetCycleKey(b.enemy);
+        });
+
+      // Never fall back to radar/off-screen contacts. If nothing is inside
+      // the viewport, Triangle/Tab deliberately leaves the selection unchanged.
+      const candidates = visible.map((entry) => entry.enemy);
+      if (candidates.length === 0) return;
 
       const currentId = preferredTargetId ?? lock.targetId;
-      const currentIndex = living.findIndex((enemy) => enemy.id === currentId);
-      const next = living[(currentIndex + 1 + living.length) % living.length];
+      const currentIndex = candidates.findIndex((enemy) => enemy.id === currentId);
+      const next = candidates[(currentIndex + 1 + candidates.length) % candidates.length];
       preferredTargetId = next.id;
       lock.targetId = next.id;
       lock.progress = 0;
@@ -49186,6 +49291,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return ENEMY_MISSILE_PROFILES[enemy.type] || null;
     }
 
+    function enemyMissileMaxSpeed(enemy, charge, profile) {
+      const initial = Number(profile && profile.speed);
+      const authored = Number(profile && profile.maxSpeed);
+      const authoredMax = Number.isFinite(authored) && authored > 0
+        ? authored
+        : (Number.isFinite(initial) && initial > 0 ? initial : STANDARD_MISSILE_MAX_SPEED);
+      // An anti-ship cruise missile is selected by its friendly-ship charge,
+      // while helicopter entries represent guided/command-guided rockets. Both
+      // are intentionally slower than an AAM/SAM and remain explicit exceptions.
+      const specialFlightProfile = Boolean(
+        (charge && isFriendlyShip(charge)) || (enemy && enemy.heli)
+      );
+      return specialFlightProfile
+        ? authoredMax
+        : Math.max(STANDARD_MISSILE_MAX_SPEED, authoredMax);
+    }
+
     function attemptEnemyMissile(enemy, charge = null) {
       if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
       const profile = enemyMissileProfileFor(enemy, charge);
@@ -49329,7 +49451,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ownerId: enemy.id,
         ownerType: enemy.type,
         speed: profile.speed,
-        maxSpeed: profile.maxSpeed,
+        maxSpeed: enemyMissileMaxSpeed(enemy, charge, profile),
         turnRate: profile.turnRate,
         damage: profile.damage,
         lifeLimit: profile.life,
@@ -49664,6 +49786,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // function is the point: updateLock() and updateMultiLock() disagreeing
     // about what a weapon may see is exactly the bug this replaces.
     function canLock(enemy, lockKind) {
+      // AA guns, VLS and CIWS remain HUD contacts and destructible records,
+      // but no seeker may acquire them as single- or multi-lock targets.
+      if (!enemy || enemy.subsystem) return false;
       if (lockKind === "air") return !enemy.surface;
       if (lockKind === "surface") return Boolean(enemy.surface);
       // The 2026-08-02 specialist split: the 4AGM sees only what stands on
@@ -49723,13 +49848,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const dot = tmpV1.dot(tmpV2);
         if (dot < LOCK_DOT) continue;
 
-        // Mounts are never auto-locked and never join a salvo. Without this a
-        // gun tub 50 m in front of a hull would trade lock with the ship every
-        // few frames, and every missile meant for the hull would go to it.
-        // Manual selection is untouched: preferredCandidate below still wins.
-        if (!enemy.subsystem && enemy.friendly !== true) inCone.push({ id: enemy.id, distance, enemy });
+        if (enemy.friendly !== true) inCone.push({ id: enemy.id, distance, enemy });
         let selectionScore = dot * 4 - distance / lockRange;
-        if (enemy.subsystem) selectionScore -= SUBSYSTEM_LOCK_PENALTY;
         if (enemy.id === lock.targetId) selectionScore += LOCK_HYSTERESIS_BONUS;
         if (preferred && enemy.id === preferred.id) preferredCandidate = enemy;
         if (selectionScore > bestScore) {
@@ -51126,7 +51246,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const bridgeX = Array.isArray(route.bridge) ? Number(route.bridge[0]) : NaN;
       if (!enemy.m04BridgeCrossed && Number.isFinite(bridgeX) && enemy.group.position.x <= bridgeX) {
         enemy.m04BridgeCrossed = true;
-        fireFixedRadioEvent("firstLhdCrossesBridge");
+        fireFixedRadioEvent("firstRedShipCrossesBridge");
       }
       const breachX = Number(route.breachLineX);
       if (!Number.isFinite(breachX) || enemy.group.position.x > breachX) return false;
@@ -51136,10 +51256,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const breaches = mark ? ((sortieMarks[mark] || 0) + 1) : 1;
       if (mark) sortieMarks[mark] = breaches;
       const failAt = Math.max(1, Number(contract.redFleet && contract.redFleet.failAtBreaches) || 2);
-      if (breaches >= failAt) return failM04Mission("LANDING FORCE BROKE THROUGH");
+      if (breaches >= failAt) return failM04Mission("ENEMY FLEET BROKE THROUGH");
 
       retireM04BreachedShip(enemy);
-      showBanner("LHD BREACHED · MISSION CONTINUES", 1.8, "danger");
+      showBanner("AEGIS BREACHED · MISSION CONTINUES", 1.8, "danger");
       return true;
     }
 
@@ -54719,7 +54839,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ship.authoredCourse = anchored && !ship.spec.landing;
         if (m04Contract && spawningTgt) {
           ship.m04RedFleet = true;
-          ship.m04BreachEligible = ship.type === "lhd";
+          const breachTypes = m04Contract.redFleet && m04Contract.redFleet.breachTypes;
+          ship.m04BreachEligible = Array.isArray(breachTypes) && breachTypes.includes(ship.type);
           const routeSpeed = Number(m04Contract.shipRoute && m04Contract.shipRoute.speed);
           if (Number.isFinite(routeSpeed) && routeSpeed > 0) {
             ship.speed = routeSpeed;
@@ -58721,6 +58842,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           disposition === CONTACT_DISPOSITION.FRIENDLY
         );
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
+        // Every surface contact is hexagonal: land targets, ship hulls,
+        // turrets, VLS and CIWS subsystem records.
+        marker.classList.toggle(
+          "ground",
+          Boolean(enemy.ground || enemy.surface)
+        );
         // Who gets a name and a range: the main selection, and every target
         // latched into a salvo.
         marker.classList.toggle("named", selected || multiLocked);
@@ -59376,6 +59503,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         id: missile.id,
         ownerId: missile.ownerId,
         ownerType: missile.ownerType,
+        speed: missile.speed,
+        maxSpeed: missile.maxSpeed,
         position: {
           x: missile.mesh.position.x,
           y: missile.mesh.position.y,

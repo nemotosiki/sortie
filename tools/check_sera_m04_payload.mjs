@@ -14,7 +14,7 @@ assert(!source.includes("\r"), "payload must be LF-only");
 for (const token of [
   'key: "sera-m04"', 'campaign: "sera"', 'campaignOrder: 4', 'world: "naharStrait"',
   'breachLineX: -6500', 'failAtBreaches: 2', 'quietDelay: Object.freeze([12, 18])',
-  'firstMissileNotBefore: 60', 'breachMark: "m04LhdBreach"', 'hunt: "ship"',
+  'firstMissileNotBefore: 60', 'breachMark: "m04FleetBreach"', 'hunt: "ship"',
   'banner: "PROTECT CVN EPOCH"'
 ]) assert(source.includes(token), `missing ${token}`);
 
@@ -26,7 +26,7 @@ try {
   let added = null;
   const types = Object.fromEntries(["f2a", "f4", "f16", "mig21", "mig29", "su34"].map((key) => [key, {}]));
   const enemies = Object.fromEntries(["mig21", "mig29", "su34"].map((key) => [key, {}]));
-  const ships = Object.fromEntries(["cruiser", "lhd", "missileBoat", "carrier", "frigate"].map((key) => [key, {}]));
+  const ships = Object.fromEntries(["cruiser", "aegis", "missileBoat", "carrier", "frigate"].map((key) => [key, {}]));
   const { default: register } = await import(`${pathToFileURL(modulePath).href}?v=${Date.now()}`);
   register({
     tables: {
@@ -55,7 +55,7 @@ try {
   const count = (type) => added.sequence
     .flatMap((wave) => wave.kind === "naval" ? wave.fleet : wave.types)
     .filter((entry) => entry === type).length;
-  assert(count("cruiser") === 1 && count("lhd") === 3 && count("missileBoat") === 4,
+  assert(count("cruiser") === 1 && count("aegis") === 3 && count("lhd") === 0 && count("missileBoat") === 4,
     "fleet composition changed");
   assert(count("su33") === 0 && count("su34") === 2 && count("mig29") === 2 && count("mig21") === 2,
     "air composition changed");
@@ -77,7 +77,7 @@ try {
   assert(contract?.rank?.sTime === 990 && contract?.rank?.sEpochHpPercent === 70, "S-rank contract changed");
   assert(added.fixedRadio?.some((line) => line.id === "m04_missile_01"), "anti-ship warning radio missing");
   console.log("check_sera_m04_payload: PASS");
-  console.log("  red=cruiser1/LHD3/Su34x2 white=boats4/MiG29x2/MiG21x2 EPOCH guard and breach contract staged");
+  console.log("  red=cruiser1/AEGIS3/Su34x2 white=boats4/MiG29x2/MiG21x2 EPOCH guard and breach contract staged");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

@@ -14,7 +14,7 @@ assert(!source.includes("\r"), "payload must be LF-only");
 for (const token of [
   'key: "sera-m05"', 'campaign: "sera"', 'campaignOrder: 5', 'world: "sarkPortAsh"',
   'holdUntilPhase1Clear: true', 'minimumEscapeTime: 150', 'failWhenTanksLost: 4',
-  'landingMark: "m03TransportLanding"', 'breachMark: "m04LhdBreach"',
+  'landingMark: "m03TransportLanding"', 'breachMark: "m04FleetBreach"',
   'sCommandBeforeRepairBridge: true', 'label: "DESTROY COMMAND VEHICLE"'
 ]) assert(source.includes(token), `missing ${token}`);
 

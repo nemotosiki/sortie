@@ -95,7 +95,7 @@ export default function register(ctx) {
       }),
       m04: Object.freeze({
         missionKey: "sera-m04",
-        breachMark: "m04LhdBreach",
+        breachMark: "m04FleetBreach",
         oneBreachTankDelta: 1
       })
     }),

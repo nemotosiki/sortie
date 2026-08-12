@@ -2,7 +2,7 @@
 //
 // The generic mission host can already spawn the two combat phases and defend
 // a vulnerable carrier. `m04FleetContract` records the remaining host work:
-// moving red ships, the LHD breach line, the delayed MISSION UPDATE and rank.
+// moving red ships, the Aegis breach line, the delayed MISSION UPDATE and rank.
 export default function register(ctx) {
   const {
     MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES
@@ -20,7 +20,7 @@ export default function register(ctx) {
   for (const type of ["mig21", "mig29", "su34"]) {
     if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m04] required enemy profile not registered: ${type}`);
   }
-  for (const type of ["cruiser", "lhd", "missileBoat", "carrier", "frigate"]) {
+  for (const type of ["cruiser", "aegis", "missileBoat", "carrier", "frigate"]) {
     if (!SHIP_TYPES[type]) throw new Error(`[sera-m04] required ship type not registered: ${type}`);
   }
 
@@ -34,12 +34,13 @@ export default function register(ctx) {
       heading: "west"
     }),
     redFleet: Object.freeze({
-      targetTypes: Object.freeze(["cruiser", "lhd", "lhd", "lhd"]),
+      targetTypes: Object.freeze(["cruiser", "aegis", "aegis", "aegis"]),
+      breachTypes: Object.freeze(["aegis"]),
       updateArmedAtDestroyed: 2,
       updateArmedAtSeconds: 360,
       failAtBreaches: 2,
       continueAtBreaches: 1,
-      breachMark: "m04LhdBreach"
+      breachMark: "m04FleetBreach"
     }),
     missionUpdate: Object.freeze({
       afterRedFleetDestroyed: true,
@@ -79,12 +80,12 @@ export default function register(ctx) {
     campaignOrder: 4,
     world: "naharStrait",
     title: "NARROW SEA",
-    jp: "ナハル海峡を西進するエレム揚陸艦隊を阻止し、その後の対艦航空攻撃からセラ艦隊を守れ。",
+    jp: "ナハル海峡を西進するエレム水上打撃群を阻止し、その後の対艦航空攻撃からセラ艦隊を守れ。",
     act: 1,
     storyNo: 4,
-    story: "WAR DAY 022。エレム揚陸艦隊がナハル海峡を西進している。\nROOKは海峡内で主力艦を止め、空母EPOCHの退路を維持する。",
+    story: "WAR DAY 022。エレム水上打撃群がナハル海峡を西進している。\nROOKは海峡内で主力艦を止め、空母EPOCHの退路を維持する。",
     epilogue: [
-      "ナハル海峡の揚陸艦隊は阻止された。",
+      "ナハル海峡の水上打撃群は阻止された。",
       "直後の対艦航空攻撃も失敗し、EPOCHは航空運用を継続した。",
       "海峡に残った艦影は、夕陽の中で一隻ずつ消えていった。"
     ],
@@ -139,17 +140,17 @@ export default function register(ctx) {
     sequence: [
       {
         kind: "naval",
-        fleet: ["cruiser", "lhd", "lhd", "lhd"],
+        fleet: ["cruiser", "aegis", "aegis", "aegis"],
         band: 1,
         idBase: 0,
-        label: "LANDING FLEET",
+        label: "SURFACE STRIKE GROUP",
         at: [11500, 0],
         facing: [-6500, 0],
         radio: [
           {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "敵艦隊を確認。防空巡洋艦一、強襲揚陸艦三をTGT指定。",
+            text: "敵艦隊を確認。防空巡洋艦一、イージス艦三をTGT指定。",
             id: "m04_contact_01"
           }
         ]
@@ -219,12 +220,12 @@ export default function register(ctx) {
 
     m04FleetContract,
     fixedRadio: [
-      { id: "m04_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル海峡西部へ進入。敵揚陸艦隊は東から西進中。" },
+      { id: "m04_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル海峡西部へ進入。敵水上打撃群は東から西進中。" },
       { id: "m04_intro_02", at: 9, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。護衛陣形を維持、ROOKへ目標情報を送る。" },
       { id: "m04_intro_03", at: 15, speaker: "lark", priority: "NORMAL", text: "中央橋を確認。艦隊はその東側。" },
       { id: "m04_intro_04", at: 20, speaker: "crown", priority: "NORMAL", text: "今日は相手が大きいな。撃った後の出口だけ決めとこう。" },
       { id: "m04_ship_01", event: "firstRedShipDestroyed", speaker: "lark", priority: "NORMAL", text: "赤艦一隻、沈没。残り三。" },
-      { id: "m04_phase2_03", event: "firstLhdCrossesBridge", speaker: "lark", priority: "URGENT", text: "一隻、橋を越えた。突破線へ向かってる。" },
+      { id: "m04_phase2_03", event: "firstRedShipCrossesBridge", speaker: "lark", priority: "URGENT", text: "イージス艦一隻、橋を越えた。突破線へ向かってる。" },
       { id: "m04_clear_01", event: "redFleetDestroyed", speaker: "meridian", priority: "NORMAL", text: "敵主力艦、全滅。海峡内の赤TGTなし。" },
       { id: "m04_update_01", event: "strikeInbound", speaker: "epoch", priority: "CRITICAL", text: "南東に高速接近。対艦攻撃機を確認！" },
       { id: "m04_missile_01", event: "antiShipMissileLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦ミサイル発射を確認！ 迎撃開始！" },
@@ -233,13 +234,13 @@ export default function register(ctx) {
     successRadio: {
       speaker: "meridian",
       priority: "CRITICAL",
-      text: "敵揚陸艦隊と対艦攻撃隊を排除。EPOCHの生存を確認。ROOK、帰投せよ。",
+      text: "敵水上打撃群と対艦攻撃隊を排除。EPOCHの生存を確認。ROOK、帰投せよ。",
       id: "m04-success"
     },
     failureRadio: {
       speaker: "meridian",
       priority: "CRITICAL",
-      text: "EPOCH喪失、または揚陸艦二隻が突破。ナハル海峡阻止任務を中止する。",
+      text: "EPOCH喪失、またはイージス艦二隻が突破。ナハル海峡阻止任務を中止する。",
       id: "m04-failure"
     },
     parTime: 990,
@@ -247,7 +248,7 @@ export default function register(ctx) {
     map: { x: 0.54, y: 0.34 },
     battleCenter: { x: 0, z: 0 },
     battleRadius: 18000,
-    briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、強襲揚陸艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。揚陸艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
+    briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、イージス艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。イージス艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
   };
 
   ctx.addMission(mission);
