@@ -38761,33 +38761,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function visibleTargetCycleEntry(enemy) {
-      // Manual target selection should follow what the pilot can actually see.
-      // Reuse the HUD contact projection and its small edge tolerance so a
-      // contact whose marker is visible is also selectable with Triangle/Tab.
+      // Triangle/Tab uses the actual camera viewport, not the HUD's loose
+      // draw margin. A strict 1.0 NDC limit excludes contacts outside the image.
       const point = enemyAimPoint(enemy, tmpHudWorld);
-      const projected = projectWorldToScreen(point);
-      const inFront = projected.ndcZ > -1 && projected.ndcZ < 1;
-      const onScreen =
-        inFront &&
-        Math.abs(projected.ndcX) <= 1.08 &&
-        Math.abs(projected.ndcY) <= 1.08;
-      if (!onScreen) return null;
+      tmpV6.copy(point).applyMatrix4(camera.matrixWorldInverse);
+      tmpV7.copy(point).project(camera);
+      if (!isHudProjectionVisible(tmpV7, tmpV6, 1.0)) return null;
 
       return {
         enemy,
-        centerDistSq:
-          projected.ndcX * projected.ndcX + projected.ndcY * projected.ndcY,
+        centerDistSq: tmpV7.x * tmpV7.x + tmpV7.y * tmpV7.y,
       };
     }
 
     function cycleTarget() {
       if (gameState !== STATE_PLAYING) return;
-      // Ship turrets/VLS remain HUD contacts and destructible records, but
-      // Triangle/Tab treats each vessel as one target: its hull record.
-      const alive = enemies.filter((enemy) => enemy.alive && !enemy.subsystem);
-      if (alive.length === 0) return;
-
-      const visible = alive
+      // Every live HUD contact inside the camera image is eligible,
+      // including ship turrets, VLS and CIWS subsystem records.
+      const visible = enemies
+        .filter((enemy) => enemy.alive)
         .map(visibleTargetCycleEntry)
         .filter(Boolean)
         .sort((a, b) => {
@@ -38796,13 +38788,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return targetCycleKey(a.enemy) - targetCycleKey(b.enemy);
         });
 
-      // Ace Combat-style priority: while any contact is visible, Triangle/Tab
-      // stays on visible contacts and steps from the centre of the view outward.
-      // If the sky in front is empty, retain the legacy all-contact fallback so
-      // radar-guided searching still works instead of making the key a no-op.
-      const candidates = visible.length > 0
-        ? visible.map((entry) => entry.enemy)
-        : alive.slice().sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
+      // Never fall back to radar/off-screen contacts. If nothing is inside
+      // the viewport, Triangle/Tab deliberately leaves the selection unchanged.
+      const candidates = visible.map((entry) => entry.enemy);
+      if (candidates.length === 0) return;
 
       const currentId = preferredTargetId ?? lock.targetId;
       const currentIndex = candidates.findIndex((enemy) => enemy.id === currentId);
@@ -41699,9 +41688,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // function is the point: updateLock() and updateMultiLock() disagreeing
     // about what a weapon may see is exactly the bug this replaces.
     function canLock(enemy, lockKind) {
-      // Subsystems stay visible/destructible, but seekers acquire the vessel
-      // hull only. This also keeps single- and multi-lock weapons consistent.
-      if (!enemy || enemy.subsystem) return false;
+      if (!enemy) return false;
       if (lockKind === "air") return !enemy.surface;
       if (lockKind === "surface") return Boolean(enemy.surface);
       // The 2026-08-02 specialist split: the 4AGM sees only what stands on
@@ -41746,6 +41733,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (!canLock(enemy, lockKind)) continue;
+        // Mounts are manual targets only: cycling can nominate one, but the
+        // seeker never auto-picks an unselected mount from the scene.
+        const manuallySelectedSubsystem = Boolean(
+          enemy.subsystem && preferred && enemy.id === preferred.id
+        );
+        if (enemy.subsystem && !manuallySelectedSubsystem) continue;
         tmpV2.copy(enemy.group.position).sub(player.position);
         const distance = tmpV2.length();
         if (distance > lockRange || distance < 1) continue;
@@ -48988,11 +48981,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         marker.classList.toggle("multiLocked", multiLocked);
         marker.classList.toggle("tgt", isTgt);
         marker.classList.toggle("subsystem", Boolean(enemy.subsystem));
-        // AC-style surface target frame: land units and ship hulls are hexagons.
-        // Ship subsystems stay square display-only contacts, as requested.
+        // Every surface contact is hexagonal: land targets, ship hulls,
+        // turrets, VLS and CIWS subsystem records.
         marker.classList.toggle(
           "ground",
-          Boolean(enemy.ground || (enemy.surface && !enemy.subsystem))
+          Boolean(enemy.ground || enemy.surface)
         );
         // Who gets a name and a range: the main selection, and every target
         // latched into a salvo.
