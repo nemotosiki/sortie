@@ -1,0 +1,69 @@
+name: Apply Sera M03 Normal Startup
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/inline_sera_m03.mjs
+      - tools/check_sera_m03_inline.mjs
+      - .github/workflows/apply-sera-m03-inline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sera-m03-inline
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Inline M03 dependencies and mission
+        run: node tools/inline_sera_m03.mjs
+
+      - name: Verify M03 normal-start contracts
+        run: |
+          node tools/check_sera_m03_inline.mjs
+          node tools/check_sera_m03_runtime_host.mjs
+          node tools/check_sera_m03_payload.mjs
+          node tools/check_map_sark_port.mjs
+          node tools/check_sera_m03_preflight.mjs
+
+      - name: Install Chromium registry harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Refresh and verify registry snapshot
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs --update
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+      - name: Check patch cleanliness
+        run: git diff --check
+
+      - name: Commit normal-start integration
+        run: |
+          if git diff --quiet -- index.html tools/registry_snapshot.json; then
+            echo "M03 normal-start integration already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html tools/registry_snapshot.json
+          git commit -m "Inline Sera M03 world and mission"
+          git push origin HEAD:chatgpt/sera-act1-implementation
