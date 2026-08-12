@@ -1,0 +1,57 @@
+name: Apply Sera M03 Runtime
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_sera_m03_runtime_patch.mjs
+      - tools/apply_sera_m03_payload_runtime_tuning.mjs
+      - tools/check_sera_m03_runtime_host.mjs
+      - .github/workflows/apply-sera-m03-runtime.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sera-m03-runtime
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/sera-act1-implementation
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply M03 host runtime
+        run: node tools/apply_sera_m03_runtime_patch.mjs
+      - name: Apply M03 payload runtime tuning
+        run: node tools/apply_sera_m03_payload_runtime_tuning.mjs
+      - name: Verify M03 host runtime
+        run: node tools/check_sera_m03_runtime_host.mjs
+      - name: Verify M03 payload
+        run: node tools/check_sera_m03_payload.mjs
+      - name: Verify map and host prerequisites
+        run: |
+          node tools/check_map_sark_port.mjs
+          node tools/check_sera_m03_preflight.mjs
+      - name: Check patch cleanliness
+        run: git diff --check
+      - name: Commit implemented runtime
+        run: |
+          if git diff --quiet -- index.html payloads/mission_sera_m03.payload.js; then
+            echo "M03 runtime already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html payloads/mission_sera_m03.payload.js
+          git commit -m "Implement Sera M03 landing and port defense runtime"
+          git push origin HEAD:chatgpt/sera-act1-implementation
