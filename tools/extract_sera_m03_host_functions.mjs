@@ -67,6 +67,13 @@ const groups = {
     "spawnMissionGround",
     "activateGroundPhase"
   ],
+  support: [
+    "spawnProtectedFacilities",
+    "damageProtectedFacility",
+    "spawnGroundUnit",
+    "updateGroundUnit",
+    "playAuthoredRadio"
+  ],
   lifecycle: [
     "normalizeWaveEntry",
     "normalizeMission",
