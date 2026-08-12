@@ -10,20 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "index.html"
 
 OLD = """    function cycleTarget() {
-      const candidates = enemies
-        .filter((enemy) => enemy.alive)
-        .slice()
+      if (gameState !== STATE_PLAYING) return;
+      const living = enemies.filter((enemy) => enemy.alive)
         .sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
-      if (candidates.length === 0) return;
+      if (living.length === 0) return;
 
       const currentId = preferredTargetId ?? lock.targetId;
-      const currentIndex = candidates.findIndex((enemy) => enemy.id === currentId);
-      const next = candidates[(currentIndex + 1 + candidates.length) % candidates.length];
-      preferredTargetId = next.id;
-
-      resetLockState(next.id, true);
-      resetMultiLock();
-    }
+      const currentIndex = living.findIndex((enemy) => enemy.id === currentId);
+      const next = living[(currentIndex + 1 + living.length) % living.length];
 """
 
 NEW = """    function visibleTargetCycleEntry(enemy) {
@@ -47,6 +41,7 @@ NEW = """    function visibleTargetCycleEntry(enemy) {
     }
 
     function cycleTarget() {
+      if (gameState !== STATE_PLAYING) return;
       const alive = enemies.filter((enemy) => enemy.alive);
       if (alive.length === 0) return;
 
@@ -70,11 +65,6 @@ NEW = """    function visibleTargetCycleEntry(enemy) {
       const currentId = preferredTargetId ?? lock.targetId;
       const currentIndex = candidates.findIndex((enemy) => enemy.id === currentId);
       const next = candidates[(currentIndex + 1 + candidates.length) % candidates.length];
-      preferredTargetId = next.id;
-
-      resetLockState(next.id, true);
-      resetMultiLock();
-    }
 """
 
 
@@ -89,7 +79,7 @@ def main() -> None:
     original = INDEX.read_text(encoding="utf-8")
     count = original.count(OLD)
     if count != 1:
-        raise RuntimeError(f"cycleTarget block: expected exactly one match, found {count}")
+        raise RuntimeError(f"cycleTarget prefix: expected exactly one match, found {count}")
     if "function visibleTargetCycleEntry(" in original:
         raise RuntimeError("visibleTargetCycleEntry already exists")
 
@@ -98,12 +88,18 @@ def main() -> None:
     for required in (
         "function visibleTargetCycleEntry(enemy)",
         "Math.abs(projected.ndcX) <= 1.08",
+        "Math.abs(projected.ndcY) <= 1.08",
         "centerDistSq",
         "visible.length > 0",
         "alive.slice().sort((a, b) => targetCycleKey(a) - targetCycleKey(b))",
+        "const currentIndex = candidates.findIndex",
     ):
         if required not in text:
             raise RuntimeError(f"patched source missing {required!r}")
+
+    # The old all-alive cycle must be gone from the manual target path.
+    if OLD in text:
+        raise RuntimeError("legacy cycleTarget prefix still present after patch")
 
     module = re.search(
         r'<script type="module">\n(?P<body>.*)\n  </script>',
