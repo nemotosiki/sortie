@@ -44,13 +44,22 @@ jobs:
               raise RuntimeError('ground marker class already exists')
           text = text.replace(marker_anchor, marker_replacement, 1)
 
-          target_anchor = '      ui.targetBox.classList.toggle("locked", lock.locked && lock.targetId === target.id);\n'
-          target_replacement = '      ui.targetBox.classList.toggle("ground", Boolean(target.ground));\n' + target_anchor
-          if text.count(target_anchor) != 1:
-              raise RuntimeError(f'targetBox ground class anchor count={text.count(target_anchor)}')
+          # The lock class line has changed over the HUD revisions. The display
+          # assignment is the stable point inside updateTargetBox(): insert the
+          # ground shape state immediately after the panel is made visible.
+          target_anchor = '      ui.targetBox.style.display = "block";\n'
+          target_replacement = target_anchor + '      ui.targetBox.classList.toggle("ground", Boolean(target.ground));\n'
+          target_fn = text.find('    function updateTargetBox() {')
+          if target_fn < 0:
+              raise RuntimeError('updateTargetBox function not found')
+          target_window = text[target_fn:target_fn + 5000]
+          if target_window.count(target_anchor) != 1:
+              raise RuntimeError(f'targetBox display anchor count in updateTargetBox={target_window.count(target_anchor)}')
           if 'ui.targetBox.classList.toggle("ground", Boolean(target.ground));' in text:
               raise RuntimeError('targetBox ground class already exists')
-          text = text.replace(target_anchor, target_replacement, 1)
+          local_pos = target_window.index(target_anchor)
+          insert_pos = target_fn + local_pos
+          text = text[:insert_pos] + target_window[local_pos:].replace(target_anchor, target_replacement, 1) + text[target_fn + len(target_window):]
 
           module = re.search(r'<script type="module">\n(?P<body>.*)\n  </script>', text, re.DOTALL)
           if not module:
