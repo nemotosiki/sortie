@@ -55,8 +55,10 @@ jobs:
           cat /tmp/sortie-http.log
           exit 1
 
-      - name: Run campaign isolation browser gate
-        run: node tools/check_campaign_economy_e2e.mjs
+      - name: Run campaign isolation browser gates
+        run: |
+          node tools/check_campaign_economy_e2e.mjs
+          node tools/check_campaign_records_e2e.mjs
 
       - name: Preserve Sera M01-M03 vertical slices
         run: |
