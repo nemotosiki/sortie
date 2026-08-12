@@ -3857,7 +3857,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
       // matters more on this airframe than any other: it is the slowest jet in
       // the set, so it lives closest to the stall the whole time.
       //
-      // maxHealth 240 is load-bearing and deliberately above the F-22's 200.
+      // maxHealth 240 is load-bearing and deliberately above the F-22's 205.
       // DEFENSE is normalised against fleet min/max HP, so this raises the
       // ceiling and pushes every other airframe's DEFENSE bar down - the F-22
       // included, which is why its blurb no longer claims the best armour.
@@ -3886,19 +3886,17 @@ canopy: 0x9fd8e8, exhaust: 0xbfd9d0, scale: 1.06, variant: "hog"
         label: "F-22 RAPTOR",
         role: "Stealth Air Superiority",
         tag: "TOP TIER",
-        // The blurb no longer claims the best armour. It is not a wording
-        // preference: the A-10C's 240 HP took the top of the DEFENSE bar and
-        // dropped this airframe to 77, so "装甲は全機中最高" became false the
-        // moment the attacker joined the hangar. Best among FIGHTERS is still
-        // true at 200 HP, and that is what it says now.
-        blurb: "空戦性能で他を圧倒する最強のステルス戦闘機。旋回・火力は全機中最高で、速度も最速機に次ぐ。装甲は重装甲の攻撃機に譲るが、戦闘機の中では最も打たれ強い。",
-        cruiseSpeed: 330, boostSpeed: 700, brakeSpeed: 118,
-        pitchRateDeg: 51, rollRateDeg: 190, yawRateDeg: 14, maxBankAngleDeg: 65,
-        normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
-        rollDamping: 13.2, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
+        // v0.8 top-tier contract: stability and standard-missile endurance are
+        // this airframe's two S axes. Speed and mobility stay in the upper tier,
+        // but F-3 and Su-57 respectively own those peaks.
+        blurb: "最高の安定性と最大の通常ミサイル搭載数を持つ制空戦闘機。速度・耐久・機動性も上位で、長い作戦を最後まで崩れず戦い切る。",
+        cruiseSpeed: 340, boostSpeed: 725, brakeSpeed: 122,
+        pitchRateDeg: 55, rollRateDeg: 195, yawRateDeg: 16, maxBankAngleDeg: 68,
+        normalRollSpring: 56, rollRateLimitDeg: 190, turnRateDeg: 42,
+        rollDamping: 14.5, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.34, structuralG: 3.65,
         gunDamage: 26, missileDamage: 98,
-        boostResponse: 0.8, brakeResponse: 0.44, cruiseResponse: 0.52,
-        missileCapacity: 28, maxHealth: 200,
+        boostResponse: 0.76, brakeResponse: 0.44, cruiseResponse: 0.50,
+        missileCapacity: 34, maxHealth: 205,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         tipSpan: 6.85, tipZ: 2.7,
         theme: Object.freeze({
@@ -3944,8 +3942,8 @@ canopy: 0x8fe0ff, exhaust: 0x9fb0b8, scale: 2.10, variant: "b52"
       // where the heavy is slow, huge and unmissable, this is the smallest and
       // sharpest thing in the air. HP 98 is one missile - the whole point, since
       // a swarm is only a swarm if each round removes one of it - and turn 44
-      // beats every crewed airframe here including the Raptor's 39, which is
-      // exactly what "unmanned" buys: structuralG 5.0 is not a pilot's limit.
+      // still beats the Raptor's 42. structuralG 5.0 is the unmanned advantage;
+      // the Su-57 and Su-47 now beat it on sustained turn through airframe design.
       //
       // It fights with the gun alone (no ENEMY_MISSILE_PROFILES entry, which is
       // how attemptEnemyMissile is told an airframe carries nothing) and hits
@@ -4094,8 +4092,8 @@ canopy: 0x9fe6ff, exhaust: 0xffc79a, scale: 1.08, variant: "flankerd"
         gunDamage: 24, missileDamage: 98,
         boostResponse: 0.84, brakeResponse: 0.46, cruiseResponse: 0.54,
         // 196 = 98 x 2 exactly: two missiles kill it and one never can. The
-        // hardest enemy airframe short of the F-22's 200, which is what an
-        // ace is supposed to feel like.
+        // hardest enemy airframe short of the 205 HP F-22/Su-57 pair, which is
+        // what an ace is supposed to feel like.
         missileCapacity: 28, maxHealth: 196,
         spw: Object.freeze({ key: "aam6", capacity: 22 }),
         tipSpan: 9.0, tipZ: 2.7,
@@ -4116,28 +4114,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // is a real difference - the same reason the player fleet runs 135 (F-2A,
       // F/A-18F) and 165 (Typhoon) rather than snapping everything to 98s.
       //
-      // Su-57: the strongest airframe the AI flies. Turn 40 edges past the
-      // player F-22's 39 and the boost speed is level with it, so an ace Su-57
-      // (ACE_TURN_SCALE 1.2 on top) is the hardest single opponent in the game.
-      // It pays for that with 196 HP against the Raptor's 200 - two missiles,
-      // not three, so the player can still finish it inside one engagement.
+      // Su-57 owns the mobility S axis in the v0.8 top-tier triangle. Its lower
+      // damping, speed and magazine are deliberate costs; durability remains
+      // level with F-22 so the close-range specialist can survive the merge.
       su57: Object.freeze({
         id: "su57",
         label: "Su-57 FELON",
         role: "Stealth Air Superiority",
         tag: "ENEMY",
-        blurb: "敵の第5世代ステルス戦闘機。旋回・速度ともに最上位で、装甲も厚い。後半戦の主力にして最大の脅威。",
-        // Mirrors the F-22 line for line (2026-08-02): the two stealth
-        // flagships are the same aircraft wearing different flags, down to
-        // the 4AAM. As an enemy this also moves it off the 196 two-missile
-        // quantum onto the F-22's 200 - three rounds, like the F-22 itself.
-        cruiseSpeed: 330, boostSpeed: 700, brakeSpeed: 118,
-        pitchRateDeg: 51, rollRateDeg: 190, yawRateDeg: 14, maxBankAngleDeg: 65,
-        normalRollSpring: 50, rollRateLimitDeg: 180, turnRateDeg: 39,
-        rollDamping: 13.2, stallWarnSpeed: 78, stallEntrySpeed: 66, stallAuthorityLoss: 0.42, structuralG: 3.4,
+        blurb: "機動性を最優先した第5世代制空戦闘機。瞬間旋回、低速機首振り、ヨー性能は全戦闘機中最高だが、安定性・速度・搭載数には明確な弱点を持つ。",
+        cruiseSpeed: 320, boostSpeed: 680, brakeSpeed: 120,
+        pitchRateDeg: 63, rollRateDeg: 220, yawRateDeg: 20, maxBankAngleDeg: 72,
+        normalRollSpring: 45, rollRateLimitDeg: 210, turnRateDeg: 51,
+        rollDamping: 10.5, stallWarnSpeed: 74, stallEntrySpeed: 62, stallAuthorityLoss: 0.48, structuralG: 3.75,
         gunDamage: 26, missileDamage: 98,
-        boostResponse: 0.8, brakeResponse: 0.44, cruiseResponse: 0.52,
-        missileCapacity: 28, maxHealth: 200,
+        boostResponse: 0.82, brakeResponse: 0.40, cruiseResponse: 0.54,
+        missileCapacity: 26, maxHealth: 205,
         spw: Object.freeze({ key: "aam4", capacity: 20 }),
         tipSpan: 7.0, tipZ: 2.8,
         theme: Object.freeze({
@@ -4145,18 +4137,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           canopy: 0xffd08a, exhaust: 0xffb44a, scale: 0.88, variant: "felon"
         })
       }),
-      // Su-47: turn 42 is the best sustained rate of any crewed airframe in the
-      // game - better than the Su-57's 40 and the player Raptor's 39 - and the
-      // forward-swept wing is why. It buys that with everything else: boost 405
-      // is slower than every modern fighter here, and 165 HP is mid-table. The
-      // Berkut wins a turning fight and loses a running one, which is the exact
-      // inverse of the Felon flying beside it.
+      // Su-47: turn 47 remains exceptional and second only to the Su-57's 51.
+      // The forward-swept wing buys that at a cost: boost 610 is slower than the
+      // top tier and 165 HP is mid-table. It can still out-turn the F-22, but the
+      // Felon now owns the close-range peak required by the v0.8 profile.
       su47: Object.freeze({
         id: "su47",
         label: "Su-47 BERKUT",
         role: "Experimental Agility Fighter",
         tag: "ENEMY",
-        blurb: "敵の実験機。前進翼がもたらす低速域の運動性は全機中最高で、旋回勝負では手が付けられない。ただし速度は現代機に劣る。",
+        blurb: "敵の実験機。前進翼がもたらす低速域の運動性はSu-57に次ぐ水準で、旋回勝負では依然危険。ただし速度と耐久は最上位機に劣る。",
         cruiseSpeed: 290, boostSpeed: 610, brakeSpeed: 104,
         pitchRateDeg: 58, rollRateDeg: 215, yawRateDeg: 16, maxBankAngleDeg: 72,
         normalRollSpring: 56, rollRateLimitDeg: 205, turnRateDeg: 47,
@@ -8994,9 +8984,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ],
         // The swarm mission, and the first sortie in the campaign with nothing
         // on the ground at all. Six UAVs in two waves of three: each dies to a
-        // single missile, and none of them can be out-turned by any airframe in
-        // the hangar - turn 44 beats the Raptor's 39. That pair of facts is the
-        // whole design. A multi-lock launcher (QAAM / 4AAM / 6AAM / 8AAM) turns
+        // single missile, while turn 44 still beats most of the hangar despite
+        // sitting below the Su-57 and Su-47. That pair of facts is the whole
+        // design. A multi-lock launcher (QAAM / 4AAM / 6AAM / 8AAM) turns
         // a wave into one trigger pull; a single-target loadout still wins, but
         // spends the entire par time chasing jinks to do it.
         //
@@ -9762,13 +9752,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             concurrent: true, role: "trash", delay: 80
           },
           // The last thing the campaign puts in front of the player. Su-57 in
-          // the ace slot is the hardest single opponent in the game: turn 40 -
-          // past the player Raptor's 39 - with ACE_TURN_SCALE 1.2 on top of it,
+          // the ace slot is the hardest single opponent in the game: turn 51 -
+          // past the player Raptor's 42 - with ACE_TURN_SCALE 1.2 on top of it,
           // the longest engage envelope of any fighter, and the best missile in
-          // ENEMY_MISSILE_PROFILES. Its wingman is the one airframe that
-          // out-turns it, so breaking away from the Felon flies the player into
-          // the Berkut. Both are two-missile hulls, which is the concession -
-          // this wave is meant to be hard to hit, not long to grind down.
+          // ENEMY_MISSILE_PROFILES. Its Su-47 wingman is slightly less agile but
+          // still out-turns the F-22, so breaking away from the Felon flies the
+          // player into another turn specialist. The Felon takes three standard
+          // missile hits; the lighter Berkut takes two.
           { types: ["su57", "su47"], ace: "vulture", band: 2, label: "FELON" },
           // The last wave is eight aircraft on the board at once - the two
           // designated Felon-flight jets plus six trash - which is the
