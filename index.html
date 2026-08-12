@@ -38782,7 +38782,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function cycleTarget() {
       if (gameState !== STATE_PLAYING) return;
-      const alive = enemies.filter((enemy) => enemy.alive);
+      // Ship turrets/VLS remain HUD contacts and destructible records, but
+      // Triangle/Tab treats each vessel as one target: its hull record.
+      const alive = enemies.filter((enemy) => enemy.alive && !enemy.subsystem);
       if (alive.length === 0) return;
 
       const visible = alive
@@ -41697,6 +41699,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // function is the point: updateLock() and updateMultiLock() disagreeing
     // about what a weapon may see is exactly the bug this replaces.
     function canLock(enemy, lockKind) {
+      // Subsystems stay visible/destructible, but seekers acquire the vessel
+      // hull only. This also keeps single- and multi-lock weapons consistent.
+      if (!enemy || enemy.subsystem) return false;
       if (lockKind === "air") return !enemy.surface;
       if (lockKind === "surface") return Boolean(enemy.surface);
       // The 2026-08-02 specialist split: the 4AGM sees only what stands on
