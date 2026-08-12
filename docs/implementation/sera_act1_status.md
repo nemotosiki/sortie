@@ -224,7 +224,7 @@ M04着手前に、[キャンペーン分離計画](../architecture/campaign_isol
 - 現在地: 本ファイル
 - 構造移行: [campaign_isolation_plan.md](../architecture/campaign_isolation_plan.md)
 - セラACT I安全実装: [sera_act1_safe_implementation_plan.md](sera_act1_safe_implementation_plan.md)
-- ストーリー正本: `chatgpt/story-campaign-reboot`ブランチの`docs/story_reboot/v0.16/`
+- ストーリー正本: `chatgpt/sera-act1-implementation`ブランチの`docs/story_reboot/CURRENT_PLAN.md`
 
 ## 報告判定
 

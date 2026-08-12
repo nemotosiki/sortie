@@ -30,7 +30,7 @@
 
 ストーリー設計は次を読み取り専用で参照する。
 
-- branch: `chatgpt/story-campaign-reboot`
+- source branch at planning time: `chatgpt/story-campaign-reboot`（現在は`chatgpt/sera-act1-implementation`へ統合済み）
 - `docs/story_reboot/v0.16/03_m03_low_water.md`
   - 港の座標、導入、人物役割、無線、成功失敗、QAの基礎
 - `docs/story_reboot/v0.16/00_enemy_force_doctrine_and_act1_compositions.md`

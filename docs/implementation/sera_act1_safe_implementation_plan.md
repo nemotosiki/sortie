@@ -17,7 +17,7 @@
 
 ストーリー・ミッション設計の正本は実装ブランチへ丸ごとmergeしない。読み取り専用の正本として次を使う。
 
-- branch: `chatgpt/story-campaign-reboot`
+- source branch at planning time: `chatgpt/story-campaign-reboot`（現在は`chatgpt/sera-act1-implementation`へ統合済み）
 - source commit: `81936bb48afe019f62a460ce25a071df09794cce`
 - `docs/story_reboot/v0.16/README.md`
 - `docs/story_reboot/v0.16/01_m01_first_contact.md` 〜 `05_m05_port_of_ash.md`

@@ -17,7 +17,7 @@
 1. **現在のコードと永続CI**
 2. **`implementation/*_status.md`**
 3. **`architecture/*_plan.md`または決定文書**
-4. **ストーリー正本** — `chatgpt/story-campaign-reboot`ブランチの`docs/story_reboot/v0.16/`
+4. **ストーリー正本** — `chatgpt/sera-act1-implementation`ブランチの`docs/story_reboot/CURRENT_PLAN.md`
 5. **個別の実装計画**
 6. **`spec_*.md`、`request_*.md`、`roadmap_*.md`**
 7. **調査・バグハント・作業ログ**
