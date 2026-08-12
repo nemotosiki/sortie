@@ -45,10 +45,7 @@ jobs:
           text = text.replace(marker_anchor, marker_replacement, 1)
 
           target_anchor = '      ui.targetBox.classList.toggle("locked", lock.locked && lock.targetId === target.id);\n'
-          target_replacement = (
-              '      ui.targetBox.classList.toggle("ground", Boolean(target.ground));\n'
-              + target_anchor
-          )
+          target_replacement = '      ui.targetBox.classList.toggle("ground", Boolean(target.ground));\n' + target_anchor
           if text.count(target_anchor) != 1:
               raise RuntimeError(f'targetBox ground class anchor count={text.count(target_anchor)}')
           if 'ui.targetBox.classList.toggle("ground", Boolean(target.ground));' in text:
@@ -71,64 +68,64 @@ jobs:
           if sentinel in css:
               raise RuntimeError('ground hex marker CSS already exists')
 
-          css += r'''
-
-/* Ground contacts use the AC-style flat-top hexagonal target frame. */
-:root {
-  --ground-target-hex-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Cpolygon%20points='25,3%2075,3%2097,50%2075,97%2025,97%203,50'%20fill='none'%20stroke='white'%20stroke-width='5'%20stroke-linejoin='miter'/%3E%3C/svg%3E");
-}
-
-/* Keep aircraft and ship contacts on the existing square frame. Only records
-   explicitly tagged `ground` receive this override. The marker's ::before is
-   already its inner frame, so reuse that layer as the hex outline instead of
-   clipping the whole marker (which would also clip TGT/name/range text). */
-.enemyMarker.ground {
-  border-color: transparent !important;
-}
-
-.enemyMarker.ground::before {
-  inset: 0;
-  border: 0;
-  opacity: 0.92;
-  background: currentColor;
-  -webkit-mask-image: var(--ground-target-hex-mask);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: 100% 100%;
-  mask-image: var(--ground-target-hex-mask);
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: 100% 100%;
-}
-
-/* #targetBox is the larger selected/locked frame. Give ground targets the same
-   silhouette so choosing or locking a tank never puts a square back over the
-   hexagon. The normal locked colour/size/pulse still comes from currentColor
-   and the existing #targetBox.locked rule. */
-#targetBox.ground {
-  border-color: transparent !important;
-}
-
-#targetBox.ground::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: currentColor;
-  -webkit-mask-image: var(--ground-target-hex-mask);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: 100% 100%;
-  mask-image: var(--ground-target-hex-mask);
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: 100% 100%;
-}
-
-#targetBox.ground.locked {
-  border-color: transparent !important;
-}
-'''
+          css_block = "\n".join([
+              '',
+              '',
+              '/* Ground contacts use the AC-style flat-top hexagonal target frame. */',
+              ':root {',
+              '  --ground-target-hex-mask: url("data:image/svg+xml,%3Csvg%20xmlns=\'http://www.w3.org/2000/svg\'%20viewBox=\'0%200%20100%20100\'%3E%3Cpolygon%20points=\'25,3%2075,3%2097,50%2075,97%2025,97%203,50\'%20fill=\'none\'%20stroke=\'white\'%20stroke-width=\'5\'%20stroke-linejoin=\'miter\'/%3E%3C/svg%3E");',
+              '}',
+              '',
+              '/* Keep aircraft and ship contacts on the existing square frame. Only records',
+              '   explicitly tagged `ground` receive this override. The marker\'s ::before is',
+              '   reused as the hex outline so TGT/name/range text is never clipped. */',
+              '.enemyMarker.ground {',
+              '  border-color: transparent !important;',
+              '}',
+              '',
+              '.enemyMarker.ground::before {',
+              '  inset: 0;',
+              '  border: 0;',
+              '  opacity: 0.92;',
+              '  background: currentColor;',
+              '  -webkit-mask-image: var(--ground-target-hex-mask);',
+              '  -webkit-mask-repeat: no-repeat;',
+              '  -webkit-mask-position: center;',
+              '  -webkit-mask-size: 100% 100%;',
+              '  mask-image: var(--ground-target-hex-mask);',
+              '  mask-repeat: no-repeat;',
+              '  mask-position: center;',
+              '  mask-size: 100% 100%;',
+              '}',
+              '',
+              '/* The larger selected/locked frame uses the same silhouette, so selecting a',
+              '   tank never puts a square back over the ground-target hexagon. */',
+              '#targetBox.ground {',
+              '  border-color: transparent !important;',
+              '}',
+              '',
+              '#targetBox.ground::before {',
+              '  content: "";',
+              '  position: absolute;',
+              '  inset: 0;',
+              '  pointer-events: none;',
+              '  background: currentColor;',
+              '  -webkit-mask-image: var(--ground-target-hex-mask);',
+              '  -webkit-mask-repeat: no-repeat;',
+              '  -webkit-mask-position: center;',
+              '  -webkit-mask-size: 100% 100%;',
+              '  mask-image: var(--ground-target-hex-mask);',
+              '  mask-repeat: no-repeat;',
+              '  mask-position: center;',
+              '  mask-size: 100% 100%;',
+              '}',
+              '',
+              '#targetBox.ground.locked {',
+              '  border-color: transparent !important;',
+              '}',
+              '',
+          ])
+          css += css_block
           css_path.write_text(css, encoding='utf-8', newline='\n')
 
           required = (
