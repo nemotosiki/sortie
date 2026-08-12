@@ -6,6 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/apply_campaign_isolation_phase.mjs
+      - tools/campaign_isolation_phase.patch
       - .github/workflows/apply-campaign-isolation-phase.yml
 
 permissions:
@@ -43,6 +44,11 @@ jobs:
         run: |
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
+
+      - name: Run registry no-loss gate
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
 
       - name: Start local game server
         run: |
