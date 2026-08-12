@@ -16,11 +16,12 @@
 
 `archive/legacy-branches-20260812`は、2026-08-12以前の旧実装枝、一回限りの適用workflow、旧payloadを履歴として保持する。通常開発ではcheckout、merge、rebaseの対象にしない。
 
-## マップ作業の保護
+## マップ統合
 
-- ローカル`codex/sera-m04-m05-prep`は別Codexが編集中。checkout、merge、rebase、clean、stash、worktree削除を行わない。
-- `payloads/map_naharStrait.payload.js`、関連検査スクリプト、`artifacts/`の未コミット差分を、ほかの整理コミットへ含めない。
-- 既存の`chatgpt/map-texture-*`リモート枝は、マップ担当の作業が完了するまで整理対象外とする。
+- Nahar Strait品質改善は`1f22693`として開発正本へ統合済み。
+- 元の作業コミット`5d4e71b`と旧map枝は`archive/legacy-branches-20260812`へ保存済み。
+- 確認画像3枚は`C:\Users\user01\Documents\AI\sortie-map-artifacts\2026-08-12-nahar-strait`へ退避済み。
+- map作業用ローカル枝と旧`chatgpt/map-texture-*`リモート枝は削除済み。
 
 ## 今回の整理
 
@@ -28,7 +29,15 @@
 - 現行計画と計画書索引を開発正本へ統合。
 - 正本から到達可能、またはCI起動マーカーだけだった57本を削除。
 - 残る非マップ旧枝21本を単一アーカイブへ集約して個別枝を削除。
-- マップ系4本とマップ編集中のローカル枝は維持。
+- 完成したマップ作業を開発正本へ統合し、map系11tipをアーカイブして個別枝を削除。
+
+## 整理後のブランチ
+
+```text
+main
+chatgpt/sera-act1-implementation
+archive/legacy-branches-20260812
+```
 
 ## 今後の規則
 
