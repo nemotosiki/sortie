@@ -3147,6 +3147,10 @@
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Campaigns -----------------------------------------------------------
+    // Staged Sera payloads need a player-facing test path before the migration
+    // lock is lifted globally. Explicit `?seraDev=1` opens only that campaign
+    // card for this load; normal/release boot keeps the locked shell unchanged.
+    const SERA_DEV_UNLOCK = new URLSearchParams(location.search).get("seraDev") === "1";
     // Campaign registry. USA/RUS are the legacy two-sided war; Sera is a
     // separate story namespace. Sera begins locked while its mission ids and
     // persistent state are migrated, so adding the card cannot expose a half-
@@ -36455,6 +36459,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m04Cap = m04RankCap(mission);
       if (m04Cap && RANK_ORDER[rank] > RANK_ORDER[m04Cap]) rank = m04Cap;
 
+      // NIGHT AUDIT's white relay is a complete alternative objective. A
+      // successful blackout intentionally leaves red military targets alive,
+      // so the ordinary destroyed-value ratio cannot rank that route. Its
+      // authored time bands replace only the letter; points stay truthful to
+      // what the player actually destroyed.
+      const m08Rank = m08RelayRank(mission);
+      if (m08Rank) rank = m08Rank;
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -36474,6 +36486,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         || (breachCapped && rank === "A")
         || (m03RankCapped && rank === "A")
         || (m04Cap && rank === m04Cap)
+        || Boolean(m08Rank)
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -36608,6 +36621,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
       const m03Result = m03ResultSnapshot(mission);
       if (m03Result) Object.assign(entry, m03Result);
+      const m08Result = m08ResultSnapshot(mission);
+      if (m08Result) Object.assign(entry, m08Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -36617,6 +36632,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // side is always open and no mission waits on another campaign's progress.
     // Still keyed on the mission key, so existing records carry over untouched.
     function isMissionUnlocked(index) {
+      // An explicit Sera development load is for inspecting staged missions in
+      // isolation, including M08 while M06/M07 do not exist yet. Unlock every
+      // loaded Sera row only in that mode; normal profiles keep the campaign
+      // chain below byte-for-byte.
+      if (SERA_DEV_UNLOCK && missionCampaignId(MISSIONS[index]) === "sera") return true;
       // Anything already flown stays open. The chain below only asks whether
       // the PREVIOUS slot is cleared, so inserting a mission into the middle of
       // a campaign (addMission accepts `{after}`) used to re-lock the sortie
@@ -37066,6 +37086,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // only authored strike aircraft can damage them.
     const protectedFacilities = [];
     let protectedFacilityLosses = 0;
+    // Sera M08's alternative-objective state. It exists for every sortie but
+    // is active only when the mission carries m08ChoiceContract.
+    const m08State = {
+      active: false,
+      choice: null,
+      civilianBlackout: false,
+      relayResolved: false,
+      retreatingAircraft: 0,
+      failed: false
+    };
     // Ground units carrying `phase` stay out of enemies[] until a wave opens
     // that phase. This is how the TEL column remains undiscovered in M02.
     const pendingGroundUnits = [];
@@ -37874,6 +37904,85 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const fleet = enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet);
         for (const enemy of fleet) damageEnemy(enemy, enemy.hp + 1, true, false);
         return fleet.length > 0;
+      },
+      seraM08Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m08" || !mission.m08ChoiceContract) return null;
+        const lights = m08SettlementLights(mission);
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          choice: m08State.choice,
+          civilianBlackout: m08State.civilianBlackout,
+          settlementLightsVisible: lights ? lights.visible : null,
+          relayDestroyed: (Number(sortieMarks[mission.m08ChoiceContract.relayMark]) || 0) > 0,
+          outcomePending: outcomePending.active,
+          pendingAircraft: pendingWaves.reduce(
+            (sum, entry) => sum + ((entry.wave && entry.wave.types && entry.wave.types.length) || 0),
+            0
+          ),
+          livingRed: enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy)).length,
+          livingWhite: enemies.filter((enemy) => enemy.alive && !isTgtEntry(enemy)).length,
+          retreatingAircraft: enemies.filter((enemy) => enemy.alive && enemy.m08Retreating).length,
+          friendlies: friendlies.map((friendly) => ({
+            kind: friendly.kind,
+            type: friendly.type || null,
+            label: friendly.label,
+            alive: friendly.alive
+          })),
+          contacts: enemies.filter((enemy) => enemy.alive).map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            label: enemy.label,
+            name: enemy.name || null,
+            displayName: enemyDisplayName(enemy),
+            tgt: isTgtEntry(enemy),
+            ground: Boolean(enemy.ground),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            mark: enemy.mark || null,
+            retreating: Boolean(enemy.m08Retreating)
+          }))
+        };
+      },
+      forceSeraM08RelayRoute: () => {
+        const mission = m08Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m08") return false;
+        const relay = enemies.find((enemy) => (
+          enemy.alive && enemy.mark === mission.m08ChoiceContract.relayMark
+        ));
+        if (!relay) return false;
+        damageEnemy(relay, relay.hp + 1, true, false);
+        updateMission(0.016, 0.016);
+        return outcomePending.active && m08State.choice === mission.m08ChoiceContract.relayChoice;
+      },
+      forceSeraM08DeployPending: () => {
+        const mission = m08Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m08") return false;
+        for (const entry of pendingWaves) entry.timer = 0;
+        updatePendingWaves(0);
+        return pendingWaves.length === 0;
+      },
+      forceSeraM08FuelRoute: () => {
+        const mission = m08Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m08") return false;
+        const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+        for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+        updateMission(0.016, 2.0);
+        return outcomePending.active && m08State.choice === mission.m08ChoiceContract.fuelChoice;
+      },
+      forceSeraM08Failure: () => {
+        const mission = m08Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m08") return false;
+        missionElapsed = Number(mission.m08ChoiceContract.timeLimit) || 1200;
+        updateMission(0.016, 0.016);
+        return gameState === STATE_GAMEOVER && m08State.failed;
+      },
+      forceSeraM08ResolveOutcome: () => {
+        const mission = m08Mission();
+        if (!mission || mission.key !== "sera-m08" || !outcomePending.active) return false;
+        updateOutcomePending(OUTCOME_PENDING_TIME + 0.1);
+        return gameState === STATE_COMPLETE;
       },
       // Focused vertical-slice probes. They are intentionally generic enough
       // to remain useful while M01 is tuned, but refuse every other mission so
@@ -42076,6 +42185,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       groundPhaseFailureFired = false;
       spawningFacilityIndex = null;
       resetM03State(MISSIONS[currentMissionIndex]);
+      resetM08State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -45091,6 +45201,164 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return true;
     }
 
+    // ---- Sera M08 alternative objective / relay blackout -----------------
+    function m08Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m08ChoiceContract ? mission : null;
+    }
+
+    function m08SettlementLights(mission = m08Mission()) {
+      const name = mission && mission.m08ChoiceContract
+        ? mission.m08ChoiceContract.settlementLightObject
+        : null;
+      return name ? scene.getObjectByName(name) : null;
+    }
+
+    function resetM08State(mission) {
+      m08State.active = Boolean(mission && mission.m08ChoiceContract);
+      m08State.choice = null;
+      m08State.civilianBlackout = false;
+      m08State.relayResolved = false;
+      m08State.retreatingAircraft = 0;
+      m08State.failed = false;
+      const lights = m08SettlementLights(mission);
+      if (lights) lights.visible = true;
+    }
+
+    function m08ResultSnapshot(mission = m08Mission()) {
+      const contract = mission && mission.m08ChoiceContract;
+      if (!contract || !m08State.active) return null;
+      const record = contract.relayRecord || {};
+      const choiceField = record.choiceField || "m08Choice";
+      const blackoutField = record.blackoutField || "m08CivilianBlackout";
+      return {
+        [choiceField]: m08State.choice || contract.fuelChoice || "fuel",
+        [blackoutField]: Boolean(m08State.civilianBlackout)
+      };
+    }
+
+    function m08RelayRank(mission = m08Mission()) {
+      const contract = mission && mission.m08ChoiceContract;
+      if (!contract || m08State.choice !== (contract.relayChoice || "relay")) return null;
+      const rank = contract.relayRank || {};
+      if (missionElapsed <= (Number(rank.sTime) || 480)) return "S";
+      if (missionElapsed <= (Number(rank.aTime) || 660)) return "A";
+      return RANK_ORDER[rank.minimum] !== undefined ? rank.minimum : "B";
+    }
+
+    function armM08AircraftRetreat(enemy, mission) {
+      if (!enemy || !enemy.alive || enemy.surface || enemy.heli || enemy.subsystem) return false;
+      const contract = mission.m08ChoiceContract;
+      const retreat = contract.retreat || {};
+      const center = mission.battleCenter || { x: 0, z: 0 };
+      let dx = enemy.group.position.x - (Number(center.x) || 0);
+      let dz = enemy.group.position.z - (Number(center.z) || 0);
+      if (dx * dx + dz * dz < 1) {
+        dx = 1;
+        dz = 0;
+      }
+      const length = Math.hypot(dx, dz);
+      const distance = Math.max(6000, Number(retreat.distance) || 13000);
+      enemy.m08RetreatPoint = new THREE.Vector3(
+        (Number(center.x) || 0) + (dx / length) * distance,
+        Math.max(enemy.group.position.y, Number(retreat.altitude) || 2400),
+        (Number(center.z) || 0) + (dz / length) * distance
+      );
+      enemy.m08Retreating = true;
+      enemy.tgt = false;
+      enemy.rankNeutral = true;
+      enemy.hunt = null;
+      enemy.huntRef = null;
+      enemy.strikeTarget = null;
+      enemy.strikeTargetRef = null;
+      enemy.wingmanHunter = false;
+      enemy.mode = "patrol";
+      enemy.fireCooldown = Number.POSITIVE_INFINITY;
+      enemy.missileCooldown = Number.POSITIVE_INFINITY;
+      return true;
+    }
+
+    function updateM08RetreatingAircraft(enemy, dt) {
+      if (!enemy || !enemy.m08Retreating || !enemy.m08RetreatPoint) return false;
+      enemy.aimKind = "m08-retreat";
+      enemy.huntRef = null;
+      tmpV4.copy(enemy.m08RetreatPoint).sub(enemy.group.position);
+      const remaining = tmpV4.length();
+      if (remaining < 350) {
+        enemy.alive = false;
+        enemy.deadTimer = 0;
+        enemy.hitbox.visible = false;
+        enemy.group.visible = false;
+        return true;
+      }
+      tmpV4.normalize();
+      tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
+      enemy.group.quaternion.rotateTowards(tmpQ1, enemy.spec.pursuitTurn * 0.8 * dt);
+      enemy.group.quaternion.normalize();
+      enemy.targetSpeed = enemy.spec.maxSpeed;
+      enemy.speed = THREE.MathUtils.lerp(
+        enemy.speed,
+        enemy.targetSpeed,
+        damping(enemy.spec.speedResponse, dt)
+      );
+      forwardOf(enemy.group, tmpV4);
+      enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
+      return true;
+    }
+
+    function beginM08RelayBlackout(mission) {
+      const contract = mission && mission.m08ChoiceContract;
+      if (!contract || m08State.relayResolved || gameState !== STATE_PLAYING) return false;
+      m08State.relayResolved = true;
+      m08State.choice = contract.relayChoice || "relay";
+      m08State.civilianBlackout = true;
+      const lights = m08SettlementLights(mission);
+      if (lights) lights.visible = false;
+
+      let retreating = 0;
+      for (const enemy of enemies) {
+        if (armM08AircraftRetreat(enemy, mission)) retreating += 1;
+      }
+      m08State.retreatingAircraft = retreating;
+      const banner = contract.retreat && contract.retreat.banner;
+      if (banner) showBanner(banner, 2.4, "success");
+      completeMission(true);
+      triggerRadioLine(
+        "lark",
+        "敵機のIFFが落ちた……街の灯りも消えてる。盆地全部、同じ回線だった。",
+        RADIO_PRIORITY.URGENT,
+        "m08-relay-blackout"
+      );
+      return true;
+    }
+
+    function updateM08MissionThreat() {
+      const mission = m08Mission();
+      if (!mission || !m08State.active || m08State.failed) return false;
+      const contract = mission.m08ChoiceContract;
+      const relayMark = contract.relayMark;
+      if (!m08State.relayResolved && relayMark && (Number(sortieMarks[relayMark]) || 0) > 0) {
+        return beginM08RelayBlackout(mission);
+      }
+
+      // The conventional route is chosen only when every red military target
+      // is gone. White payment vehicles, the relay and surviving aircraft do
+      // not hold it open.
+      if (!m08State.choice && !enemies.some((enemy) => enemy.alive && isTgtEntry(enemy))) {
+        m08State.choice = contract.fuelChoice || "fuel";
+      }
+
+      const limit = Number(contract.timeLimit);
+      if (Number.isFinite(limit) && limit > 0 && missionElapsed >= limit) {
+        m08State.failed = true;
+        missionFailureRadioOverride = mission.failureRadio || null;
+        showBanner("ORM AIR DEFENCE RESTORED", 2.0, "danger");
+        completeMission(false);
+        return true;
+      }
+      return false;
+    }
+
     function m03RankShouldCapS(mission) {
       const contract = mission && mission.m03RankContract;
       if (!contract || !m03State.active) return false;
@@ -47993,7 +48261,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             speed: unit.speed || spec.mobile.speed
           }
         : null;
-      return spawnGroundUnit(
+      const spawnedId = spawnGroundUnit(
         unit.type,
         unit.x,
         unit.z,
@@ -48004,6 +48272,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         unit.mark || null,
         Boolean(unit.rankNeutral)
       );
+      if (spawnedId === null || !unit.label) return spawnedId;
+      const spawned = enemies.find((enemy) => enemy.id === spawnedId);
+      if (spawned) {
+        spawned.label = unit.label;
+        spawned.shortName = unit.label;
+      }
+      return spawnedId;
     }
 
     function activateGroundPhase(phaseId) {
@@ -48736,6 +49011,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // empty array, so every other aircraft pays one property read.
         updateEnemyWingSweep(enemy, dt);
         updateEnemyProps(enemy, dt);
+
+        // NIGHT AUDIT's relay route revokes the flight's IFF and payroll. The
+        // aircraft turn away at full speed and, critically, never reach the
+        // shared ordnance path below while retreating.
+        if (updateM08RetreatingAircraft(enemy, dt)) continue;
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
         // quarter it burns - black smoke with orange flame flicker.
@@ -50560,6 +50840,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
       if (updateM04MissionThreat()) return;
+      if (updateM08MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -56964,7 +57245,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // alone is enough to keep the player out, so filling in its missions later
     // does not accidentally open it before the lock is lifted.
     function isCampaignPlayable(campaign) {
-      return !campaign.locked && campaignMissionCount(campaign.id) > 0;
+      const developmentUnlock = campaign.id === "sera" && SERA_DEV_UNLOCK;
+      return (!campaign.locked || developmentUnlock) && campaignMissionCount(campaign.id) > 0;
     }
 
     function buildCampaignScreen() {
