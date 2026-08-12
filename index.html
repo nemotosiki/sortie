@@ -36545,10 +36545,43 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return { rank, kill, timeBonus, total, nextRankDelta };
     }
 
+    const MISSION_RECORDS_STORAGE_KEY = "sortieMissionRecords";
+    const MISSION_RECORDS_BACKUP_KEY = `${MISSION_RECORDS_STORAGE_KEY}.backup.pre-sera-namespace`;
+
+    function cloneMissionRecord(record, sourceKey) {
+      return {
+        ...JSON.parse(JSON.stringify(record)),
+        ambiguousImport: true,
+        recordSource: sourceKey
+      };
+    }
+
+    function migrateSeraMissionRecords(records, rawText) {
+      let changed = false;
+      for (const [legacyKey, seraKey] of [["m01", "sera-m01"], ["m02", "sera-m02"]]) {
+        const legacy = records[legacyKey];
+        if (!legacy || typeof legacy !== "object" || Array.isArray(legacy) || records[seraKey]) continue;
+        records[seraKey] = cloneMissionRecord(legacy, legacyKey);
+        changed = true;
+      }
+      if (!changed) return records;
+      try {
+        if (rawText && !window.localStorage.getItem(MISSION_RECORDS_BACKUP_KEY)) {
+          window.localStorage.setItem(MISSION_RECORDS_BACKUP_KEY, rawText);
+        }
+        window.localStorage.setItem(MISSION_RECORDS_STORAGE_KEY, JSON.stringify(records));
+      } catch {
+        // In-memory migration still protects this session when storage is unavailable.
+      }
+      return records;
+    }
+
     function readMissionRecords() {
       try {
-        const parsed = JSON.parse(window.localStorage.getItem("sortieMissionRecords") || "{}");
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+        const rawText = window.localStorage.getItem(MISSION_RECORDS_STORAGE_KEY) || "{}";
+        const parsed = JSON.parse(rawText);
+        const records = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+        return migrateSeraMissionRecords(records, rawText);
       } catch {
         return {};
       }
@@ -36558,7 +36591,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function saveMissionRecords() {
       try {
-        window.localStorage.setItem("sortieMissionRecords", JSON.stringify(missionRecords));
+        window.localStorage.setItem(MISSION_RECORDS_STORAGE_KEY, JSON.stringify(missionRecords));
       } catch {
         // Storage can be unavailable; records simply don't persist.
       }
