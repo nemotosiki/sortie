@@ -53,7 +53,8 @@ for (const marker of ["wingmen:", "radioSpeaker:", "rankNeutral"]) {
   }
 }
 
-requireText(index, "m-heli", "stock third mission slot");
+requireText(index, "m-heli", "legacy third mission template");
+requireText(index, "sera-m03", "namespaced Sera M03 key");
 
 const aircraftSource = `${index}\n${m01}\n${m02}`;
 const mig21Key = firstCandidate(aircraftSource, ["mig21", "mig21bis", "mig-21"], "MiG-21 key");
@@ -66,7 +67,8 @@ const report = {
   helicopterKeys: ["ka52", "ah64", "armedTransportHeli"],
   groundKeys: { spaag: "spaag", apcTemplate: groundKey },
   aircraftKeys: { mig21: mig21Key, su25: su25Key },
-  thirdSlot: "m-heli",
+  legacyTemplate: "m-heli",
+  seraMission: "sera-m03",
   reusableHost: ["protectedFacilities", "groundPhaseContract", "rankNeutral", "multipleWingmen"]
 };
 

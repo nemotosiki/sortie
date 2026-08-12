@@ -65,8 +65,8 @@ async function waitForState(page, expected, timeout = 30_000) {
 }
 
 async function startM03(page) {
-  const started = await page.evaluate(() => window.__game.forceStartMissionByKey("m-heli", "f16"));
-  assert(started, "LOW WATER could not be started through the production launcher");
+  const started = await page.evaluate(() => window.__game.forceStartMissionByKey("sera-m03", "f16"));
+  assert(started, "namespaced LOW WATER could not be started through the production launcher");
   await waitForState(page, "playing");
   await page.waitForTimeout(350);
 }
@@ -97,8 +97,8 @@ try {
   await startM03(landing.page);
 
   let probe = await landing.page.evaluate(() => window.__game.seraM03Probe());
-  assert(probe.missionKey === "m-heli" && probe.title === "LOW WATER" && probe.worldKey === "sarkPort",
-    "wrong third-slot mission or world booted", probe);
+  assert(probe.missionKey === "sera-m03" && probe.title === "LOW WATER" && probe.worldKey === "sarkPort",
+    "wrong namespaced Sera mission or world booted", probe);
   assert(probe.active && probe.facilities.length === 3 && probe.facilities.every((facility) => facility.alive),
     "LOW WATER did not start with its three protected port sites", probe);
   assert(probe.pendingTargetWaves === 3,
@@ -179,7 +179,7 @@ try {
   await failure.context.close();
 
   // Scenario C: destroy every red contact before a landing, clear with white traffic alive,
-  // and persist both the legacy third-slot record and the formal M03 record.
+  // and persist only the namespaced Sera record.
   const clean = await openMissionPage();
   await startM03(clean.page);
   const completed = await clean.page.evaluate(() => window.__game.forceSeraM03Complete());
@@ -197,11 +197,28 @@ try {
   const records = await clean.page.evaluate(() => JSON.parse(
     localStorage.getItem("sortieMissionRecords") || "{}"
   ));
-  assert(records["m-heli"]?.cleared && records["m-heli"]?.rank === "S",
-    "third-slot compatibility record was not stored as a clean S", records["m-heli"]);
-  assert(records.m03?.cleared && records.m03?.rank === "S"
-      && records.m03?.recordSource === "m-heli" && records.m03?.transportLandings === 0,
-    "formal M03 result record was not persisted", records.m03);
+  assert(records["sera-m03"]?.cleared && records["sera-m03"]?.rank === "S"
+      && records["sera-m03"]?.transportLandings === 0,
+    "namespaced Sera M03 result was not persisted", records["sera-m03"]);
+  assert(records["m-heli"] === undefined && records.m03 === undefined,
+    "clearing Sera M03 wrote a legacy compatibility record", records);
+
+  const legacyStarted = await clean.page.evaluate(() => window.__game.forceStartMissionByKey("m-heli", "f16"));
+  assert(legacyStarted, "legacy USA m-heli could not start after the Sera clear");
+  await waitForState(clean.page, "playing", 10_000);
+  await clean.page.waitForTimeout(250);
+  probe = await clean.page.evaluate(() => window.__game.seraM03Probe());
+  const legacyWingmen = probe.friendlies.filter((friendly) => friendly.kind === "wingman");
+  assert(probe.missionKey === "m-heli" && probe.title === "LOW GUARDIAN"
+      && probe.worldKey === "coastalPlain"
+      && probe.facilities.length === 0
+      && probe.transportSpawned === 0
+      && probe.transportLandings === 0
+      && probe.apcSpawned === 0
+      && probe.apcArrivals === 0,
+    "legacy m-heli still resolves to LOW WATER content", probe);
+  assert(!legacyWingmen.some((wingman) => wingman.label.includes("CROWN") || wingman.label.includes("LARK")),
+    "ROOK wingmen leaked into legacy m-heli", legacyWingmen);
 
   assert(clean.pageErrors.length === 0, "pageerror occurred during clean completion", clean.pageErrors);
   assert(clean.consoleErrors.length === 0,
@@ -211,7 +228,7 @@ try {
   console.log("check_sera_m03_e2e: PASS");
   console.log("  normal startup -> Sark Port -> Ka-52/transport overlap -> APC conversion");
   console.log("  command integrity rank route -> four-arrival failure -> clean Retry");
-  console.log("  zero-landing S clear -> white survivors -> m-heli and formal m03 records");
+  console.log("  zero-landing S clear -> sera-m03 record only -> legacy m-heli still boots independently");
 } finally {
   await browser.close();
 }

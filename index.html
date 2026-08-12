@@ -35880,9 +35880,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (!GROUND_TYPES[type]) throw new Error(`[sera-m03] required ground type not registered: ${type}`);
         }
 
-        const at = MISSIONS.findIndex((mission) => mission.key === "m-heli");
-        if (at < 0) throw new Error("[sera-m03] stock m-heli slot was not found");
-        const original = MISSIONS[at];
+        const original = MISSIONS.find((mission) => mission.key === "m-heli");
+        if (!original) throw new Error("[sera-m03] stock m-heli template was not found");
 
         const landingContract = {
           transportType: "armedTransportHeli",
@@ -35955,10 +35954,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         };
 
-        const replacement = {
+        const mission = {
           ...original,
-          key: "m-heli",
-          campaign: original.campaign || "usa",
+          key: "sera-m03",
+          campaign: "sera",
+          campaignOrder: 3,
           world: "sarkPort",
           title: "LOW WATER",
           jp: "サルク港へ低空侵入する攻撃ヘリと武装輸送ヘリを阻止し、港湾司令所を防衛せよ。",
@@ -36235,17 +36235,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ]
         };
 
-        MISSIONS.splice(at, 1);
-        try {
-          const normalized = ctx.addMission(replacement);
-          const appendedAt = MISSIONS.indexOf(normalized);
-          if (appendedAt < 0) throw new Error("[sera-m03] normalized mission was not inserted");
-          MISSIONS.splice(appendedAt, 1);
-          MISSIONS.splice(at, 0, normalized);
-        } catch (error) {
-          MISSIONS.splice(at, 0, original);
-          throw error;
-        }
+        // Add-only registration preserves the legacy third USA slot. LOW WATER owns
+        // one persistent key and no longer needs a compatibility result mirror.
+        ctx.addMission(mission);
       },
       "mission_sera_m03"
     ); // @payload:mission_sera_m03
@@ -36653,17 +36645,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m03Result = m03ResultSnapshot(mission);
       if (m03Result) Object.assign(entry, m03Result);
       missionRecords[key] = entry;
-      if (m03Result) {
-        missionRecords.m03 = {
-          ...entry,
-          ...m03Result,
-          ranks: { ...(entry.ranks || {}) },
-          scores: [...entry.scores],
-          times: [...entry.times],
-          marks: { ...(entry.marks || {}) },
-          recordSource: key
-        };
-      }
       saveMissionRecords();
     }
 
@@ -37654,6 +37635,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             alive: facility.alive,
             hp: facility.hp,
             maxHp: facility.maxHp
+          })),
+          friendlies: friendlies.map((friendly) => ({
+            kind: friendly.kind,
+            label: friendly.label,
+            type: friendly.type || null,
+            radioSpeaker: friendly.radioSpeaker || null,
+            alive: friendly.alive,
+            position: [friendly.group.position.x, friendly.group.position.y, friendly.group.position.z]
           })),
           pendingTargetWaves: pendingWaves.filter((entry) => entry.wave && isTgtEntry(entry.wave)).length,
           enemies: enemies.map((enemy) => ({
@@ -44568,7 +44557,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function m03CommandFacility(mission = m03Mission()) {
-      if (!mission) return null;
+      if (!mission || !mission.landingContract) return null;
       const id = mission.landingContract.commandFacilityId;
       return protectedFacilities.find((facility) => facility.facilityId === id) || null;
     }

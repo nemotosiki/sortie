@@ -14,6 +14,7 @@ function assert(condition, message) {
 
 const marker = "// SERA M03 RUNTIME CONTRACT";
 assert(source.split(marker).length - 1 === 1, "runtime marker must appear exactly once");
+assert(!source.includes("missionRecords.m03 = {"), "M03 still writes a compatibility record outside its mission key");
 for (const name of [
   "resetM03State",
   "createM03LandingState",
@@ -36,7 +37,7 @@ for (const [needle, label] of [
   ["checkpoint.m03State = snapshotM03State();", "checkpoint snapshot"],
   ["restoreM03State(at.m03State);", "checkpoint restore"],
   ["const m03RankCapped = m03RankShouldCapS(mission);", "rank contract"],
-  ["missionRecords.m03 = {", "formal M03 record"],
+  ["missionRecords[key] = entry;", "mission-keyed M03 result"],
   ["seraM03Probe: () => {", "M03 probe"],
   ["forceSeraM03LandTransport: (id = null) => {", "landing test hook"],
   ["pendingWaves.some((entry) => entry.wave && isTgtEntry(entry.wave))", "delayed TGT hold"]

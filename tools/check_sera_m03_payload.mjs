@@ -19,7 +19,10 @@ assert(fs.existsSync(payloadPath), "payloads/mission_sera_m03.payload.js is miss
 const source = fs.readFileSync(payloadPath, "utf8");
 assert(!source.includes("\r"), "payload must be LF-only");
 assert(source.includes('world: "sarkPort"'), "M03 does not select Sark Port");
-assert(source.includes('key: "m-heli"'), "M03 does not preserve the third campaign slot");
+assert(source.includes('key: "sera-m03"'), "M03 does not use its namespaced mission key");
+assert(source.includes('campaign: "sera"'), "M03 is not assigned to the Sera campaign");
+assert(source.includes('campaignOrder: 3'), "M03 campaign-local order is missing");
+assert(!source.includes('MISSIONS.splice('), "M03 still removes or reorders a legacy mission");
 assert(source.includes('transportType: "armedTransportHeli"'), "transport landing contract missing");
 assert(source.includes('apcMark: "m03Apc"'), "dynamic APC mark missing");
 assert(source.includes('failArrivals: 4'), "four-arrival failure threshold missing");
@@ -69,10 +72,16 @@ try {
 
   register(ctx);
 
-  assert(MISSIONS.length === 4, `replacement changed mission count to ${MISSIONS.length}`);
-  assert(MISSIONS[0] === stockM01 && MISSIONS[1] === stockM02 && MISSIONS[3] === stockM04, "M03 replacement changed campaign order");
-  const mission = MISSIONS[2];
-  assert(mission.key === "m-heli", `unexpected mission key ${mission.key}`);
+  assert(MISSIONS.length === 5, `expected four stock missions + Sera M03, got ${MISSIONS.length}`);
+  assert(MISSIONS[0] === stockM01 && MISSIONS[1] === stockM02
+      && MISSIONS[2] === stockM03 && MISSIONS[3] === stockM04,
+    "M03 registration changed a stock mission or campaign order");
+  assert(stockM03.title === "LOW GUARDIAN" && stockM03.world === "coastalPlain",
+    "legacy USA m-heli was modified");
+  const mission = MISSIONS.find((entry) => entry.key === "sera-m03");
+  assert(mission, "namespaced Sera M03 was not registered");
+  assert(mission.campaign === "sera", `unexpected campaign ${mission.campaign}`);
+  assert(mission.campaignOrder === 3, `unexpected campaign order ${mission.campaignOrder}`);
   assert(mission.title === "LOW WATER", `unexpected title ${mission.title}`);
   assert(mission.world === "sarkPort", `unexpected world ${mission.world}`);
   assert(mission.parTime === 810, `unexpected parTime ${mission.parTime}`);
@@ -125,7 +134,7 @@ try {
   }
 
   console.log("check_sera_m03_payload: PASS");
-  console.log(`  TGT=${mission.totalTargets} contacts=${mission.totalContacts} red=Ka52x4/transportx3/Su25x2 white=MiG21x4`);
+  console.log(`  stock=m-heli mission=${mission.key} campaign=${mission.campaign} TGT=${mission.totalTargets} contacts=${mission.totalContacts} red=Ka52x4/transportx3/Su25x2 white=MiG21x4`);
   console.log(`  LZ=${landing.lzs.length} APC max=${3 * landing.apcPerTransport} fail arrivals=${landing.failArrivals}`);
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });

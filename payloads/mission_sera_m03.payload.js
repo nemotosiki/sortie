@@ -3,6 +3,8 @@
 // Development load order:
 //   index.html?payloads=payloads/map_sarkPort.payload.js,payloads/mission_sera_m03.payload.js
 //
+// Contract:
+//   - adds independent `sera-m03` and leaves legacy USA `m-heli` untouched
 // Host contracts authored here:
 //   - armedTransportHeli follows landingContract routes instead of player-orbit AI
 //   - each completed unload replaces one transport TGT with two moving APC TGTs
@@ -30,9 +32,8 @@ export default function register(ctx) {
     if (!GROUND_TYPES[type]) throw new Error(`[sera-m03] required ground type not registered: ${type}`);
   }
 
-  const at = MISSIONS.findIndex((mission) => mission.key === "m-heli");
-  if (at < 0) throw new Error("[sera-m03] stock m-heli slot was not found");
-  const original = MISSIONS[at];
+  const original = MISSIONS.find((mission) => mission.key === "m-heli");
+  if (!original) throw new Error("[sera-m03] stock m-heli template was not found");
 
   const landingContract = {
     transportType: "armedTransportHeli",
@@ -105,10 +106,11 @@ export default function register(ctx) {
     }
   };
 
-  const replacement = {
+  const mission = {
     ...original,
-    key: "m-heli",
-    campaign: original.campaign || "usa",
+    key: "sera-m03",
+    campaign: "sera",
+    campaignOrder: 3,
     world: "sarkPort",
     title: "LOW WATER",
     jp: "サルク港へ低空侵入する攻撃ヘリと武装輸送ヘリを阻止し、港湾司令所を防衛せよ。",
@@ -385,15 +387,7 @@ export default function register(ctx) {
     ]
   };
 
-  MISSIONS.splice(at, 1);
-  try {
-    const normalized = ctx.addMission(replacement);
-    const appendedAt = MISSIONS.indexOf(normalized);
-    if (appendedAt < 0) throw new Error("[sera-m03] normalized mission was not inserted");
-    MISSIONS.splice(appendedAt, 1);
-    MISSIONS.splice(at, 0, normalized);
-  } catch (error) {
-    MISSIONS.splice(at, 0, original);
-    throw error;
-  }
+  // Add-only registration preserves the legacy third USA slot. LOW WATER owns
+  // one persistent key and no longer needs a compatibility result mirror.
+  ctx.addMission(mission);
 }
