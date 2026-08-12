@@ -127,15 +127,14 @@ try {
   assert(lark?.type === "f16" && lark?.radioSpeaker === "lark",
     "LARK was not fielded in the canonical F-16C", wingmen);
 
-  const openingRed = probe.enemies.filter((enemy) => enemy.tgt);
   const openingWhite = probe.enemies.filter((enemy) => !enemy.tgt);
-  assert(openingRed.length === 4 && openingRed.every((enemy) => enemy.type === "mig29"),
-    "opening red rearguard was not four MiG-29s", probe.enemies);
-  assert(openingWhite.length === 4
-      && openingWhite.every((enemy) => enemy.type === "mig29"
+  assert(openingWhite.length === 2
+      && openingWhite.every((enemy) => enemy.type === "mig23"
         && enemy.disposition === "HOSTILE_OPTIONAL"
         && enemy.rankNeutral),
-    "opening screen was not four white rank-neutral MiG-29s", openingWhite);
+    "opening high intercept was not two white rank-neutral MiG-23s", openingWhite);
+  assert(probe.activeGate?.mode === "clearOrTimeout" && probe.activeGate?.timeout === 60,
+    "opening MiG-23 clear-or-timeout gate is missing", probe.activeGate);
 
   let perfect = await page.evaluate(() => window.__game.seraM02PerfectRankPreview());
   assert(perfect === "S", "a clean M02 was not initially S-capable", perfect);

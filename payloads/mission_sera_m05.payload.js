@@ -15,10 +15,12 @@ export default function register(ctx) {
   if (!MISSIONS.some((mission) => mission.key === "sera-m04" && mission.campaign === "sera")) {
     throw new Error("[sera-m05] sera-m04 predecessor is missing");
   }
-  for (const type of ["f4", "f16", "mig29"]) {
+  for (const type of ["f4", "f16", "mig21", "mig29"]) {
     if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m05] required aircraft not registered: ${type}`);
   }
-  if (!ENEMY_AI_PROFILES.mig29) throw new Error("[sera-m05] MiG-29 enemy profile is missing");
+  for (const type of ["mig21", "mig29"]) {
+    if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m05] required enemy profile not registered: ${type}`);
+  }
   if (!HELI_TYPES.ka52) throw new Error("[sera-m05] Ka-52 helicopter type is missing");
   for (const type of ["autonomousSam", "spaag", "tank", "ifv", "aaGun", "mobileCommand"]) {
     if (!GROUND_TYPES[type]) throw new Error(`[sera-m05] required ground type not registered: ${type}`);
@@ -79,7 +81,8 @@ export default function register(ctx) {
         Object.freeze([2100, -1280])
       ]),
       redHelicopters: Object.freeze(["ka52", "ka52"]),
-      whiteFighters: Object.freeze(["mig29", "mig29", "mig29", "mig29"])
+      localDefense: Object.freeze(["mig21", "mig21", "mig21", "mig21"]),
+      whiteFighters: Object.freeze(["mig29", "mig29"])
     }),
     carryover: Object.freeze({
       m03: Object.freeze({
@@ -222,6 +225,20 @@ export default function register(ctx) {
         ]
       },
       {
+        types: ["mig21", "mig21"],
+        tgt: false,
+        rankNeutral: true,
+        concurrent: true,
+        band: 1,
+        idBase: 60,
+        label: "LOCAL DEFENSE",
+        role: "trash",
+        skill: "rookie",
+        at: [-900, -1800],
+        altitude: 950,
+        facing: [0, -3000]
+      },
+      {
         types: [],
         band: 2,
         idBase: 20,
@@ -234,6 +251,35 @@ export default function register(ctx) {
             priority: "CRITICAL",
             text: "中央市街と西岸に装甲目標。戦車六、IFV三をTGT指定。",
             id: "m05_p2_01"
+          }
+        ]
+      },
+      {
+        types: ["mig29", "mig29"],
+        tgt: false,
+        rankNeutral: true,
+        concurrent: true,
+        delay: 18,
+        band: 2,
+        idBase: 70,
+        label: "QRA",
+        role: "line",
+        skill: "regular",
+        at: [5200, -5600],
+        altitude: 1550,
+        facing: [0, -3000],
+        radio: [
+          {
+            speaker: "meridian",
+            priority: "URGENT",
+            text: "新規反応2、高速。MiG-29、前線航空隊だ。地上TGTから引き離されるな。",
+            id: "m05-mig29-qra"
+          },
+          {
+            speaker: "lark",
+            priority: "NORMAL",
+            text: "海峡で艦隊を守ってた連中だ。今度はこっちを止めに来た。",
+            id: "m05-mig29-qra-lark"
           }
         ]
       },
@@ -268,23 +314,24 @@ export default function register(ctx) {
           {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "南東から攻撃ヘリ二、戦闘機四。攻撃ヘリをTGT指定。",
+            text: "南東から攻撃ヘリ二。攻撃ヘリをTGT指定。沿岸基地の増援にも注意。",
             id: "m05_update_04"
           }
         ]
       },
       {
-        types: ["mig29", "mig29", "mig29", "mig29"],
+        types: ["mig21", "mig21"],
         tgt: false,
         rankNeutral: true,
         concurrent: true,
+        delay: 35,
         band: 3,
-        idBase: 60,
-        label: "AIR COVER",
+        idBase: 80,
+        label: "LOCAL RELIEF",
         role: "trash",
-        skill: "regular",
+        skill: "rookie",
         at: [4500, -5500],
-        altitude: 1450,
+        altitude: 1150,
         facing: [0, -3000]
       }
     ],
@@ -319,7 +366,7 @@ export default function register(ctx) {
     map: { x: 0.61, y: 0.27 },
     battleCenter: { x: 0, z: -3000 },
     battleRadius: 10500,
-    briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。\nPHASE 2では味方地上軍前方の赤戦車六、IFV三を排除する。白い固定砲は全滅不要。\nMISSION UPDATE後は南岸を逃走する移動指揮車と赤Ka-52二機を破壊する。白いMiG-29を追って港から離れるな。"
+    briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方地上軍前方の赤戦車六、IFV三を排除する。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
   };
 
   ctx.addMission(mission);

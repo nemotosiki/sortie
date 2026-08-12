@@ -14,10 +14,10 @@ export default function register(ctx) {
   if (!MISSIONS.some((mission) => mission.key === "sera-m03" && mission.campaign === "sera")) {
     throw new Error("[sera-m04] stable sera-m03 predecessor is missing; finish M03 campaign isolation first");
   }
-  for (const type of ["f2a", "f4", "f16", "su33", "su34", "mig29"]) {
+  for (const type of ["f2a", "f4", "f16", "mig21", "mig29", "su34"]) {
     if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m04] required aircraft not registered: ${type}`);
   }
-  for (const type of ["su33", "su34", "mig29"]) {
+  for (const type of ["mig21", "mig29", "su34"]) {
     if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m04] required enemy profile not registered: ${type}`);
   }
   for (const type of ["cruiser", "lhd", "missileBoat", "carrier", "frigate"]) {
@@ -46,7 +46,7 @@ export default function register(ctx) {
       quietDelay: Object.freeze([12, 18]),
       banner: "PROTECT CVN EPOCH",
       strikeTypes: Object.freeze(["su34", "su34"]),
-      escortTypes: Object.freeze(["mig29", "mig29", "mig29", "mig29"]),
+      escortTypes: Object.freeze([]),
       firstMissileNotBefore: 60
     }),
     epoch: Object.freeze({
@@ -132,8 +132,10 @@ export default function register(ctx) {
       }
     },
 
-    // PHASE 1: four red capital targets with ten white screening contacts.
-    // PHASE 2: two red strike aircraft hunting EPOCH with four white escorts.
+    // PHASE 1: four red capital targets, four white boats, MiG-29A x2 fleet
+    // cover, and a delayed MiG-21 x2 shore-relief flight. MiG-29A makes its
+    // first campaign appearance here as line/regular, never as early trash.
+    // PHASE 2: two red strike aircraft hunt EPOCH without another fighter blob.
     sequence: [
       {
         kind: "naval",
@@ -165,30 +167,30 @@ export default function register(ctx) {
         facing: [-6500, 0]
       },
       {
-        types: ["su33", "su33", "su33", "su33"],
+        types: ["mig29", "mig29"],
         tgt: false,
         rankNeutral: true,
         concurrent: true,
         band: 1,
         idBase: 20,
         label: "FLEET CAP",
-        role: "trash",
+        role: "line",
         skill: "regular",
         at: [8500, 7000],
         altitude: 1800,
         facing: [0, 0]
       },
       {
-        types: ["su33", "su33"],
+        types: ["mig21", "mig21"],
         tgt: false,
         rankNeutral: true,
         concurrent: true,
-        delay: 360,
+        delay: 90,
         band: 1,
         idBase: 24,
-        label: "CAP RELIEF",
+        label: "SHORE RELIEF",
         role: "trash",
-        skill: "regular",
+        skill: "rookie",
         at: [8500, 7000],
         altitude: 1900,
         facing: [0, 0]
@@ -212,20 +214,6 @@ export default function register(ctx) {
             id: "m04_update_02"
           }
         ]
-      },
-      {
-        types: ["mig29", "mig29", "mig29", "mig29"],
-        tgt: false,
-        rankNeutral: true,
-        concurrent: true,
-        band: 2,
-        idBase: 40,
-        label: "STRIKE ESCORT",
-        role: "trash",
-        skill: "regular",
-        at: [9000, -7000],
-        altitude: 1800,
-        facing: [-9000, 0]
       }
     ],
 
@@ -259,7 +247,7 @@ export default function register(ctx) {
     map: { x: 0.54, y: 0.34 },
     battleCenter: { x: 0, z: 0 },
     battleRadius: 18000,
-    briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、強襲揚陸艦三。\n白いミサイル艇とSu-33は護衛であり、全滅させる必要はない。揚陸艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
+    briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、強襲揚陸艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。揚陸艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
   };
 
   ctx.addMission(mission);

@@ -134,7 +134,7 @@ try {
 
   assert(probe.activeGate?.timeout === 75, "opening clear-or-timeout gate is not active", probe.activeGate);
   assert(probe.enemies.length === 2, "opening phase did not contain exactly two contacts", probe.enemies);
-  assert(probe.enemies.every((enemy) => enemy.type === "mig29"), "opening contacts were not MiG-29s", probe.enemies);
+  assert(probe.enemies.every((enemy) => enemy.type === "mig21"), "opening contacts were not MiG-21s", probe.enemies);
   assert(probe.enemies.every((enemy) => enemy.tgt === false && enemy.disposition === "HOSTILE_OPTIONAL"),
     "opening contacts were not white optional hostiles", probe.enemies);
   assert(probe.enemies.every((enemy) => Math.abs(enemy.position[0] - 8200) < 1800),
@@ -198,7 +198,7 @@ try {
   assert(probe.base?.hits === 0, "retry did not reset bomber breaches", probe.base);
   const openingRestart = probe.activeGate?.timeout === 75
     && probe.enemies.length === 2
-    && probe.enemies.every((enemy) => enemy.type === "mig29");
+    && probe.enemies.every((enemy) => enemy.type === "mig21");
   const checkpointResume = checkpointBeforeFailure.active
     && checkpointAfterRetry.used
     && probe.missionWaveIndex >= checkpointBeforeFailure.waveIndex

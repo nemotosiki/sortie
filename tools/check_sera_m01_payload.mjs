@@ -8,9 +8,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PAYLOAD = path.join(ROOT, "payloads", "mission_sera_m01.payload.js");
 
 function fail(message) {
@@ -55,8 +55,8 @@ try {
     tables: {
       MISSIONS,
       WORLD_PRESETS: { renBay: {} },
-      AIRCRAFT_TYPES: { tu22m3: {}, mig29: {}, f16: {}, f15c: {} },
-      ENEMY_AI_PROFILES: { tu22m3: {}, mig29: {} }
+      AIRCRAFT_TYPES: { tu22m3: {}, mig21: {}, f16: {}, f15c: {} },
+      ENEMY_AI_PROFILES: { tu22m3: {}, mig21: {} }
     },
     addMission(def) {
       for (const required of ["key", "title", "sequence", "map"]) {
@@ -85,7 +85,7 @@ try {
   assert(mission.title === "FIRST CONTACT", `unexpected title ${mission.title}`);
   assert(mission.world === "renBay", `unexpected world ${mission.world}`);
   assert(mission.parTime === 660, `unexpected parTime ${mission.parTime}`);
-  assert(mission.sequence.length === 7, `expected 7 sequence entries, got ${mission.sequence.length}`);
+  assert(mission.sequence.length === 5, `expected 5 sequence entries, got ${mission.sequence.length}`);
   assert(mission.waveCount === 4, `expected 4 principal phases, got ${mission.waveCount}`);
 
   const tgtWaves = mission.sequence.filter((wave) => wave.tgt !== false);
@@ -93,19 +93,24 @@ try {
   const tgt = tgtWaves.reduce((sum, wave) => sum + wave.types.length, 0);
   const optional = optionalWaves.reduce((sum, wave) => sum + wave.types.length, 0);
   const bombers = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "tu22m3").length;
-  const escorts = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "mig29").length;
+  const fighters = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "mig21").length;
+  const earlyMig29 = mission.sequence.flatMap((wave) => wave.types).filter((type) => type === "mig29").length;
 
   assert(tgt === 6, `expected 6 red TGT contacts, got ${tgt}`);
-  assert(optional === 10, `expected 10 white optional contacts, got ${optional}`);
+  assert(optional === 4, `expected 4 white optional contacts, got ${optional}`);
   assert(bombers === 6, `expected 6 Tu-22M3 bombers, got ${bombers}`);
-  assert(escorts === 10, `expected 10 MiG-29 contacts, got ${escorts}`);
+  assert(fighters === 4, `expected 4 MiG-21 contacts, got ${fighters}`);
+  assert(earlyMig29 === 0, `M01 must not field MiG-29A, got ${earlyMig29}`);
   assert(optionalWaves.every((wave) => wave.rankNeutral === true), "white M01 contacts must be rank-neutral");
 
   const tutorial = mission.sequence[0];
   assert(tutorial.tgt === false, "tutorial contacts must be white/non-TGT");
   assert(tutorial.gate?.mode === "clearOrTimeout", "tutorial phase gate is missing");
   assert(tutorial.gate?.timeout === 75, `unexpected tutorial timeout ${tutorial.gate?.timeout}`);
+  assert(tutorial.role === "trash" && tutorial.skill === "rookie", "opening MiG-21 role/skill changed");
   assert(Array.isArray(tutorial.at) && tutorial.at.length === 2, "tutorial has no authored approach point");
+  const relief = mission.sequence.find((wave) => wave.label === "RELIEF");
+  assert(relief?.delay === 45 && relief?.skill === "rookie", "delayed MiG-21 relief contract changed");
 
   assert(mission.friendlies?.wingmen?.length === 2, "expected CROWN and LARK wingmen");
   const crown = mission.friendlies.wingmen.find((wingman) => wingman.label === "ROOK 1 CROWN");

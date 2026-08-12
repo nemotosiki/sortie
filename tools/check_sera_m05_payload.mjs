@@ -30,8 +30,8 @@ try {
     tables: {
       MISSIONS,
       WORLD_PRESETS: { sarkPortAsh: {} },
-      AIRCRAFT_TYPES: { f4: {}, f16: {}, mig29: {} },
-      ENEMY_AI_PROFILES: { mig29: {} },
+      AIRCRAFT_TYPES: { f4: {}, f16: {}, mig21: {}, mig29: {} },
+      ENEMY_AI_PROFILES: { mig21: {}, mig29: {} },
       HELI_TYPES: { ka52: {} },
       GROUND_TYPES: Object.fromEntries(groundKeys.map((key) => [key, {}]))
     },
@@ -52,19 +52,25 @@ try {
   assert(added?.key === "sera-m05" && added?.campaignOrder === 5, "mission identity changed");
   assert(added?.title === "PORT OF ASH", `unexpected title ${added?.title}`);
   assert(added?.totalTargets === 17, `expected 17 red TGT, got ${added?.totalTargets}`);
-  assert(added?.totalContacts === 26, `expected 26 contacts, got ${added?.totalContacts}`);
+  assert(added?.totalContacts === 28, `expected 28 contacts, got ${added?.totalContacts}`);
   const count = (type) => [
     ...added.sequence.flatMap((wave) => wave.types),
     ...(added.groundUnits || []).map((unit) => unit.type)
   ].filter((entry) => entry === type).length;
   assert(count("autonomousSam") === 2 && count("spaag") === 3, "phase 1 composition changed");
   assert(count("tank") === 8 && count("ifv") === 3, "ground armor composition changed");
-  assert(count("mobileCommand") === 1 && count("ka52") === 2 && count("mig29") === 4,
+  assert(count("mobileCommand") === 1 && count("ka52") === 2 && count("mig29") === 2 && count("mig21") === 4,
     "phase 3 composition changed");
   const whiteWaves = added.sequence.filter((wave) => wave.tgt === false);
   const whiteGround = added.groundUnits.filter((unit) => unit.tgt === false);
-  assert(whiteWaves.length === 1 && whiteWaves.every((wave) => wave.rankNeutral === true),
+  assert(whiteWaves.length === 3 && whiteWaves.every((wave) => wave.rankNeutral === true),
     "white air formation must remain rank-neutral");
+  const qra = added.sequence.find((wave) => wave.label === "QRA");
+  assert(qra?.role === "line" && qra?.skill === "regular" && qra?.types.length === 2,
+    "MiG-29A QRA contract changed");
+  assert(added.sequence.filter((wave) => wave.types.includes("mig21"))
+    .every((wave) => wave.role === "trash" && wave.skill === "rookie"),
+    "MiG-21 local-defence role/skill changed");
   assert(whiteGround.length === 5 && whiteGround.every((unit) => unit.rankNeutral === true),
     "white ground contacts must remain rank-neutral");
   assert(added.friendlies?.wingmen?.length === 2, "CROWN/LARK wingmen missing");
@@ -83,7 +89,7 @@ try {
     "S-rank contract changed");
   assert(added.fixedRadio?.some((line) => line.id === "m05_chase_02"), "command-distance radio missing");
   console.log("check_sera_m05_payload: PASS");
-  console.log("  red=AD5/armor9/command1/Ka52x2 white=tank2/gun3/MiG29x4 routes and carry-over staged");
+  console.log("  red=AD5/armor9/command1/Ka52x2 white=tank2/gun3/MiG21x4/MiG29x2 routes and carry-over staged");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

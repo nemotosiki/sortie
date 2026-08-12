@@ -35004,12 +35004,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (!WORLD_PRESETS.renBay) {
           throw new Error("[sera-m01] renBay is not registered; load map_renBay first");
         }
-        for (const type of ["tu22m3", "mig29", "f16", "f15c"]) {
+        for (const type of ["tu22m3", "mig21", "f16", "f15c"]) {
           if (!AIRCRAFT_TYPES[type]) {
             throw new Error(`[sera-m01] required aircraft not registered: ${type}`);
           }
         }
-        for (const type of ["tu22m3", "mig29"]) {
+        for (const type of ["tu22m3", "mig21"]) {
           if (!ENEMY_AI_PROFILES[type]) {
             throw new Error(`[sera-m01] required enemy profile not registered: ${type}`);
           }
@@ -35065,16 +35065,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // The opening pair is white and rank-neutral. It is a tutorial phase, not
           // part of ACCOMPLISHED: clear both, or survive 75 seconds, and MERIDIAN
           // brings up the first bomber group. The remaining white contacts are the
-          // bomber escorts. 2 + 2 + 2 + 4 = 10 white hostiles in total.
+          // delayed relief flight. M01 uses four MiG-21bis in total and no MiG-29A:
+          // two in the opening screen, then two only if the first bomber fight lasts.
           sequence: [
             {
-              types: ["mig29", "mig29"],
+              types: ["mig21", "mig21"],
               tgt: false,
               rankNeutral: true,
               band: 1,
               idBase: 6,
               label: "SCOUT",
               role: "trash",
+              skill: "rookie",
               gate: { mode: "clearOrTimeout", timeout: 75 },
               at: [8200, -2600],
               altitude: 2500,
@@ -35112,14 +35114,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               ]
             },
             {
-              types: ["mig29", "mig29"],
+              types: ["mig21", "mig21"],
               tgt: false,
               rankNeutral: true,
               band: 1,
               idBase: 8,
-              label: "ESCORT",
+              label: "RELIEF",
               concurrent: true,
               role: "trash",
+              skill: "rookie",
+              delay: 45,
               at: [-900, -10600],
               altitude: 3500,
               facing: [-2450, 5000],
@@ -35127,7 +35131,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 {
                   speaker: "crown",
                   priority: "NORMAL",
-                  text: "護衛はこっちで見る。RAVEN、赤い爆撃機を頼む。",
+                  text: "沿岸基地からMiG-21が2機。護衛に釣られるな、爆撃機が赤だ。通すな。",
                   id: "sera-m01-wave-1-crown"
                 }
               ]
@@ -35156,19 +35160,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               ]
             },
             {
-              types: ["mig29", "mig29"],
-              tgt: false,
-              rankNeutral: true,
-              band: 2,
-              idBase: 10,
-              label: "ESCORT",
-              concurrent: true,
-              role: "trash",
-              at: [11600, 1000],
-              altitude: 3300,
-              facing: [-2450, 5000]
-            },
-            {
               types: ["tu22m3", "tu22m3"],
               band: 2,
               idBase: 4,
@@ -35180,29 +35171,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 {
                   speaker: "meridian",
                   priority: "CRITICAL",
-                  text: "南東、大型編隊。最後の爆撃機2を赤TGT指定。護衛4、突破を許すな。",
+                  text: "南東、大型編隊。最後の爆撃機2を赤TGT指定。突破を許すな。",
                   id: "sera-m01-wave-3-meridian"
-                }
-              ]
-            },
-            {
-              types: ["mig29", "mig29", "mig29", "mig29"],
-              tgt: false,
-              rankNeutral: true,
-              band: 2,
-              idBase: 12,
-              label: "ESCORT",
-              concurrent: true,
-              role: "trash",
-              at: [8500, -8500],
-              altitude: 3900,
-              facing: [-2450, 5000],
-              radio: [
-                {
-                  speaker: "crown",
-                  priority: "NORMAL",
-                  text: "護衛が増えたな。焦らなくていい、赤い方だけ見ていろ。",
-                  id: "sera-m01-wave-3-crown"
                 }
               ]
             }
@@ -35269,7 +35239,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           battleCenter: { x: 0, z: 0 },
           battleRadius: 15000,
 
-          briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-29は敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n護衛のMiG-29は白表示だ。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
+          briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-21bisは敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n白いMiG-21bisは開幕2機と遅延増援2機。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
           introRadio: [
             {
               speaker: "meridian",
@@ -35545,10 +35515,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (!WORLD_PRESETS.amalPlain) {
           throw new Error("[sera-m02] amalPlain is not registered; load map_amalPlain first");
         }
-        for (const type of ["f4", "f16", "mig29", "su24m"]) {
+        for (const type of ["f4", "f16", "mig21", "mig23", "su24m"]) {
           if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m02] required aircraft not registered: ${type}`);
         }
-        for (const type of ["mig29", "su24m"]) {
+        for (const type of ["mig21", "mig23", "su24m"]) {
           if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m02] required enemy profile not registered: ${type}`);
         }
         for (const type of ["tel", "aaGun", "adTank", "tank"]) {
@@ -35640,16 +35610,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           },
 
           sequence: [
-            // Phase 1: the designated remnants. The white fighters are dangerous but
-            // optional, preserving the red/white lesson from M01.
+            // Phase 1: the first clear step above M01. These MiG-23s are optional
+            // high interceptors, not MiG-29A pressed into early-game trash duty.
             {
-              types: ["mig29", "mig29", "mig29", "mig29"],
+              types: ["mig23", "mig23"],
+              tgt: false,
+              rankNeutral: true,
               // Preserve the stock mission sequence schema. A zero delay keeps the
               // opening immediate while retaining sequence[].delay for registry QA.
               delay: 0,
               band: 1,
               idBase: 0,
-              label: "REARGUARD",
+              label: "HIGH INTERCEPT",
+              role: "line",
+              skill: "regular",
+              gate: { mode: "clearOrTimeout", timeout: 60 },
               at: [2400, -5200],
               altitude: 2600,
               facing: [0, 500],
@@ -35657,29 +35632,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 {
                   speaker: "meridian",
                   priority: "NORMAL",
-                  text: "ROOK、平原南東に赤TGT4。昨夜の残存戦闘隊だ。掃討を開始せよ。",
+                  text: "ROOK、平原南東上空に白2。MiG-23、高速迎撃隊だ。主任務から離れすぎるな。",
                   id: "sera-m02-sweep-meridian"
                 },
                 {
                   speaker: "crown",
                   priority: "NORMAL",
-                  text: "RAVEN、まず赤を片付ける。白を深追いして朝を丸ごと使うな。",
+                  text: "RAVEN、MiG-21より速い。旋回戦に付き合わず、次の攻撃隊へ備えろ。",
                   id: "sera-m02-sweep-crown"
                 }
               ]
-            },
-            {
-              types: ["mig29", "mig29", "mig29", "mig29"],
-              tgt: false,
-              rankNeutral: true,
-              concurrent: true,
-              band: 1,
-              idBase: 20,
-              label: "SCREEN",
-              role: "trash",
-              at: [3000, -4700],
-              altitude: 3000,
-              facing: [0, 500]
             },
 
             // Phase 2A: first strike pair attacks the southern radar site.
@@ -35708,7 +35670,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               ]
             },
             {
-              types: ["mig29", "mig29"],
+              types: ["mig21", "mig21"],
               tgt: false,
               rankNeutral: true,
               concurrent: true,
@@ -35716,6 +35678,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 24,
               label: "ESCORT",
               role: "trash",
+              skill: "rookie",
               at: [8800, -2200],
               altitude: 2150,
               facing: [2450, -1280]
@@ -35741,7 +35704,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               ]
             },
             {
-              types: ["mig29", "mig29"],
+              types: ["mig21", "mig21"],
               tgt: false,
               rankNeutral: true,
               concurrent: true,
@@ -35749,21 +35712,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 26,
               label: "ESCORT",
               role: "trash",
+              skill: "rookie",
               at: [9300, 3200],
               altitude: 2350,
               facing: [3350, 2080]
             },
 
-            // Phase 3: white air cover appears with the TEL reveal. This principal
-            // non-TGT wave is held open by the four ground TGTs rather than by itself.
+            // Phase 3: the ground-clear principal activates the TEL column. No new
+            // fighter wave appears here; the four MiG-21 escorts are the whole local
+            // defence allocation and MiG-29A remains absent from M02.
             {
-              types: ["mig29", "mig29", "mig29", "mig29"],
+              types: [],
               tgt: false,
               rankNeutral: true,
               band: 3,
               idBase: 28,
-              label: "COVER",
-              role: "trash",
+              label: "TEL COLUMN",
               at: [-800, -3900],
               altitude: 2450,
               facing: [-3600, 180],
@@ -35779,7 +35743,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 {
                   speaker: "lark",
                   priority: "URGENT",
-                  text: "対空車両6、上空にも白4。だけど逃がせないのは赤いTELだけだよ。",
+                  text: "対空車両6。逃がせないのは赤いTELだけだよ。",
                   id: "sera-m02-tel-reveal-lark"
                 }
               ]
@@ -35834,7 +35798,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.31, y: 0.34 },
           battleCenter: { x: 0, z: 200 },
           battleRadius: 10800,
-          briefing: "レン湾襲撃の翌朝、アマル平原に敵残存部隊を確認。\n第一目標は赤表示の残存戦闘機4。白表示の護衛は交戦可能だが撃墜必須ではない。\n続いて東方からSu-24M攻撃機が二つのレーダー／通信施設へ侵入する。施設喪失だけでは任務失敗にならないが、完全防衛評価は失われる。\n最終目標は西へ逃走する9K720 TEL 4両。対空車両と戦車、白い上空援護が随伴する。\nTELを1両でも戦域外へ逃がすとMISSION FAILED。赤TGTを優先せよ。\nROOK 1 CROWNはF-4E、ROOK 3 LARKはF-16Cで同行する。",
+          briefing: "レン湾襲撃の翌朝、アマル平原に敵残存部隊を確認。\n開幕の白いMiG-23は高速迎撃隊。交戦可能だが撃墜必須ではなく、MiG-29Aはまだ戦線に現れない。\n続いて東方からSu-24M攻撃機が二つのレーダー／通信施設へ侵入する。各隊の白いMiG-21bis二機は護衛だ。施設喪失だけでは任務失敗にならないが、完全防衛評価は失われる。\n最終目標は西へ逃走する9K720 TEL 4両。対空車両と戦車が随伴する。\nTELを1両でも戦域外へ逃がすとMISSION FAILED。赤TGTを優先せよ。\nROOK 1 CROWNはF-4E、ROOK 3 LARKはF-16Cで同行する。",
           introRadio: [
             {
               speaker: "meridian",

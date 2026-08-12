@@ -2,9 +2,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const payloadPath = path.join(root, "payloads", "mission_sera_m02.payload.js");
 
 function fail(message) {
@@ -44,8 +44,8 @@ try {
     tables: {
       MISSIONS,
       WORLD_PRESETS: { amalPlain: {} },
-      AIRCRAFT_TYPES: { f4: {}, f16: {}, mig29: {}, su24m: {} },
-      ENEMY_AI_PROFILES: { mig29: {}, su24m: {} },
+      AIRCRAFT_TYPES: { f4: {}, f16: {}, mig21: {}, mig23: {}, su24m: {} },
+      ENEMY_AI_PROFILES: { mig21: {}, mig23: {}, su24m: {} },
       GROUND_TYPES: { tel: {}, aaGun: {}, adTank: {}, tank: {} }
     },
     addMission(def) {
@@ -80,10 +80,10 @@ try {
   assert(mission.title === "SHATTERED MORNING", `unexpected title ${mission.title}`);
   assert(mission.world === "amalPlain", `unexpected world ${mission.world}`);
   assert(mission.parTime === 720, `unexpected parTime ${mission.parTime}`);
-  assert(mission.waves.length === 7, `expected 7 sequence entries, got ${mission.waves.length}`);
+  assert(mission.waves.length === 6, `expected 6 sequence entries, got ${mission.waves.length}`);
   assert(mission.waveCount === 4, `expected 4 principal phases, got ${mission.waveCount}`);
-  assert(mission.totalTargets === 12, `expected 12 red TGT contacts, got ${mission.totalTargets}`);
-  assert(mission.totalContacts === 30, `expected 30 total contacts, got ${mission.totalContacts}`);
+  assert(mission.totalTargets === 8, `expected 8 red TGT contacts, got ${mission.totalTargets}`);
+  assert(mission.totalContacts === 20, `expected 20 total contacts, got ${mission.totalContacts}`);
 
   const airTgt = mission.waves
     .filter((wave) => wave.tgt !== false)
@@ -91,12 +91,21 @@ try {
   const airWhite = mission.waves
     .filter((wave) => wave.tgt === false)
     .reduce((sum, wave) => sum + wave.types.length, 0);
-  assert(airTgt === 8, `expected 8 red air TGTs, got ${airTgt}`);
-  assert(airWhite === 12, `expected 12 white aircraft, got ${airWhite}`);
+  assert(airTgt === 4, `expected 4 red air TGTs, got ${airTgt}`);
+  assert(airWhite === 6, `expected 6 white aircraft, got ${airWhite}`);
   assert(mission.waves.filter((wave) => wave.tgt === false).every((wave) => wave.rankNeutral === true), "white aircraft must be rank-neutral");
 
   const su24 = mission.waves.flatMap((wave) => wave.types).filter((type) => type === "su24m").length;
   assert(su24 === 4, `expected 4 Su-24M attack aircraft, got ${su24}`);
+  const mig21 = mission.waves.flatMap((wave) => wave.types).filter((type) => type === "mig21").length;
+  const mig23 = mission.waves.flatMap((wave) => wave.types).filter((type) => type === "mig23").length;
+  const mig29 = mission.waves.flatMap((wave) => wave.types).filter((type) => type === "mig29").length;
+  assert(mig21 === 4 && mig23 === 2, `expected MiG-21x4/MiG-23x2, got ${mig21}/${mig23}`);
+  assert(mig29 === 0, `M02 must not field MiG-29A, got ${mig29}`);
+  const intercept = mission.waves.find((wave) => wave.label === "HIGH INTERCEPT");
+  assert(intercept?.role === "line" && intercept?.skill === "regular",
+    "MiG-23 high-intercept role/skill changed");
+  assert(intercept?.gate?.mode === "clearOrTimeout", "MiG-23 phase timeout gate missing");
   assert(mission.waves.filter((wave) => wave.types.includes("su24m")).map((wave) => wave.facilityIndex).join(",") === "0,1", "strike waves do not split across both facilities");
 
   assert(mission.friendlies?.wingmen?.length === 2, "expected CROWN and LARK wingmen");

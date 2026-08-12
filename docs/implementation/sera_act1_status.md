@@ -48,9 +48,10 @@ M04着手前に、[キャンペーン分離計画](../architecture/campaign_isol
 
 ### 戦闘と結果
 
-- [x] 開幕の白MiG-29×2と75秒clear-or-timeout
+- [x] 開幕の白MiG-21bis×2と75秒clear-or-timeout
 - [x] 赤TGT Tu-22M3×6
-- [x] 白・非TGT MiG-29×10
+- [x] 白・非TGT MiG-21bis×4（開幕2＋45秒遅延増援2）
+- [x] M01のMiG-29Aは0
 - [x] 白敵はランク母数外で、残存していてもクリア可能
 - [x] 爆撃機0突破＝完全防衛
 - [x] 爆撃機1突破＝続行、S不可
@@ -69,17 +70,18 @@ M04着手前に、[キャンペーン分離計画](../architecture/campaign_isol
 - [x] RAVENの機体は自由選択
 - [x] MERIDIAN / CROWN / LARKの個別話者
 
-### Phase 1 — 残存航空隊
+### Phase 1 — 高速迎撃隊
 
-- [x] 赤TGT MiG-29×4
-- [x] 白・ランク中立 MiG-29×4
+- [x] 白・ランク中立 MiG-23×2（line / regular）
+- [x] 60秒clear-or-timeoutで主任務へ進行
+- [x] M02のMiG-29Aは0
 - [x] 白敵を全滅させず進行可能
 
 ### Phase 2 — 二方向の攻撃機
 
 - [x] 南施設へSu-24M×2
 - [x] 北施設へSu-24M×2
-- [x] 各攻撃隊に白・ランク中立MiG-29×2
+- [x] 各攻撃隊に白・ランク中立MiG-21bis×2（計4機）
 - [x] 施設ごとのHP、被弾、喪失
 - [x] 施設を一つ失っても任務続行
 - [x] 施設喪失時は最高評価A
@@ -89,7 +91,7 @@ M04着手前に、[キャンペーン分離計画](../architecture/campaign_isol
 - [x] 最終Phaseまで車列を生成しない
 - [x] 赤TGT TEL×4
 - [x] 白・ランク中立地上護衛×6
-- [x] 白・ランク中立上空援護MiG-29×4
+- [x] TEL段階では新たな戦闘機増援を出さない
 - [x] TELだけが最終クリア条件
 - [x] 白敵が残っていてもクリア
 - [x] TELが1両でも西端へ到達するとMISSION FAILED

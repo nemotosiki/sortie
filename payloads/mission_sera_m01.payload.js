@@ -8,8 +8,8 @@
 //   - uses the recovered `renBay` world
 //   - teaches the three-colour IFF contract: red TGT / white hostile / blue ally
 //   - fields CROWN in an F-15C and LARK in an F-16C as distinct blue wingmen
-//   - opens with two white fighters, advancing on clear or after 75 seconds
-//   - follows with three Tu-22M3 groups: 6 red bombers and 8 white escorts
+//   - opens with two white MiG-21s, advancing on clear or after 75 seconds
+//   - follows with three Tu-22M3 groups and a delayed two-aircraft relief flight
 //   - 0 bomber breaches = full defence; 1 = continue with S capped; 2 = failure
 export default function register(ctx) {
   const { MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
@@ -17,12 +17,12 @@ export default function register(ctx) {
   if (!WORLD_PRESETS.renBay) {
     throw new Error("[sera-m01] renBay is not registered; load map_renBay first");
   }
-  for (const type of ["tu22m3", "mig29", "f16", "f15c"]) {
+  for (const type of ["tu22m3", "mig21", "f16", "f15c"]) {
     if (!AIRCRAFT_TYPES[type]) {
       throw new Error(`[sera-m01] required aircraft not registered: ${type}`);
     }
   }
-  for (const type of ["tu22m3", "mig29"]) {
+  for (const type of ["tu22m3", "mig21"]) {
     if (!ENEMY_AI_PROFILES[type]) {
       throw new Error(`[sera-m01] required enemy profile not registered: ${type}`);
     }
@@ -78,16 +78,18 @@ export default function register(ctx) {
     // The opening pair is white and rank-neutral. It is a tutorial phase, not
     // part of ACCOMPLISHED: clear both, or survive 75 seconds, and MERIDIAN
     // brings up the first bomber group. The remaining white contacts are the
-    // bomber escorts. 2 + 2 + 2 + 4 = 10 white hostiles in total.
+    // delayed relief flight. M01 uses four MiG-21bis in total and no MiG-29A:
+    // two in the opening screen, then two only if the first bomber fight lasts.
     sequence: [
       {
-        types: ["mig29", "mig29"],
+        types: ["mig21", "mig21"],
         tgt: false,
         rankNeutral: true,
         band: 1,
         idBase: 6,
         label: "SCOUT",
         role: "trash",
+        skill: "rookie",
         gate: { mode: "clearOrTimeout", timeout: 75 },
         at: [8200, -2600],
         altitude: 2500,
@@ -125,14 +127,16 @@ export default function register(ctx) {
         ]
       },
       {
-        types: ["mig29", "mig29"],
+        types: ["mig21", "mig21"],
         tgt: false,
         rankNeutral: true,
         band: 1,
         idBase: 8,
-        label: "ESCORT",
+        label: "RELIEF",
         concurrent: true,
         role: "trash",
+        skill: "rookie",
+        delay: 45,
         at: [-900, -10600],
         altitude: 3500,
         facing: [-2450, 5000],
@@ -140,7 +144,7 @@ export default function register(ctx) {
           {
             speaker: "crown",
             priority: "NORMAL",
-            text: "護衛はこっちで見る。RAVEN、赤い爆撃機を頼む。",
+            text: "沿岸基地からMiG-21が2機。護衛に釣られるな、爆撃機が赤だ。通すな。",
             id: "sera-m01-wave-1-crown"
           }
         ]
@@ -169,19 +173,6 @@ export default function register(ctx) {
         ]
       },
       {
-        types: ["mig29", "mig29"],
-        tgt: false,
-        rankNeutral: true,
-        band: 2,
-        idBase: 10,
-        label: "ESCORT",
-        concurrent: true,
-        role: "trash",
-        at: [11600, 1000],
-        altitude: 3300,
-        facing: [-2450, 5000]
-      },
-      {
         types: ["tu22m3", "tu22m3"],
         band: 2,
         idBase: 4,
@@ -193,29 +184,8 @@ export default function register(ctx) {
           {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "南東、大型編隊。最後の爆撃機2を赤TGT指定。護衛4、突破を許すな。",
+            text: "南東、大型編隊。最後の爆撃機2を赤TGT指定。突破を許すな。",
             id: "sera-m01-wave-3-meridian"
-          }
-        ]
-      },
-      {
-        types: ["mig29", "mig29", "mig29", "mig29"],
-        tgt: false,
-        rankNeutral: true,
-        band: 2,
-        idBase: 12,
-        label: "ESCORT",
-        concurrent: true,
-        role: "trash",
-        at: [8500, -8500],
-        altitude: 3900,
-        facing: [-2450, 5000],
-        radio: [
-          {
-            speaker: "crown",
-            priority: "NORMAL",
-            text: "護衛が増えたな。焦らなくていい、赤い方だけ見ていろ。",
-            id: "sera-m01-wave-3-crown"
           }
         ]
       }
@@ -282,7 +252,7 @@ export default function register(ctx) {
     battleCenter: { x: 0, z: 0 },
     battleRadius: 15000,
 
-    briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-29は敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n護衛のMiG-29は白表示だ。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
+    briefing: "レン湾南方からエレム航空隊が接近中。\n最初の白いMiG-21bisは敵性だが非TGT。2機撃墜、または75秒の交戦で次段階へ移る。\n主目標は赤表示のTu-22M3が6機。3個編隊に分かれて空港へ侵入する。\n白いMiG-21bisは開幕2機と遅延増援2機。攻撃してくるが、全滅させる必要はない。\n赤い爆撃機を優先し、湾北西の軍民共用空港へ到達させるな。\n1機の投弾は任務続行、2機の投弾でMISSION FAILED。\nROOK 1 CROWNはF-15C、ROOK 3 LARKはF-16Cで同行する。",
     introRadio: [
       {
         speaker: "meridian",
