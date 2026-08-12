@@ -7,6 +7,7 @@ on:
     paths:
       - tools/apply_campaign_isolation_phase.mjs
       - tools/campaign_isolation_phase.patch
+      - tools/migrate_registry_mission_snapshot.mjs
       - .github/workflows/apply-campaign-isolation-phase.yml
 
 permissions:
@@ -37,11 +38,16 @@ jobs:
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
 
-      - name: Migrate the intended mission snapshot and run no-loss gate
+      - name: Capture and selectively migrate the registry snapshot
         run: |
+          cp tools/registry_snapshot.json /tmp/registry_snapshot.before.json
           chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
           SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
-            node tools/registry_gate.mjs --migrate-mission=m01:sera-m01
+            node tools/registry_gate.mjs --update
+          node tools/migrate_registry_mission_snapshot.mjs \
+            --baseline=/tmp/registry_snapshot.before.json \
+            --current=tools/registry_snapshot.json \
+            --mission=m01:sera-m01
           SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
             node tools/registry_gate.mjs
           git diff --check
