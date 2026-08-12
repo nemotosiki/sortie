@@ -15,15 +15,14 @@ for (const [needle, label] of [
   ['worlds: ["sarkPort"]', "decorator world binding"],
   ['sceneryOrigin: [0, -3000]', "mission origin"],
   ['plateau: { radius: [1700, 1700], height: [22, 22], topRadius: 0.92, at: [0, -3000]', "flat cap contract"],
-  ['const CAP_Y = 22', "absolute ground height"],
   ['GANTRY', "gantry crane landmark"],
   ['CONTAINER', "container-yard landmark"],
   ['CANAL', "canal landmark"],
   ['BRIDGE', "bridge landmark"]
 ]) requireText(needle, label);
 
-if (!source.includes("surfaceHeightAt") || !source.includes("20.24")) {
-  throw new Error("[sark-port] missing documented sampler/cap-height mismatch");
+if (!source.includes("surfaceHeightAt") || !source.includes("20.24") || !source.includes("y = 22")) {
+  throw new Error("[sark-port] missing documented cap-height/sampler contract");
 }
 
 const authoredAnchor = (x, z) => Math.hypot(x, z) <= 1700 * 1.2;
