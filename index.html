@@ -39319,6 +39319,151 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         worldMountains: () => world.mountains.map((mountain) => ({
           x: mountain.x, z: mountain.z, r: mountain.r, h: mountain.h
         })),
+        // Browser-side asset QA. This walks the live GPU inputs rather than
+        // trusting authoring metadata, so a NaN vertex, out-of-range index,
+        // invalid instance transform or exploded bound fails the map check.
+        worldMeshIntegrity: () => {
+          const seenGeometries = new Set();
+          const issues = [];
+          let meshCount = 0;
+          let instancedCount = 0;
+          let vertexCount = 0;
+          let indexCount = 0;
+          let triangleCount = 0;
+          let degenerateTriangles = 0;
+          for (const root of world.roots) {
+            root.traverse((node) => {
+              if (!node.isMesh) return;
+              meshCount += 1;
+              const label = node.name || node.type || "unnamed-mesh";
+              if (node.isInstancedMesh) {
+                instancedCount += 1;
+                const matrixData = node.instanceMatrix?.array || [];
+                for (let i = 0; i < matrixData.length; i += 1) {
+                  if (!Number.isFinite(matrixData[i])) {
+                    issues.push(`${label}: non-finite instance matrix at ${i}`);
+                    break;
+                  }
+                }
+                for (let i = 0; i < matrixData.length; i += 16) {
+                  const scaleX2 = matrixData[i] ** 2 + matrixData[i + 1] ** 2 + matrixData[i + 2] ** 2;
+                  const scaleY2 = matrixData[i + 4] ** 2 + matrixData[i + 5] ** 2 + matrixData[i + 6] ** 2;
+                  const scaleZ2 = matrixData[i + 8] ** 2 + matrixData[i + 9] ** 2 + matrixData[i + 10] ** 2;
+                  if (scaleX2 < 1e-12 || scaleY2 < 1e-12 || scaleZ2 < 1e-12) {
+                    issues.push(`${label}: collapsed instance transform at ${i / 16}`);
+                    break;
+                  }
+                }
+              }
+              if (!node.material || (Array.isArray(node.material) && node.material.length === 0)) {
+                issues.push(`${label}: missing material`);
+              }
+              const geometry = node.geometry;
+              if (!geometry || seenGeometries.has(geometry)) return;
+              seenGeometries.add(geometry);
+              const position = geometry.getAttribute("position");
+              if (!position) {
+                issues.push(`${label}: missing position attribute`);
+                return;
+              }
+              vertexCount += position.count;
+              for (const [attributeName, attribute] of Object.entries(geometry.attributes)) {
+                const data = attribute.array || [];
+                for (let i = 0; i < data.length; i += 1) {
+                  if (!Number.isFinite(data[i])) {
+                    issues.push(`${label}: non-finite ${attributeName} attribute at ${i}`);
+                    break;
+                  }
+                }
+              }
+              const positionData = position.array;
+              const positionStride = position.itemSize;
+              const indices = geometry.index ? geometry.index.array : null;
+              if (geometry.index) {
+                indexCount += indices.length;
+                for (let i = 0; i < indices.length; i += 1) {
+                  if (indices[i] < 0 || indices[i] >= position.count) {
+                    issues.push(`${label}: index ${indices[i]} exceeds ${position.count} vertices`);
+                    break;
+                  }
+                }
+              }
+              const cornerCount = indices ? indices.length : position.count;
+              if (cornerCount % 3 !== 0) issues.push(`${label}: triangle corner count ${cornerCount} is not divisible by 3`);
+              const localTriangleCount = Math.floor(cornerCount / 3);
+              triangleCount += localTriangleCount;
+              for (let triangle = 0; triangle < localTriangleCount; triangle += 1) {
+                const ia = indices ? indices[triangle * 3] : triangle * 3;
+                const ib = indices ? indices[triangle * 3 + 1] : triangle * 3 + 1;
+                const ic = indices ? indices[triangle * 3 + 2] : triangle * 3 + 2;
+                if (ia === ib || ib === ic || ia === ic) {
+                  degenerateTriangles += 1;
+                  continue;
+                }
+                const ax = positionData[ia * positionStride];
+                const ay = positionData[ia * positionStride + 1];
+                const az = positionData[ia * positionStride + 2];
+                const abx = positionData[ib * positionStride] - ax;
+                const aby = positionData[ib * positionStride + 1] - ay;
+                const abz = positionData[ib * positionStride + 2] - az;
+                const acx = positionData[ic * positionStride] - ax;
+                const acy = positionData[ic * positionStride + 1] - ay;
+                const acz = positionData[ic * positionStride + 2] - az;
+                const crossX = aby * acz - abz * acy;
+                const crossY = abz * acx - abx * acz;
+                const crossZ = abx * acy - aby * acx;
+                if (crossX * crossX + crossY * crossY + crossZ * crossZ < 1e-18) degenerateTriangles += 1;
+              }
+              if (!geometry.boundingBox) geometry.computeBoundingBox();
+              const bounds = geometry.boundingBox;
+              if (!bounds || ![
+                bounds.min.x, bounds.min.y, bounds.min.z,
+                bounds.max.x, bounds.max.y, bounds.max.z
+              ].every(Number.isFinite)) issues.push(`${label}: invalid bounds`);
+            });
+          }
+          return {
+            meshCount,
+            instancedCount,
+            geometryCount: seenGeometries.size,
+            vertexCount,
+            indexCount,
+            triangleCount,
+            degenerateTriangles,
+            issues
+          };
+        },
+        worldRoadSegments: () => {
+          const segments = [];
+          for (const root of world.roots) {
+            root.traverse((node) => {
+              if (Array.isArray(node.userData?.segments)) {
+                segments.push(...node.userData.segments.map((segment) => ({ ...segment })));
+              }
+            });
+          }
+          return segments;
+        },
+        worldRoadJunctionCount: () => {
+          let count = 0;
+          for (const root of world.roots) {
+            root.traverse((node) => {
+              if (Number.isFinite(node.userData?.junctionCount)) count += node.userData.junctionCount;
+            });
+          }
+          return count;
+        },
+        worldPrefabLots: () => {
+          const lots = [];
+          for (const root of world.roots) {
+            root.traverse((node) => {
+              if (Array.isArray(node.userData?.prefabLots)) {
+                lots.push(...node.userData.prefabLots.map((lot) => ({ ...lot })));
+              }
+            });
+          }
+          return lots;
+        },
         surfaceHeightAt: (x, z) => surfaceHeightAt(x, z),
         surfaceTopAt: (x, z) => surfaceTopAt(x, z),
         cameraSurfaceProbe: () => {
@@ -40463,7 +40608,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const standX = Math.sin(standAngle);
       const standZ = Math.cos(standAngle);
 
-      const VIEWS = [
+      const previewSheetKey = new URLSearchParams(location.search).get("worldPreviewDetail");
+      const authoredViews = previewSheetKey && Array.isArray(preset.previewSheets?.[previewSheetKey])
+        ? preset.previewSheets[previewSheetKey]
+        : null;
+      const VIEWS = authoredViews || [
         // Whole composition: where the islands, ridges and the city sit.
         { label: "OVERVIEW", altitude: 2400, distance: 4200 },
         // The height a strike actually runs in at.
@@ -40503,8 +40652,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ]);
       const fromPayload = !INLINE_WORLD_PRESETS.has(presetKey);
       caption.textContent =
-        `${preset.label}  ·  key=${presetKey}  ·  MOUNTAINS ${world.mountains.length}` +
-        `  ·  DECOR ${decorCount}${fromPayload ? "  ·  PAYLOAD PRESET" : ""}`;
+        `${preset.label}  ·  key=${presetKey}  ·  SURFACES ${(world.groundSheets || []).length}` +
+        `  ·  MOUNTAINS ${world.mountains.length}` +
+        `  ·  DECOR ${decorCount}${fromPayload ? "  ·  PAYLOAD PRESET" : ""}` +
+        `${authoredViews ? `  ·  ${previewSheetKey.toUpperCase()}` : ""}`;
       labelLayer.appendChild(caption);
       document.body.appendChild(labelLayer);
 
@@ -40528,7 +40679,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const y = height - (row + 1) * cellH;
           renderer.setViewport(x, y, cellW, cellH);
           renderer.setScissor(x, y, cellW, cellH);
-          if (view.outward) {
+          if (Array.isArray(view.position) && Array.isArray(view.target)) {
+            camera.position.set(view.position[0], view.position[1], view.position[2]);
+            camera.lookAt(view.target[0], view.target[1], view.target[2]);
+          } else if (view.outward) {
             camera.position.set(centreX, groundY + view.altitude, centreZ);
             // Aimed at the camera's own altitude, so the horizon is level and
             // the frame is split by it rather than by the ground.
@@ -40584,7 +40738,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       window.__WORLD_PREVIEW__ = {
         key: presetKey,
         label: preset.label,
+        sheet: authoredViews ? previewSheetKey : "default",
         fromPayload,
+        groundSheets: (world.groundSheets || []).length,
         mountains: world.mountains.length,
         decorators: decorCount,
         centre: [centreX, groundY, centreZ],
@@ -57739,6 +57895,41 @@ diffuseColor.rgb = terrainBase * terrainShade;`
       const centerX = Number.isFinite(sheet.centerX) ? sheet.centerX : 0;
       const localX = x - centerX;
       let coastZ = Number.isFinite(sheet.coastZ) ? sheet.coastZ : 0;
+      // Long coastal sheets can now supply an exact, piecewise-linear coast.
+      // Points are authored relative to centerX, just like coast waves. This
+      // keeps a narrow strait or harbour mouth deterministic while retaining
+      // the cheap sinusoidal form for older maps such as Ren Bay.
+      const coastPoints = Array.isArray(sheet.coastPoints) ? sheet.coastPoints : null;
+      if (coastPoints && coastPoints.length >= 2) {
+        const first = coastPoints[0];
+        const last = coastPoints[coastPoints.length - 1];
+        if (localX <= first[0]) coastZ = first[1];
+        else if (localX >= last[0]) coastZ = last[1];
+        else {
+          for (let i = 1; i < coastPoints.length; i += 1) {
+            const p1 = coastPoints[i - 1];
+            const p2 = coastPoints[i];
+            if (localX > p2[0]) continue;
+            const p0 = coastPoints[Math.max(0, i - 2)];
+            const p3 = coastPoints[Math.min(coastPoints.length - 1, i + 1)];
+            const span = Math.max(0.0001, p2[0] - p1[0]);
+            const t = THREE.MathUtils.clamp((localX - p1[0]) / span, 0, 1);
+            const t2 = t * t;
+            const t3 = t2 * t;
+            const curved = 0.5 * (
+              2 * p1[1]
+              + (-p0[1] + p2[1]) * t
+              + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2
+              + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3
+            );
+            // Clamp each segment to its authored endpoints. Catmull-Rom gives
+            // us a smooth silhouette, while this guard prevents a curve from
+            // narrowing the protected ship channel between control points.
+            coastZ = THREE.MathUtils.clamp(curved, Math.min(p1[1], p2[1]), Math.max(p1[1], p2[1]));
+            break;
+          }
+        }
+      }
       for (const wave of sheet.coastWaves || []) {
         const amplitude = Number.isFinite(wave.amplitude) ? wave.amplitude : 0;
         const wavelength = Math.max(1, Number.isFinite(wave.wavelength) ? wave.wavelength : 1);
@@ -57750,15 +57941,42 @@ diffuseColor.rgb = terrainBase * terrainShade;`
 
     function continentalSheetHeightAt(sheet, x, z) {
       const centerX = Number.isFinite(sheet.centerX) ? sheet.centerX : 0;
+      const localX = x - centerX;
       const width = Math.max(1, Number.isFinite(sheet.width) ? sheet.width : 1);
-      if (Math.abs(x - centerX) > width * 0.5) return 0;
+      if (Math.abs(localX) > width * 0.5) return 0;
       const coastZ = continentalSheetCoastZ(sheet, x);
       const depth = Math.max(1, Number.isFinite(sheet.depth) ? sheet.depth : 1);
-      if (z < coastZ || z > coastZ + depth) return 0;
+      const inlandSign = sheet.inlandSign === -1 ? -1 : 1;
+      const inlandDistance = (z - coastZ) * inlandSign;
+      if (inlandDistance < 0 || inlandDistance > depth) return 0;
       const beachDepth = Math.max(1, Number.isFinite(sheet.beachDepth) ? sheet.beachDepth : 1);
-      const t = THREE.MathUtils.clamp((z - coastZ) / beachDepth, 0, 1);
+      const t = THREE.MathUtils.clamp(inlandDistance / beachDepth, 0, 1);
       const smooth = t * t * (3 - 2 * t);
-      return Math.max(0, Number.isFinite(sheet.height) ? sheet.height : 0) * smooth;
+      const capHeight = Math.max(0, Number.isFinite(sheet.height) ? sheet.height : 0) * smooth;
+      const relief = sheet.relief;
+      if (!relief || inlandDistance <= (relief.start || 0)) return capHeight;
+      // Optional broad back-country relief. It is deliberately analytic: the
+      // visible vertices, aircraft collision, AI floor and object placement
+      // all evaluate this exact function instead of maintaining two terrains.
+      const reliefHeight = Math.max(0, Number.isFinite(relief.height) ? relief.height : 0);
+      const reliefStart = Math.max(beachDepth, Number.isFinite(relief.start) ? relief.start : beachDepth);
+      const reliefFade = Math.max(1, Number.isFinite(relief.fade) ? relief.fade : 2000);
+      const waveX = Math.max(1, Number.isFinite(relief.waveX) ? relief.waveX : 12000);
+      const waveZ = Math.max(1, Number.isFinite(relief.waveZ) ? relief.waveZ : 9000);
+      const diagonal = Math.max(1, Number.isFinite(relief.diagonal) ? relief.diagonal : 17000);
+      const phaseX = Number.isFinite(relief.phaseX) ? relief.phaseX : 0;
+      const phaseZ = Number.isFinite(relief.phaseZ) ? relief.phaseZ : 0;
+      const reliefMix = THREE.MathUtils.clamp(
+        0.52
+          + Math.sin(localX * Math.PI * 2 / waveX + phaseX) * 0.24
+          + Math.sin(inlandDistance * Math.PI * 2 / waveZ + phaseZ) * 0.16
+          + Math.sin((localX + inlandDistance) * Math.PI * 2 / diagonal + phaseX - phaseZ) * 0.08,
+        0,
+        1
+      );
+      const reliefT = THREE.MathUtils.clamp((inlandDistance - reliefStart) / reliefFade, 0, 1);
+      const reliefSmooth = reliefT * reliefT * (3 - 2 * reliefT);
+      return capHeight + reliefHeight * reliefMix * reliefSmooth;
     }
 
     // Builds one map from WORLD_PRESETS. Every GPU resource is tracked in the
@@ -58180,17 +58398,39 @@ varying vec2 vOceanUv;`
       };
       const groundSheets = [];
       const sheetConfig = preset.continentalSheet;
-      if (sheetConfig) {
+      // Singular remains the compatibility path. Multi-coast maps opt into an
+      // array so both banks use the same render, collision and placement data.
+      const sheetConfigs = Array.isArray(preset.continentalSheets)
+        ? preset.continentalSheets
+        : (sheetConfig ? [sheetConfig] : []);
+      for (const activeSheetConfig of sheetConfigs) {
+        if (!activeSheetConfig) continue;
+        const sheetConfig = activeSheetConfig;
         const segments = Math.max(32, Math.round(sheetConfig.segments || 256));
         const centerX = Number.isFinite(sheetConfig.centerX) ? sheetConfig.centerX : 0;
         const width = Math.max(1, sheetConfig.width || 1);
         const depth = Math.max(1, sheetConfig.depth || 1);
         const beachDepth = Math.max(1, sheetConfig.beachDepth || 1);
         const sheetHeight = Math.max(0.1, sheetConfig.height || 0.1);
+        // Geometry height and material biome height are separate concerns on a
+        // low coastal plain. A larger material scale lets a 34 m city shelf be
+        // grassland instead of being classified as a 100%-height rocky peak.
+        const terrainHeightScale = Math.max(
+          sheetHeight,
+          Number.isFinite(sheetConfig.terrainHeightScale) ? sheetConfig.terrainHeightScale : sheetHeight
+        );
+        const inlandSign = sheetConfig.inlandSign === -1 ? -1 : 1;
         const uvWorldScale = Math.max(64, sheetConfig.uvWorldScale || 10800);
-        // More rows are spent on the beach transition; the rest is a flat
-        // continental cap and therefore needs only one far row.
-        const rowDistances = [0, beachDepth * 0.28, beachDepth * 0.68, beachDepth, depth];
+        // More rows are spent on the beach transition. Flat legacy sheets need
+        // only one far row; optional relief gets regular inland samples so its
+        // render mesh remains faithful to continentalSheetHeightAt.
+        const rowDistances = [0, beachDepth * 0.28, beachDepth * 0.68, beachDepth];
+        const inlandSegments = sheetConfig.relief
+          ? Math.max(4, Math.round(sheetConfig.inlandSegments || 28))
+          : 1;
+        for (let row = 1; row <= inlandSegments; row += 1) {
+          rowDistances.push(beachDepth + (depth - beachDepth) * row / inlandSegments);
+        }
         const rows = rowDistances.length;
         const vertexCount = (segments + 1) * rows;
         const positions = new Float32Array(vertexCount * 3);
@@ -58201,15 +58441,15 @@ varying vec2 vOceanUv;`
           const x = centerX - width * 0.5 + width * (column / segments);
           const coastZ = continentalSheetCoastZ(sheetConfig, x);
           for (const distance of rowDistances) {
-            const z = coastZ + distance;
-            const normalizedHeight = continentalSheetHeightAt(sheetConfig, x, z) / sheetHeight;
+            const z = coastZ + distance * inlandSign;
+            const normalizedHeight = continentalSheetHeightAt(sheetConfig, x, z) / terrainHeightScale;
             positions[p++] = x;
             positions[p++] = normalizedHeight;
             positions[p++] = z;
             // World-scaled UVs keep texture density stable even though this
             // sheet is orders of magnitude wider than an ordinary island.
             uvs[uv++] = (x - centerX) / uvWorldScale;
-            uvs[uv++] = (z - sheetConfig.coastZ) / uvWorldScale;
+            uvs[uv++] = (z - coastZ) * inlandSign / uvWorldScale;
           }
         }
         const indices = [];
@@ -58219,8 +58459,10 @@ varying vec2 vOceanUv;`
             const b = a + 1;
             const c = (column + 1) * rows + row;
             const d = c + 1;
-            // Counter-clockwise from above: both triangles face +Y.
-            indices.push(a, b, c, c, b, d);
+            // Counter-clockwise from above. Reversing inland direction also
+            // reverses the strip winding, so the south bank swaps each pair.
+            if (inlandSign > 0) indices.push(a, b, c, c, b, d);
+            else indices.push(a, c, b, c, d, b);
           }
         }
         const sheetGeometry = keepGeometry(new THREE.BufferGeometry());
@@ -58238,7 +58480,7 @@ varying vec2 vOceanUv;`
         sheetMaterial.polygonOffsetFactor = 1;
         sheetMaterial.polygonOffsetUnits = 1;
         const sheetMesh = new THREE.Mesh(sheetGeometry, sheetMaterial);
-        sheetMesh.scale.y = sheetHeight;
+        sheetMesh.scale.y = terrainHeightScale;
         sheetMesh.receiveShadow = true;
         sheetMesh.frustumCulled = false;
         addRoot(sheetMesh);
