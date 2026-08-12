@@ -32,6 +32,14 @@ export default function register(ctx) {
     label: "DAMAR SEA · BLACK CURRENT",
     sceneryOrigin: Object.freeze([0, 0]),
     previewFocus: Object.freeze([0, 0]),
+    previewSheets: Object.freeze({
+      rescue: Object.freeze([
+        Object.freeze({ label: "CROWN RAFT", position: [-1450, 14, -178], target: [-1450, 1.5, -250] }),
+        Object.freeze({ label: "DATA CAPSULE", position: [300, 14, -1628], target: [300, 1.5, -1700] }),
+        Object.freeze({ label: "NAV PLATFORM", position: [2450, 72, 2460], target: [2450, 42, 2350] }),
+        Object.freeze({ label: "SAR HELICOPTER", position: [-920, 155, 165], target: [-920, 145, 40] })
+      ])
+    }),
     regionId: "damar_sea",
     sectorIds: Object.freeze(["west_rescue_lane"]),
     variant: "storm_evening_rescue",
@@ -107,9 +115,9 @@ export default function register(ctx) {
       // dropping the stock arena-centred hero banks and using only a sparse
       // set of procedural low/mid clusters. The high overcast, fog, rain and
       // outer stratus still carry the storm silhouette.
-      scale: 0.72,
+      scale: 0.26,
       hero: false,
-      opacity: 0.76,
+      opacity: 0.62,
       texture: { seed: 0x44414d09, contrast: 1.3, underside: 0.78, softness: 1.08 }
     },
     decor: {
@@ -147,7 +155,6 @@ export default function register(ctx) {
       const cylinderGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 14));
       const sphereGeometry = keepGeometry(new THREE.SphereGeometry(1, 12, 8));
       const torusGeometry = keepGeometry(new THREE.TorusGeometry(1, 0.22, 8, 20));
-      const rotorGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 0.035, 28));
       const materials = new Map();
       const material = (color, emissive = 0, opacity = 1) => {
         const key = `${color}:${emissive}:${opacity}`;
@@ -187,60 +194,86 @@ export default function register(ctx) {
       platform.name = "damarNavigationPlatform";
       platform.position.set(2450, 0, 2350);
       root.add(platform);
-      const wetSteel = material(0x303942);
-      const darkSteel = material(0x111820);
+      const wetSteel = material(0x45515c);
+      const darkSteel = material(0x202a33);
       const safety = material(0xd28b28, 0x5a2a08);
-      const deck = material(0x3e4b54);
+      const deck = material(0x58656d);
       for (const x of [-18, 18]) {
         for (const z of [-18, 18]) put(platform, cylinderGeometry, wetSteel, x, 21, z, 2.8, 22, 2.8);
       }
       put(platform, boxGeometry, deck, 0, 43, 0, 52, 4, 52);
       put(platform, boxGeometry, darkSteel, 0, 49, 2, 24, 9, 20);
-      put(platform, boxGeometry, safety, 0, 55, 2, 18, 3, 15);
-      put(platform, cylinderGeometry, wetSteel, 0, 78, 2, 1.6, 25, 1.6);
-      put(platform, boxGeometry, wetSteel, 0, 72, 2, 24, 0.8, 0.8);
-      const platformLamp = put(platform, sphereGeometry, basic(0xffd477), 0, 104, 2, 2.8, 2.8, 2.8);
+      // Leave a real air gap above the equipment room. The old lower face was
+      // exactly coplanar with the room roof and shimmered while banking.
+      put(platform, boxGeometry, safety, 0, 55.3, 2, 18, 3, 15);
+      // Mast starts at the roof and remains continuous through its crossbar.
+      put(platform, cylinderGeometry, wetSteel, 0, 78.2, 2, 1.6, 28.2, 1.6);
+      put(platform, boxGeometry, wetSteel, 0, 76, 2, 24, 0.8, 0.8);
+      const platformLamp = put(platform, sphereGeometry, basic(0xffd477), 0, 107, 2, 2.8, 2.8, 2.8);
       const platformLight = new THREE.PointLight(0xffc15a, 0, 720, 1.7);
-      platformLight.position.set(0, 104, 2);
+      platformLight.position.set(0, 107, 2);
       platform.add(platformLight);
+      // Windows and perimeter rails give the otherwise simple silhouette a
+      // believable working scale without laying coplanar decals on the walls.
+      const windowMaterial = material(0x82c9df, 0x123c4b);
+      for (const x of [-8, 0, 8]) put(platform, boxGeometry, windowMaterial, x, 49, -8.3, 2.3, 2.1, 0.34);
+      for (const z of [-21, 21]) {
+        put(platform, boxGeometry, wetSteel, -25, 48, z, 0.55, 6, 0.55);
+        put(platform, boxGeometry, wetSteel, 25, 48, z, 0.55, 6, 0.55);
+        put(platform, boxGeometry, wetSteel, 0, 51, z, 50, 0.42, 0.42);
+      }
 
       // Shipping-lane lights give the player an east/west axis even when the
       // horizon and compass reference disappear inside the cloud deck.
       const laneLights = [];
+      const laneMarkers = [];
       for (let i = -4; i <= 4; i += 1) {
         const lane = new THREE.Group();
         lane.position.set(i * 780, 0, 3000 + Math.sin(i * 0.9) * 150);
+        lane.userData.baseY = 0;
+        lane.userData.phase = i * 0.61;
         root.add(lane);
-        put(lane, cylinderGeometry, material(0x2b343b), 0, 3.8, 0, 2.2, 3.8, 2.2);
-        put(lane, sphereGeometry, basic(i % 2 ? 0x6dffb2 : 0xff7a5e), 0, 9.5, 0, 2.1, 2.1, 2.1);
+        // The buoy body now meets the water instead of floating two metres
+        // above it. Lamp and body remain separated, so no two faces coincide.
+        put(lane, cylinderGeometry, material(0x2b343b), 0, 1.7, 0, 2.2, 3.4, 2.2);
+        put(lane, sphereGeometry, basic(i % 2 ? 0x6dffb2 : 0xff7a5e), 0, 6.2, 0, 1.55, 1.55, 1.55);
         const lamp = new THREE.PointLight(i % 2 ? 0x58ffac : 0xff6a52, 0, 280, 2);
-        lamp.position.y = 10;
+        lamp.position.y = 6.2;
         lane.add(lamp);
         laneLights.push(lamp);
+        laneMarkers.push(lane);
       }
 
       const siteLights = [];
+      const animatedSites = [];
       const rescueSite = ({ id, kind, at }, index) => {
         const site = new THREE.Group();
         site.name = `m07-site-${id}`;
-        site.position.set(at[0], 0.9, at[1]);
+        site.position.set(at[0], 0.12, at[1]);
+        site.userData.baseY = 0.12;
+        site.userData.phase = index * 0.87;
         root.add(site);
         const isData = kind === "data";
         if (isData) {
-          put(site, cylinderGeometry, material(0x07090c), 0, 2.2, 0, 3.8, 8.5, 3.8, [Math.PI / 2, 0, 0.34]);
-          put(site, boxGeometry, material(0x1d252d), 0, 2.4, 0, 8.8, 1.1, 1.1, [0, 0.34, 0]);
+          // A low, half-submerged recorder canister. The previous 7.6 m
+          // diameter cylinder floated above the surface and intersected a
+          // long box along almost the same faces, producing obvious shimmer.
+          put(site, cylinderGeometry, material(0x080a0d, 0x010203), 0, 1.1, 0, 1.8, 5.6, 1.8, [Math.PI / 2, 0, 0.34]);
+          put(site, torusGeometry, material(0x315365, 0x0b2733), 0, 1.12, 0, 2.05, 2.05, 0.75, [Math.PI / 2, 0, 0.34]);
+          put(site, boxGeometry, material(0x26313a), 0, 2.85, 0, 1.2, 0.42, 1.2, [0, 0.34, 0]);
         } else {
-          put(site, torusGeometry, material(0xee6b2b, 0x6a1804), 0, 1.8, 0, 7.2, 7.2, 2.2, [Math.PI / 2, 0, 0]);
-          put(site, boxGeometry, material(0xb73524), 0, 2.2, 0, 7.2, 0.8, 3.0);
-          for (const side of [-1, 1]) put(site, sphereGeometry, material(0xf19a49), side * 2.2, 3, 0, 0.75, 0.75, 0.75);
+          put(site, torusGeometry, material(0xee6b2b, 0x6a1804), 0, 0.72, 0, 6.4, 6.4, 1.6, [Math.PI / 2, 0, 0]);
+          put(site, boxGeometry, material(0xb73524), 0, 0.86, 0, 5.8, 0.56, 2.5);
+          for (const side of [-1, 1]) put(site, sphereGeometry, material(0xf19a49), side * 1.9, 1.55, 0, 0.7, 0.7, 0.7);
         }
-        put(site, cylinderGeometry, darkSteel, 0, 8.5, 0, 0.42, 7.5, 0.42);
+        put(site, cylinderGeometry, darkSteel, 0, 4.1, 0, 0.42, 6.4, 0.42);
         const lampColor = isData ? 0x68dfff : 0xffde72;
-        put(site, sphereGeometry, basic(lampColor), 0, 16.5, 0, 1.8, 1.8, 1.8);
+        put(site, sphereGeometry, basic(lampColor), 0, 7.5, 0, 1.55, 1.55, 1.55);
         const lamp = new THREE.PointLight(lampColor, 0, isData ? 620 : 520, 1.5);
-        lamp.position.y = 17;
+        lamp.position.y = 7.5;
         site.add(lamp);
         siteLights.push({ lamp, site, phase: index * 0.73, isData });
+        animatedSites.push(site);
       };
       missionAnchors.rescueSites.forEach(rescueSite);
 
@@ -248,26 +281,45 @@ export default function register(ctx) {
       // the player reaches a pickup sphere. They are scenery here; the moving,
       // vulnerable rescue aircraft are mission friendlies owned by the host.
       const rotors = [];
+      const helicopters = [];
       const addSarHelicopter = (name, x, y, z, yaw) => {
         const heli = new THREE.Group();
         heli.name = name;
         heli.position.set(x, y, z);
         heli.rotation.y = yaw;
+        heli.userData.baseY = y;
+        heli.userData.phase = helicopters.length * 1.7;
         root.add(heli);
         const white = material(0xdfe8eb);
         const orange = material(0xe85c27, 0x541302);
-        const glass = material(0x18303c, 0x07151c, 0.86);
-        put(heli, sphereGeometry, white, 0, 0, 0, 4.5, 2.5, 7.2);
-        put(heli, sphereGeometry, glass, 0, 0.7, -4.9, 3.4, 1.7, 2.5);
-        put(heli, boxGeometry, orange, 0, -0.3, 4.5, 2.2, 2.2, 10);
-        put(heli, boxGeometry, white, 0, 0, 9.4, 0.7, 4.4, 3.2);
-        put(heli, boxGeometry, orange, 0, -0.5, -0.5, 13, 0.7, 3.4);
-        const rotor = put(heli, rotorGeometry, basic(0xc7d6df, 0.18), 0, 4.3, 0, 11.5, 0.5, 11.5);
+        // Opaque glass and a solid two-blade rotor avoid transparent-surface
+        // sorting flashes. The old paper-thin translucent rotor disc was the
+        // most visible flicker when the player crossed beneath a helicopter.
+        const glass = material(0x18303c, 0x07151c);
+        put(heli, sphereGeometry, white, 0, 0, 0, 4.2, 2.2, 6.3);
+        put(heli, sphereGeometry, glass, 0, 0.55, -4.4, 3.05, 1.4, 2.05);
+        put(heli, boxGeometry, orange, 0, -2.02, -0.2, 5.8, 0.3, 3.1);
+        put(heli, boxGeometry, white, 0, -0.1, 7.2, 1.8, 1.5, 9.2);
+        put(heli, boxGeometry, orange, 0, 0.45, 11.2, 0.65, 4.2, 2.4);
+        put(heli, cylinderGeometry, darkSteel, 0, 3.05, 0, 0.48, 1.7, 0.48);
+        for (const side of [-1, 1]) {
+          put(heli, boxGeometry, darkSteel, side * 3.35, -2.65, -0.2, 0.32, 0.32, 7.8);
+          put(heli, boxGeometry, darkSteel, side * 3.35, -1.75, -2.1, 0.22, 1.9, 0.22, [0, 0, side * 0.32]);
+          put(heli, boxGeometry, darkSteel, side * 3.35, -1.75, 2.0, 0.22, 1.9, 0.22, [0, 0, side * 0.32]);
+        }
+        put(heli, boxGeometry, material(0xc6d4db), 0, 0.45, 12.48, 0.16, 6.2, 0.54);
+        put(heli, boxGeometry, material(0xc6d4db), 0, 0.45, 12.48, 3.6, 0.16, 0.54);
+        const rotor = new THREE.Group();
+        rotor.position.y = 4.05;
+        heli.add(rotor);
+        put(rotor, boxGeometry, material(0xb8c8d2), 0, 0, 0, 22, 0.12, 0.58);
+        put(rotor, sphereGeometry, darkSteel, 0, 0.2, 0, 0.72, 0.42, 0.72);
         rotors.push(rotor);
         const searchLight = new THREE.SpotLight(0xdaf2ff, 4.2, 900, 0.22, 0.7, 1.2);
         searchLight.position.set(0, -1.2, -3);
         searchLight.target.position.set(0, -170, -40);
         heli.add(searchLight, searchLight.target);
+        helicopters.push(heli);
       };
       addSarHelicopter("damarSarHelicopter1", -920, 145, 40, -0.6);
       addSarHelicopter("damarSarHelicopter2", 900, 175, 770, 2.2);
@@ -354,7 +406,19 @@ export default function register(ctx) {
         }
         attr.needsUpdate = true;
 
-        for (const rotor of rotors) rotor.rotation.y += dt * 22;
+        for (const rotor of rotors) rotor.rotation.y = (rotor.rotation.y + dt * 22) % (Math.PI * 2);
+        for (const lane of laneMarkers) {
+          lane.position.y = lane.userData.baseY + Math.sin(time * 0.72 + lane.userData.phase) * 0.18;
+          lane.rotation.z = Math.sin(time * 0.55 + lane.userData.phase) * 0.018;
+        }
+        for (const site of animatedSites) {
+          site.position.y = site.userData.baseY + Math.sin(time * 0.8 + site.userData.phase) * 0.14;
+          site.rotation.z = Math.sin(time * 0.61 + site.userData.phase) * 0.012;
+        }
+        for (const heli of helicopters) {
+          heli.position.y = heli.userData.baseY + Math.sin(time * 0.74 + heli.userData.phase) * 2.2;
+          heli.rotation.z = Math.sin(time * 0.53 + heli.userData.phase) * 0.014;
+        }
         const lanePulse = 0.55 + Math.max(0, Math.sin(time * 2.1)) * 1.7;
         laneLights.forEach((lamp, index) => { lamp.intensity = lanePulse * (index % 2 ? 0.8 : 1); });
         const platformPulse = 0.25 + Math.max(0, Math.sin(time * 3.4)) * 2.2;
