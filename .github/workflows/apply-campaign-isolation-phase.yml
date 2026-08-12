@@ -1,0 +1,41 @@
+name: Apply campaign isolation phase
+
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_campaign_isolation_phase.mjs
+      - .github/workflows/apply-campaign-isolation-phase.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-campaign-isolation-phase
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply and validate phase
+        run: |
+          node tools/apply_campaign_isolation_phase.mjs
+          git diff --check
+          test -n "$(git status --porcelain)"
+
+      - name: Commit generated campaign-isolation change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          message=$(cat .git/campaign-isolation-message)
+          git add -A
+          git commit -m "$message"
+          git push origin HEAD:chatgpt/sera-act1-implementation
