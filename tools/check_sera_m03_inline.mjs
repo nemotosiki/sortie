@@ -14,7 +14,7 @@ const markers = {
 };
 
 for (const [label, marker] of Object.entries(markers)) {
-  const count = source.split(marker).length - 1;
+  const count = source.split(/\r?\n/).filter((line) => line.trim() === `); ${marker}`).length;
   assert(count === 1, `${label} marker must appear exactly once, found ${count}`);
 }
 
