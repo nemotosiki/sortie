@@ -36529,21 +36529,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const MISSION_RECORDS_STORAGE_KEY = "sortieMissionRecords";
     const MISSION_RECORDS_BACKUP_KEY = `${MISSION_RECORDS_STORAGE_KEY}.backup.pre-sera-namespace`;
 
-    function cloneMissionRecord(record, sourceKey) {
-      return {
+    function cloneMissionRecord(record, sourceKey, ambiguous = true) {
+      const cloned = {
         ...JSON.parse(JSON.stringify(record)),
-        ambiguousImport: true,
         recordSource: sourceKey
       };
+      if (ambiguous) cloned.ambiguousImport = true;
+      else {
+        delete cloned.ambiguousImport;
+        cloned.migratedImport = true;
+      }
+      return cloned;
+    }
+
+    function validMissionRecord(record) {
+      return Boolean(record && typeof record === "object" && !Array.isArray(record));
     }
 
     function migrateSeraMissionRecords(records, rawText) {
       let changed = false;
       for (const [legacyKey, seraKey] of [["m01", "sera-m01"], ["m02", "sera-m02"]]) {
         const legacy = records[legacyKey];
-        if (!legacy || typeof legacy !== "object" || Array.isArray(legacy) || records[seraKey]) continue;
+        if (!validMissionRecord(legacy) || records[seraKey]) continue;
         records[seraKey] = cloneMissionRecord(legacy, legacyKey);
         changed = true;
+      }
+
+      // M03 already wrote a formal `m03` compatibility record alongside the
+      // replaced `m-heli` slot. Prefer that richer record; fall back to the
+      // slot record only for profiles created before the formal mirror existed.
+      if (!records["sera-m03"]) {
+        const sourceKey = validMissionRecord(records.m03)
+          ? "m03"
+          : (validMissionRecord(records["m-heli"]) ? "m-heli" : null);
+        if (sourceKey) {
+          records["sera-m03"] = cloneMissionRecord(
+            records[sourceKey],
+            sourceKey,
+            sourceKey !== "m03"
+          );
+          changed = true;
+        }
       }
       if (!changed) return records;
       try {
