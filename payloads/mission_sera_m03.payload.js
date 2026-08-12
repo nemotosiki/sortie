@@ -39,6 +39,10 @@ export default function register(ctx) {
     capY: 22,
     touchdownY: 34,
     unloadDelay: 2.8,
+    approachSpeed: 72,
+    apcSpeed: 18,
+    commandDamagePerArrival: 35,
+    timeLimit: 1260,
     apcType: "tank",
     apcLabel: "BTR-80 APC",
     apcMark: "m03Apc",
@@ -170,7 +174,6 @@ export default function register(ctx) {
       }
     ],
     facilityContract: {
-      rankCapAfterLoss: "A",
       failWhenAllLost: false,
       hitDamage: 34,
       lossRadio: {

@@ -36046,6 +36046,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rank = facilityCap;
       }
 
+      const m03RankCapped = m03RankShouldCapS(mission);
+      if (m03RankCapped && RANK_ORDER[rank] > RANK_ORDER.A) rank = "A";
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -36063,6 +36066,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : (rank === "B" ? RANK_TUNING.A : (rank === "A" ? RANK_TUNING.S : null));
       const capped = (!guardPerfect && rank === "A") || (guardWiped && rank === "B")
         || (breachCapped && rank === "A")
+        || (m03RankCapped && rank === "A")
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -36095,7 +36099,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // number beside a record is the one that produced the rank next to it.
     function recordMissionResult(result) {
       const rank = result.rank;
-      const key = MISSIONS[currentMissionIndex].key;
+      const mission = MISSIONS[currentMissionIndex];
+      const key = mission.key;
       const entry = missionRecords[key] || { rank: null, scores: [], times: [], cleared: false };
       entry.cleared = true;
       if (!entry.rank || (RANK_ORDER[rank] || 0) > (RANK_ORDER[entry.rank] || 0)) entry.rank = rank;
@@ -36135,7 +36140,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const scoredTotal = Math.round(result.total * scoreMult);
       entry.scores = [...priorScores, scoredTotal].sort((a, b) => b - a).slice(0, 3);
       entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
+      const m03Result = m03ResultSnapshot(mission);
+      if (m03Result) Object.assign(entry, m03Result);
       missionRecords[key] = entry;
+      if (m03Result) {
+        missionRecords.m03 = {
+          ...entry,
+          ...m03Result,
+          ranks: { ...(entry.ranks || {}) },
+          scores: [...entry.scores],
+          times: [...entry.times],
+          marks: { ...(entry.marks || {}) },
+          recordSource: key
+        };
+      }
       saveMissionRecords();
     }
 
@@ -37100,6 +37118,121 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     window.__game = {
+      seraM03Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        const command = m03CommandFacility(mission);
+        return {
+          state: gameState,
+          missionKey: mission ? mission.key : null,
+          title: mission ? mission.title : null,
+          worldKey: mission ? mission.world : null,
+          active: m03State.active,
+          transportSpawned: m03State.transportSpawned,
+          transportLandings: m03State.transportLandings,
+          apcSpawned: m03State.apcSpawned,
+          apcDestroyed: m03State.apcDestroyed,
+          apcArrivals: m03State.apcArrivals,
+          failed: m03State.failed,
+          command: command ? {
+            alive: command.alive,
+            hp: command.hp,
+            maxHp: command.maxHp,
+            id: command.facilityId
+          } : null,
+          facilities: protectedFacilities.map((facility) => ({
+            id: facility.facilityId,
+            alive: facility.alive,
+            hp: facility.hp,
+            maxHp: facility.maxHp
+          })),
+          pendingTargetWaves: pendingWaves.filter((entry) => entry.wave && isTgtEntry(entry.wave)).length,
+          enemies: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            ground: Boolean(enemy.ground),
+            heli: Boolean(enemy.heli),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            mark: enemy.mark || null,
+            m03Apc: Boolean(enemy.m03Apc),
+            arrived: Boolean(enemy.m03Arrived),
+            landingState: enemy.m03Landing ? enemy.m03Landing.state : null,
+            lz: enemy.m03Landing ? enemy.m03Landing.lzId : (enemy.m03LzId || null),
+            routeDistance: Number(enemy.routeDistance) || 0,
+            routeEnd: enemy.route && enemy.route.length ? enemy.route[enemy.route.length - 1].d : null
+          })),
+          outcomePending: outcomePending.active,
+          rankSpawnedValue: rankStats.spawnedValue,
+          rankKillValue: rankStats.playerKillValue
+        };
+      },
+      forceSeraM03DeployPending: () => {
+        const mission = m03Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        return true;
+      },
+      forceSeraM03LandTransport: (id = null) => {
+        const mission = m03Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const transport = enemies.find((enemy) => enemy.alive && enemy.m03Landing
+          && (id === null || enemy.id === id));
+        if (!transport) return false;
+        transport.m03Landing.state = "UNLOAD";
+        transport.m03Landing.timer = Math.max(0, Number(mission.landingContract.unloadDelay) || 0);
+        return completeM03Unload(transport);
+      },
+      forceSeraM03ApcArrival: (count = 1) => {
+        if (gameState !== STATE_PLAYING || !m03Mission()) return 0;
+        let arrived = 0;
+        const targets = enemies.filter((enemy) => enemy.alive && enemy.m03Apc).slice(0, Math.max(0, count));
+        for (const apc of targets) {
+          if (arriveM03Apc(apc)) arrived += 1;
+        }
+        return arrived;
+      },
+      forceSeraM03CommandLoss: () => {
+        const mission = m03Mission();
+        const command = m03CommandFacility(mission);
+        if (gameState !== STATE_PLAYING || !mission || !command) return false;
+        damageProtectedFacility(command, command.hp + 1);
+        return !command.alive;
+      },
+      seraM03PerfectRankPreview: () => {
+        const mission = m03Mission();
+        if (!mission) return null;
+        const oldKill = rankStats.playerKillValue;
+        const oldElapsed = missionElapsed;
+        rankStats.playerKillValue = rankStats.spawnedValue;
+        missionElapsed = 0;
+        const preview = computeMissionRank().rank;
+        rankStats.playerKillValue = oldKill;
+        missionElapsed = oldElapsed;
+        return preview;
+      },
+      forceSeraM03Complete: () => {
+        const mission = m03Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (let pass = 0; pass < 32 && gameState === STATE_PLAYING && !outcomePending.active; pass += 1) {
+          for (const queued of pendingWaves) queued.timer = 0;
+          updatePendingWaves(999);
+          if (activeWaveGate && activeWaveGate.mode === "clearOrTimeout") {
+            activeWaveGate.elapsed = activeWaveGate.timeout;
+          }
+          const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+          for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+          updateMission(0.016, 5.0);
+        }
+        return outcomePending.active;
+      },
+      forceSeraM03ResolveOutcome: () => {
+        const mission = m03Mission();
+        if (!mission || !outcomePending.active) return false;
+        updateOutcomePending(OUTCOME_PENDING_TIME + 0.1);
+        return gameState === STATE_COMPLETE;
+      },
       seraM02Probe: () => {
         const mission = MISSIONS[currentMissionIndex];
         return {
@@ -41256,6 +41389,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       activeGroundPhaseId = null;
       groundPhaseFailureFired = false;
       spawningFacilityIndex = null;
+      resetM03State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -41396,6 +41530,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }));
       checkpoint.protectedFacilityLosses = protectedFacilityLosses;
       checkpoint.activeGroundPhaseId = activeGroundPhaseId;
+      checkpoint.m03State = snapshotM03State();
       checkpoint.missionElapsed = missionElapsed;
       checkpoint.missileHits = missileHits;
       checkpoint.gunKills = gunKills;
@@ -41497,6 +41632,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       protectedFacilityLosses = Number(at.protectedFacilityLosses) || 0;
       if (at.activeGroundPhaseId) activateGroundPhase(at.activeGroundPhaseId);
+      restoreM03State(at.m03State);
       missionElapsed = at.missionElapsed;
       missileHits = at.missileHits;
       gunKills = at.gunKills;
@@ -43848,6 +43984,356 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // the shape of the object in enemies[], which is written out here in full
     // so the generic paths (lock, damage, radar, HUD, scoring) never have to
     // ask what kind of thing they are looking at.
+
+    // SERA M03 RUNTIME CONTRACT
+    // Mission definitions opt into this path by supplying landingContract.
+    // Every pre-existing mission leaves it null and runs the exact legacy AI.
+    const m03State = {
+      active: false,
+      transportSpawned: 0,
+      transportLandings: 0,
+      apcSpawned: 0,
+      apcDestroyed: 0,
+      apcArrivals: 0,
+      nextApcId: 6000,
+      convertedTransportIds: new Set(),
+      firstLandingAt: null,
+      landingRadioFired: false,
+      arrivalRadioFired: false,
+      failed: false
+    };
+
+    function m03Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.landingContract ? mission : null;
+    }
+
+    function resetM03State(mission) {
+      m03State.active = Boolean(mission && mission.landingContract);
+      m03State.transportSpawned = 0;
+      m03State.transportLandings = 0;
+      m03State.apcSpawned = 0;
+      m03State.apcDestroyed = 0;
+      m03State.apcArrivals = 0;
+      m03State.nextApcId = 6000;
+      m03State.convertedTransportIds = new Set();
+      m03State.firstLandingAt = null;
+      m03State.landingRadioFired = false;
+      m03State.arrivalRadioFired = false;
+      m03State.failed = false;
+    }
+
+    function snapshotM03State() {
+      if (!m03State.active) return null;
+      return {
+        active: true,
+        transportSpawned: m03State.transportSpawned,
+        transportLandings: m03State.transportLandings,
+        apcSpawned: m03State.apcSpawned,
+        apcDestroyed: m03State.apcDestroyed,
+        apcArrivals: m03State.apcArrivals,
+        nextApcId: m03State.nextApcId,
+        convertedTransportIds: [...m03State.convertedTransportIds],
+        firstLandingAt: m03State.firstLandingAt,
+        landingRadioFired: m03State.landingRadioFired,
+        arrivalRadioFired: m03State.arrivalRadioFired,
+        failed: m03State.failed
+      };
+    }
+
+    function restoreM03State(saved) {
+      if (!saved || !m03Mission()) return;
+      m03State.active = true;
+      m03State.transportSpawned = Math.max(0, Number(saved.transportSpawned) || 0);
+      m03State.transportLandings = Math.max(0, Number(saved.transportLandings) || 0);
+      m03State.apcSpawned = Math.max(0, Number(saved.apcSpawned) || 0);
+      m03State.apcDestroyed = Math.max(0, Number(saved.apcDestroyed) || 0);
+      m03State.apcArrivals = Math.max(0, Number(saved.apcArrivals) || 0);
+      m03State.nextApcId = Math.max(6000, Number(saved.nextApcId) || 6000);
+      m03State.convertedTransportIds = new Set(saved.convertedTransportIds || []);
+      m03State.firstLandingAt = Number.isFinite(saved.firstLandingAt) ? saved.firstLandingAt : null;
+      m03State.landingRadioFired = Boolean(saved.landingRadioFired);
+      m03State.arrivalRadioFired = Boolean(saved.arrivalRadioFired);
+      m03State.failed = Boolean(saved.failed);
+    }
+
+    function m03CommandFacility(mission = m03Mission()) {
+      if (!mission) return null;
+      const id = mission.landingContract.commandFacilityId;
+      return protectedFacilities.find((facility) => facility.facilityId === id) || null;
+    }
+
+    function m03DefenseFacilities(mission = m03Mission()) {
+      if (!mission || !mission.m03RankContract) return [];
+      const ids = new Set(mission.m03RankContract.defenseFacilityIds || []);
+      return protectedFacilities.filter((facility) => ids.has(facility.facilityId));
+    }
+
+    function createM03LandingState(enemy) {
+      const mission = m03Mission();
+      if (!mission || !m03State.active || enemy.type !== mission.landingContract.transportType) return null;
+      const contract = mission.landingContract;
+      const lzs = Array.isArray(contract.lzs) ? contract.lzs : [];
+      if (lzs.length === 0) return null;
+      const lzIndex = m03State.transportSpawned % lzs.length;
+      const lz = lzs[lzIndex];
+      m03State.transportSpawned += 1;
+      const route = (Array.isArray(lz.route) ? lz.route : []).map((point) => ({
+        x: Number(point[0]) || 0,
+        z: Number(point[1]) || 0,
+        y: Number.isFinite(Number(point[2])) ? Number(point[2]) : Number(contract.touchdownY) || 34
+      }));
+      if (route.length === 0) {
+        route.push({
+          x: Number(lz.x) || enemy.group.position.x,
+          z: Number(lz.z) || enemy.group.position.z,
+          y: Number(contract.touchdownY) || 34
+        });
+      }
+      return {
+        state: "APPROACH",
+        lzIndex,
+        lzId: lz.id || String(lzIndex + 1),
+        route,
+        routeIndex: 0,
+        timer: 0,
+        unloaded: false
+      };
+    }
+
+    function rotateM03TransportToward(enemy, target, dt) {
+      const dx = target.x - enemy.group.position.x;
+      const dz = target.z - enemy.group.position.z;
+      if (Math.abs(dx) + Math.abs(dz) < 0.01) return;
+      const desired = Math.atan2(-dx, -dz);
+      let delta = desired - enemy.baseHeading;
+      while (delta > Math.PI) delta -= Math.PI * 2;
+      while (delta < -Math.PI) delta += Math.PI * 2;
+      const step = enemy.spec.turnRate * enemy.roleTurnScale * dt;
+      enemy.baseHeading += THREE.MathUtils.clamp(delta, -step, step);
+      enemy.group.rotation.y = enemy.baseHeading;
+    }
+
+    function spinM03TransportRotors(enemy, dt, speedFraction = 0) {
+      const rotors = enemy.model && enemy.model.rotors;
+      if (!rotors) return;
+      const rate = enemy.spec.rotorSpin * (1 + speedFraction * 0.12);
+      for (let i = 0; i < rotors.length; i += 1) rotors[i].rotation.y += rate * dt;
+    }
+
+    function spawnM03Apc(lz, slot, contract) {
+      const path = Array.isArray(lz.apcPath) ? lz.apcPath : [];
+      if (path.length < 2) return null;
+      const route = groundRoute(path);
+      const id = m03State.nextApcId;
+      m03State.nextApcId += 1;
+      const speed = Math.max(1, Number(contract.apcSpeed) || 18) + slot * 1.25;
+      const spawnedId = spawnGroundUnit(
+        contract.apcType,
+        Number(lz.x) || path[0][0],
+        Number(lz.z) || path[0][1],
+        0,
+        id,
+        true,
+        { route, distance: slot * 14, speed },
+        contract.apcMark || "m03Apc",
+        false
+      );
+      if (spawnedId === null) return null;
+      const apc = enemies.find((enemy) => enemy.id === spawnedId);
+      if (!apc) return null;
+      apc.label = contract.apcLabel || apc.label;
+      apc.shortName = contract.apcLabel || apc.shortName;
+      apc.m03Apc = true;
+      apc.m03LzId = lz.id || null;
+      apc.m03Arrived = false;
+      m03State.apcSpawned += 1;
+      return apc;
+    }
+
+    function completeM03Unload(enemy) {
+      const mission = m03Mission();
+      const landing = enemy && enemy.m03Landing;
+      if (!mission || !landing || landing.unloaded || !enemy.alive) return false;
+      if (m03State.convertedTransportIds.has(enemy.id)) return false;
+      const contract = mission.landingContract;
+      const lz = contract.lzs[landing.lzIndex];
+      if (!lz) return false;
+
+      landing.unloaded = true;
+      landing.state = "DONE";
+      m03State.convertedTransportIds.add(enemy.id);
+      m03State.transportLandings += 1;
+      if (m03State.firstLandingAt === null) m03State.firstLandingAt = missionElapsed;
+
+      // The air target was not destroyed, but it was resolved. Remove its rank
+      // denominator before the replacement ground targets register themselves.
+      rankStats.spawnedValue = Math.max(0, rankStats.spawnedValue - contactRankValue(enemy));
+      if (isTgtEntry(enemy)) kills += 1;
+
+      enemy.alive = false;
+      enemy.hitbox.visible = false;
+      enemy.group.visible = false;
+      enemy.deadTimer = 0;
+      enemy.speed = 0;
+
+      const count = Math.max(1, Number(contract.apcPerTransport) || 2);
+      for (let slot = 0; slot < count; slot += 1) spawnM03Apc(lz, slot, contract);
+
+      showBanner("LANDING COMPLETE · GROUND TGT x" + count, 1.8, "danger");
+      if (!m03State.landingRadioFired) {
+        m03State.landingRadioFired = true;
+        playAuthoredRadio(contract.landingRadio, RADIO_PRIORITY.URGENT);
+      }
+      return true;
+    }
+
+    function updateM03TransportLanding(enemy, dt) {
+      const mission = m03Mission();
+      const landing = enemy.m03Landing;
+      if (!mission || !landing || !m03State.active) return false;
+      const contract = mission.landingContract;
+      enemy.mode = "landing-" + landing.state.toLowerCase();
+
+      if (landing.state === "UNLOAD") {
+        landing.timer += dt;
+        enemy.speed = 0;
+        enemy.group.rotation.x = THREE.MathUtils.lerp(enemy.group.rotation.x, 0, damping(0.18, dt));
+        enemy.group.rotation.z = THREE.MathUtils.lerp(enemy.group.rotation.z, 0, damping(0.18, dt));
+        spinM03TransportRotors(enemy, dt, 0);
+        if (landing.timer >= Math.max(0, Number(contract.unloadDelay) || 0)) completeM03Unload(enemy);
+        return true;
+      }
+
+      if (landing.state === "TOUCHDOWN") {
+        landing.timer += dt;
+        enemy.speed = 0;
+        const touchdown = landing.route[landing.route.length - 1];
+        enemy.group.position.y += THREE.MathUtils.clamp(
+          touchdown.y - enemy.group.position.y,
+          -enemy.spec.climbRate * dt,
+          enemy.spec.climbRate * dt
+        );
+        enemy.group.rotation.x = THREE.MathUtils.lerp(enemy.group.rotation.x, 0, damping(0.16, dt));
+        enemy.group.rotation.z = THREE.MathUtils.lerp(enemy.group.rotation.z, 0, damping(0.16, dt));
+        spinM03TransportRotors(enemy, dt, 0);
+        if (landing.timer >= 0.65) {
+          landing.state = "UNLOAD";
+          landing.timer = 0;
+        }
+        return true;
+      }
+
+      const target = landing.route[Math.min(landing.routeIndex, landing.route.length - 1)];
+      rotateM03TransportToward(enemy, target, dt);
+      tmpV1.set(target.x, target.y, target.z).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      const wanted = Math.max(35, Number(contract.approachSpeed) || enemy.spec.dashSpeed * 0.82);
+      enemy.targetSpeed = Math.min(enemy.spec.dashSpeed, wanted);
+      enemy.speed = THREE.MathUtils.clamp(
+        enemy.speed + THREE.MathUtils.clamp(
+          enemy.targetSpeed - enemy.speed,
+          -enemy.spec.accel * dt,
+          enemy.spec.accel * dt
+        ),
+        0,
+        enemy.spec.dashSpeed
+      );
+      const step = Math.min(distance, Math.max(12, enemy.speed) * dt);
+      if (distance > 0.001) enemy.group.position.addScaledVector(tmpV1.multiplyScalar(1 / distance), step);
+      const speedFraction = enemy.spec.dashSpeed > 0 ? enemy.speed / enemy.spec.dashSpeed : 0;
+      enemy.group.rotation.x = THREE.MathUtils.lerp(enemy.group.rotation.x, -0.08 * speedFraction, damping(0.2, dt));
+      enemy.group.rotation.z = THREE.MathUtils.lerp(enemy.group.rotation.z, 0, damping(0.2, dt));
+      spinM03TransportRotors(enemy, dt, speedFraction);
+
+      if (distance <= Math.max(14, enemy.speed * dt * 1.2)) {
+        enemy.group.position.set(target.x, target.y, target.z);
+        landing.routeIndex += 1;
+        if (landing.routeIndex >= landing.route.length) {
+          landing.routeIndex = landing.route.length - 1;
+          landing.state = "TOUCHDOWN";
+          landing.timer = 0;
+        }
+      }
+      return true;
+    }
+
+    function failM03Mission(radio, banner) {
+      if (!m03State.active || m03State.failed || gameState !== STATE_PLAYING) return false;
+      m03State.failed = true;
+      missionFailureRadioOverride = radio || (m03Mission() && m03Mission().failureRadio) || null;
+      if (banner) showBanner(banner, 2.0, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function arriveM03Apc(enemy) {
+      const mission = m03Mission();
+      if (!mission || !enemy || !enemy.alive || !enemy.m03Apc || enemy.m03Arrived) return false;
+      const contract = mission.landingContract;
+      enemy.m03Arrived = true;
+      enemy.alive = false;
+      enemy.hitbox.visible = false;
+      enemy.group.visible = false;
+      enemy.deadTimer = 0;
+      enemy.speed = 0;
+      m03State.apcArrivals += 1;
+
+      const command = m03CommandFacility(mission);
+      if (command && command.alive) {
+        damageProtectedFacility(command, Math.max(1, Number(contract.commandDamagePerArrival) || 35));
+      }
+      if (!m03State.arrivalRadioFired && gameState === STATE_PLAYING) {
+        m03State.arrivalRadioFired = true;
+        playAuthoredRadio(contract.arrivalWarningRadio, RADIO_PRIORITY.URGENT);
+      }
+      if (gameState === STATE_PLAYING && m03State.apcArrivals >= Math.max(1, Number(contract.failArrivals) || 4)) {
+        failM03Mission(contract.failureRadio, "PORT COMMAND OVERRUN");
+      }
+      return true;
+    }
+
+    function updateM03MissionThreat() {
+      const mission = m03Mission();
+      if (!mission || !m03State.active || m03State.failed) return false;
+      const contract = mission.landingContract;
+      const command = m03CommandFacility(mission);
+      if (command && !command.alive) {
+        return failM03Mission(contract.failureRadio, "PORT COMMAND LOST");
+      }
+      const limit = Number(contract.timeLimit);
+      if (Number.isFinite(limit) && limit > 0 && missionElapsed >= limit) {
+        return failM03Mission(contract.timeoutRadio || contract.failureRadio, "PORT DEFENSE TIMED OUT");
+      }
+      return false;
+    }
+
+    function m03RankShouldCapS(mission) {
+      const contract = mission && mission.m03RankContract;
+      if (!contract || !m03State.active) return false;
+      const command = m03CommandFacility(mission);
+      const commandPct = command && command.maxHp > 0 ? (command.hp / command.maxHp) * 100 : 0;
+      const defensesAlive = m03DefenseFacilities(mission).filter((facility) => facility.alive).length;
+      const landingDenied = Boolean(contract.zeroLandingAlternative) && m03State.transportLandings === 0;
+      const defensePreserved = commandPct >= (Number(contract.commandHpForS) || 70)
+        && defensesAlive >= (Number(contract.defenseSurvivorsForS) || 2);
+      return !(landingDenied || defensePreserved);
+    }
+
+    function m03ResultSnapshot(mission = m03Mission()) {
+      if (!mission || !m03State.active) return null;
+      const command = m03CommandFacility(mission);
+      return {
+        transportLandings: m03State.transportLandings,
+        apcSpawned: m03State.apcSpawned,
+        apcDestroyed: m03State.apcDestroyed,
+        apcArrivals: m03State.apcArrivals,
+        commandHp: command ? Math.max(0, command.hp) : 0,
+        commandMaxHp: command ? command.maxHp : 0,
+        portDefenseSurvivors: m03DefenseFacilities(mission).filter((facility) => facility.alive).length
+      };
+    }
+
     function spawnHeli(position, band, slot, typeKey, idBase = 0, roleId = null) {
       const spec = HELI_TYPES[typeKey];
       if (!spec) return null;
@@ -43943,7 +44429,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationPoint: new THREE.Vector3(),
         safeTarget: new THREE.Vector3()
       });
-      registerSpawnedValue(enemies[enemies.length - 1]);
+      const spawned = enemies[enemies.length - 1];
+      spawned.m03Landing = createM03LandingState(spawned);
+      registerSpawnedValue(spawned);
       return id;
     }
 
@@ -46669,6 +47157,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       protectedFacilityLosses += 1;
       showBanner(`${facility.label} LOST`, 2.0, "danger");
       playAuthoredRadio(contract.lossRadio, RADIO_PRIORITY.URGENT);
+      const landing = mission.landingContract;
+      if (landing && facility.facilityId === landing.commandFacilityId) {
+        failM03Mission(landing.failureRadio || mission.failureRadio, "PORT COMMAND LOST");
+      }
       return true;
     }
 
@@ -48193,6 +48685,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateHeli(enemy, dt, time) {
       const spec = enemy.spec;
       const position = enemy.group.position;
+      if (enemy.m03Landing && updateM03TransportLanding(enemy, dt)) return;
 
       // Damage states, same read as an aircraft: grey smoke below half, black
       // smoke and sparks below a quarter. Written out here rather than shared
@@ -48549,7 +49042,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         } else if (enemy.speed !== 0) {
           // The authored M02 TEL contract may fail the sortie here. Every
           // pre-existing mobile unit still follows the legacy park-at-end path.
-          failEscapingGroundTarget(enemy);
+          if (enemy.m03Apc) arriveM03Apc(enemy);
+          else failEscapingGroundTarget(enemy);
           enemy.speed = 0;
         }
       }
@@ -48792,6 +49286,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       enemy.alive = false;
       enemy.hitbox.visible = false;
+      if (enemy.m03Landing) enemy.m03Landing.state = "DESTROYED";
+      if (enemy.m03Apc && !enemy.m03Arrived) m03State.apcDestroyed += 1;
       // Manoeuvre state dies with the aircraft, so a wreck never reports itself
       // as mid-break or mid-cobra to the probe or to anything reading `mode`.
       enemy.breakTimer = 0;
@@ -49214,6 +49710,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updatePendingWaves(dt);
       if (updateStrikeThreat()) return;
       updateLandingThreat();
+      if (updateM03MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -49227,6 +49724,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           return;
         }
         activeWaveGate = null;
+      }
+      // Delayed designated flights still belong to the current engagement.
+      // Without this hold a fast clear cancels M03's transport flight before
+      // its authored delay expires and awards a mission that never happened.
+      if (pendingWaves.some((entry) => entry.wave && isTgtEntry(entry.wave))) {
+        waveClearTimer = -1;
+        return;
       }
       // Only designated targets hold the mission open. A surviving escort or
       // CAP keeps fighting - and keeps being worth bonus points - but it can
