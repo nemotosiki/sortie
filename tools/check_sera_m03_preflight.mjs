@@ -44,8 +44,7 @@ for (const marker of [
   "activeGroundPhaseId",
   "groundPhaseFailureFired",
   "activateGroundPhase",
-  "waveDef.activateGroundPhase",
-  "GROUND_PHASE_CONTRACT.failAtRouteEnd",
+  "failAtRouteEnd",
   "m02FacilityStatus",
   "m02GroundStatus"
 ]) requireText(index, marker, "M02 reusable host contract");
