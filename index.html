@@ -38760,15 +38760,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return base * 100 + (enemy.subsystem ? enemy.subsystemIndex + 1 : 0);
     }
 
+    function visibleTargetCycleEntry(enemy) {
+      // Manual target selection should follow what the pilot can actually see.
+      // Reuse the HUD contact projection and its small edge tolerance so a
+      // contact whose marker is visible is also selectable with Triangle/Tab.
+      const point = enemyAimPoint(enemy, tmpHudWorld);
+      const projected = projectWorldToScreen(point);
+      const inFront = projected.ndcZ > -1 && projected.ndcZ < 1;
+      const onScreen =
+        inFront &&
+        Math.abs(projected.ndcX) <= 1.08 &&
+        Math.abs(projected.ndcY) <= 1.08;
+      if (!onScreen) return null;
+
+      return {
+        enemy,
+        centerDistSq:
+          projected.ndcX * projected.ndcX + projected.ndcY * projected.ndcY,
+      };
+    }
+
     function cycleTarget() {
       if (gameState !== STATE_PLAYING) return;
-      const living = enemies.filter((enemy) => enemy.alive)
-        .sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
-      if (living.length === 0) return;
+      const alive = enemies.filter((enemy) => enemy.alive);
+      if (alive.length === 0) return;
+
+      const visible = alive
+        .map(visibleTargetCycleEntry)
+        .filter(Boolean)
+        .sort((a, b) => {
+          const centerDelta = a.centerDistSq - b.centerDistSq;
+          if (Math.abs(centerDelta) > 1e-9) return centerDelta;
+          return targetCycleKey(a.enemy) - targetCycleKey(b.enemy);
+        });
+
+      // Ace Combat-style priority: while any contact is visible, Triangle/Tab
+      // stays on visible contacts and steps from the centre of the view outward.
+      // If the sky in front is empty, retain the legacy all-contact fallback so
+      // radar-guided searching still works instead of making the key a no-op.
+      const candidates = visible.length > 0
+        ? visible.map((entry) => entry.enemy)
+        : alive.slice().sort((a, b) => targetCycleKey(a) - targetCycleKey(b));
 
       const currentId = preferredTargetId ?? lock.targetId;
-      const currentIndex = living.findIndex((enemy) => enemy.id === currentId);
-      const next = living[(currentIndex + 1 + living.length) % living.length];
+      const currentIndex = candidates.findIndex((enemy) => enemy.id === currentId);
+      const next = candidates[(currentIndex + 1 + candidates.length) % candidates.length];
       preferredTargetId = next.id;
       lock.targetId = next.id;
       lock.progress = 0;
