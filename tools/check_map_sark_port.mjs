@@ -11,7 +11,8 @@ const requireText = (needle, label) => {
 
 for (const [needle, label] of [
   ['addWorldPreset("sarkPort"', "world preset"],
-  ['addWorldDecorator("sarkPort"', "world decorator"],
+  ['addWorldDecorator("sarkPortWorks"', "world decorator"],
+  ['worlds: ["sarkPort"]', "decorator world binding"],
   ['sceneryOrigin: [0, -3000]', "mission origin"],
   ['plateau: { radius: [1700, 1700], height: [22, 22], topRadius: 0.92, at: [0, -3000]', "flat cap contract"],
   ['const CAP_Y = 22', "absolute ground height"],
@@ -36,4 +37,4 @@ for (const [name, [x, z]] of Object.entries(anchors)) {
   if (!authoredAnchor(x, z)) throw new Error(`[sark-port] ${name} anchor is outside authored cap envelope`);
 }
 
-console.log("[sark-port] PASS", JSON.stringify({ world: "sarkPort", capY: 22, origin: [0, -3000], anchors }, null, 2));
+console.log("[sark-port] PASS", JSON.stringify({ world: "sarkPort", decorator: "sarkPortWorks", capY: 22, origin: [0, -3000], anchors }, null, 2));
