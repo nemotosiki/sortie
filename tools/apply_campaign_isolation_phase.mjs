@@ -44,6 +44,21 @@ if (gitApply(["--check"])) {
   );
 }
 
+// The first isolation run proved the legacy mission itself was correct
+// (LOW GUARDIAN / coastalPlain / HAMMER 2), but its E2E used the internal
+// `active` probe as a content discriminator. That flag is not mission-owned.
+// Assert the observable absence of Sera facilities, transports and APCs instead.
+const e2ePath = path.join(ROOT, "tools/check_sera_m03_e2e.mjs");
+let e2e = fs.readFileSync(e2ePath, "utf8");
+const oldLegacyAssertion = `  assert(probe.missionKey === "m-heli" && probe.title === "LOW GUARDIAN"\n      && probe.worldKey === "coastalPlain" && probe.active === false,\n    "legacy m-heli still resolves to LOW WATER content", probe);`;
+const newLegacyAssertion = `  assert(probe.missionKey === "m-heli" && probe.title === "LOW GUARDIAN"\n      && probe.worldKey === "coastalPlain"\n      && probe.facilities.length === 0\n      && probe.transportSpawned === 0\n      && probe.transportLandings === 0\n      && probe.apcSpawned === 0\n      && probe.apcArrivals === 0,\n    "legacy m-heli still resolves to LOW WATER content", probe);`;
+if (e2e.includes(oldLegacyAssertion)) {
+  e2e = e2e.replace(oldLegacyAssertion, newLegacyAssertion);
+  fs.writeFileSync(e2ePath, e2e);
+} else if (!e2e.includes(newLegacyAssertion)) {
+  throw new Error("apply_campaign_isolation_phase: legacy M03 isolation assertion was not found");
+}
+
 fs.rmSync(PATCH_FILE, { force: true });
 const phaseDir = path.dirname(PATCH_FILE);
 if (fs.existsSync(phaseDir) && fs.readdirSync(phaseDir).length === 0) fs.rmdirSync(phaseDir);
