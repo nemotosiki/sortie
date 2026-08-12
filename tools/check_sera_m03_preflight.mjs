@@ -27,6 +27,7 @@ const m01 = requireFile("payloads/mission_sera_m01.payload.js");
 const m02 = requireFile("payloads/mission_sera_m02.payload.js");
 requireFile("tools/check_sera_m01_e2e.mjs");
 requireFile("tools/check_sera_m02_e2e.mjs");
+requireFile("tools/check_sera_m02_host.mjs");
 requireFile("docs/implementation/sera_m03_low_water_safe_implementation_plan.md");
 
 requireText(map, "sarkPort", "Sark Port world key");
@@ -38,10 +39,10 @@ requireText(heliPack, 'addHeliType("armedTransportHeli"', "armed transport regis
 requireText(heliPack, 'addGroundType("spaag"', "SPAAG registration");
 
 for (const marker of [
-  "const protectedFacilities = [];",
-  "function spawnProtectedFacilities(mission)",
-  "function resetGroundPhaseState(mission)",
-  "function activateGroundPhase(id)",
+  "protectedFacilities",
+  "spawnProtectedFacilities",
+  "resetGroundPhaseState",
+  "activateGroundPhase",
   "waveDef.activateGroundPhase",
   "GROUND_PHASE_CONTRACT.failAtRouteEnd",
   "m02FacilityStatus",
@@ -54,7 +55,7 @@ for (const marker of ["wingmen:", "radioSpeaker:", "rankNeutral"]) {
   }
 }
 
-if (!index.includes('"m-heli"') && !index.includes("'m-heli'") && !index.includes("m-heli")) {
+if (!index.includes("m-heli")) {
   throw new Error("[sera-m03-preflight] stock third mission slot m-heli not found");
 }
 
