@@ -1653,9 +1653,9 @@
     .hangarCenter { pointer-events: none; }
 
     /* ---- Campaign select ------------------------------------------------
-       Two wide cards side by side rather than the mission screen's vertical
-       list: the choice is a fork, not a sequence, and left/right has to read
-       as the natural input the moment the screen appears. */
+       Campaign cards share one responsive grid. Two legacy viewpoints and the
+       independent Sera campaign can coexist without changing the input model:
+       left/right still traverses one ordered list. */
     .campaignLayout {
       flex: 1;
       display: grid;
@@ -1666,7 +1666,7 @@
 
     .campaignCards {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
       /* A fixed plate height centred in the column, not a full stretch: the
          cards carry four short lines each, and letting them fill the whole
          menu leaves a dead middle that reads as a rendering fault. */
@@ -2657,7 +2657,7 @@
     // that side's best airframe, chosen so the whole hangar costs about 1/1.2 of
     // a full S-rank sweep - the last jet lands right at the end of the campaign,
     // and a player eight missions in at A rank can afford the middle of the list.
-    const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000 });
+    const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000, sera: 42000 });
     // Weights over the six spec bars, then a convex curve: 1.6 makes the top of
     // the hangar cost several times the bottom rather than the 1.4x the raw bar
     // spread would give, which is what makes buying up the list feel like
@@ -2673,7 +2673,7 @@
     // Written out rather than referencing DEFAULT_AIRCRAFT_ID, which is declared
     // further down with the hangar order and would still be in its temporal dead
     // zone here. Held to that value by a boot-time assertion beside the order.
-    const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21" });
+    const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21", sera: "f16" });
     const PURCHASES_STORAGE_KEY = "sortieHangarPurchases";
     const RADAR_RANGE = 1400;
     // Reference/minimum size for the camera-following ocean. createWorld
@@ -3141,9 +3141,10 @@
     const DEFAULT_AIRCRAFT_ID = "f16";
 
     // ---- Campaigns -----------------------------------------------------------
-    // Two sides of the same war (docs/spec_campaign_story.md). The American
-    // campaign is everything that ships today; the Russian one is a frame and a
-    // route, deliberately locked until its missions exist.
+    // Campaign registry. USA/RUS are the legacy two-sided war; Sera is a
+    // separate story namespace. Sera begins locked while its mission ids and
+    // persistent state are migrated, so adding the card cannot expose a half-
+    // isolated campaign.
     //
     // `aircraft` is a FILTER over AIRCRAFT_ORDER, never a replacement roster:
     // the hangar data stays one list, and a campaign only decides which of its
@@ -3182,6 +3183,19 @@
         aircraft: Object.freeze([
           "mig21", "mig23", "mig29", "mig31", "su25", "su33", "su37", "su47", "su35", "su57"
         ])
+      }),
+      Object.freeze({
+        id: "sera",
+        name: "SERA CAMPAIGN",
+        operation: "ROOK — OPENING WAR",
+        side: "SERA AIR DEFENCE FORCE",
+        callsign: "RAVEN",
+        jp: "セラ開戦章。ROOK 2 RAVENとして、CROWN、LARK、MERIDIANとともに侵攻初期の空を飛ぶ。",
+        locked: true,
+        lockNote: "MIGRATION IN PROGRESS",
+        aircraft: Object.freeze([
+          "f16", "f4", "f15c", "gripen", "f2a", "fa18a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "a10", "f22"
+        ])
       })
     ]);
     const DEFAULT_CAMPAIGN_ID = "usa";
@@ -3195,7 +3209,9 @@
     }
 
     function campaignById(id) {
-      return CAMPAIGNS.find((campaign) => campaign.id === id) || CAMPAIGNS[0];
+      const campaign = CAMPAIGNS.find((entry) => entry.id === id);
+      if (!campaign) throw new Error(`[campaign] unknown campaign id "${id}"`);
+      return campaign;
     }
 
     // ---- Special weapons (SP.W) ---------------------------------------------
@@ -46340,7 +46356,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A reboot mission may author more than one wingman, with its own
       // callsign, radio identity and formation slot. Stock deployments still
       // call this with no arguments and receive the historic campaign entry.
-      const campaignEntry = WINGMAN_BY_CAMPAIGN[selectedCampaignId] || WINGMAN_BY_CAMPAIGN.usa;
+      const campaignEntry = WINGMAN_BY_CAMPAIGN[selectedCampaignId] || null;
+      if (!config && !campaignEntry) {
+        throw new Error(`[friendly] campaign "${selectedCampaignId}" must author its wingmen`);
+      }
       const type = config && config.type ? config.type : campaignEntry.type;
       const spec = AIRCRAFT_TYPES[type];
       if (!spec) throw new Error(`[friendly] unknown wingman aircraft "${type}"`);

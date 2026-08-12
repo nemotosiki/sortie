@@ -21,7 +21,11 @@ const RADIO_SPEAKERS = {
 // not need overrides because their label is already mission-specific.
 const RADIO_SPEAKER_LABELS = {
   usa: { command: "SKYEYE", wingman: "HAMMER 2" },
-  rus: { command: "NORTHSTAR", wingman: "SICKLE 2" }
+  rus: { command: "NORTHSTAR", wingman: "SICKLE 2" },
+  // Transitional safety net while generic combat callouts are converted to
+  // role-based speakers. Explicit Sera mission lines still use meridian,
+  // crown and lark directly.
+  sera: { command: "MERIDIAN", wingman: "CROWN" }
 };
 
 export const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
