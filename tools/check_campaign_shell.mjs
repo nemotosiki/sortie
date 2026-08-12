@@ -19,8 +19,11 @@ function moduleBody(source) {
 
 assert(html.includes('id: "sera"'), "Sera campaign is not registered");
 assert(html.includes('callsign: "RAVEN"'), "Sera player callsign is missing");
-assert(html.includes('lockNote: "MIGRATION IN PROGRESS"'),
-  "Sera shell must remain locked until mission/state migration completes");
+assert(html.includes('locked: false'), "Sera campaign is not playable");
+assert(html.includes('lockNote: ""'), "Sera campaign still advertises a migration lock");
+for (const key of ["sera-m01", "sera-m02", "sera-m03", "sera-m04", "sera-m05", "sera-m07"]) {
+  assert(html.includes(`key: "${key}"`), `${key} is missing from the playable Sera campaign`);
+}
 assert(html.includes('const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000, sera: 42000 });'),
   "Sera economy cap is missing");
 assert(html.includes('const STARTER_AIRCRAFT = Object.freeze({ usa: "f16", rus: "mig21", sera: "f16" });'),
@@ -36,5 +39,5 @@ assert(radio.includes('sera: { command: "MERIDIAN", wingman: "CROWN" }'),
 
 new vm.SourceTextModule(moduleBody(html));
 console.log("check_campaign_shell: PASS");
-console.log("  Sera registry shell / strict lookup / responsive three-card UI");
+console.log("  playable Sera registry / strict lookup / responsive three-card UI");
 console.log("  Sera economy defaults / no implicit USA wingman / safe radio labels");

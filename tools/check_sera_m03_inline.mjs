@@ -14,7 +14,10 @@ const markers = {
 };
 
 for (const [label, marker] of Object.entries(markers)) {
-  const count = source.split(marker).length - 1;
+  // Match the complete marker line. `map_sarkPortAsh` is a separate payload
+  // and must not be counted as a second `map_sarkPort` registration.
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const count = [...source.matchAll(new RegExp(`${escaped}[ \\t]*$`, "gm"))].length;
   assert(count === 1, `${label} marker must appear exactly once, found ${count}`);
 }
 

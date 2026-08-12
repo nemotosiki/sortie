@@ -3148,9 +3148,9 @@
 
     // ---- Campaigns -----------------------------------------------------------
     // Campaign registry. USA/RUS are the legacy two-sided war; Sera is a
-    // separate story namespace. Sera begins locked while its mission ids and
-    // persistent state are migrated, so adding the card cannot expose a half-
-    // isolated campaign.
+    // separate story namespace. Its mission ids, unlock chain, and persistent
+    // records are isolated now, so the campaign is available from the normal
+    // campaign-select flow.
     //
     // `aircraft` is a FILTER over AIRCRAFT_ORDER, never a replacement roster:
     // the hangar data stays one list, and a campaign only decides which of its
@@ -3197,8 +3197,8 @@
         side: "SERA AIR DEFENCE FORCE",
         callsign: "RAVEN",
         jp: "セラ開戦章。ROOK 2 RAVENとして、CROWN、LARK、MERIDIANとともに侵攻初期の空を飛ぶ。",
-        locked: true,
-        lockNote: "MIGRATION IN PROGRESS",
+        locked: false,
+        lockNote: "",
         aircraft: Object.freeze([
           "f16", "f4", "f15c", "gripen", "f2a", "fa18a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "a10", "f22"
         ])
@@ -36201,6 +36201,3014 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m03"
     ); // @payload:mission_sera_m03
+    applyPayload(
+      function register(ctx) {
+        const { GROUND_TYPES } = ctx.tables;
+        const tank = GROUND_TYPES.tank;
+        if (!tank) throw new Error("[ground-ifv] expected GROUND_TYPES.tank as the template");
+
+        ctx.addGroundType("ifv", {
+          ...tank,
+          key: "ifv",
+          label: "IFV",
+          role: "Infantry Fighting Vehicle",
+          hp: 82,
+          hitRadius: 15,
+          crash: Object.freeze({ halfLen: 4.2, halfBeam: 2.1, top: 3.1 }),
+          hitBox: Object.freeze({ x: 5, y: 5, z: 9 }),
+          smokeHeight: 3.4,
+          aa: null,
+          mobile: Object.freeze({
+            speed: 19,
+            turnRate: tank.mobile.turnRate * 1.12
+          }),
+          radarColor: "#ffbb70",
+          tracerColor: 0xffad62,
+          explosionColor: 0xff984f
+        });
+
+        ctx.addGroundModel("ifv", {
+          build({ geometry, steel, olive, dark, light, add }) {
+            // Compact tracked chassis, authored nose-along -Z like the inline tank.
+            add(geometry.panel, dark, -2.05, 0.72, 0, 0.9, 1.35, 8.2);
+            add(geometry.panel, dark, 2.05, 0.72, 0, 0.9, 1.35, 8.2);
+            add(geometry.panel, steel, -2.05, 0.42, 0, 1.05, 0.42, 7.6);
+            add(geometry.panel, steel, 2.05, 0.42, 0, 1.05, 0.42, 7.6);
+            add(geometry.panel, olive, 0, 1.45, 0.25, 4.1, 1.7, 7.7);
+            add(geometry.panel, olive, 0, 1.7, -3.6, 3.9, 1.8, 1.5, -0.5);
+
+            // Low troop compartment and rear access ramp distinguish it from an MBT.
+            add(geometry.panel, olive, 0, 2.45, 1.7, 3.9, 1.1, 3.8);
+            add(geometry.panel, dark, 0, 2.15, 4.05, 2.5, 1.7, 0.3);
+            add(geometry.panel, light, -1.3, 3.1, 2.9, 0.28, 0.28, 0.28);
+            add(geometry.panel, light, 1.3, 3.1, 2.9, 0.28, 0.28, 0.28);
+
+            // Small autocannon turret: much lighter than the tank turret and with a
+            // thin barrel. It is visual identity only; M05 does not give it AA fire.
+            add(geometry.shipCylinder, steel, 0, 2.75, -0.65, 1.05, 0.45, 1.05);
+            add(geometry.panel, olive, 0, 3.15, -0.75, 2.0, 0.72, 2.2);
+            add(geometry.panel, dark, 0.15, 3.18, -2.65, 0.22, 0.22, 3.8, -0.04);
+            add(geometry.panel, light, -0.72, 3.42, -1.05, 0.28, 0.34, 0.5);
+          }
+        });
+      },
+      "ground_ifv"
+    ); // @payload:ground_ifv
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.sunsetOcean;
+        if (!base) throw new Error("[naharStrait] sunsetOcean base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          alliedFleet: Object.freeze([-9000, 0]),
+          playerStart: Object.freeze([-7200, -4200]),
+          centralBridge: Object.freeze([0, 0]),
+          elemFleetEntry: Object.freeze([11500, 0]),
+          landingBreachLineX: -6500,
+          northEastCapEntry: Object.freeze([8500, 7000]),
+          southEastStrikeEntry: Object.freeze([9500, -7500])
+        });
+        // One source of truth for rendering, collision and waterfront placement.
+        // The narrow 800 m half-channel at x=0 is intentional: M04's fleet route
+        // remains beneath the bridge, while the outer strait opens to 5.2 km.
+        const northCoastProfile = Object.freeze([
+          Object.freeze([-16000, 2600]), Object.freeze([-6500, 2500]),
+          Object.freeze([-3200, 2200]), Object.freeze([-1500, 1500]),
+          Object.freeze([-600, 940]), Object.freeze([0, 800]),
+          Object.freeze([600, 940]), Object.freeze([1500, 1500]),
+          Object.freeze([3200, 2200]), Object.freeze([6500, 2500]),
+          Object.freeze([16000, 2600])
+        ]);
+        const southCoastProfile = Object.freeze(
+          northCoastProfile.map(([x, z]) => Object.freeze([x, -z]))
+        );
+
+        ctx.addWorldPreset("naharStrait", {
+          ...base,
+          label: "NAHAR STRAIT",
+          sceneryOrigin: [0, 0],
+          previewFocus: [0, 0],
+          previewSheets: Object.freeze({
+            infrastructure: Object.freeze([
+              Object.freeze({ label: "ROAD NETWORK", position: [0, 6800, 5400], target: [0, 34, 4700] }),
+              Object.freeze({ label: "BRIDGE JOIN", position: [-1900, 720, 3000], target: [0, 54, 1500] }),
+              Object.freeze({ label: "PORT ACCESS", position: [-11900, 620, 4400], target: [-10500, 34, 2700] }),
+              Object.freeze({ label: "PREFAB BLOCK", position: [4700, 430, 5000], target: [5700, 75, 4050] })
+            ])
+          }),
+          regionId: "nahar_strait",
+          sectorIds: Object.freeze(["west_interdiction", "east_breakthrough"]),
+          variant: "sunset_clear",
+          missionAnchors,
+          clearColor: 0x9d7059,
+          sky: [
+            [0, "#101b3a"],
+            [0.25, "#29345c"],
+            [0.43, "#98504d"],
+            [0.5, "#ffc17a"],
+            [0.6, "#b85e52"],
+            [1, "#33233d"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x4e414801,
+            noise: 0.012,
+            haze: 0.11,
+            thinClouds: 9,
+            cloudOpacity: 0.04,
+            cloudBand: [0.34, 0.6],
+            cloudTint: 0xffc09a
+          },
+          // The whole 32 km strait must remain readable. M04 opens with the player
+          // about 19.2km from the landing group: 5.2/20.5km left those hulls only 9%
+          // visible even after the old 7km clip plane was removed. A 12/40km band
+          // keeps sunset depth while leaving that first contact roughly 74% visible.
+          fog: { color: 0x9d7059, near: 12000, far: 40000 },
+          // West is -X on this authored map. Looking east silhouettes the incoming
+          // Elem ships against the last warm light without putting glare over HUD.
+          sun: {
+            position: [-7800, 1450, -850],
+            color: 0xffb46d,
+            radius: 132,
+            glare: [
+              { scale: 2200, color: 0xff9b54, opacity: 0.62 },
+              { scale: 660, color: 0xffdfb2, opacity: 0.9 }
+            ]
+          },
+          sunRoad: {
+            color: 0xff9f55,
+            opacity: 0.46,
+            width: 1100,
+            length: 8800,
+            rotationY: Math.PI * 0.5,
+            position: [-4200, 0.4, 0]
+          },
+          ocean: {
+            ...base.ocean,
+            base: "#123b49",
+            bright: "245, 166, 110",
+            dark: "5, 28, 39",
+            repeat: 22,
+            roughness: 0.39,
+            normalRepeat: 30,
+            normalScale: [0.2, 0.27],
+            normalSpeed: [0.011, 0.0025],
+            normalSeed: 0x4e414802
+          },
+          terrain: {
+            ...base.terrain,
+            seed: 0x4e414803,
+            sand: 0xa18461,
+            grass: 0x4b593d,
+            rock: 0x5e594f,
+            peak: 0x716958,
+            snow: 0xd9c6b2,
+            textureProfile: "grassland",
+            fineRepeat: 22,
+            macroRepeat: 3.1,
+            normalRepeat: 25,
+            normalStrength: 0.24,
+            normalFade: [260, 2200],
+            rockSlope: [0.42, 0.82],
+            shoreHeight: 0.1
+          },
+          // Both banks are real gameplay terrain. The older decorator capes looked
+          // solid but were invisible to aircraft, AI and ground-placement sampling.
+          // Broad relief starts behind all mission anchors and city infrastructure,
+          // giving the horizon depth without perturbing the fleet corridor.
+          continentalSheets: Object.freeze([
+            Object.freeze({
+              width: 96000,
+              depth: 60000,
+              centerX: 0,
+              coastZ: 2600,
+              coastPoints: northCoastProfile,
+              inlandSign: 1,
+              beachDepth: 300,
+              height: 34,
+              terrainHeightScale: 190,
+              segments: 384,
+              inlandSegments: 32,
+              uvWorldScale: 7600,
+              relief: Object.freeze({
+                height: 96, start: 10200, fade: 2400,
+                waveX: 11200, waveZ: 8600, diagonal: 17400,
+                phaseX: 0.4, phaseZ: 1.2
+              })
+            }),
+            Object.freeze({
+              width: 96000,
+              depth: 60000,
+              centerX: 0,
+              coastZ: -2600,
+              coastPoints: southCoastProfile,
+              inlandSign: -1,
+              beachDepth: 300,
+              height: 34,
+              terrainHeightScale: 210,
+              segments: 384,
+              inlandSegments: 32,
+              uvWorldScale: 7600,
+              relief: Object.freeze({
+                height: 112, start: 10200, fade: 2600,
+                waveX: 12600, waveZ: 9400, diagonal: 16600,
+                phaseX: 1.7, phaseZ: 0.25
+              })
+            })
+          ]),
+          lights: {
+            hemi: { sky: 0xf1b386, ground: 0x252432, intensity: 1.62 },
+            key: { color: 0xffad66, intensity: 2.5, position: [-3200, 980, -350] },
+            fill: { color: 0x6f78a8, intensity: 0.55, position: [2400, 300, 1100] }
+          },
+          // Random terrain stays disabled; the signed continental sheets above own
+          // the exact 4–5 km channel and 1.6 km bridge throat deterministically.
+          mountains: {
+            ...base.mountains,
+            count: 0,
+            corridor: null,
+            plateau: null
+          },
+          islands: { count: 0, stone: 0x585248, green: 0x4c563d },
+          clouds: {
+            ...base.clouds,
+            scale: 1.1,
+            hero: false,
+            opacity: 0.58,
+            texture: { seed: 0x4e414804, contrast: 1.04, underside: 0.44, softness: 1.05 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x4e414805,
+            keepClear: [{ x: 0, z: 0, r: 17000 }],
+            extraIslands: { count: 0, radius: [0, 0], height: [0, 0], distance: [0, 0] },
+            shore: null,
+            trees: null,
+            harbour: null,
+            rocks: null,
+            extraClouds: {
+              towers: 2,
+              towerSize: [80, 130],
+              towerBase: 1200,
+              stratus: 7,
+              stratusSize: [240, 400],
+              stratusBase: 1900,
+              distance: [4200, 11000]
+            }
+          }
+        });
+
+        ctx.addWorldDecorator("naharStraitWorks", {
+          worlds: ["naharStrait"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, keepTexture, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "naharStraitWorks";
+            addRoot(root);
+
+            const boxGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylinderGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 14));
+            const materials = new Map();
+            const material = (color, options = {}) => {
+              const key = `${color}:${options.emissive || 0}:${options.opacity ?? 1}`;
+              if (!materials.has(key)) {
+                materials.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness: options.roughness ?? 0.84,
+                  metalness: options.metalness ?? 0.03,
+                  emissive: options.emissive || 0,
+                  emissiveIntensity: options.emissive ? 1.25 : 0,
+                  transparent: (options.opacity ?? 1) < 1,
+                  opacity: options.opacity ?? 1,
+                  depthWrite: (options.opacity ?? 1) >= 1
+                })));
+              }
+              return materials.get(key);
+            };
+            const box = (x, y, z, sx, sy, sz, color, rotation = [0, 0, 0], options) => {
+              const mesh = new THREE.Mesh(boxGeometry, material(color, options));
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+              root.add(mesh);
+              return mesh;
+            };
+            const cylinder = (x, y, z, radius, height, color, options) => {
+              const mesh = new THREE.Mesh(cylinderGeometry, material(color, options));
+              mesh.position.set(x, y, z);
+              mesh.scale.set(radius, height, radius);
+              root.add(mesh);
+              return mesh;
+            };
+            const beam = (from, to, thickness, color, options) => {
+              const a = new THREE.Vector3(...from);
+              const b = new THREE.Vector3(...to);
+              const direction = b.clone().sub(a);
+              const length = direction.length();
+              const mesh = box(0, 0, 0, thickness, thickness, length, color, [0, 0, 0], options);
+              mesh.position.copy(a).add(b).multiplyScalar(0.5);
+              mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction.normalize());
+              return mesh;
+            };
+
+            // The capes cover more than 400 square kilometres. A few individual
+            // boxes read as debris at that scale, so the inhabited landscape is
+            // built in batches: one draw call for roughly 1,100 buildings, one for
+            // fields, one for roads, and a handful for port furniture. Canvas-made
+            // wall/roof textures give the low pass real surface detail without an
+            // external asset or a request at runtime.
+            let citySeed = 0x4e414806 >>> 0;
+            const rand = () => {
+              citySeed = (citySeed + 0x6d2b79f5) >>> 0;
+              let value = Math.imul(citySeed ^ (citySeed >>> 15), citySeed | 1);
+              value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+              return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+            };
+            const canvasTexture = (label, size, paint) => {
+              const canvas = document.createElement("canvas");
+              canvas.width = size;
+              canvas.height = size;
+              const context = canvas.getContext("2d");
+              paint(context, size);
+              const texture = keepTexture(new THREE.CanvasTexture(canvas), label, size * size * 4);
+              texture.wrapS = THREE.RepeatWrapping;
+              texture.wrapT = THREE.RepeatWrapping;
+              texture.anisotropy = 4;
+              if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+              return texture;
+            };
+            const makeBuildingTextures = () => {
+              let textureSeed = 0x4e414807 >>> 0;
+              const textureRand = () => {
+                textureSeed = Math.imul(textureSeed ^ (textureSeed >>> 15), 2246822519) >>> 0;
+                textureSeed = Math.imul(textureSeed ^ (textureSeed >>> 13), 3266489917) >>> 0;
+                return ((textureSeed ^= textureSeed >>> 16) >>> 0) / 4294967296;
+              };
+              const litWindows = [];
+              const wall = canvasTexture("naharBuildingWalls", 128, (context, size) => {
+                const gradient = context.createLinearGradient(0, 0, size, 0);
+                gradient.addColorStop(0, "#747c79");
+                gradient.addColorStop(0.48, "#a49b88");
+                gradient.addColorStop(1, "#6b7372");
+                context.fillStyle = gradient;
+                context.fillRect(0, 0, size, size);
+                for (let i = 0; i < 340; i += 1) {
+                  const tone = 82 + Math.floor(textureRand() * 44);
+                  context.fillStyle = `rgba(${tone},${tone + 2},${tone},${0.08 + textureRand() * 0.1})`;
+                  context.fillRect(textureRand() * size, textureRand() * size, 1 + textureRand() * 3, 1 + textureRand() * 8);
+                }
+                for (let row = 0; row < 10; row += 1) {
+                  for (let col = 0; col < 7; col += 1) {
+                    const x = 6 + col * 18;
+                    const y = 6 + row * 12;
+                    const lit = textureRand() > 0.54;
+                    context.fillStyle = lit ? (textureRand() > 0.32 ? "#f0b56d" : "#b7d3d5") : "#202a2c";
+                    context.fillRect(x, y, 9, 5);
+                    context.fillStyle = "rgba(255,255,255,0.13)";
+                    context.fillRect(x + 1, y + 1, 7, 1);
+                    if (lit) litWindows.push([x, y]);
+                  }
+                }
+              });
+              const emissive = canvasTexture("naharBuildingWindows", 128, (context, size) => {
+                context.fillStyle = "#000000";
+                context.fillRect(0, 0, size, size);
+                for (const [x, y] of litWindows) {
+                  context.fillStyle = "#ffb55c";
+                  context.fillRect(x, y, 9, 5);
+                }
+              });
+              const roof = canvasTexture("naharBuildingRoofs", 128, (context, size) => {
+                context.fillStyle = "#5c6260";
+                context.fillRect(0, 0, size, size);
+                for (let y = 0; y < size; y += 16) {
+                  context.fillStyle = y % 32 ? "rgba(255,255,255,0.055)" : "rgba(0,0,0,0.08)";
+                  context.fillRect(0, y, size, 2);
+                }
+                for (let i = 0; i < 42; i += 1) {
+                  const shade = 68 + Math.floor(textureRand() * 38);
+                  context.fillStyle = `rgb(${shade},${shade + 3},${shade + 2})`;
+                  context.fillRect(textureRand() * size, textureRand() * size, 4 + textureRand() * 11, 3 + textureRand() * 8);
+                }
+              });
+              return { wall, emissive, roof };
+            };
+            const makeOfficeTextures = () => {
+              let officeSeed = 0x4e414809 >>> 0;
+              const officeRand = () => {
+                officeSeed = Math.imul(officeSeed ^ (officeSeed >>> 15), 2246822519) >>> 0;
+                officeSeed = Math.imul(officeSeed ^ (officeSeed >>> 13), 3266489917) >>> 0;
+                return ((officeSeed ^= officeSeed >>> 16) >>> 0) / 4294967296;
+              };
+              const lit = [];
+              const wall = canvasTexture("naharOfficeWalls", 128, (context, size) => {
+                context.fillStyle = "#687377";
+                context.fillRect(0, 0, size, size);
+                for (let row = 0; row < 24; row += 1) {
+                  context.fillStyle = row % 4 === 0 ? "rgba(24,29,31,0.52)" : "rgba(13,18,21,0.25)";
+                  context.fillRect(0, row * 5 + 3, size, 1);
+                  for (let col = 0; col < 14; col += 1) {
+                    const x = 3 + col * 9;
+                    const y = 1 + row * 5;
+                    const glowing = officeRand() > 0.6;
+                    context.fillStyle = glowing ? "#dca76b" : (col % 3 ? "#263238" : "#31434a");
+                    context.fillRect(x, y, 6, 3);
+                    if (glowing) lit.push([x, y]);
+                  }
+                }
+                const sheen = context.createLinearGradient(0, 0, size, 0);
+                sheen.addColorStop(0, "rgba(255,255,255,0)");
+                sheen.addColorStop(0.62, "rgba(255,197,142,0.16)");
+                sheen.addColorStop(1, "rgba(255,255,255,0)");
+                context.fillStyle = sheen;
+                context.fillRect(0, 0, size, size);
+              });
+              const emissive = canvasTexture("naharOfficeWindows", 128, (context, size) => {
+                context.fillStyle = "#000";
+                context.fillRect(0, 0, size, size);
+                context.fillStyle = "#ffb569";
+                for (const [x, y] of lit) context.fillRect(x, y, 6, 3);
+              });
+              return { wall, emissive };
+            };
+            const addInstancedBoxes = (name, entries, batchMaterial, geometry = boxGeometry) => {
+              if (!entries.length) return null;
+              const instances = new THREE.InstancedMesh(geometry, batchMaterial, entries.length);
+              instances.name = name;
+              const matrix = new THREE.Matrix4();
+              const position = new THREE.Vector3();
+              const quaternion = new THREE.Quaternion();
+              const scale = new THREE.Vector3();
+              const euler = new THREE.Euler();
+              const tint = new THREE.Color();
+              entries.forEach((entry, index) => {
+                euler.set(0, entry.yaw || 0, 0);
+                quaternion.setFromEuler(euler);
+                position.set(entry.x, entry.y, entry.z);
+                scale.set(entry.sx, entry.sy, entry.sz);
+                instances.setMatrixAt(index, matrix.compose(position, quaternion, scale));
+                if (entry.color !== undefined) {
+                  tint.setHex(entry.color);
+                  instances.setColorAt(index, tint);
+                }
+              });
+              instances.instanceMatrix.needsUpdate = true;
+              if (instances.instanceColor) instances.instanceColor.needsUpdate = true;
+              instances.castShadow = false;
+              instances.receiveShadow = true;
+              instances.userData.instanceCount = entries.length;
+              root.add(instances);
+              return instances;
+            };
+
+            // High cloud sheets use a small procedural FBM shader instead of the
+            // old hard-edged sphere silhouette. The existing volumetric puffs remain
+            // for fly-through depth; these translucent layers supply ragged anvils,
+            // soft holes and slow wind drift across the sunset.
+            const cloudGeometry = keepGeometry(new THREE.PlaneGeometry(1, 1));
+            const cloudVertex = `
+              varying vec2 vUv;
+              void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+              }
+            `;
+            const cloudFragment = `
+              precision highp float;
+              varying vec2 vUv;
+              uniform float uTime;
+              uniform float uSeed;
+              uniform float uOpacity;
+              float hash21(vec2 p) {
+                return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed) * 43758.5453);
+              }
+              float noise21(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
+                  mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0)), f.x), f.y);
+              }
+              float fbm21(vec2 p) {
+                float value = 0.0;
+                float amp = 0.55;
+                for (int i = 0; i < 5; i++) {
+                  value += amp * noise21(p);
+                  p = p * 2.07 + vec2(13.1, 7.9);
+                  amp *= 0.47;
+                }
+                return value;
+              }
+              void main() {
+                vec2 centred = vUv * 2.0 - 1.0;
+                vec2 drift = vec2(uTime * 0.010, uTime * 0.0025);
+                float body = fbm21(vUv * vec2(4.2, 7.0) + drift + uSeed);
+                float detail = fbm21(vUv * vec2(11.0, 8.0) - drift * 0.7 + uSeed * 2.0);
+                float edge = smoothstep(1.0, 0.54, length(centred * vec2(0.78, 1.22)));
+                float density = smoothstep(0.48, 0.72, body * 0.77 + detail * 0.23) * edge;
+                if (density < 0.012) discard;
+                vec3 shade = mix(vec3(0.47, 0.39, 0.43), vec3(1.0, 0.73, 0.57),
+                  smoothstep(0.45, 0.9, body + vUv.y * 0.16));
+                gl_FragColor = vec4(shade, density * uOpacity);
+              }
+            `;
+            const cloudSheets = [
+              [-10300, 2450, -5200, 5200, 1850, 0.31, 1.0],
+              [-4600, 2850, 6100, 4300, 1500, -0.18, 2.7],
+              [1800, 2550, -6900, 5000, 1700, 0.12, 4.3],
+              [7200, 3050, 5200, 5700, 1750, -0.28, 6.1],
+              [11400, 2350, -3800, 3900, 1350, 0.22, 8.4]
+            ];
+            for (const [x, y, z, width, depth, yaw, seed] of cloudSheets) {
+              const uniforms = {
+                uTime: { value: 0 },
+                uSeed: { value: seed },
+                uOpacity: { value: 0.48 }
+              };
+              const cloudMaterial = keepMaterial(new THREE.ShaderMaterial({
+                uniforms,
+                vertexShader: cloudVertex,
+                fragmentShader: cloudFragment,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide
+              }));
+              const sheet = new THREE.Mesh(cloudGeometry, cloudMaterial);
+              sheet.name = "naharShaderCloud";
+              sheet.position.set(x, y, z);
+              sheet.scale.set(width, depth, 1);
+              // Oblique rather than perfectly horizontal: at combat altitude a flat
+              // sheet collapses to a one-pixel line on the horizon. This angle keeps
+              // its long windward footprint while exposing a soft, deep cloud face.
+              sheet.rotation.set(-1.22, yaw, 0);
+              sheet.renderOrder = 2;
+              sheet.onBeforeRender = () => { uniforms.uTime.value = performance.now() * 0.001; };
+              root.add(sheet);
+            }
+
+            // Road geometry is authored as one connected graph. Each segment keeps
+            // its endpoints in userData for the browser continuity audit below; the
+            // visual boxes overlap by two metres at intersections so cracks cannot
+            // appear from floating-point or raster precision.
+            const road = 0x3f4140;
+            const streetLots = [];
+            const roadSegments = [];
+            const addRoadSegment = (name, x1, z1, x2, z2, width = 24) => {
+              const dx = x2 - x1;
+              const dz = z2 - z1;
+              if (Math.abs(dx) > 0.001 && Math.abs(dz) > 0.001) {
+                throw new Error(`[naharStrait] road ${name} must be axis-aligned`);
+              }
+              const x = (x1 + x2) * 0.5;
+              const z = (z1 + z2) * 0.5;
+              streetLots.push({
+                x,
+                y: surfaceHeightAt(x, z) + 1.8,
+                z,
+                sx: Math.abs(dx) + (Math.abs(dx) > 0.001 ? 2 : width),
+                sy: 1.4,
+                sz: Math.abs(dz) + (Math.abs(dz) > 0.001 ? 2 : width)
+              });
+              roadSegments.push({ name, x1, z1, x2, z2, width });
+            };
+            for (const side of [-1, 1]) {
+              addRoadSegment(`coast-${side}`, -15800, side * 2850, 15800, side * 2850, 32);
+            }
+
+            // High central bridge: 105 m deck, 1.6 km water crossing and sloped
+            // approaches. The straight fleet route at z=0 passes beneath it.
+            const bridgeDeck = 0x54575a;
+            box(0, 105, 0, 34, 5, 1700, bridgeDeck);
+            beam([0, 34, -1700], [0, 105, -850], 28, bridgeDeck);
+            beam([0, 105, 850], [0, 34, 1700], 28, bridgeDeck);
+            roadSegments.push({ name: "bridge-link", x1: 0, z1: -1700, x2: 0, z2: 1700, width: 34 });
+            for (const z of [-560, 560]) {
+              box(-14, 105, z, 12, 168, 12, 0xd7d5cd);
+              box(14, 105, z, 12, 168, 12, 0xd7d5cd);
+              box(0, 190, z, 54, 8, 16, 0xd7d5cd);
+              for (const deckZ of [z < 0 ? -820 : 820, z < 0 ? -280 : 280]) {
+                beam([-14, 178, z], [-14, 108, deckZ], 2.2, 0xe1ddd1);
+                beam([14, 178, z], [14, 108, deckZ], 2.2, 0xe1ddd1);
+              }
+            }
+            // Continuous suspension profiles, hangers, rails and lane paint turn
+            // the bridge from a few disconnected blocks into the map's focal object.
+            for (const cableX of [-14, 14]) {
+              const cableNodes = [];
+              for (let z = -850; z <= 850; z += 85) {
+                let y;
+                if (z < -560) y = THREE.MathUtils.lerp(108, 178, (z + 850) / 290);
+                else if (z > 560) y = THREE.MathUtils.lerp(178, 108, (z - 560) / 290);
+                else y = 121 + 57 * Math.pow(Math.abs(z) / 560, 2);
+                cableNodes.push([cableX, y, z]);
+                if (z > -560 && z < 560 && z % 170 === 0) {
+                  beam([cableX, 109, z], [cableX, y, z], 1.25, 0xd8d6cf);
+                }
+              }
+              for (let i = 1; i < cableNodes.length; i += 1) {
+                beam(cableNodes[i - 1], cableNodes[i], 2.4, 0xd8d6cf);
+              }
+            }
+            for (const railX of [-16, 16]) box(railX, 111, 0, 1.6, 7, 1690, 0xc9cbc6);
+            for (let z = -800; z <= 800; z += 120) {
+              box(0, 108.2, z, 1.4, 0.7, 54, 0xe6d6a1);
+            }
+            for (const z of [-790, -400, 0, 400, 790]) {
+              cylinder(0, 49, z, 13, 98, 0x696b68);
+            }
+
+            // Civil navigation buoys make the east-west shipping lane readable at
+            // low altitude without occupying either fleet's route.
+            for (let x = -12000; x <= 12000; x += 1200) {
+              for (const z of [-620, 620]) {
+                const red = z < 0;
+                cylinder(x, 5, z, 8, 10, red ? 0xc74b3b : 0x3c9b66);
+                cylinder(x, 13, z, 3, 11, 0xe7e0cf);
+                cylinder(x, 20, z, 4, 3, red ? 0xff5b45 : 0x62ff9c, {
+                  emissive: red ? 0xff3b28 : 0x3cff7f
+                });
+              }
+            }
+
+            // Cape landmarks: lighthouse and coastal radar.
+            const lighthouseAt = [-1250, 1580];
+            const lighthouseGround = surfaceHeightAt(lighthouseAt[0], lighthouseAt[1]);
+            cylinder(lighthouseAt[0], lighthouseGround + 43, lighthouseAt[1], 14, 86, 0xe8e2d5);
+            cylinder(lighthouseAt[0], lighthouseGround + 92, lighthouseAt[1], 10, 12, 0xc94b39);
+            cylinder(lighthouseAt[0], lighthouseGround + 101, lighthouseAt[1], 5, 5, 0xffd788, { emissive: 0xffa13f });
+            const radarAt = [1300, -1580];
+            const radarGround = surfaceHeightAt(radarAt[0], radarAt[1]);
+            cylinder(radarAt[0], radarGround + 41, radarAt[1], 10, 82, 0x777a76);
+            box(radarAt[0], radarGround + 91, radarAt[1], 88, 8, 24, 0xb8bbb5, [0, 0.3, 0]);
+
+            // Interpolate the authored coastline instead of approximating it with a
+            // straight line. Waterfront industry then stays visibly on land at the
+            // 800 m bridge throat as well as on the 2.6 km outer capes.
+            const coastProfile = northCoastProfile;
+            const coastAt = (x) => {
+              if (x <= coastProfile[0][0]) return coastProfile[0][1];
+              if (x >= coastProfile[coastProfile.length - 1][0]) return coastProfile[coastProfile.length - 1][1];
+              for (let i = 1; i < coastProfile.length; i += 1) {
+                const a = coastProfile[i - 1];
+                const b = coastProfile[i];
+                if (x > b[0]) continue;
+                const t = (x - a[0]) / (b[0] - a[0]);
+                return a[1] + (b[1] - a[1]) * t;
+              }
+              return 2600;
+            };
+
+            // A layered coast replaces the old vertical brown extrusion: teal
+            // shallows sit outside the waterline, pale wet sand follows the actual
+            // terrain slope, and a narrow foam edge survives low-altitude passes.
+            const makeCoastBand = (name, side, distances, bandMaterial, yOffset) => {
+              const step = 200;
+              const columns = Math.round(36000 / step) + 1;
+              const rows = distances.length;
+              const positions = new Float32Array(columns * rows * 3);
+              const uvs = new Float32Array(columns * rows * 2);
+              let p = 0;
+              let uv = 0;
+              for (let column = 0; column < columns; column += 1) {
+                const x = -18000 + column * step;
+                const coast = coastAt(x);
+                for (let row = 0; row < rows; row += 1) {
+                  const distance = distances[row];
+                  const z = side * (coast + distance);
+                  positions[p++] = x;
+                  positions[p++] = Math.max(0, surfaceHeightAt(x, z)) + yOffset;
+                  positions[p++] = z;
+                  uvs[uv++] = column / 12;
+                  uvs[uv++] = row / Math.max(1, rows - 1);
+                }
+              }
+              const indices = [];
+              for (let column = 0; column < columns - 1; column += 1) {
+                for (let row = 0; row < rows - 1; row += 1) {
+                  const a = column * rows + row;
+                  const b = a + 1;
+                  const c = (column + 1) * rows + row;
+                  const d = c + 1;
+                  if (side > 0) indices.push(a, b, c, c, b, d);
+                  else indices.push(a, c, b, c, d, b);
+                }
+              }
+              const geometry = keepGeometry(new THREE.BufferGeometry());
+              geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+              geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+              geometry.setIndex(indices);
+              geometry.computeVertexNormals();
+              const band = new THREE.Mesh(geometry, bandMaterial);
+              band.name = `${name}${side > 0 ? "North" : "South"}`;
+              band.receiveShadow = true;
+              root.add(band);
+            };
+            const shallowMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x4a8990,
+              roughness: 0.44,
+              metalness: 0.06,
+              transparent: true,
+              opacity: 0.28,
+              depthWrite: false
+            }));
+            const beachMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xb49a72,
+              roughness: 0.98,
+              metalness: 0
+            }));
+            const foamMaterial = keepMaterial(new THREE.MeshBasicMaterial({
+              color: 0xffe5c4,
+              transparent: true,
+              opacity: 0.46,
+              depthWrite: false,
+              side: THREE.DoubleSide
+            }));
+            for (const side of [-1, 1]) {
+              makeCoastBand("naharShallows", side, [-150, -62, -8], shallowMaterial, 0.28);
+              makeCoastBand("naharBeach", side, [8, 42, 105, 180], beachMaterial, 0.14);
+              makeCoastBand("naharFoamLine", side, [-7, 0, 8], foamMaterial, 0.42);
+            }
+
+            // ---------------------------------------------------------------------
+            // TOWNS — dense, textured prefab families with shared GPU batches.
+            // ---------------------------------------------------------------------
+            const buildingTextures = makeBuildingTextures();
+            const officeTextures = makeOfficeTextures();
+            const buildingGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            for (const group of buildingGeometry.groups) group.materialIndex = 0;
+            buildingGeometry.groups[2].materialIndex = 1;
+            buildingGeometry.groups[3].materialIndex = 1;
+            const buildingWallMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xe4d8c3,
+              map: buildingTextures.wall,
+              emissive: 0xffb35e,
+              emissiveMap: buildingTextures.emissive,
+              emissiveIntensity: 0.62,
+              roughness: 0.81,
+              metalness: 0.04,
+              vertexColors: true
+            }));
+            const buildingRoofMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xaaa49a,
+              map: buildingTextures.roof,
+              roughness: 0.93,
+              metalness: 0.03,
+              vertexColors: true
+            }));
+            const officeWallMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xc5cdd0,
+              map: officeTextures.wall,
+              emissive: 0xffad66,
+              emissiveMap: officeTextures.emissive,
+              emissiveIntensity: 0.52,
+              roughness: 0.58,
+              metalness: 0.18,
+              vertexColors: true
+            }));
+            const stabilizeFacadeAtDistance = (facadeMaterial, cacheKey) => {
+              facadeMaterial.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                  "#include <emissivemap_fragment>",
+                  `#include <emissivemap_fragment>
+                  // Individual window texels become unstable sub-pixel sparks at
+                  // combat distance. Keep the building silhouette and albedo, but
+                  // fade only its emissive contribution into the district glow.
+                  totalEmissiveRadiance *= 1.0 - smoothstep(3400.0, 9800.0, length(vViewPosition));`
+                );
+                facadeMaterial.userData.shader = shader;
+              };
+              facadeMaterial.customProgramCacheKey = () => `nahar-facade-${cacheKey}-v1`;
+            };
+            stabilizeFacadeAtDistance(buildingWallMaterial, "masonry");
+            stabilizeFacadeAtDistance(officeWallMaterial, "office");
+            const townLots = [];
+            const townTints = [0xe1d2bb, 0xd1d2c8, 0xd7c4ae, 0xbecac4, 0xd9ccb3, 0xc8c5ba];
+            for (const side of [-1, 1]) {
+              for (let x = -14800; x <= 14800; x += 260) {
+                if (Math.abs(x) < 1180) continue;
+                const centreLift = Math.max(
+                  Math.exp(-Math.pow((x + 6800) / 2300, 2)),
+                  Math.exp(-Math.pow((x - 5700) / 2100, 2))
+                );
+                const blockRows = [3780, 4200, 4980, 5400, 6180, 6600, 7440];
+                for (let row = 0; row < blockRows.length; row += 1) {
+                  const fill = 0.78 - row * 0.045;
+                  const homesPerCell = row >= 5 ? 2 : 1;
+                  for (let lot = 0; lot < homesPerCell; lot += 1) {
+                    if (rand() > fill - lot * 0.08) continue;
+                    const residential = row >= 5;
+                    const jx = (rand() - 0.5) * 54 + (residential ? (lot ? 64 : -64) : 0);
+                    const jz = (rand() - 0.5) * 48;
+                    const zAbs = blockRows[row] + jz;
+                    const width = residential ? 42 + rand() * 42 : 88 + rand() * 76;
+                    const depth = residential ? 46 + rand() * 48 : 76 + rand() * 78;
+                    const lowRise = residential ? 13 + rand() * 25 : 22 + rand() * 42;
+                    const skyline = centreLift * (18 + rand() * 92) * Math.max(0.32, 1 - row * 0.09);
+                    const height = Math.min(148, lowRise + skyline);
+                    const worldZ = side * zAbs;
+                    const baseY = surfaceHeightAt(x + jx, worldZ);
+                    townLots.push({
+                      x: x + jx,
+                      y: baseY + height * 0.5,
+                      z: worldZ,
+                      sx: width,
+                      sy: height,
+                      sz: depth,
+                      archetype: residential ? "residential" : (height > 94 ? "office" : "apartment"),
+                      color: townTints[Math.floor(rand() * townTints.length)]
+                    });
+                  }
+                }
+              }
+            }
+            // The bridge throat is the part the player actually flies over. A second
+            // waterfront band fills the old 2.4 km blank between the shoreline and
+            // the inland town, while leaving the bridge centreline and both landmark
+            // compounds open. It is denser and lower than the inland skyline: ferry
+            // offices, apartments, workshops and hotels rather than another CBD.
+            const heroTowerCaps = [];
+            for (const side of [-1, 1]) {
+              for (let x = -4700; x <= 4700; x += 230) {
+                if (Math.abs(x) < 1050) continue;
+                const shore = coastAt(x);
+                for (let row = 0; row < 4; row += 1) {
+                  if (rand() > 0.82 - row * 0.06) continue;
+                  const jx = (rand() - 0.5) * 58;
+                  const jz = (rand() - 0.5) * 44;
+                  const zAbs = shore + 230 + row * 245 + jz;
+                  const landmarkX = side > 0 ? -1250 : 1300;
+                  const landmarkZ = 1580;
+                  if (Math.hypot(x + jx - landmarkX, zAbs - landmarkZ) < 260) continue;
+                  const height = 24 + rand() * (row < 2 ? 62 : 48);
+                  const worldZ = side * zAbs;
+                  const baseY = surfaceHeightAt(x + jx, worldZ);
+                  townLots.push({
+                    x: x + jx,
+                    y: baseY + height * 0.5,
+                    z: worldZ,
+                    sx: 84 + rand() * 78,
+                    sy: height,
+                    sz: 72 + rand() * 74,
+                    archetype: row < 2 && height > 58 ? "hotel" : "apartment",
+                    color: townTints[Math.floor(rand() * townTints.length)]
+                  });
+                }
+              }
+            }
+            // Two recognisable urban centres on each bank. Their stepped crowns and
+            // 160–235 m height break the otherwise low-rise silhouette, letting the
+            // player judge which part of the 32 km shore they are approaching.
+            for (const side of [-1, 1]) {
+              for (const centre of [-6800, 5700]) {
+                for (let ix = -2; ix <= 2; ix += 1) {
+                  for (let iz = 0; iz < 2; iz += 1) {
+                    if (rand() > 0.83) continue;
+                    const x = centre + ix * 230 + (rand() - 0.5) * 42;
+                    const zAbs = 3860 + iz * 300 + (rand() - 0.5) * 30;
+                    const height = 154 + rand() * 82 - Math.abs(ix) * 11;
+                    const width = 92 + rand() * 54;
+                    const depth = 86 + rand() * 48;
+                    const worldZ = side * zAbs;
+                    const baseY = surfaceHeightAt(x, worldZ);
+                    townLots.push({
+                      x,
+                      y: baseY + height * 0.5,
+                      z: worldZ,
+                      sx: width,
+                      sy: height,
+                      sz: depth,
+                      archetype: "office",
+                      hero: true,
+                      color: townTints[(ix + iz + 8) % townTints.length]
+                    });
+                    heroTowerCaps.push({
+                      x,
+                      y: baseY + height + 6,
+                      z: worldZ,
+                      sx: width * 0.52,
+                      sy: 12,
+                      sz: depth * 0.48
+                    });
+                  }
+                }
+              }
+            }
+            const plannedRoads = [
+              ...[-1, 1].flatMap((side) => [2850, 3500, 4700, 5900, 7100]
+                .map((zAbs) => ({ minX: -15020, maxX: 15020, minZ: side * zAbs - 26, maxZ: side * zAbs + 26 }))),
+              ...[-1, 1].map((side) => ({ minX: -35, maxX: 35, minZ: Math.min(side * 1700, side * 7900), maxZ: Math.max(side * 1700, side * 7900) })),
+              ...[-1, 1].flatMap((side) => {
+                const segments = [];
+                for (let roadX = -14600; roadX <= 14600; roadX += 1040) {
+                  if (Math.abs(roadX) < 1300) continue;
+                  segments.push({ minX: roadX - 24, maxX: roadX + 24, minZ: Math.min(side * 2850, side * 7900), maxZ: Math.max(side * 2850, side * 7900) });
+                }
+                for (const portX of [-10500, 9200]) {
+                  segments.push({ minX: portX - 28, maxX: portX + 28, minZ: Math.min(side * 2780, side * 3500), maxZ: Math.max(side * 2780, side * 3500) });
+                }
+                return segments;
+              })
+            ];
+            const buildingHitsRoad = (building) => {
+              const clearance = 12;
+              const minX = building.x - building.sx * 0.5 - clearance;
+              const maxX = building.x + building.sx * 0.5 + clearance;
+              const minZ = building.z - building.sz * 0.5 - clearance;
+              const maxZ = building.z + building.sz * 0.5 + clearance;
+              return plannedRoads.some((roadBounds) => minX <= roadBounds.maxX && maxX >= roadBounds.minX
+                && minZ <= roadBounds.maxZ && maxZ >= roadBounds.minZ);
+            };
+            const roadSafeTownLots = townLots
+              .filter((building) => !buildingHitsRoad(building))
+              .sort((a, b) => Number(Boolean(b.hero)) - Number(Boolean(a.hero)));
+            const nonOverlappingTownLots = [];
+            const buildingsOverlap = (a, b, gap = 8) => (
+              Math.abs(a.x - b.x) < (a.sx + b.sx) * 0.5 + gap
+              && Math.abs(a.z - b.z) < (a.sz + b.sz) * 0.5 + gap
+            );
+            for (const candidate of roadSafeTownLots) {
+              if (nonOverlappingTownLots.some((placed) => buildingsOverlap(candidate, placed))) continue;
+              nonOverlappingTownLots.push(candidate);
+            }
+            townLots.length = 0;
+            townLots.push(...nonOverlappingTownLots);
+            const safeCaps = heroTowerCaps.filter((cap) => townLots.some((building) =>
+              Math.abs(building.x - cap.x) < 1 && Math.abs(building.z - cap.z) < 1));
+            heroTowerCaps.length = 0;
+            heroTowerCaps.push(...safeCaps);
+            root.userData.prefabLots = townLots.map((building) => ({
+              x: building.x,
+              z: building.z,
+              sx: building.sx,
+              sz: building.sz,
+              baseY: building.y - building.sy * 0.5,
+              archetype: building.archetype
+            }));
+            // A small prefab catalogue. Each finished type is composed from shared
+            // body/detail geometries below, then every occurrence is GPU-instanced.
+            // That gives repeated assets consistent construction detail without the
+            // cost and visual sameness of cloning one naked box a thousand times.
+            const residentialLots = townLots.filter((building) => building.archetype === "residential");
+            const urbanLots = townLots.filter((building) => ["apartment", "hotel"].includes(building.archetype));
+            const officeLots = townLots.filter((building) => building.archetype === "office");
+            const town = addInstancedBoxes(
+              "naharTownBuildings",
+              residentialLots,
+              [buildingWallMaterial, buildingRoofMaterial],
+              buildingGeometry
+            );
+            const apartments = addInstancedBoxes(
+              "naharApartmentPrefabs",
+              urbanLots,
+              [buildingWallMaterial, buildingRoofMaterial],
+              buildingGeometry
+            );
+            const offices = addInstancedBoxes(
+              "naharOfficePrefabs",
+              officeLots,
+              [officeWallMaterial, buildingRoofMaterial],
+              buildingGeometry
+            );
+            for (const batch of [town, apartments, offices]) {
+              if (batch) batch.userData.textureSet = "procedural-prefab-facades-roofs";
+            }
+            addInstancedBoxes("naharTowerCrowns", heroTowerCaps, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xc2c5bf,
+              roughness: 0.66,
+              metalness: 0.28
+            })));
+            const buildingFootings = townLots.map((building) => ({
+              x: building.x,
+              y: building.y - building.sy * 0.5 + 0.35,
+              z: building.z,
+              sx: building.sx * 1.08,
+              sy: 0.7,
+              sz: building.sz * 1.08,
+              yaw: building.yaw || 0
+            }));
+            addInstancedBoxes("naharBuildingFootings", buildingFootings, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x393d3a,
+              roughness: 1,
+              metalness: 0
+            })));
+            const residentialRoofs = [];
+            const residentialChimneys = [];
+            const cornices = [];
+            const balconySlabs = [];
+            const officeSetbacks = [];
+            const hotelAwnings = [];
+            const storefrontBands = [];
+            const roofEquipment = [];
+            const roofAntennas = [];
+            townLots.forEach((building, index) => {
+              const top = building.y + building.sy * 0.5;
+              if (building.archetype === "residential") {
+                residentialRoofs.push({
+                  x: building.x,
+                  y: top + 5,
+                  z: building.z,
+                  sx: building.sx * 1.08,
+                  sy: 10,
+                  sz: building.sz * 1.1,
+                  color: index % 3 === 0 ? 0x76554a : (index % 3 === 1 ? 0x5f6663 : 0x8a7257)
+                });
+                if (index % 3 === 0) {
+                  residentialChimneys.push({
+                    x: building.x + building.sx * 0.24,
+                    y: top + 11,
+                    z: building.z,
+                    sx: 3.8,
+                    sy: 13,
+                    sz: 3.8
+                  });
+                }
+              } else if (building.archetype === "apartment" || building.archetype === "hotel") {
+                cornices.push({
+                  x: building.x,
+                  y: top - 1.2,
+                  z: building.z,
+                  sx: building.sx * 1.07,
+                  sy: 2.4,
+                  sz: building.sz * 1.07
+                });
+                for (const fraction of [0.28, 0.52, 0.76]) {
+                  balconySlabs.push({
+                    x: building.x,
+                    y: building.y - building.sy * 0.5 + building.sy * fraction,
+                    z: building.z,
+                    sx: building.sx * 1.035,
+                    sy: 1.15,
+                    sz: building.sz * 1.035
+                  });
+                }
+                if (building.archetype === "hotel") {
+                  hotelAwnings.push({
+                    x: building.x,
+                    y: building.y - building.sy * 0.5 + 5.5,
+                    z: building.z - Math.sign(building.z) * (building.sz * 0.5 + 7),
+                    sx: building.sx * 0.42,
+                    sy: 2.4,
+                    sz: 14,
+                    color: index % 2 ? 0x5e756e : 0x8b5947
+                  });
+                }
+                storefrontBands.push({
+                  x: building.x,
+                  y: building.y - building.sy * 0.5 + 4.5,
+                  z: building.z - Math.sign(building.z) * (building.sz * 0.5 + 1.2),
+                  sx: building.sx * 0.82,
+                  sy: 6.5,
+                  sz: 2.4,
+                  color: building.archetype === "hotel" ? 0xd89a5f : 0x74a1a4
+                });
+              } else if (building.archetype === "office" && building.sy > 110) {
+                officeSetbacks.push({
+                  x: building.x,
+                  y: top + 10,
+                  z: building.z,
+                  sx: building.sx * 0.68,
+                  sy: 20,
+                  sz: building.sz * 0.68,
+                  color: building.color
+                });
+              }
+              if (index % 7 === 0) {
+                roofEquipment.push({
+                  x: building.x + building.sx * 0.18,
+                  y: top + (building.archetype === "residential" ? 11.5 : 3.5),
+                  z: building.z - building.sz * 0.16,
+                  sx: Math.max(14, building.sx * 0.2),
+                  sy: 7,
+                  sz: Math.max(12, building.sz * 0.2),
+                  color: index % 3 ? 0x737a78 : 0x9b907e
+                });
+              }
+              if (building.sy > 128 && index % 3 === 0) {
+                roofAntennas.push({
+                  x: building.x,
+                  y: building.y + building.sy * 0.5 + 18,
+                  z: building.z,
+                  sx: 1.8,
+                  sy: 36,
+                  sz: 1.8
+                });
+              }
+            });
+            const residentialRoofGeometry = keepGeometry(new THREE.BufferGeometry());
+            residentialRoofGeometry.setAttribute("position", new THREE.Float32BufferAttribute([
+              -0.5, 0, -0.5, 0.5, 0, -0.5, 0, 0.5, -0.5,
+              -0.5, 0, 0.5, 0.5, 0, 0.5, 0, 0.5, 0.5
+            ], 3));
+            residentialRoofGeometry.setAttribute("uv", new THREE.Float32BufferAttribute([
+              0, 0, 1, 0, 0.5, 1,
+              0, 0, 1, 0, 0.5, 1
+            ], 2));
+            residentialRoofGeometry.setIndex([
+              0, 1, 2, 3, 5, 4,
+              0, 2, 5, 0, 5, 3,
+              1, 4, 5, 1, 5, 2
+            ]);
+            residentialRoofGeometry.computeVertexNormals();
+            addInstancedBoxes("naharResidentialPrefabRoofs", residentialRoofs, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.9,
+              metalness: 0.02,
+              vertexColors: true
+            })), residentialRoofGeometry);
+            addInstancedBoxes("naharResidentialChimneys", residentialChimneys, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x695448,
+              roughness: 0.92,
+              metalness: 0.01
+            })));
+            addInstancedBoxes("naharApartmentCornices", cornices, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xb8b4a9,
+              roughness: 0.76,
+              metalness: 0.06
+            })));
+            addInstancedBoxes("naharApartmentBalconies", balconySlabs, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x696f6d,
+              roughness: 0.7,
+              metalness: 0.14
+            })));
+            addInstancedBoxes("naharOfficeSetbacks", officeSetbacks, [officeWallMaterial, buildingRoofMaterial], buildingGeometry);
+            addInstancedBoxes("naharHotelAwnings", hotelAwnings, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.84,
+              metalness: 0.03,
+              vertexColors: true
+            })));
+            addInstancedBoxes("naharStorefrontBands", storefrontBands, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              emissive: 0x7d5b3e,
+              emissiveIntensity: 0.45,
+              roughness: 0.4,
+              metalness: 0.28,
+              vertexColors: true
+            })));
+            addInstancedBoxes("naharRoofEquipment", roofEquipment, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.72,
+              metalness: 0.3,
+              vertexColors: true
+            })));
+            addInstancedBoxes("naharRoofAntennas", roofAntennas, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xa9aaa4,
+              roughness: 0.5,
+              metalness: 0.58
+            })), cylinderGeometry);
+
+            // Farmland gives the huge inland capes a readable land-use scale. The
+            // cape shader supplies fine grain; these broad, slightly rotated parcels
+            // provide the kilometre-scale colour blocks visible from combat height.
+            const fieldLots = [];
+            const fieldColors = [0x667246, 0x7d7442, 0x52623e, 0x8a6940, 0x716f4a, 0x59683f];
+            for (const side of [-1, 1]) {
+              for (let x = -15200; x <= 15200; x += 620) {
+                if (Math.abs(x) < 1550) continue;
+                for (let row = 0; row < 4; row += 1) {
+                  if (rand() > 0.86) continue;
+                  const zAbs = 6450 + row * 780 + (rand() - 0.5) * 170;
+                  const fieldX = x + (rand() - 0.5) * 180;
+                  const fieldZ = side * zAbs;
+                  fieldLots.push({
+                    x: fieldX,
+                    y: surfaceHeightAt(fieldX, fieldZ) + 0.7,
+                    z: fieldZ,
+                    sx: 470 + rand() * 150,
+                    sy: 1.2,
+                    sz: 560 + rand() * 170,
+                    yaw: (rand() - 0.5) * 0.08,
+                    color: fieldColors[Math.floor(rand() * fieldColors.length)]
+                  });
+                }
+              }
+            }
+            addInstancedBoxes("naharLandUseFields", fieldLots, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 1,
+              metalness: 0,
+              vertexColors: true
+            })));
+
+            // Tree belts separate built-up districts from the field sheet. Kept to
+            // two instanced draws (trunks + canopies); their irregular edge is what
+            // stops the town from looking stamped onto a rectangular board.
+            const treeTrunks = [];
+            const treeCanopies = [];
+            const treeColors = [0x263c29, 0x30492d, 0x3a5131, 0x294331];
+            for (const side of [-1, 1]) {
+              for (let i = 0; i < 520; i += 1) {
+                const x = -15400 + rand() * 30800;
+                if (Math.abs(x) < 1500) continue;
+                const zAbs = 6100 + rand() * 3400;
+                // Leave the strongest road axes open so the green belts read as
+                // planned districts rather than trees growing through tarmac.
+                if (Math.abs(((x + 14600) % 1040) - 520) > 440) continue;
+                const trunkHeight = 12 + rand() * 10;
+                const crownHeight = 22 + rand() * 20;
+                const crownRadius = 9 + rand() * 12;
+                const treeZ = side * zAbs;
+                const treeGround = surfaceHeightAt(x, treeZ);
+                treeTrunks.push({
+                  x,
+                  y: treeGround + trunkHeight * 0.5,
+                  z: treeZ,
+                  sx: 2.8,
+                  sy: trunkHeight,
+                  sz: 2.8
+                });
+                treeCanopies.push({
+                  x,
+                  y: treeGround + trunkHeight + crownHeight * 0.46,
+                  z: treeZ,
+                  sx: crownRadius,
+                  sy: crownHeight,
+                  sz: crownRadius,
+                  yaw: rand() * Math.PI,
+                  color: treeColors[Math.floor(rand() * treeColors.length)]
+                });
+              }
+            }
+            addInstancedBoxes("naharTreeTrunks", treeTrunks, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x463425,
+              roughness: 1,
+              metalness: 0
+            })), cylinderGeometry);
+            const treeGeometry = keepGeometry(new THREE.ConeGeometry(1, 1, 7));
+            addInstancedBoxes("naharTreeBelts", treeCanopies, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.96,
+              metalness: 0,
+              vertexColors: true
+            })), treeGeometry);
+
+            // A full street hierarchy: shore highway, parallel town avenues and
+            // cross streets. Dark ribbons survive the warm sunset lighting and make
+            // the city density legible even before individual buildings resolve.
+            for (const side of [-1, 1]) {
+              for (const zAbs of [3500, 4700, 5900, 7100]) {
+                addRoadSegment(`avenue-${side}-${zAbs}`, -15000, side * zAbs, 15000, side * zAbs, zAbs === 3500 ? 30 : 24);
+              }
+              for (let x = -14600; x <= 14600; x += 1040) {
+                if (Math.abs(x) < 1300) continue;
+                // Starts on the coastal highway. The previous coast+340 start left a
+                // visible 300 m gap between almost every cross street and the road it
+                // was supposed to feed.
+                addRoadSegment(`cross-${side}-${x}`, x, side * 2850, x, side * 7900, 20);
+              }
+              // This is the missing bridge connection: deck approach -> coast road
+              // -> every inland avenue. Its endpoint overlaps the 1.7 km approach.
+              addRoadSegment(`central-boulevard-${side}`, 0, side * 1700, 0, side * 7900, 38);
+              // Port gates join the harbour apron to the coast highway and first
+              // avenue; cranes and warehouses now belong to the same road network.
+              for (const portX of [-10500, 9200]) {
+                addRoadSegment(
+                  `port-access-${side}-${portX}`,
+                  portX,
+                  side * (coastAt(portX) + 200),
+                  portX,
+                  side * 3500,
+                  26
+                );
+              }
+            }
+            const streetGrid = addInstancedBoxes("naharStreetGrid", streetLots, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x2e3333,
+              roughness: 0.96,
+              metalness: 0.01
+            })));
+            streetGrid.userData.segments = roadSegments;
+            const roadJunctions = [];
+            const junctionKeys = new Set();
+            for (let i = 0; i < roadSegments.length; i += 1) {
+              const a = roadSegments[i];
+              const aHorizontal = Math.abs(a.z2 - a.z1) < 0.001;
+              for (let j = i + 1; j < roadSegments.length; j += 1) {
+                const b = roadSegments[j];
+                const bHorizontal = Math.abs(b.z2 - b.z1) < 0.001;
+                if (aHorizontal === bHorizontal) continue;
+                const horizontal = aHorizontal ? a : b;
+                const vertical = aHorizontal ? b : a;
+                const x = vertical.x1;
+                const z = horizontal.z1;
+                if (x < Math.min(horizontal.x1, horizontal.x2) || x > Math.max(horizontal.x1, horizontal.x2)
+                  || z < Math.min(vertical.z1, vertical.z2) || z > Math.max(vertical.z1, vertical.z2)) continue;
+                const key = `${Math.round(x)}:${Math.round(z)}`;
+                if (junctionKeys.has(key)) continue;
+                junctionKeys.add(key);
+                const size = Math.max(horizontal.width, vertical.width) + 5;
+                roadJunctions.push({
+                  x,
+                  y: surfaceHeightAt(x, z) + 2.05,
+                  z,
+                  sx: size,
+                  sy: 1.65,
+                  sz: size
+                });
+              }
+            }
+            const junctionBatch = addInstancedBoxes("naharRoadJunctions", roadJunctions, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0x303534,
+              roughness: 0.97,
+              metalness: 0.01
+            })));
+            junctionBatch.userData.junctionCount = roadJunctions.length;
+
+            const roadMarks = [];
+            for (const side of [-1, 1]) {
+              for (const zAbs of [2850, 3500, 4700, 5900]) {
+                for (let x = -14600; x <= 14600; x += 360) {
+                  roadMarks.push({ x, y: 37.1, z: side * zAbs, sx: 68, sy: 0.45, sz: 2.3 });
+                }
+              }
+              for (let zAbs = 1900; zAbs <= 7700; zAbs += 240) {
+                roadMarks.push({ x: 0, y: 36.9, z: side * zAbs, sx: 2.3, sy: 0.45, sz: 72 });
+              }
+            }
+            addInstancedBoxes("naharRoadMarkings", roadMarks, keepMaterial(new THREE.MeshBasicMaterial({ color: 0xd6c993 })));
+
+            // ---------------------------------------------------------------------
+            // PORTS — containers, warehouses, tanks and gantry cranes on both banks.
+            // ---------------------------------------------------------------------
+            const containerLots = [];
+            const containerColors = [0x9d3f34, 0x28586c, 0xc08435, 0x466a55, 0x6b7074, 0x783c46];
+            const portCentres = [-10500, 9200];
+            // Reclaimed concrete quays give the cranes and containers a convincing
+            // load-bearing edge instead of leaving them hovering above beach slope.
+            // Finger piers project toward the channel but stop well outside its lane.
+            for (const side of [-1, 1]) {
+              for (const centre of portCentres) {
+                const coast = coastAt(centre);
+                box(centre, 17, side * (coast + 165), 3500, 34, 690, 0x5c5f5c);
+                box(centre, 34.8, side * (coast + 165), 3470, 1.5, 660, 0x777b76);
+                for (const offset of [-1120, -380, 380, 1120]) {
+                  box(centre + offset, 15, side * (coast - 235), 86, 30, 540, 0x666a68);
+                  cylinder(centre + offset, 33, side * (coast - 480), 10, 22, 0xd5cbb8);
+                }
+                // A low breakwater frames each harbour mouth without creating a new
+                // obstacle on M04's central east-west ship route.
+                box(centre + 1840, 9, side * (coast - 180), 520, 18, 54, 0x4e5351, [0, 0.1 * side, 0]);
+                box(centre - 1840, 9, side * (coast - 180), 520, 18, 54, 0x4e5351, [0, -0.1 * side, 0]);
+              }
+            }
+            for (const side of [-1, 1]) {
+              for (const centre of portCentres) {
+                for (let ix = -8; ix <= 8; ix += 1) {
+                  for (let iz = 0; iz < 5; iz += 1) {
+                    if (rand() > 0.84) continue;
+                    const x = centre + ix * 92;
+                    const baseZ = coastAt(x) + 250 + iz * 58;
+                    const stack = rand() > 0.58 ? 2 : 1;
+                    for (let level = 0; level < stack; level += 1) {
+                      containerLots.push({
+                        x,
+                        y: 34 + 8 + level * 16,
+                        z: side * baseZ,
+                        sx: 72,
+                        sy: 15,
+                        sz: 24,
+                        yaw: centre < 0 ? 0.03 : -0.025,
+                        color: containerColors[Math.floor(rand() * containerColors.length)]
+                      });
+                    }
+                  }
+                }
+              }
+            }
+            addInstancedBoxes("naharHarbourContainers", containerLots, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.7,
+              metalness: 0.32,
+              vertexColors: true
+            })));
+
+            const warehouseLots = [];
+            const warehouseColors = [0x85827a, 0x6f7777, 0x9a866e, 0x74716b];
+            for (const side of [-1, 1]) {
+              for (const centre of portCentres) {
+                for (let i = -3; i <= 3; i += 1) {
+                  const x = centre + i * 360;
+                  const zAbs = coastAt(x) + 820 + (i & 1) * 120;
+                  const height = 34 + (i % 3 + 2) * 7;
+                  warehouseLots.push({
+                    x,
+                    y: 34 + height * 0.5,
+                    z: side * zAbs,
+                    sx: 270,
+                    sy: height,
+                    sz: 155,
+                    color: warehouseColors[(i + 8) % warehouseColors.length]
+                  });
+                }
+              }
+            }
+            addInstancedBoxes("naharHarbourWarehouses", warehouseLots, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              map: buildingTextures.roof,
+              roughness: 0.82,
+              metalness: 0.17,
+              vertexColors: true
+            })));
+
+            const craneSteel = [];
+            const craneCabins = [];
+            for (const side of [-1, 1]) {
+              for (const centre of portCentres) {
+                for (let i = -2; i <= 2; i += 1) {
+                  const x = centre + i * 530;
+                  const z = side * (coastAt(x) + 115);
+                  craneSteel.push({ x, y: 102, z, sx: 12, sy: 136, sz: 12 });
+                  craneSteel.push({ x: x + side * 0, y: 164, z: z - side * 58, sx: 12, sy: 10, sz: 130 });
+                  craneSteel.push({ x, y: 93, z: z + side * 32, sx: 58, sy: 9, sz: 10 });
+                  craneCabins.push({ x: x + 25, y: 132, z, sx: 26, sy: 22, sz: 24 });
+                }
+              }
+            }
+            addInstancedBoxes("naharPortCranes", craneSteel, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xb56b35,
+              roughness: 0.53,
+              metalness: 0.58
+            })));
+            addInstancedBoxes("naharPortCraneCabins", craneCabins, keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xe0b05e,
+              roughness: 0.46,
+              metalness: 0.26
+            })));
+
+            const tankEntries = [];
+            for (const side of [-1, 1]) {
+              for (let i = 0; i < 28; i += 1) {
+                const x = -4800 + (i % 14) * 260 + (rand() - 0.5) * 45;
+                const zAbs = 3850 + Math.floor(i / 14) * 330 + (rand() - 0.5) * 55;
+                tankEntries.push({ x, y: 57, z: side * zAbs, r: 44 + rand() * 18, h: 46, color: i % 3 ? 0xb6b0a2 : 0x8b928f });
+              }
+            }
+            const tankGeometry = cylinderGeometry;
+            const tankMaterial = keepMaterial(new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.6,
+              metalness: 0.36,
+              vertexColors: true
+            }));
+            const tankBatch = new THREE.InstancedMesh(tankGeometry, tankMaterial, tankEntries.length);
+            tankBatch.name = "naharTankFarms";
+            {
+              const matrix = new THREE.Matrix4();
+              const position = new THREE.Vector3();
+              const quaternion = new THREE.Quaternion();
+              const scale = new THREE.Vector3();
+              const tint = new THREE.Color();
+              tankEntries.forEach((entry, index) => {
+                position.set(entry.x, entry.y, entry.z);
+                scale.set(entry.r, entry.h, entry.r);
+                tankBatch.setMatrixAt(index, matrix.compose(position, quaternion, scale));
+                tankBatch.setColorAt(index, tint.setHex(entry.color));
+              });
+              tankBatch.instanceMatrix.needsUpdate = true;
+              tankBatch.instanceColor.needsUpdate = true;
+            }
+            tankBatch.castShadow = false;
+            tankBatch.receiveShadow = true;
+            tankBatch.userData.instanceCount = tankEntries.length;
+            root.add(tankBatch);
+
+            // One point cloud carries the inhabited coast at dusk: lamps follow the
+            // road hierarchy and no real PointLights are added, so illumination and
+            // mission performance remain unchanged.
+            const lampTexture = canvasTexture("naharStreetLampSprite", 32, (context, size) => {
+              const glow = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+              glow.addColorStop(0, "rgba(255,242,188,1)");
+              glow.addColorStop(0.22, "rgba(255,186,92,0.92)");
+              glow.addColorStop(1, "rgba(255,124,42,0)");
+              context.fillStyle = glow;
+              context.fillRect(0, 0, size, size);
+            });
+            const lampPositions = [];
+            for (const side of [-1, 1]) {
+              for (const zAbs of [2850, 3500, 4700, 5900]) {
+                for (let x = -14800; x <= 14800; x += 230) {
+                  if (Math.abs(x) < 1500 && zAbs === 2850) continue;
+                  lampPositions.push(x, 46, side * zAbs);
+                }
+              }
+            }
+            const lampGeometry = keepGeometry(new THREE.BufferGeometry());
+            lampGeometry.setAttribute("position", new THREE.Float32BufferAttribute(lampPositions, 3));
+            const lamps = new THREE.Points(lampGeometry, keepMaterial(new THREE.PointsMaterial({
+              color: 0xffc06d,
+              map: lampTexture,
+              size: 18,
+              sizeAttenuation: true,
+              transparent: true,
+              opacity: 0.86,
+              depthWrite: false,
+              blending: THREE.AdditiveBlending
+            })));
+            lamps.name = "naharStreetLights";
+            lamps.renderOrder = 3;
+            lamps.userData.pointCount = lampPositions.length / 3;
+            root.add(lamps);
+
+            root.traverse((node) => {
+              if (!node.isMesh) return;
+              node.castShadow = false;
+              node.receiveShadow = true;
+            });
+          }
+        });
+      },
+      "map_naharStrait"
+    ); // @payload:map_naharStrait
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES
+        } = ctx.tables;
+
+        if (!WORLD_PRESETS.naharStrait) {
+          throw new Error("[sera-m04] naharStrait is not registered; load map_naharStrait first");
+        }
+        if (!MISSIONS.some((mission) => mission.key === "sera-m03" && mission.campaign === "sera")) {
+          throw new Error("[sera-m04] stable sera-m03 predecessor is missing; finish M03 campaign isolation first");
+        }
+        for (const type of ["f2a", "f4", "f16", "mig21", "mig29", "su34"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m04] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["mig21", "mig29", "su34"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m04] required enemy profile not registered: ${type}`);
+        }
+        for (const type of ["cruiser", "lhd", "missileBoat", "carrier", "frigate"]) {
+          if (!SHIP_TYPES[type]) throw new Error(`[sera-m04] required ship type not registered: ${type}`);
+        }
+
+        const m04FleetContract = Object.freeze({
+          timeLimit: 1500,
+          shipRoute: Object.freeze({
+            start: Object.freeze([11500, 0]),
+            bridge: Object.freeze([0, 0]),
+            breachLineX: -6500,
+            speed: 14,
+            heading: "west"
+          }),
+          redFleet: Object.freeze({
+            targetTypes: Object.freeze(["cruiser", "lhd", "lhd", "lhd"]),
+            updateArmedAtDestroyed: 2,
+            updateArmedAtSeconds: 360,
+            failAtBreaches: 2,
+            continueAtBreaches: 1,
+            breachMark: "m04LhdBreach"
+          }),
+          missionUpdate: Object.freeze({
+            afterRedFleetDestroyed: true,
+            quietDelay: Object.freeze([12, 18]),
+            banner: "PROTECT CVN EPOCH",
+            strikeTypes: Object.freeze(["su34", "su34"]),
+            escortTypes: Object.freeze([]),
+            firstMissileNotBefore: 60
+          }),
+          epoch: Object.freeze({
+            friendlyId: "epoch",
+            label: "CVN EPOCH",
+            position: Object.freeze([-9000, 0]),
+            maxHp: 4200,
+            failOnLoss: true
+          }),
+          rank: Object.freeze({
+            sTime: 990,
+            aTime: 1140,
+            sMaxBreaches: 0,
+            aMaxBreaches: 0,
+            sEpochHpPercent: 70,
+            bEpochHpPercent: 40,
+            ignoreWhiteTargets: true
+          }),
+          loadoutHints: Object.freeze({
+            f2a_lasm: "横腹へ射線を作れば届く。",
+            f4_ugb: "艦を越えたら、すぐ上げろ。",
+            f16: "防空艦から順番にいこう。",
+            otherAntiShip: "その兵装の得意な距離でやろう。"
+          })
+        });
+
+        const mission = {
+          key: "sera-m04",
+          campaign: "sera",
+          campaignOrder: 4,
+          world: "naharStrait",
+          title: "NARROW SEA",
+          jp: "ナハル海峡を西進するエレム揚陸艦隊を阻止し、その後の対艦航空攻撃からセラ艦隊を守れ。",
+          act: 1,
+          storyNo: 4,
+          story: "WAR DAY 022。エレム揚陸艦隊がナハル海峡を西進している。\nROOKは海峡内で主力艦を止め、空母EPOCHの退路を維持する。",
+          epilogue: [
+            "ナハル海峡の揚陸艦隊は阻止された。",
+            "直後の対艦航空攻撃も失敗し、EPOCHは航空運用を継続した。",
+            "海峡に残った艦影は、夕陽の中で一隻ずつ消えていった。"
+          ],
+
+          friendlies: {
+            playerStart: {
+              x: -7200,
+              y: 1800,
+              z: -4200,
+              facing: { x: 0, z: 0 }
+            },
+            wingmen: [
+              {
+                type: "f4",
+                label: "ROOK 1 CROWN",
+                radioSpeaker: "crown",
+                offset: { back: -145, side: -115, up: 28 }
+              },
+              {
+                type: "f16",
+                label: "ROOK 3 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 110, side: 120, up: -12 }
+              }
+            ],
+            carrier: {
+              x: -9000,
+              z: 0,
+              heading: -Math.PI * 0.5,
+              label: "CVN EPOCH",
+              vulnerable: true,
+              hp: 4200
+            },
+            guard: {
+              readout: "integrity",
+              label: "EPOCH",
+              lossPenalty: 0,
+              hitPenalty: 400,
+              lossBanner: "EPOCH LOST",
+              failBanner: "EPOCH LOST",
+              lossRadio: "",
+              failRadio: "EPOCH沈没。艦隊防空任務を中止、ROOKは離脱せよ。",
+              safeRadio: "",
+              asmRadio: "対艦ミサイル発射を確認！ EPOCHへ向かっている！"
+            }
+          },
+
+          // PHASE 1: four red capital targets, four white boats, MiG-29A x2 fleet
+          // cover, and a delayed MiG-21 x2 shore-relief flight. MiG-29A makes its
+          // first campaign appearance here as line/regular, never as early trash.
+          // PHASE 2: two red strike aircraft hunt EPOCH without another fighter blob.
+          sequence: [
+            {
+              kind: "naval",
+              fleet: ["cruiser", "lhd", "lhd", "lhd"],
+              band: 1,
+              idBase: 0,
+              label: "LANDING FLEET",
+              at: [11500, 0],
+              facing: [-6500, 0],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "敵艦隊を確認。防空巡洋艦一、強襲揚陸艦三をTGT指定。",
+                  id: "m04_contact_01"
+                }
+              ]
+            },
+            {
+              kind: "naval",
+              fleet: ["missileBoat", "missileBoat", "missileBoat", "missileBoat"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 10,
+              label: "MISSILE BOAT",
+              at: [10800, 0],
+              facing: [-6500, 0]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 20,
+              label: "FLEET CAP",
+              role: "line",
+              skill: "regular",
+              at: [8500, 7000],
+              altitude: 1800,
+              facing: [0, 0]
+            },
+            {
+              types: ["mig21", "mig21"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              delay: 90,
+              band: 1,
+              idBase: 24,
+              label: "SHORE RELIEF",
+              role: "trash",
+              skill: "rookie",
+              at: [8500, 7000],
+              altitude: 1900,
+              facing: [0, 0]
+            },
+            {
+              types: ["su34", "su34"],
+              band: 2,
+              idBase: 30,
+              label: "ANTI-SHIP STRIKE",
+              hunt: "ship",
+              role: "line",
+              skill: "regular",
+              at: [9500, -7500],
+              altitude: 1400,
+              facing: [-9000, 0],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "MISSION UPDATE。ROOK、全機反転。EPOCHを防衛せよ。",
+                  id: "m04_update_02"
+                }
+              ]
+            }
+          ],
+
+          m04FleetContract,
+          fixedRadio: [
+            { id: "m04_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル海峡西部へ進入。敵揚陸艦隊は東から西進中。" },
+            { id: "m04_intro_02", at: 9, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。護衛陣形を維持、ROOKへ目標情報を送る。" },
+            { id: "m04_intro_03", at: 15, speaker: "lark", priority: "NORMAL", text: "中央橋を確認。艦隊はその東側。" },
+            { id: "m04_intro_04", at: 20, speaker: "crown", priority: "NORMAL", text: "今日は相手が大きいな。撃った後の出口だけ決めとこう。" },
+            { id: "m04_ship_01", event: "firstRedShipDestroyed", speaker: "lark", priority: "NORMAL", text: "赤艦一隻、沈没。残り三。" },
+            { id: "m04_phase2_03", event: "firstLhdCrossesBridge", speaker: "lark", priority: "URGENT", text: "一隻、橋を越えた。突破線へ向かってる。" },
+            { id: "m04_clear_01", event: "redFleetDestroyed", speaker: "meridian", priority: "NORMAL", text: "敵主力艦、全滅。海峡内の赤TGTなし。" },
+            { id: "m04_update_01", event: "strikeInbound", speaker: "epoch", priority: "CRITICAL", text: "南東に高速接近。対艦攻撃機を確認！" },
+            { id: "m04_missile_01", event: "antiShipMissileLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦ミサイル発射を確認！ 迎撃開始！" },
+            { id: "m04_end_01", event: "redStrikeDestroyed", speaker: "meridian", priority: "NORMAL", text: "対艦攻撃隊、全滅。EPOCHの生存を確認。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "敵揚陸艦隊と対艦攻撃隊を排除。EPOCHの生存を確認。ROOK、帰投せよ。",
+            id: "m04-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "EPOCH喪失、または揚陸艦二隻が突破。ナハル海峡阻止任務を中止する。",
+            id: "m04-failure"
+          },
+          parTime: 990,
+          hasOutro: false,
+          map: { x: 0.54, y: 0.34 },
+          battleCenter: { x: 0, z: 0 },
+          battleRadius: 18000,
+          briefing: "ナハル海峡を西進するエレム艦隊を阻止する。赤TGTは防空巡洋艦一、強襲揚陸艦三。\n白いミサイル艇とMiG-29A二機は護衛であり、全滅させる必要はない。MiG-29Aは艦隊CAP、遅れて来るMiG-21bisは沿岸増援だ。揚陸艦二隻の西側突破でMISSION FAILED。\n赤艦全滅後はEPOCH防衛へ移行する。南東から来る赤Su-34二機を優先し、対艦ミサイルを発射させるな。"
+        };
+
+        ctx.addMission(mission);
+      },
+      "mission_sera_m04"
+    ); // @payload:mission_sera_m04
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.sarkPort;
+        if (!base) throw new Error("[sarkPortAsh] sarkPort base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          friendlyGroundStart: Object.freeze([900, 900]),
+          northWarehouseDefense: Object.freeze([-700, 600]),
+          centralArmor: Object.freeze([-150, 50]),
+          westCraneDefense: Object.freeze([-1350, -250]),
+          commandVehicleStart: Object.freeze([300, -900]),
+          commandEscapeBridge: Object.freeze([650, -1200]),
+          playerStart: Object.freeze([-4200, -2000]),
+          airReinforcement: Object.freeze([4500, -2500])
+        });
+
+        ctx.addWorldPreset("sarkPortAsh", {
+          ...base,
+          label: "PORT OF ASH",
+          regionId: "sark_port",
+          sectorIds: Object.freeze(["west_city_recapture"]),
+          variant: "dawn_smoke_damage",
+          missionAnchors,
+          // Keep all geographic/procedural objects by reference. The payload never
+          // mutates them; the static gate asserts that Sark Port itself is unchanged.
+          sceneryOrigin: base.sceneryOrigin,
+          previewFocus: base.sceneryOrigin,
+          terrain: base.terrain,
+          mountains: base.mountains,
+          islands: base.islands,
+          decor: base.decor,
+          clearColor: 0x8d9693,
+          sky: [
+            [0, "#17243a"],
+            [0.28, "#465a6c"],
+            [0.47, "#b2765a"],
+            [0.56, "#e4a267"],
+            [0.7, "#8b7770"],
+            [1, "#4f565b"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x41534801,
+            noise: 0.028,
+            haze: 0.24,
+            thinClouds: 20,
+            cloudOpacity: 0.085,
+            cloudBand: [0.38, 0.72],
+            cloudTint: 0xd6b39b
+          },
+          fog: { color: 0x969b94, near: 1500, far: 9000 },
+          sun: {
+            position: [2800, 720, -1800],
+            color: 0xffad72,
+            radius: 104,
+            glare: [
+              { scale: 1800, color: 0xd98255, opacity: 0.42 },
+              { scale: 480, color: 0xffd2a5, opacity: 0.8 }
+            ]
+          },
+          sunRoad: {
+            color: 0xd8794f,
+            opacity: 0.25,
+            width: 620,
+            length: 3300,
+            rotationY: Math.atan2(-2800, 1800),
+            position: [1500, 0.4, -1000]
+          },
+          ocean: {
+            ...base.ocean,
+            base: "#194854",
+            bright: "178, 181, 168",
+            dark: "9, 38, 45",
+            roughness: 0.5,
+            normalSeed: 0x41534802
+          },
+          lights: {
+            hemi: { sky: 0xc7c7bd, ground: 0x302d2a, intensity: 1.72 },
+            key: { color: 0xffa56c, intensity: 2.25, position: [1800, 820, -900] },
+            fill: { color: 0x8199ad, intensity: 0.58, position: [-900, 280, 700] }
+          },
+          clouds: {
+            ...base.clouds,
+            color: 0xd8d4cb,
+            opacity: 0.66,
+            cirrusColor: 0xb9aaa1,
+            cirrusOpacity: 0.3,
+            texture: { seed: 0x41534803, contrast: 1.08, underside: 0.5, softness: 1.02 }
+          }
+        });
+
+        ctx.addWorldDecorator("sarkPortAshWorks", {
+          worlds: ["sarkPortAsh"],
+          build({ THREE, preset, addRoot, keepGeometry, keepMaterial }) {
+            const root = new THREE.Group();
+            root.name = "sarkPortAshWorks";
+            addRoot(root);
+
+            const [CX, CZ] = preset.sceneryOrigin;
+            const CAP_Y = preset.mountains.plateau.height[0];
+            const DECK = CAP_Y + 1;
+            const boxGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylinderGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const sphereGeometry = keepGeometry(new THREE.SphereGeometry(1, 10, 8));
+            const materials = new Map();
+            const material = (color, options = {}) => {
+              const key = `${color}:${options.emissive || 0}:${options.opacity ?? 1}`;
+              if (!materials.has(key)) {
+                materials.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness: options.roughness ?? 0.9,
+                  metalness: options.metalness ?? 0.03,
+                  emissive: options.emissive || 0,
+                  emissiveIntensity: options.emissive ? 0.85 : 0,
+                  transparent: (options.opacity ?? 1) < 1,
+                  opacity: options.opacity ?? 1,
+                  depthWrite: (options.opacity ?? 1) >= 1
+                })));
+              }
+              return materials.get(key);
+            };
+            const box = (dx, y, dz, sx, sy, sz, color, rotation = [0, 0, 0], options) => {
+              const mesh = new THREE.Mesh(boxGeometry, material(color, options));
+              mesh.position.set(CX + dx, y, CZ + dz);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+              root.add(mesh);
+              return mesh;
+            };
+            const cylinder = (dx, y, dz, radius, height, color, options) => {
+              const mesh = new THREE.Mesh(cylinderGeometry, material(color, options));
+              mesh.position.set(CX + dx, y, CZ + dz);
+              mesh.scale.set(radius, height, radius);
+              root.add(mesh);
+              return mesh;
+            };
+
+            // The same terminal footprint used by sarkPort: local x -1800..-940,
+            // local z -790..190. Dark scorch patches are M05-only.
+            box(-1370, 9.5, -300, 860, 27, 980, 0x696963);
+            box(-1370, DECK + 0.2, -300, 820, 0.6, 930, 0x55544f);
+            box(-1450, DECK + 0.65, -520, 310, 0.35, 180, 0x2d2c29, [0, 0.08, 0], { opacity: 0.76 });
+
+            // Eleven standing cranes plus one visibly leaning crane. Crane #2 and
+            // #7 use unlit dark machinery housings to mark the two stopped units.
+            const craneZ0 = -730;
+            const cranePitch = 76;
+            const craneMidX = -1773;
+            for (let i = 0; i < 12; i += 1) {
+              const z = craneZ0 + i * cranePitch;
+              const lean = i === 2 ? -0.2 : 0;
+              const stopped = i === 2 || i === 7;
+              for (const rail of [-1790, -1756]) {
+                for (const off of [-15, 15]) {
+                  box(rail, DECK + 29, z + off, 7, 58, 7, stopped ? 0x8b8981 : 0xd9dcda, [0, 0, lean]);
+                }
+              }
+              box(craneMidX, DECK + 62, z, 48, 9, 38, stopped ? 0x4a4641 : 0xd9dcda, [0, 0, lean]);
+              box(-1797, DECK + 72, z, 154, 7, 13, stopped ? 0x71382c : 0xc84f32, [0, 0, lean]);
+              box(-1730, DECK + 80, z, 16, 28, 18, stopped ? 0x34383a : 0x315a76, [0, 0, lean]);
+            }
+
+            // Collapsed container rows leave a navigable corridor through the yard.
+            const liveries = [0xa9362d, 0x315b80, 0x346448, 0xb76325, 0x777b7c, 0x78313c];
+            for (let x = -1690; x <= -1120; x += 44) {
+              for (let z = -740; z <= -100; z += 60) {
+                const corridor = x > -1480 && x < -1340;
+                if (corridor || ((x + z) / 4) % 5 === 0) continue;
+                const tiers = 2 + (Math.abs(Math.round((x + z) / 20)) % 3);
+                const height = tiers * 2.7;
+                const collapsed = (Math.round(x / 44) + Math.round(z / 60)) % 9 === 0;
+                box(x, DECK + height / 2, z, 14, height, 26,
+                  liveries[Math.abs(Math.round((x - z) / 20)) % liveries.length],
+                  collapsed ? [0.16, 0.35, 0.22] : [0, 0, 0]);
+              }
+            }
+
+            // Canal and all three original bridge X anchors. The middle cable-stayed
+            // bridge (x=260) is broken; the southern bridge (x=580) carries patches.
+            box(0, CAP_Y + 0.45, -1000, 2100, 0.5, 184, 0x173f4b, [0, 0, 0], { roughness: 0.55 });
+            const bridgeDeck = 0x5c5c58;
+            const bridge = (x, mode) => {
+              if (mode === "broken") {
+                box(x, 32.5, -1190, 26, 3.5, 130, bridgeDeck, [0.12, 0, 0.04]);
+                box(x, 31.5, -910, 26, 3.5, 95, bridgeDeck, [-0.18, 0, -0.05]);
+                box(x + 24, 15, -1040, 18, 3, 80, 0x3f403e, [0.6, 0.2, 0.4]);
+                return;
+              }
+              box(x, 32.5, -1057.5, 26, 3.5, 395, bridgeDeck);
+              if (mode === "repaired") {
+                for (const z of [-1160, -1070, -980, -890]) {
+                  box(x, 34.5, z, 28, 0.8, 54, 0x9a7c52);
+                }
+              }
+            };
+            bridge(-80, "intact");
+            bridge(260, "broken");
+            bridge(580, "repaired");
+            for (const x of [-80, 260, 580]) {
+              for (const z of [-1200, -930]) box(x, 17, z, 13, 28, 13, 0x4d4e4c);
+            }
+
+            // Two burned warehouses at the canonical north-warehouse anchor area.
+            for (const [dx, dz, rotation] of [[-700, 600, -0.08], [-470, 520, 0.06]]) {
+              box(dx, CAP_Y + 15, dz, 170, 30, 120, 0x4a423b, [0, rotation, 0]);
+              box(dx, CAP_Y + 31, dz, 176, 2.5, 126, 0x2b2927, [0.08, rotation, 0.03]);
+              box(dx + 35, CAP_Y + 18, dz - 20, 44, 36, 30, 0x251f1b, [0, rotation, 0], { emissive: 0x4a170c });
+            }
+
+            // Wrecked transport helicopter near the canal and one sunken freighter
+            // off the western quay. Neither carries a gameplay marker.
+            box(-250, CAP_Y + 4, -1180, 16, 8, 62, 0x323833, [0.12, 0.35, 0.42]);
+            box(-250, CAP_Y + 7, -1180, 82, 1.8, 8, 0x222522, [0.12, 0.35, 0.42]);
+            box(-2050, -4, -450, 52, 25, 250, 0x30383a, [0.08, 0.2, 0.16]);
+            box(-2050, 7, -500, 34, 18, 60, 0x262a2c, [0.08, 0.2, 0.16]);
+
+            // Smoke columns are broad landmarks, not opaque walls. Their lowest
+            // nodes begin above target-marker height so low-level approaches remain
+            // readable through the base of each plume.
+            const smokeMaterial = material(0x373634, { opacity: 0.2, roughness: 1 });
+            const smokeColumn = (dx, dz, scale = 1) => {
+              for (let i = 0; i < 5; i += 1) {
+                const puff = new THREE.Mesh(sphereGeometry, smokeMaterial);
+                puff.position.set(CX + dx + (i % 2 ? 14 : -10) * scale, 64 + i * 58 * scale, CZ + dz);
+                puff.scale.set((30 + i * 10) * scale, (38 + i * 12) * scale, (30 + i * 10) * scale);
+                root.add(puff);
+              }
+              cylinder(dx, 34, dz, 10 * scale, 24, 0x6f2c18, { emissive: 0x5a1609, opacity: 0.55 });
+            };
+            smokeColumn(-700, 600, 1.15);
+            smokeColumn(-1350, -250, 0.95);
+            smokeColumn(300, -900, 0.82);
+            smokeColumn(620, 260, 0.7);
+
+            // The single friendly ground route: north-east city, central crossing,
+            // intact north bridge, west crane district. Thin paint remains visible
+            // through smoke and gives mission units an authored line to follow.
+            const route = [
+              [900, 900], [620, 620], [250, 300], [-120, 80], [-80, -700], [-80, -1280], [-700, -1050], [-1350, -250]
+            ];
+            for (let i = 0; i < route.length - 1; i += 1) {
+              const [ax, az] = route[i];
+              const [bx, bz] = route[i + 1];
+              const dx = bx - ax;
+              const dz = bz - az;
+              const length = Math.hypot(dx, dz);
+              box((ax + bx) / 2, CAP_Y + 0.8, (az + bz) / 2, 18, 0.35, length, 0x6d6659,
+                [0, Math.atan2(dx, dz), 0]);
+            }
+
+            root.traverse((node) => {
+              if (!node.isMesh) return;
+              node.castShadow = false;
+              node.receiveShadow = true;
+            });
+          }
+        });
+      },
+      "map_sarkPortAsh"
+    ); // @payload:map_sarkPortAsh
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES,
+          HELI_TYPES, GROUND_TYPES
+        } = ctx.tables;
+
+        if (!WORLD_PRESETS.sarkPortAsh) {
+          throw new Error("[sera-m05] sarkPortAsh is not registered; load map_sarkPortAsh first");
+        }
+        if (!MISSIONS.some((mission) => mission.key === "sera-m04" && mission.campaign === "sera")) {
+          throw new Error("[sera-m05] sera-m04 predecessor is missing");
+        }
+        for (const type of ["f4", "f16", "mig21", "mig29"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m05] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["mig21", "mig29"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m05] required enemy profile not registered: ${type}`);
+        }
+        if (!HELI_TYPES.ka52) throw new Error("[sera-m05] Ka-52 helicopter type is missing");
+        for (const type of ["autonomousSam", "spaag", "tank", "ifv", "aaGun", "mobileCommand"]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m05] required ground type not registered: ${type}`);
+        }
+
+        const origin = Object.freeze([0, -3000]);
+        const m05GroundBattleContract = Object.freeze({
+          origin,
+          timeLimit: 1440,
+          groundClearance: 0.7,
+          friendlyGround: Object.freeze({
+            tanks: 4,
+            ifvs: 2,
+            failWhenTanksLost: 4,
+            holdUntilPhase1Clear: true,
+            route: Object.freeze([
+              Object.freeze([900, 900]),
+              Object.freeze([620, 620]),
+              Object.freeze([250, 300]),
+              Object.freeze([-120, 80]),
+              Object.freeze([-80, -700]),
+              Object.freeze([-80, -1280]),
+              Object.freeze([-700, -1050]),
+              Object.freeze([-1350, -250])
+            ]),
+            travelBetweenPhases: Object.freeze([30, 45])
+          }),
+          phase1: Object.freeze({
+            label: "OPEN AIR CORRIDOR",
+            targets: Object.freeze([
+              Object.freeze({ type: "autonomousSam", label: "MOBILE SAM", at: Object.freeze([-700, 600]) }),
+              Object.freeze({ type: "autonomousSam", label: "MOBILE SAM", at: Object.freeze([-1350, -250]) }),
+              Object.freeze({ type: "spaag", at: Object.freeze([-150, 50]) }),
+              Object.freeze({ type: "spaag", at: Object.freeze([420, -1060]) }),
+              Object.freeze({ type: "spaag", at: Object.freeze([-80, -720]) })
+            ]),
+            advanceWhenAllDestroyed: true
+          }),
+          phase2: Object.freeze({
+            label: "SUPPORT GROUND ADVANCE",
+            baseTanks: 6,
+            baseIfvs: 3,
+            updateAtRedRemaining: 3,
+            fixedWhiteGuns: 3
+          }),
+          phase3: Object.freeze({
+            label: "DESTROY COMMAND VEHICLE",
+            commandType: "mobileCommand",
+            commandStart: Object.freeze([300, -900]),
+            escapeLineX: 2100,
+            minimumEscapeTime: 150,
+            commandRoute: Object.freeze([
+              Object.freeze([300, -900]),
+              Object.freeze([480, -1080]),
+              Object.freeze([650, -1200]),
+              Object.freeze([980, -1280]),
+              Object.freeze([1450, -1280]),
+              Object.freeze([2100, -1280])
+            ]),
+            redHelicopters: Object.freeze(["ka52", "ka52"]),
+            localDefense: Object.freeze(["mig21", "mig21", "mig21", "mig21"]),
+            whiteFighters: Object.freeze(["mig29", "mig29"])
+          }),
+          carryover: Object.freeze({
+            m03: Object.freeze({
+              missionKey: "sera-m03",
+              landingMark: "m03TransportLanding",
+              zeroLandingsIfvDelta: -1,
+              multipleLandingsThreshold: 2,
+              multipleLandingsIfvDelta: 1,
+              multipleLandingsDamageVariant: "southWarehouseHeavy"
+            }),
+            m04: Object.freeze({
+              missionKey: "sera-m04",
+              breachMark: "m04LhdBreach",
+              oneBreachTankDelta: 1
+            })
+          }),
+          rank: Object.freeze({
+            sTime: 930,
+            aTime: 1080,
+            sFriendlyTanksAlive: 3,
+            aFriendlyTanksAlive: 2,
+            sCommandBeforeRepairBridge: true,
+            ignoreWhiteTargets: true
+          })
+        });
+
+        const mission = {
+          key: "sera-m05",
+          campaign: "sera",
+          campaignOrder: 5,
+          world: "sarkPortAsh",
+          title: "PORT OF ASH",
+          jp: "占領されたサルク港へケデム地上軍を通し、敵防空・装甲部隊・移動指揮車を排除せよ。",
+          act: 1,
+          storyNo: 5,
+          story: "WAR DAY 034。ROOKは、煙に覆われたサルク港へ戻る。\nケデム地上軍の進路を開き、港を占領する敵部隊の指揮系統を断つ。",
+          epilogue: [
+            "ケデム地上軍は西クレーン地区へ到達し、港湾道路を封鎖した。",
+            "移動指揮車は港外へ出る前に破壊された。",
+            "サルク港のクレーンは、煙の向こうでまだ何基か立っていた。"
+          ],
+
+          friendlies: {
+            playerStart: {
+              // Canonical local [-4200,-2000] translated by Sark origin [0,-3000].
+              x: -4200,
+              y: 650,
+              z: -5000,
+              facing: { x: 0, z: -3000 }
+            },
+            wingmen: [
+              {
+                type: "f4",
+                label: "ROOK 1 CROWN",
+                radioSpeaker: "crown",
+                offset: { back: -145, side: -115, up: 28 }
+              },
+              {
+                type: "f16",
+                label: "ROOK 3 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 110, side: 120, up: -12 }
+              }
+            ]
+          },
+
+          groundPhaseContracts: [
+            {
+              id: "m05-phase1",
+              activeInitially: true
+            },
+            {
+              id: "m05-phase2",
+              activeInitially: false
+            },
+            {
+              id: "m05-command",
+              activeInitially: false,
+              failMark: "m05Command",
+              failAtRouteEnd: true,
+              failBanner: "COMMAND VEHICLE ESCAPED",
+              failureRadio: {
+                speaker: "meridian",
+                priority: "CRITICAL",
+                text: "敵指揮車が港外へ離脱。サルク奪還作戦を中止する。",
+                id: "m05-command-escaped"
+              }
+            }
+          ],
+
+          groundUnits: [
+            { id: 1, type: "autonomousSam", label: "MOBILE SAM", x: -700, z: -2400, phase: "m05-phase1", mark: "m05Phase1" },
+            { id: 2, type: "autonomousSam", label: "MOBILE SAM", x: -1350, z: -3250, phase: "m05-phase1", mark: "m05Phase1" },
+            { id: 3, type: "spaag", x: -150, z: -2950, phase: "m05-phase1", mark: "m05Phase1" },
+            { id: 4, type: "spaag", x: 420, z: -4060, phase: "m05-phase1", mark: "m05Phase1" },
+            { id: 5, type: "spaag", x: -80, z: -3720, phase: "m05-phase1", mark: "m05Phase1" },
+            { id: 10, type: "tank", x: -350, z: -2850, phase: "m05-phase1", tgt: false, rankNeutral: true },
+            { id: 11, type: "tank", x: -100, z: -3100, phase: "m05-phase1", tgt: false, rankNeutral: true },
+
+            { id: 20, type: "tank", x: 200, z: -3000, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 21, type: "tank", x: -200, z: -3100, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 22, type: "tank", x: -600, z: -3200, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 23, type: "tank", x: -950, z: -3000, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 24, type: "tank", x: -1200, z: -3400, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 25, type: "tank", x: -1450, z: -3150, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 26, type: "ifv", x: -500, z: -2750, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 27, type: "ifv", x: -900, z: -3600, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 28, type: "ifv", x: -1300, z: -2800, phase: "m05-phase2", mark: "m05Phase2" },
+            { id: 35, type: "aaGun", x: -850, z: -3150, phase: "m05-phase2", tgt: false, rankNeutral: true },
+            { id: 36, type: "aaGun", x: -1150, z: -3500, phase: "m05-phase2", tgt: false, rankNeutral: true },
+            { id: 37, type: "aaGun", x: -550, z: -3700, phase: "m05-phase2", tgt: false, rankNeutral: true },
+
+            {
+              id: 40,
+              type: "mobileCommand",
+              label: "MOBILE COMMAND",
+              x: 300,
+              z: -3900,
+              phase: "m05-command",
+              mark: "m05Command",
+              speed: 12,
+              path: [[300, -3900], [480, -4080], [650, -4200], [980, -4280], [1450, -4280], [2100, -4280]]
+            }
+          ],
+
+          sequence: [
+            {
+              types: [],
+              band: 1,
+              idBase: 0,
+              label: "OPEN AIR CORRIDOR",
+              gate: { mode: "groundMarkClear", mark: "m05Phase1" },
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "移動SAM二、SPAAG三をTGT指定。全滅後、地上軍を前進させる。",
+                  id: "m05_p1_01"
+                }
+              ]
+            },
+            {
+              types: ["mig21", "mig21"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 60,
+              label: "LOCAL DEFENSE",
+              role: "trash",
+              skill: "rookie",
+              at: [-900, -1800],
+              altitude: 950,
+              facing: [0, -3000]
+            },
+            {
+              types: [],
+              band: 2,
+              idBase: 20,
+              label: "SUPPORT GROUND ADVANCE",
+              activateGroundPhase: "m05-phase2",
+              gate: { mode: "groundMarkClear", mark: "m05Phase2" },
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "中央市街と西岸に装甲目標。戦車六、IFV三をTGT指定。",
+                  id: "m05_p2_01"
+                }
+              ]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              delay: 18,
+              band: 2,
+              idBase: 70,
+              label: "QRA",
+              role: "line",
+              skill: "regular",
+              at: [5200, -5600],
+              altitude: 1550,
+              facing: [0, -3000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "URGENT",
+                  text: "新規反応2、高速。MiG-29、前線航空隊だ。地上TGTから引き離されるな。",
+                  id: "m05-mig29-qra"
+                },
+                {
+                  speaker: "lark",
+                  priority: "NORMAL",
+                  text: "海峡で艦隊を守ってた連中だ。今度はこっちを止めに来た。",
+                  id: "m05-mig29-qra-lark"
+                }
+              ]
+            },
+            {
+              types: [],
+              band: 3,
+              idBase: 40,
+              label: "DESTROY COMMAND VEHICLE",
+              activateGroundPhase: "m05-command",
+              gate: { mode: "groundMarkClear", mark: "m05Command" },
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "移動指揮車と識別。TGT更新。東脱出線までに破壊せよ。",
+                  id: "m05_update_02"
+                }
+              ]
+            },
+            {
+              types: ["ka52", "ka52"],
+              concurrent: true,
+              band: 3,
+              idBase: 50,
+              label: "ALLIGATOR",
+              role: "trash",
+              skill: "regular",
+              at: [4500, -5500],
+              altitude: 320,
+              facing: [0, -3000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "南東から攻撃ヘリ二。攻撃ヘリをTGT指定。沿岸基地の増援にも注意。",
+                  id: "m05_update_04"
+                }
+              ]
+            },
+            {
+              types: ["mig21", "mig21"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              delay: 35,
+              band: 3,
+              idBase: 80,
+              label: "LOCAL RELIEF",
+              role: "trash",
+              skill: "rookie",
+              at: [4500, -5500],
+              altitude: 1150,
+              facing: [0, -3000]
+            }
+          ],
+
+          m05GroundBattleContract,
+          fixedRadio: [
+            { id: "m05_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、サルク港西岸へ進入。ケデム地上軍は北東市街で待機中。" },
+            { id: "m05_intro_02", event: "portVisible", speaker: "lark", priority: "NORMAL", text: "クレーンが二基止まってる。中央橋も落ちてるね。" },
+            { id: "m05_intro_03", event: "afterPortVisible", speaker: "hearth", priority: "NORMAL", text: "使えるのは北側の橋だけだ。地上隊はそこを通す。" },
+            { id: "m05_ground_01", event: "phase1Clear", speaker: "meridian", priority: "NORMAL", text: "防空回廊を確認。ケデム地上軍、前進を開始。" },
+            { id: "m05_p2_02", event: "friendlyAtCentral", speaker: "lark", priority: "NORMAL", text: "味方戦車、中央交差点。敵はその西側。" },
+            { id: "m05_update_01", event: "commandEscapeStarts", speaker: "lark", priority: "URGENT", text: "南倉庫から車両一、運河沿いを東へ走ってる。" },
+            { id: "m05_chase_01", event: "commandAtCanalSouth", speaker: "lark", priority: "URGENT", text: "指揮車、運河南岸。補修橋へ向かってる。" },
+            { id: "m05_chase_02", event: "commandRepairBridge1500", speaker: "meridian", priority: "CRITICAL", text: "TGT、補修橋まで一・五キロ。" },
+            { id: "m05_end_01", event: "allRedDestroyed", speaker: "meridian", priority: "NORMAL", text: "赤TGT全滅。ケデム地上軍、西クレーン地区へ進入。" },
+            { id: "m05_end_03", event: "friendlyAtWestCrane", speaker: "lark", priority: "NORMAL", text: "三番クレーンは残ってた。前と同じ場所に立ってる。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "赤TGT全滅。ケデム地上軍は西クレーン地区を確保。ROOK、帰投せよ。",
+            id: "m05-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "ケデム戦車隊全滅、または敵指揮車が港外へ離脱。サルク奪還作戦を中止する。",
+            id: "m05-failure"
+          },
+          parTime: 930,
+          hasOutro: false,
+          map: { x: 0.61, y: 0.27 },
+          battleCenter: { x: 0, z: -3000 },
+          battleRadius: 10500,
+          briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方地上軍前方の赤戦車六、IFV三を排除する。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
+        };
+
+        ctx.addMission(mission);
+      },
+      "mission_sera_m05"
+    ); // @payload:mission_sera_m05
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.stormOcean;
+        if (!base) throw new Error("[damarSeaStorm] stormOcean base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([-3900, -2500]),
+          battleCenter: Object.freeze([0, 0]),
+          sarFlyingBoatStart: Object.freeze([-3400, 1800]),
+          sarFlyingBoatExit: Object.freeze([3000, -2100]),
+          patrolStart: Object.freeze([-4500, -3600]),
+          patrolExit: Object.freeze([4300, 3500]),
+          enemyCapEntry: Object.freeze([3600, -3200]),
+          missileBoats: Object.freeze([2300, 600]),
+          navigationPlatform: Object.freeze([2450, 2350]),
+          rescueSites: Object.freeze([
+            Object.freeze({ id: "crown", kind: "survivor", label: "SOS CROWN", at: Object.freeze([-1450, -250]) }),
+            Object.freeze({ id: "crew-b", kind: "survivor", label: "SOS CREW B", at: Object.freeze([250, 1350]) }),
+            Object.freeze({ id: "crew-c", kind: "survivor", label: "SOS CREW C", at: Object.freeze([1650, -650]) }),
+            Object.freeze({ id: "data", kind: "data", label: "DATA CAPSULE", at: Object.freeze([300, -1700]) })
+          ])
+        });
+
+        ctx.addWorldPreset("damarSeaStorm", {
+          ...base,
+          label: "DAMAR SEA · BLACK CURRENT",
+          sceneryOrigin: Object.freeze([0, 0]),
+          previewFocus: Object.freeze([0, 0]),
+          regionId: "damar_sea",
+          sectorIds: Object.freeze(["west_rescue_lane"]),
+          variant: "storm_evening_rescue",
+          missionAnchors,
+          clearColor: 0x343f4e,
+          sky: Object.freeze([
+            Object.freeze([0, "#0a0f17"]),
+            Object.freeze([0.28, "#17202c"]),
+            Object.freeze([0.46, "#303b49"]),
+            Object.freeze([0.54, "#596777"]),
+            Object.freeze([0.7, "#27323e"]),
+            Object.freeze([1, "#0b1119"])
+          ]),
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x44414d07,
+            noise: 0.061,
+            haze: 0.34,
+            thinClouds: 54,
+            cloudOpacity: 0.19,
+            cloudTint: 0x8797aa
+          },
+          // Rescue lamps must be findable, but only once the player reaches their
+          // sector. This is still the second-tightest visibility band in the game.
+          fog: { color: 0x343f4e, near: 520, far: 2900 },
+          // No visible disc. The stock storm's dim sun still read as a white ball at
+          // rescue altitude; Damar gets its illumination from the overcast and the
+          // intermittent lightning instead.
+          sun: {
+            position: [-1800, 410, -3400],
+            color: 0x566578,
+            radius: 0.1,
+            glare: [
+              { scale: 1, color: 0x566578, opacity: 0 },
+              { scale: 1, color: 0x566578, opacity: 0 }
+            ]
+          },
+          sunRoad: {
+            color: 0x8295aa,
+            opacity: 0,
+            width: 1,
+            length: 1,
+            rotationY: -0.48,
+            position: [-900, 0.4, -1700]
+          },
+          ocean: {
+            ...base.ocean,
+            base: "#07111a",
+            bright: "185, 204, 221",
+            dark: "1, 5, 10",
+            colorContrast: 0.34,
+            crestStrength: 0.76,
+            roughness: 0.76,
+            normalScale: [1.04, 1.28],
+            normalSpeed: [0.031, 0.014],
+            normalSeed: 0x44414d08
+          },
+          lights: {
+            hemi: { sky: 0x96aac1, ground: 0x070b12, intensity: 1.22 },
+            key: { color: 0xa8bdd2, intensity: 0.82, position: [-900, 760, -1500] },
+            fill: { color: 0x41566d, intensity: 0.36, position: [700, 260, 900] }
+          },
+          mountains: {
+            ...base.mountains,
+            count: 0,
+            corridor: null,
+            plateau: null
+          },
+          islands: { count: 0, stone: 0x262e36, green: 0x242e2b },
+          clouds: {
+            ...base.clouds,
+            // Recovery is flown below 460 m. Keep the authored lane readable by
+            // dropping the stock arena-centred hero banks and using only a sparse
+            // set of procedural low/mid clusters. The high overcast, fog, rain and
+            // outer stratus still carry the storm silhouette.
+            scale: 0.72,
+            hero: false,
+            opacity: 0.76,
+            texture: { seed: 0x44414d09, contrast: 1.3, underside: 0.78, softness: 1.08 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x44414d0a,
+            keepClear: Object.freeze([{ x: 0, z: 0, r: 7200 }]),
+            extraIslands: { count: 0, radius: [0, 0], height: [0, 0], distance: [0, 0] },
+            shore: null,
+            trees: null,
+            rocks: null,
+            extraClouds: {
+              // Keep the working rescue lane below the ceiling. The first pass put
+              // 34 large puff volumes directly over the four sites; at 200–700 m they
+              // read as opaque boulders and hid the rafts. Fog, rain and the high deck
+              // carry the storm while these stay sparse and mostly outside the lane.
+              towers: 3,
+              towerSize: [90, 145],
+              towerBase: 920,
+              stratus: 11,
+              stratusSize: [180, 300],
+              stratusBase: 1120,
+              distance: [2500, 4800]
+            }
+          }
+        });
+
+        ctx.addWorldDecorator("damarSeaRescueLane", {
+          worlds: ["damarSeaStorm"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial }) {
+            const root = new THREE.Group();
+            root.name = "damarSeaRescueLane";
+            addRoot(root);
+
+            const boxGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylinderGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 14));
+            const sphereGeometry = keepGeometry(new THREE.SphereGeometry(1, 12, 8));
+            const torusGeometry = keepGeometry(new THREE.TorusGeometry(1, 0.22, 8, 20));
+            const rotorGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 0.035, 28));
+            const materials = new Map();
+            const material = (color, emissive = 0, opacity = 1) => {
+              const key = `${color}:${emissive}:${opacity}`;
+              if (!materials.has(key)) {
+                materials.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness: 0.76,
+                  metalness: 0.15,
+                  emissive,
+                  emissiveIntensity: emissive ? 1.35 : 0,
+                  transparent: opacity < 1,
+                  opacity,
+                  depthWrite: opacity >= 1
+                })));
+              }
+              return materials.get(key);
+            };
+            const basic = (color, opacity = 1) => keepMaterial(new THREE.MeshBasicMaterial({
+              color,
+              transparent: opacity < 1,
+              opacity,
+              depthWrite: opacity >= 1,
+              side: THREE.DoubleSide
+            }));
+            const put = (parent, geometry, mat, x, y, z, sx, sy, sz, rotation = null) => {
+              const mesh = new THREE.Mesh(geometry, mat);
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+              parent.add(mesh);
+              return mesh;
+            };
+
+            // Damar navigation platform: a small fixed point in an otherwise empty
+            // black sea, readable by silhouette and by its alternating lane lights.
+            const platform = new THREE.Group();
+            platform.name = "damarNavigationPlatform";
+            platform.position.set(2450, 0, 2350);
+            root.add(platform);
+            const wetSteel = material(0x303942);
+            const darkSteel = material(0x111820);
+            const safety = material(0xd28b28, 0x5a2a08);
+            const deck = material(0x3e4b54);
+            for (const x of [-18, 18]) {
+              for (const z of [-18, 18]) put(platform, cylinderGeometry, wetSteel, x, 21, z, 2.8, 22, 2.8);
+            }
+            put(platform, boxGeometry, deck, 0, 43, 0, 52, 4, 52);
+            put(platform, boxGeometry, darkSteel, 0, 49, 2, 24, 9, 20);
+            put(platform, boxGeometry, safety, 0, 55, 2, 18, 3, 15);
+            put(platform, cylinderGeometry, wetSteel, 0, 78, 2, 1.6, 25, 1.6);
+            put(platform, boxGeometry, wetSteel, 0, 72, 2, 24, 0.8, 0.8);
+            const platformLamp = put(platform, sphereGeometry, basic(0xffd477), 0, 104, 2, 2.8, 2.8, 2.8);
+            const platformLight = new THREE.PointLight(0xffc15a, 0, 720, 1.7);
+            platformLight.position.set(0, 104, 2);
+            platform.add(platformLight);
+
+            // Shipping-lane lights give the player an east/west axis even when the
+            // horizon and compass reference disappear inside the cloud deck.
+            const laneLights = [];
+            for (let i = -4; i <= 4; i += 1) {
+              const lane = new THREE.Group();
+              lane.position.set(i * 780, 0, 3000 + Math.sin(i * 0.9) * 150);
+              root.add(lane);
+              put(lane, cylinderGeometry, material(0x2b343b), 0, 3.8, 0, 2.2, 3.8, 2.2);
+              put(lane, sphereGeometry, basic(i % 2 ? 0x6dffb2 : 0xff7a5e), 0, 9.5, 0, 2.1, 2.1, 2.1);
+              const lamp = new THREE.PointLight(i % 2 ? 0x58ffac : 0xff6a52, 0, 280, 2);
+              lamp.position.y = 10;
+              lane.add(lamp);
+              laneLights.push(lamp);
+            }
+
+            const siteLights = [];
+            const rescueSite = ({ id, kind, at }, index) => {
+              const site = new THREE.Group();
+              site.name = `m07-site-${id}`;
+              site.position.set(at[0], 0.9, at[1]);
+              root.add(site);
+              const isData = kind === "data";
+              if (isData) {
+                put(site, cylinderGeometry, material(0x07090c), 0, 2.2, 0, 3.8, 8.5, 3.8, [Math.PI / 2, 0, 0.34]);
+                put(site, boxGeometry, material(0x1d252d), 0, 2.4, 0, 8.8, 1.1, 1.1, [0, 0.34, 0]);
+              } else {
+                put(site, torusGeometry, material(0xee6b2b, 0x6a1804), 0, 1.8, 0, 7.2, 7.2, 2.2, [Math.PI / 2, 0, 0]);
+                put(site, boxGeometry, material(0xb73524), 0, 2.2, 0, 7.2, 0.8, 3.0);
+                for (const side of [-1, 1]) put(site, sphereGeometry, material(0xf19a49), side * 2.2, 3, 0, 0.75, 0.75, 0.75);
+              }
+              put(site, cylinderGeometry, darkSteel, 0, 8.5, 0, 0.42, 7.5, 0.42);
+              const lampColor = isData ? 0x68dfff : 0xffde72;
+              put(site, sphereGeometry, basic(lampColor), 0, 16.5, 0, 1.8, 1.8, 1.8);
+              const lamp = new THREE.PointLight(lampColor, 0, isData ? 620 : 520, 1.5);
+              lamp.position.y = 17;
+              site.add(lamp);
+              siteLights.push({ lamp, site, phase: index * 0.73, isData });
+            };
+            missionAnchors.rescueSites.forEach(rescueSite);
+
+            // Two hovering SAR helicopters make the rescue operation visible before
+            // the player reaches a pickup sphere. They are scenery here; the moving,
+            // vulnerable rescue aircraft are mission friendlies owned by the host.
+            const rotors = [];
+            const addSarHelicopter = (name, x, y, z, yaw) => {
+              const heli = new THREE.Group();
+              heli.name = name;
+              heli.position.set(x, y, z);
+              heli.rotation.y = yaw;
+              root.add(heli);
+              const white = material(0xdfe8eb);
+              const orange = material(0xe85c27, 0x541302);
+              const glass = material(0x18303c, 0x07151c, 0.86);
+              put(heli, sphereGeometry, white, 0, 0, 0, 4.5, 2.5, 7.2);
+              put(heli, sphereGeometry, glass, 0, 0.7, -4.9, 3.4, 1.7, 2.5);
+              put(heli, boxGeometry, orange, 0, -0.3, 4.5, 2.2, 2.2, 10);
+              put(heli, boxGeometry, white, 0, 0, 9.4, 0.7, 4.4, 3.2);
+              put(heli, boxGeometry, orange, 0, -0.5, -0.5, 13, 0.7, 3.4);
+              const rotor = put(heli, rotorGeometry, basic(0xc7d6df, 0.18), 0, 4.3, 0, 11.5, 0.5, 11.5);
+              rotors.push(rotor);
+              const searchLight = new THREE.SpotLight(0xdaf2ff, 4.2, 900, 0.22, 0.7, 1.2);
+              searchLight.position.set(0, -1.2, -3);
+              searchLight.target.position.set(0, -170, -40);
+              heli.add(searchLight, searchLight.target);
+            };
+            addSarHelicopter("damarSarHelicopter1", -920, 145, 40, -0.6);
+            addSarHelicopter("damarSarHelicopter2", 900, 175, 770, 2.2);
+
+            // Wind-driven rain. Geometry belongs to the world and the tiny host hook
+            // calls root.userData.worldTick; no global scene resource survives a swap.
+            let rainSeed = 0x44414d0b >>> 0;
+            const rand = () => {
+              rainSeed = Math.imul(rainSeed ^ (rainSeed >>> 15), 2246822519) >>> 0;
+              rainSeed = Math.imul(rainSeed ^ (rainSeed >>> 13), 3266489917) >>> 0;
+              return ((rainSeed ^= rainSeed >>> 16) >>> 0) / 4294967296;
+            };
+            const rainCount = 760;
+            const rainPositions = new Float32Array(rainCount * 6);
+            for (let i = 0; i < rainCount; i += 1) {
+              const x = (rand() - 0.5) * 2800;
+              const y = (rand() - 0.5) * 1300;
+              const z = (rand() - 0.5) * 2800;
+              const at = i * 6;
+              rainPositions[at] = x;
+              rainPositions[at + 1] = y;
+              rainPositions[at + 2] = z;
+              rainPositions[at + 3] = x - 18;
+              rainPositions[at + 4] = y - 54;
+              rainPositions[at + 5] = z + 8;
+            }
+            const rainGeometry = keepGeometry(new THREE.BufferGeometry());
+            rainGeometry.setAttribute("position", new THREE.BufferAttribute(rainPositions, 3));
+            const rainMaterial = keepMaterial(new THREE.LineBasicMaterial({
+              color: 0xb8d1e3,
+              transparent: true,
+              opacity: 0.24,
+              depthWrite: false,
+              fog: true
+            }));
+            const rain = new THREE.LineSegments(rainGeometry, rainMaterial);
+            rain.name = "damarStormRain";
+            rain.frustumCulled = false;
+            root.add(rain);
+
+            const lightningGeometry = keepGeometry(new THREE.BufferGeometry());
+            lightningGeometry.setAttribute("position", new THREE.Float32BufferAttribute([
+              0, 1250, 0, 70, 1000, 35,
+              70, 1000, 35, 10, 790, 80,
+              10, 790, 80, 115, 560, 135,
+              115, 560, 135, 70, 360, 180
+            ], 3));
+            const lightningMaterial = keepMaterial(new THREE.LineBasicMaterial({
+              color: 0xeaf6ff,
+              transparent: true,
+              opacity: 0,
+              depthWrite: false,
+              fog: true
+            }));
+            const lightning = new THREE.LineSegments(lightningGeometry, lightningMaterial);
+            lightning.name = "damarLightningBolt";
+            lightning.position.set(-900, 0, -1450);
+            root.add(lightning);
+            const lightningLight = new THREE.PointLight(0xd8ecff, 0, 5200, 1.1);
+            lightningLight.position.set(-900, 680, -1450);
+            root.add(lightningLight);
+
+            root.userData.worldTick = ({ camera, dt, time }) => {
+              rain.position.x = camera.position.x;
+              rain.position.y = camera.position.y;
+              rain.position.z = camera.position.z;
+              const attr = rainGeometry.getAttribute("position");
+              const values = attr.array;
+              const fall = Math.min(80, dt * 620);
+              const drift = Math.min(24, dt * 115);
+              for (let i = 0; i < values.length; i += 6) {
+                values[i] -= drift;
+                values[i + 1] -= fall;
+                values[i + 3] -= drift;
+                values[i + 4] -= fall;
+                if (values[i + 1] < -650) {
+                  values[i + 1] += 1300;
+                  values[i + 4] += 1300;
+                }
+                if (values[i] < -1400) {
+                  values[i] += 2800;
+                  values[i + 3] += 2800;
+                }
+              }
+              attr.needsUpdate = true;
+
+              for (const rotor of rotors) rotor.rotation.y += dt * 22;
+              const lanePulse = 0.55 + Math.max(0, Math.sin(time * 2.1)) * 1.7;
+              laneLights.forEach((lamp, index) => { lamp.intensity = lanePulse * (index % 2 ? 0.8 : 1); });
+              const platformPulse = 0.25 + Math.max(0, Math.sin(time * 3.4)) * 2.2;
+              platformLight.intensity = platformPulse;
+              platformLamp.scale.setScalar(0.82 + platformPulse * 0.08);
+              for (const item of siteLights) {
+                if (!item.site.visible) continue;
+                const pulse = Math.max(0, Math.sin(time * (item.isData ? 4.8 : 3.2) + item.phase));
+                item.lamp.intensity = 0.45 + pulse * (item.isData ? 5.4 : 4.2);
+              }
+
+              // A deterministic 13-second cell: two sharp flashes, then darkness.
+              const phase = time % 13;
+              const flash = phase < 0.08 ? 1 : (phase > 0.19 && phase < 0.28 ? 0.62 : 0);
+              lightningMaterial.opacity = flash * 0.92;
+              lightningLight.intensity = flash * 10;
+              lightning.position.x = camera.position.x - 900;
+              lightning.position.z = camera.position.z - 1450;
+              lightningLight.position.x = lightning.position.x;
+              lightningLight.position.z = lightning.position.z;
+            };
+          }
+        });
+      },
+      "map_damarSeaStorm"
+    ); // @payload:map_damarSeaStorm
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES
+        } = ctx.tables;
+
+        const world = WORLD_PRESETS.damarSeaStorm;
+        if (!world) throw new Error("[sera-m07] damarSeaStorm is not registered; load map_damarSeaStorm first");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m05" && mission.campaign === "sera")) {
+          throw new Error("[sera-m07] latest implemented Sera predecessor sera-m05 is missing");
+        }
+        for (const type of ["fa18", "e2d", "sarFlyingBoat", "su33", "mig31"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m07] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["su33", "mig31"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m07] required enemy profile not registered: ${type}`);
+        }
+        if (!SHIP_TYPES.missileBoat) throw new Error("[sera-m07] missileBoat ship type is missing");
+
+        const sites = Object.freeze(world.missionAnchors.rescueSites.map((site) => Object.freeze({
+          id: site.id,
+          kind: site.kind,
+          label: site.label,
+          at: Object.freeze([...site.at])
+        })));
+        const m07RecoveryContract = Object.freeze({
+          pickupRadius: 650,
+          minimumAltitude: 18,
+          maximumAltitude: 460,
+          maximumSpeed: 430,
+          sites,
+          rescueFirst: Object.freeze({
+            route: "rescue",
+            requiredSurvivors: 3,
+            expireSite: "data",
+            banner: "RESCUE PRIORITY · DATA LOST"
+          }),
+          dataFirst: Object.freeze({
+            route: "intel",
+            requiredSurvivors: 2,
+            expireSite: "crew-c",
+            banner: "DATA SECURED · ONE BEACON LOST",
+            reinforcement: Object.freeze({
+              types: Object.freeze(["mig31", "mig31"]),
+              label: "FOXHOUND INTERCEPT",
+              at: Object.freeze([4300, 3400]),
+              facing: Object.freeze([0, 0]),
+              altitude: 2100,
+              role: "line",
+              skill: "veteran",
+              idBase: 700
+            })
+          }),
+          marks: Object.freeze({
+            route: "m07Route",
+            survivors: "m07SurvivorsRecovered",
+            data: "damarDataRecovered",
+            lostBeacon: "m07LostBeacon",
+            crownEarly: "crown1Recovered"
+          }),
+          score: Object.freeze({ survivor: 900, data: 1200 }),
+          rank: Object.freeze({
+            sTime: 720,
+            aTime: 900,
+            sGuardLosses: 0,
+            ignoreWhiteTargets: true
+          }),
+          epilogueByRoute: Object.freeze({
+            rescue: Object.freeze([
+              "三つの救難信号はすべて回収された。黒い記録球は嵐の底へ消えた。",
+              "CROWNは早期に救助され、後方の病院へ移送された。",
+              "次の空襲で使える敵配置図はない。それでも、帰投する席は一つ多かった。"
+            ]),
+            intel: Object.freeze([
+              "敵無人機の記録球を回収し、次の攻撃に必要な航路データを確保した。",
+              "一つの救難信号は消えた。CROWNを含む残る乗員は救助された。",
+              "嵐の外では、失った一人より救える人数の計算がもう始まっていた。"
+            ])
+          })
+        });
+
+        const anchors = world.missionAnchors;
+        const mission = {
+          key: "sera-m07",
+          campaign: "sera",
+          campaignOrder: 7,
+          world: "damarSeaStorm",
+          title: "BLACK CURRENT",
+          jp: "暴風雨のダマル西救難航路へ進出し、救難航空隊を守りながら人命または敵作戦データを回収せよ。",
+          act: 2,
+          storyNo: 7,
+          story: "WAR DAY 068。RAVENは初めてROOK 1として、黒いダマル海へ入る。\n三つの救難光と一つの記録球。その全てを嵐から拾い上げる時間はない。",
+          // The runtime substitutes route-specific lines from the recovery contract.
+          epilogue: [
+            "ダマル海の救難航路は確保された。",
+            "回収したものと失ったものは、別々の報告書へ記録された。",
+            "嵐は作戦終了後も、何事もなかったように海面を叩き続けた。"
+          ],
+
+          friendlies: {
+            playerStart: {
+              x: anchors.playerStart[0],
+              y: 720,
+              z: anchors.playerStart[1],
+              facing: { x: 0, z: 0 }
+            },
+            wingmen: [
+              {
+                type: "fa18",
+                label: "ROOK 2 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 95, side: 110, up: -12 }
+              }
+            ],
+            transportGroups: [
+              {
+                aircraft: "sarFlyingBoat",
+                callsign: "SEALIGHT",
+                count: 1,
+                vulnerable: true,
+                hp: 980,
+                speed: 74,
+                altitude: 260,
+                start: { x: anchors.sarFlyingBoatStart[0], z: anchors.sarFlyingBoatStart[1] },
+                exit: { x: anchors.sarFlyingBoatExit[0], z: anchors.sarFlyingBoatExit[1] }
+              },
+              {
+                aircraft: "e2d",
+                callsign: "MERIDIAN",
+                count: 1,
+                vulnerable: false,
+                hp: 1200,
+                speed: 112,
+                altitude: 1550,
+                start: { x: anchors.patrolStart[0], z: anchors.patrolStart[1] },
+                exit: { x: anchors.patrolExit[0], z: anchors.patrolExit[1] }
+              }
+            ],
+            guard: {
+              readout: "count",
+              label: "SAR",
+              lossPenalty: 0,
+              hitPenalty: 0,
+              lossBanner: "RESCUE AIRCRAFT LOST",
+              failBanner: "RESCUE OPERATION LOST",
+              lossRadio: "SEALIGHT被撃墜！ 救難作業を続けられない！",
+              failRadio: "救難航空隊を喪失。BLACK CURRENTを中止、ROOKは離脱せよ。",
+              safeRadio: "SEALIGHT、救難航路を離脱。回収地点はROOKへ引き継ぐ。"
+            }
+          },
+
+          sequence: [
+            {
+              types: ["su33", "su33", "su33", "su33"],
+              band: 2,
+              idBase: 0,
+              label: "FLEET CAP",
+              role: "line",
+              skill: "regular",
+              at: [...anchors.enemyCapEntry],
+              altitude: 1450,
+              facing: [0, 0],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "Su-33四機、救難航路へ接近。全機TGT指定。SEALIGHTを守れ。",
+                  id: "m07_contact_cap"
+                }
+              ]
+            },
+            {
+              kind: "naval",
+              fleet: ["missileBoat", "missileBoat"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 40,
+              label: "MISSILE BOAT",
+              at: [...anchors.missileBoats],
+              facing: [0, 0],
+              radio: [
+                {
+                  speaker: "lark",
+                  priority: "NORMAL",
+                  text: "海面にミサイル艇二。白表示だ、回収を止める必要はない。",
+                  id: "m07_contact_boats"
+                }
+              ]
+            }
+          ],
+
+          m07RecoveryContract,
+          fixedRadio: [
+            { id: "m07_intro_meridian", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ダマル西救難航路へ進入。視程二千九百、雲底六百。" },
+            { id: "m07_intro_lark", at: 8, speaker: "lark", priority: "NORMAL", text: "救難光が三つ。黒い記録球も海面に出てる。" },
+            { id: "m07_choice_meridian", at: 14, speaker: "meridian", priority: "URGENT", text: "最初に接近した回収物を優先する。低空四百六十以下、半径六百五十へ入れ。" },
+            { id: "m07_crown", event: "crownRecovered", speaker: "crown", priority: "URGENT", text: "……CROWN。聞こえる。RAVEN、今度はお前が先に帰れ。" },
+            { id: "m07_data", event: "dataRecovered", speaker: "meridian", priority: "URGENT", text: "記録球を確保。敵配置データを受信——高速反応二、こちらへ向かう。" },
+            { id: "m07_route_rescue", event: "rescueRouteLocked", speaker: "lark", priority: "URGENT", text: "人を先に拾う。記録球は捨てる——残りの光へ行こう。" },
+            { id: "m07_route_intel", event: "intelRouteLocked", speaker: "lark", priority: "URGENT", text: "データを取った。……一つ消えた。残り二つは絶対に拾う。" },
+            { id: "m07_recovery_complete", event: "recoveryComplete", speaker: "meridian", priority: "CRITICAL", text: "必要回収を完了。赤TGTを排除し、救難航空隊と離脱せよ。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "BLACK CURRENT完了。生存者と回収物を確認。ROOK、救難航空隊を伴い帰投せよ。",
+            id: "m07-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "救難航空隊を喪失、またはROOKが作戦続行不能。BLACK CURRENTを中止する。",
+            id: "m07-failure"
+          },
+          parTime: 720,
+          hasOutro: false,
+          map: { x: 0.63, y: 0.21 },
+          battleCenter: { x: 0, z: 0 },
+          battleRadius: 7600,
+          briefing: "暴風雨のダマル西救難航路でSEALIGHT救難飛行艇を守り、海面の回収地点へ低空進入する。\n黄色のSOS三地点と青いDATA CAPSULE一地点。高度460以下・半径650以内の最初の通過が作戦方針を固定する。\nSOSを先に取れば三地点すべてを救助できるが、DATAは失われる。DATAを先に取れば一つのSOSが消え、MiG-31二機が増援される。\n赤TGTはSu-33四機。白いミサイル艇は妨害戦力であり、撃破は任意。選択した回収と赤TGT排除の両方で作戦完了。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m05" });
+      },
+      "mission_sera_m07"
+    ); // @payload:mission_sera_m07
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -37874,6 +40882,75 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const fleet = enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet);
         for (const enemy of fleet) damageEnemy(enemy, enemy.hp + 1, true, false);
         return fleet.length > 0;
+      },
+      seraM07Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m07") return null;
+        return {
+          state: gameState,
+          route: m07State.route,
+          recovered: [...m07State.recovered],
+          expiredSite: m07State.expiredSite,
+          recoveryComplete: m07State.recoveryComplete,
+          reinforcementsSpawned: m07State.reinforcementsSpawned,
+          liveTargets: enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy)).map((enemy) => enemy.type),
+          liveWhite: enemies.filter((enemy) => enemy.alive && !isTgtEntry(enemy)).map((enemy) => enemy.type),
+          friendlies: friendlies.filter((friendly) => friendly.kind !== "recovery").map((friendly) => ({
+            kind: friendly.kind,
+            type: friendly.type,
+            label: friendly.label,
+            vulnerable: Boolean(friendly.vulnerable),
+            alive: friendly.alive,
+            retired: Boolean(friendly.retired)
+          })),
+          liveRecoveryMarkers: [...m07State.markerById.entries()]
+            .filter(([, marker]) => marker.alive)
+            .map(([id]) => id),
+          guarded: guardedFriendlies().map((friendly) => ({
+            label: friendly.label,
+            alive: friendly.alive,
+            retired: friendly.retired,
+            hp: friendly.hp
+          })),
+          marks: { ...sortieMarks },
+          outcomePending: outcomePending.active
+        };
+      },
+      forceSeraM07Recover: (id) => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        return recoverM07Site(id);
+      },
+      forceSeraM07FlyToSite: (id) => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const site = m07SiteById(id, mission);
+        if (!site) return false;
+        player.position.set(Number(site.at[0]), 220, Number(site.at[1]));
+        playerSpeed = Math.min(playerSpeed, Number(mission.m07RecoveryContract.maximumSpeed) || playerSpeed);
+        return true;
+      },
+      forceSeraM07DestroyTargets: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+        for (const enemy of targets) damageEnemy(enemy, enemy.hp + 1, true, false);
+        updateMission(0.016, 5);
+        return targets.length;
+      },
+      forceSeraM07LoseGuard: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const guarded = guardedFriendlies().filter((friendly) => friendly.alive);
+        for (const friendly of guarded) destroyFriendly(friendly);
+        return guarded.length;
+      },
+      forceSeraM07ResolveOutcome: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m07" || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER;
       },
       // Focused vertical-slice probes. They are intentionally generic enough
       // to remain useful while M01 is tuned, but refuse every other mission so
@@ -42166,6 +45243,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Scenery and installations first: a strike wave lays its run in against
       // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
+      // M07 recovery HUD points are mission objects, not world geometry. The
+      // visible rafts/capsule already exist in the freshly decorated world;
+      // these empty groups add the corresponding blue HUD/radar references.
+      resetM07State(MISSIONS[currentMissionIndex]);
       // After spawnMissionGround, because a hunting wave is anchored on the
       // friendly it hunts and those are placed by the ground pass; after
       // applyFriendlyPlayerStart above, because the anchor is measured from
@@ -42438,8 +45519,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       epilogueState.revealed = 0;
       epilogueState.charTimer = 0;
       epilogueState.gapTimer = 0;
-      // A failed sortie has no aftermath - the campaign did not move.
-      const lines = success && mission && mission.epilogue ? mission.epilogue : null;
+      // A failed sortie has no aftermath - the campaign did not move. M07 owns
+      // two equally valid aftermaths; select the one the live recovery ledger
+      // actually recorded, falling back to the ordinary authored epilogue if a
+      // development payload omitted either route.
+      const routeEpilogue = success && mission && mission.m07RecoveryContract && m07State.route
+        ? mission.m07RecoveryContract.epilogueByRoute?.[m07State.route]
+        : null;
+      const lines = success && mission ? (routeEpilogue || mission.epilogue) : null;
       if (!lines || lines.length === 0) {
         ui.debriefEpilogueLines.replaceChildren();
         ui.debriefEpilogue.classList.add("hidden");
@@ -45091,6 +48178,209 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return true;
     }
 
+    // SERA M07 BLACK CURRENT -------------------------------------------------
+    // Recovery sites are not enemies and cannot be expressed as TGTs. The
+    // mission therefore owns a tiny proximity contract: empty friendly marker
+    // groups put the sites on the existing blue HUD/radar path, while the map
+    // decorator owns the visible raft/capsule geometry and its disposal.
+    const m07State = {
+      active: false,
+      route: null,
+      recovered: new Set(),
+      expiredSite: null,
+      recoveryComplete: false,
+      reinforcementsSpawned: false,
+      markerById: new Map()
+    };
+
+    function m07Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m07RecoveryContract ? mission : null;
+    }
+
+    function resetM07State(mission) {
+      m07State.active = Boolean(mission && mission.m07RecoveryContract);
+      m07State.route = null;
+      m07State.recovered = new Set();
+      m07State.expiredSite = null;
+      m07State.recoveryComplete = false;
+      m07State.reinforcementsSpawned = false;
+      m07State.markerById = new Map();
+      if (!m07State.active) return;
+
+      for (const site of mission.m07RecoveryContract.sites || []) {
+        const group = new THREE.Group();
+        group.name = `m07-hud-${site.id}`;
+        group.position.set(Number(site.at[0]) || 0, 18, Number(site.at[1]) || 0);
+        scene.add(group);
+        const marker = {
+          kind: "recovery",
+          type: site.kind,
+          label: site.label,
+          alive: true,
+          retired: false,
+          vulnerable: false,
+          group,
+          model: null,
+          radarSymbol: site.kind === "data" ? "ground" : "air"
+        };
+        friendlies.push(marker);
+        m07State.markerById.set(site.id, marker);
+      }
+    }
+
+    function m07SiteById(id, mission = m07Mission()) {
+      if (!mission || !id) return null;
+      return (mission.m07RecoveryContract.sites || []).find((site) => site.id === id) || null;
+    }
+
+    function setM07SiteVisible(id, visible) {
+      const marker = m07State.markerById.get(id);
+      if (marker) {
+        marker.alive = Boolean(visible);
+        marker.group.visible = Boolean(visible);
+      }
+      const scenery = scene.getObjectByName(`m07-site-${id}`);
+      if (scenery) scenery.visible = Boolean(visible);
+    }
+
+    function spawnM07IntelReinforcements(mission) {
+      if (!mission || m07State.reinforcementsSpawned) return 0;
+      const authored = mission.m07RecoveryContract.dataFirst.reinforcement;
+      if (!authored || !Array.isArray(authored.types) || authored.types.length === 0) return 0;
+      m07State.reinforcementsSpawned = true;
+      const wave = {
+        ...authored,
+        types: [...authored.types],
+        tgt: true,
+        band: 2
+      };
+      const before = new Set(enemies);
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawnWave(wave, 2, Number(authored.idBase) || 700, missionWaveIndex + 50);
+      spawningTgt = oldTgt;
+      spawningRankNeutral = oldNeutral;
+      let count = 0;
+      for (const enemy of enemies) {
+        if (before.has(enemy)) continue;
+        enemy.m07IntelReinforcement = true;
+        count += 1;
+      }
+      if (count > 0) {
+        showBanner("MISSION UPDATE · FOXHOUND x2", 2.1, "danger");
+        playTone(78, 0.55, 0.16, "sawtooth");
+      }
+      return count;
+    }
+
+    function updateM07RecoveryComplete(mission) {
+      if (!mission || !m07State.route || m07State.recoveryComplete) return false;
+      const contract = mission.m07RecoveryContract;
+      const survivors = (contract.sites || []).filter(
+        (site) => site.kind === "survivor" && m07State.recovered.has(site.id)
+      ).length;
+      const needed = m07State.route === "rescue"
+        ? Number(contract.rescueFirst.requiredSurvivors) || 3
+        : Number(contract.dataFirst.requiredSurvivors) || 2;
+      const dataSatisfied = m07State.route === "rescue" || m07State.recovered.has("data");
+      if (survivors < needed || !dataSatisfied) return false;
+      m07State.recoveryComplete = true;
+      const marks = contract.marks || {};
+      if (marks.survivors) sortieMarks[marks.survivors] = survivors;
+      fireFixedRadioEvent("recoveryComplete");
+      showBanner("RECOVERY COMPLETE · CLEAR RED TGT", 2.0, "success");
+      return true;
+    }
+
+    function lockM07Route(mission, route) {
+      if (!mission || m07State.route) return false;
+      const contract = mission.m07RecoveryContract;
+      const branch = route === "intel" ? contract.dataFirst : contract.rescueFirst;
+      m07State.route = branch.route;
+      m07State.expiredSite = branch.expireSite;
+      const marks = contract.marks || {};
+      if (marks.route) sortieMarks[marks.route] = branch.route;
+      if (marks.lostBeacon) sortieMarks[marks.lostBeacon] = 1;
+      setM07SiteVisible(branch.expireSite, false);
+      showBanner(branch.banner, 2.2, route === "intel" ? "danger" : "success");
+      fireFixedRadioEvent(route === "intel" ? "intelRouteLocked" : "rescueRouteLocked");
+      if (route === "intel") spawnM07IntelReinforcements(mission);
+      return true;
+    }
+
+    function recoverM07Site(id) {
+      const mission = m07Mission();
+      if (!mission || !m07State.active || m07State.recoveryComplete) return false;
+      const site = m07SiteById(id, mission);
+      if (!site || id === m07State.expiredSite || m07State.recovered.has(id)) return false;
+      if (!m07State.route) lockM07Route(mission, site.kind === "data" ? "intel" : "rescue");
+      // lockM07Route can expire this exact site only on malformed authored data.
+      if (id === m07State.expiredSite) return false;
+
+      m07State.recovered.add(id);
+      setM07SiteVisible(id, false);
+      const contract = mission.m07RecoveryContract;
+      const marks = contract.marks || {};
+      if (site.kind === "data") {
+        if (marks.data) sortieMarks[marks.data] = 1;
+        score += Math.max(0, Number(contract.score && contract.score.data) || 0);
+        showBanner("DATA CAPSULE RECOVERED", 1.8, "success");
+        fireFixedRadioEvent("dataRecovered");
+      } else {
+        const survivors = (contract.sites || []).filter(
+          (entry) => entry.kind === "survivor" && m07State.recovered.has(entry.id)
+        ).length;
+        if (marks.survivors) sortieMarks[marks.survivors] = survivors;
+        if (site.id === "crown" && m07State.route === "rescue" && marks.crownEarly) {
+          sortieMarks[marks.crownEarly] = 1;
+        }
+        score += Math.max(0, Number(contract.score && contract.score.survivor) || 0);
+        showBanner(`SURVIVORS RECOVERED · ${survivors}`, 1.8, "success");
+        if (site.id === "crown") fireFixedRadioEvent("crownRecovered");
+      }
+      playTone(site.kind === "data" ? 980 : 760, 0.16, 0.08, "sine");
+      updateM07RecoveryComplete(mission);
+      return true;
+    }
+
+    function updateM07Recovery() {
+      const mission = m07Mission();
+      if (!mission || !m07State.active || m07State.recoveryComplete) return false;
+      const contract = mission.m07RecoveryContract;
+      const minAltitude = Number(contract.minimumAltitude) || 0;
+      const maxAltitude = Number(contract.maximumAltitude) || Infinity;
+      const maxSpeed = Number(contract.maximumSpeed) || Infinity;
+      if (player.position.y < minAltitude || player.position.y > maxAltitude || playerSpeed > maxSpeed) return false;
+      const radius = Math.max(1, Number(contract.pickupRadius) || 650);
+      for (const site of contract.sites || []) {
+        if (m07State.recovered.has(site.id) || site.id === m07State.expiredSite) continue;
+        const dx = player.position.x - Number(site.at[0]);
+        const dz = player.position.z - Number(site.at[1]);
+        if (dx * dx + dz * dz > radius * radius) continue;
+        return recoverM07Site(site.id);
+      }
+      return false;
+    }
+
+    function updateM07MissionThreat() {
+      const mission = m07Mission();
+      if (!mission || !m07State.active) return false;
+      updateM07Recovery();
+      const limit = Number(mission.m07RecoveryContract.timeLimit) || 1200;
+      if (missionElapsed < limit) return false;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      showBanner("RESCUE WINDOW CLOSED", 2.1, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function m07RecoveryHoldsMission(mission) {
+      return Boolean(mission && mission.m07RecoveryContract && m07State.active && !m07State.recoveryComplete);
+    }
+
     function m03RankShouldCapS(mission) {
       const contract = mission && mission.m03RankContract;
       if (!contract || !m03State.active) return false;
@@ -47038,7 +50328,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
       if (deployment.ships) spawnFriendlyShips(deployment.ships);
-      if (deployment.transports) spawnFriendlyTransports(deployment.transports);
+      if (Array.isArray(deployment.transportGroups)) {
+        for (const group of deployment.transportGroups) spawnFriendlyTransports(group);
+      } else if (deployment.transports) {
+        spawnFriendlyTransports(deployment.transports);
+      }
       if (Array.isArray(deployment.wingmen)) {
         for (const wingman of deployment.wingmen) spawnFriendlyWingman(wingman);
       } else if (deployment.wingman) {
@@ -50560,6 +53854,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
       if (updateM04MissionThreat()) return;
+      if (updateM07MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -50591,6 +53886,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       const mission = MISSIONS[currentMissionIndex];
+      // BLACK CURRENT is not won by clearing the sky alone. Rescue sites are
+      // friendly proximity objectives, so they do not enter the red TGT count;
+      // hold the normal all-targets path until the selected recovery route is
+      // complete.
+      if (m07RecoveryHoldsMission(mission)) {
+        waveClearTimer = -1;
+        return;
+      }
       // A trailing non-TGT air wave is normally optional. M02's last white
       // cover wave is different: spawning it reveals the red TEL ground phase,
       // so its activation contract must keep the mission progression alive.
@@ -51683,6 +54986,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const follow = world.sunRoad.userData.followOffset;
         world.sunRoad.position.x = camX + follow.x;
         world.sunRoad.position.z = camZ + follow.z;
+      }
+
+      // A decorator may opt into presentation-only animation by attaching one
+      // callback to the root it already handed to addRoot(). The world owns the
+      // root, geometry and materials, so the normal dispose path still releases
+      // everything on a map swap. No gameplay table or collision surface is
+      // exposed here: weather, warning lamps and other scenery motion only.
+      const worldTickTime = performance.now() * 0.001;
+      for (const root of world.roots) {
+        const tick = root && root.userData && root.userData.worldTick;
+        if (typeof tick !== "function") continue;
+        try {
+          tick({ camera, dt, time: worldTickTime, gameState });
+        } catch (error) {
+          // A broken visual callback must not stop the flight loop. Disable the
+          // offending root after the first loud failure instead of logging at
+          // 60fps and turning one scenery bug into an unusable console.
+          console.error(`[world] decorator animation failed on "${root.name || world.preset}":`, error);
+          root.userData.worldTick = null;
+        }
       }
 
       // White-out while the camera is inside a cloud volume. Vertical distance
