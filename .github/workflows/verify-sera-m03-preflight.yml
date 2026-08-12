@@ -6,6 +6,7 @@ on:
       - chatgpt/sera-act1-implementation
     paths:
       - tools/check_sera_m03_preflight.mjs
+      - tools/inspect_sera_m03_host.mjs
       - .github/workflows/verify-sera-m03-preflight.yml
       - payloads/map_sarkPort.payload.js
       - payloads/ground_heli_pack.payload.js
@@ -26,5 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Inspect current host contracts
+        run: node tools/inspect_sera_m03_host.mjs
       - name: Check M03 prerequisites
         run: node tools/check_sera_m03_preflight.mjs
