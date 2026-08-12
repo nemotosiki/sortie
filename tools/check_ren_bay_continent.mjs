@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const payloadPath = path.join(ROOT, "payloads", "map_renBay.payload.js");
 const indexPath = path.join(ROOT, "index.html");
 const source = fs.readFileSync(payloadPath, "utf8");
