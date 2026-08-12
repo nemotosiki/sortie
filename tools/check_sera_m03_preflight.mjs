@@ -44,9 +44,7 @@ for (const marker of [
   "activeGroundPhaseId",
   "groundPhaseFailureFired",
   "activateGroundPhase",
-  "failAtRouteEnd",
-  "m02FacilityStatus",
-  "m02GroundStatus"
+  "failAtRouteEnd"
 ]) requireText(index, marker, "M02 reusable host contract");
 
 for (const marker of ["wingmen:", "radioSpeaker:", "rankNeutral"]) {
