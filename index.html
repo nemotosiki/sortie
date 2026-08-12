@@ -38912,6 +38912,676 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m06"
     ); // @payload:mission_sera_m06
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.stormOcean;
+        if (!base) throw new Error("[damarSeaStorm] stormOcean base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([-3900, -2500]),
+          battleCenter: Object.freeze([0, 0]),
+          sarFlyingBoatStart: Object.freeze([-3400, 1800]),
+          sarFlyingBoatExit: Object.freeze([3000, -2100]),
+          patrolStart: Object.freeze([-4500, -3600]),
+          patrolExit: Object.freeze([4300, 3500]),
+          enemyCapEntry: Object.freeze([3600, -3200]),
+          missileBoats: Object.freeze([2300, 600]),
+          navigationPlatform: Object.freeze([2450, 2350]),
+          rescueSites: Object.freeze([
+            Object.freeze({ id: "crown", kind: "survivor", label: "SOS CROWN", at: Object.freeze([-1450, -250]) }),
+            Object.freeze({ id: "crew-b", kind: "survivor", label: "SOS CREW B", at: Object.freeze([250, 1350]) }),
+            Object.freeze({ id: "crew-c", kind: "survivor", label: "SOS CREW C", at: Object.freeze([1650, -650]) }),
+            Object.freeze({ id: "data", kind: "data", label: "DATA CAPSULE", at: Object.freeze([300, -1700]) })
+          ])
+        });
+
+        ctx.addWorldPreset("damarSeaStorm", {
+          ...base,
+          label: "DAMAR SEA · BLACK CURRENT",
+          sceneryOrigin: Object.freeze([0, 0]),
+          previewFocus: Object.freeze([0, 0]),
+          previewSheets: Object.freeze({
+            rescue: Object.freeze([
+              Object.freeze({ label: "CROWN RAFT", position: [-1450, 14, -178], target: [-1450, 1.5, -250] }),
+              Object.freeze({ label: "DATA CAPSULE", position: [300, 14, -1628], target: [300, 1.5, -1700] }),
+              Object.freeze({ label: "NAV PLATFORM", position: [2450, 72, 2460], target: [2450, 42, 2350] }),
+              Object.freeze({ label: "SAR HELICOPTER", position: [-920, 155, 165], target: [-920, 145, 40] })
+            ])
+          }),
+          regionId: "damar_sea",
+          sectorIds: Object.freeze(["west_rescue_lane"]),
+          variant: "storm_evening_rescue",
+          missionAnchors,
+          clearColor: 0x343f4e,
+          sky: Object.freeze([
+            Object.freeze([0, "#0a0f17"]),
+            Object.freeze([0.28, "#17202c"]),
+            Object.freeze([0.46, "#303b49"]),
+            Object.freeze([0.54, "#596777"]),
+            Object.freeze([0.7, "#27323e"]),
+            Object.freeze([1, "#0b1119"])
+          ]),
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x44414d07,
+            noise: 0.061,
+            haze: 0.34,
+            thinClouds: 54,
+            cloudOpacity: 0.19,
+            cloudTint: 0x8797aa
+          },
+          // Rescue lamps must be findable, but only once the player reaches their
+          // sector. This is still the second-tightest visibility band in the game.
+          fog: { color: 0x343f4e, near: 520, far: 2900 },
+          // No visible disc. The stock storm's dim sun still read as a white ball at
+          // rescue altitude; Damar gets its illumination from the overcast and the
+          // intermittent lightning instead.
+          sun: {
+            position: [-1800, 410, -3400],
+            color: 0x566578,
+            radius: 0.1,
+            glare: [
+              { scale: 1, color: 0x566578, opacity: 0 },
+              { scale: 1, color: 0x566578, opacity: 0 }
+            ]
+          },
+          sunRoad: {
+            color: 0x8295aa,
+            opacity: 0,
+            width: 1,
+            length: 1,
+            rotationY: -0.48,
+            position: [-900, 0.4, -1700]
+          },
+          ocean: {
+            ...base.ocean,
+            base: "#07111a",
+            bright: "185, 204, 221",
+            dark: "1, 5, 10",
+            colorContrast: 0.34,
+            crestStrength: 0.76,
+            roughness: 0.76,
+            normalScale: [1.04, 1.28],
+            normalSpeed: [0.031, 0.014],
+            normalSeed: 0x44414d08
+          },
+          lights: {
+            hemi: { sky: 0x96aac1, ground: 0x070b12, intensity: 1.22 },
+            key: { color: 0xa8bdd2, intensity: 0.82, position: [-900, 760, -1500] },
+            fill: { color: 0x41566d, intensity: 0.36, position: [700, 260, 900] }
+          },
+          mountains: {
+            ...base.mountains,
+            count: 0,
+            corridor: null,
+            plateau: null
+          },
+          islands: { count: 0, stone: 0x262e36, green: 0x242e2b },
+          clouds: {
+            ...base.clouds,
+            // Recovery is flown below 460 m. Keep the authored lane readable by
+            // dropping the stock arena-centred hero banks and using only a sparse
+            // set of procedural low/mid clusters. The high overcast, fog, rain and
+            // outer stratus still carry the storm silhouette.
+            scale: 0.26,
+            hero: false,
+            opacity: 0.62,
+            texture: { seed: 0x44414d09, contrast: 1.3, underside: 0.78, softness: 1.08 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x44414d0a,
+            keepClear: Object.freeze([{ x: 0, z: 0, r: 7200 }]),
+            extraIslands: { count: 0, radius: [0, 0], height: [0, 0], distance: [0, 0] },
+            shore: null,
+            trees: null,
+            rocks: null,
+            extraClouds: {
+              // Keep the working rescue lane below the ceiling. The first pass put
+              // 34 large puff volumes directly over the four sites; at 200–700 m they
+              // read as opaque boulders and hid the rafts. Fog, rain and the high deck
+              // carry the storm while these stay sparse and mostly outside the lane.
+              towers: 3,
+              towerSize: [90, 145],
+              towerBase: 920,
+              stratus: 11,
+              stratusSize: [180, 300],
+              stratusBase: 1120,
+              distance: [2500, 4800]
+            }
+          }
+        });
+
+        ctx.addWorldDecorator("damarSeaRescueLane", {
+          worlds: ["damarSeaStorm"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial }) {
+            const root = new THREE.Group();
+            root.name = "damarSeaRescueLane";
+            addRoot(root);
+
+            const boxGeometry = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylinderGeometry = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 14));
+            const sphereGeometry = keepGeometry(new THREE.SphereGeometry(1, 12, 8));
+            const torusGeometry = keepGeometry(new THREE.TorusGeometry(1, 0.22, 8, 20));
+            const materials = new Map();
+            const material = (color, emissive = 0, opacity = 1) => {
+              const key = `${color}:${emissive}:${opacity}`;
+              if (!materials.has(key)) {
+                materials.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness: 0.76,
+                  metalness: 0.15,
+                  emissive,
+                  emissiveIntensity: emissive ? 1.35 : 0,
+                  transparent: opacity < 1,
+                  opacity,
+                  depthWrite: opacity >= 1
+                })));
+              }
+              return materials.get(key);
+            };
+            const basic = (color, opacity = 1) => keepMaterial(new THREE.MeshBasicMaterial({
+              color,
+              transparent: opacity < 1,
+              opacity,
+              depthWrite: opacity >= 1,
+              side: THREE.DoubleSide
+            }));
+            const put = (parent, geometry, mat, x, y, z, sx, sy, sz, rotation = null) => {
+              const mesh = new THREE.Mesh(geometry, mat);
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              if (rotation) mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
+              parent.add(mesh);
+              return mesh;
+            };
+
+            // Damar navigation platform: a small fixed point in an otherwise empty
+            // black sea, readable by silhouette and by its alternating lane lights.
+            const platform = new THREE.Group();
+            platform.name = "damarNavigationPlatform";
+            platform.position.set(2450, 0, 2350);
+            root.add(platform);
+            const wetSteel = material(0x45515c);
+            const darkSteel = material(0x202a33);
+            const safety = material(0xd28b28, 0x5a2a08);
+            const deck = material(0x58656d);
+            for (const x of [-18, 18]) {
+              for (const z of [-18, 18]) put(platform, cylinderGeometry, wetSteel, x, 21, z, 2.8, 22, 2.8);
+            }
+            put(platform, boxGeometry, deck, 0, 43, 0, 52, 4, 52);
+            put(platform, boxGeometry, darkSteel, 0, 49, 2, 24, 9, 20);
+            // Leave a real air gap above the equipment room. The old lower face was
+            // exactly coplanar with the room roof and shimmered while banking.
+            put(platform, boxGeometry, safety, 0, 55.3, 2, 18, 3, 15);
+            // Mast starts at the roof and remains continuous through its crossbar.
+            put(platform, cylinderGeometry, wetSteel, 0, 78.2, 2, 1.6, 28.2, 1.6);
+            put(platform, boxGeometry, wetSteel, 0, 76, 2, 24, 0.8, 0.8);
+            const platformLamp = put(platform, sphereGeometry, basic(0xffd477), 0, 107, 2, 2.8, 2.8, 2.8);
+            const platformLight = new THREE.PointLight(0xffc15a, 0, 720, 1.7);
+            platformLight.position.set(0, 107, 2);
+            platform.add(platformLight);
+            // Windows and perimeter rails give the otherwise simple silhouette a
+            // believable working scale without laying coplanar decals on the walls.
+            const windowMaterial = material(0x82c9df, 0x123c4b);
+            for (const x of [-8, 0, 8]) put(platform, boxGeometry, windowMaterial, x, 49, -8.3, 2.3, 2.1, 0.34);
+            for (const z of [-21, 21]) {
+              put(platform, boxGeometry, wetSteel, -25, 48, z, 0.55, 6, 0.55);
+              put(platform, boxGeometry, wetSteel, 25, 48, z, 0.55, 6, 0.55);
+              put(platform, boxGeometry, wetSteel, 0, 51, z, 50, 0.42, 0.42);
+            }
+
+            // Shipping-lane lights give the player an east/west axis even when the
+            // horizon and compass reference disappear inside the cloud deck.
+            const laneLights = [];
+            const laneMarkers = [];
+            for (let i = -4; i <= 4; i += 1) {
+              const lane = new THREE.Group();
+              lane.position.set(i * 780, 0, 3000 + Math.sin(i * 0.9) * 150);
+              lane.userData.baseY = 0;
+              lane.userData.phase = i * 0.61;
+              root.add(lane);
+              // The buoy body now meets the water instead of floating two metres
+              // above it. Lamp and body remain separated, so no two faces coincide.
+              put(lane, cylinderGeometry, material(0x2b343b), 0, 1.7, 0, 2.2, 3.4, 2.2);
+              put(lane, sphereGeometry, basic(i % 2 ? 0x6dffb2 : 0xff7a5e), 0, 6.2, 0, 1.55, 1.55, 1.55);
+              const lamp = new THREE.PointLight(i % 2 ? 0x58ffac : 0xff6a52, 0, 280, 2);
+              lamp.position.y = 6.2;
+              lane.add(lamp);
+              laneLights.push(lamp);
+              laneMarkers.push(lane);
+            }
+
+            const siteLights = [];
+            const animatedSites = [];
+            const rescueSite = ({ id, kind, at }, index) => {
+              const site = new THREE.Group();
+              site.name = `m07-site-${id}`;
+              site.position.set(at[0], 0.12, at[1]);
+              site.userData.baseY = 0.12;
+              site.userData.phase = index * 0.87;
+              root.add(site);
+              const isData = kind === "data";
+              if (isData) {
+                // A low, half-submerged recorder canister. The previous 7.6 m
+                // diameter cylinder floated above the surface and intersected a
+                // long box along almost the same faces, producing obvious shimmer.
+                put(site, cylinderGeometry, material(0x080a0d, 0x010203), 0, 1.1, 0, 1.8, 5.6, 1.8, [Math.PI / 2, 0, 0.34]);
+                put(site, torusGeometry, material(0x315365, 0x0b2733), 0, 1.12, 0, 2.05, 2.05, 0.75, [Math.PI / 2, 0, 0.34]);
+                put(site, boxGeometry, material(0x26313a), 0, 2.85, 0, 1.2, 0.42, 1.2, [0, 0.34, 0]);
+              } else {
+                put(site, torusGeometry, material(0xee6b2b, 0x6a1804), 0, 0.72, 0, 6.4, 6.4, 1.6, [Math.PI / 2, 0, 0]);
+                put(site, boxGeometry, material(0xb73524), 0, 0.86, 0, 5.8, 0.56, 2.5);
+                for (const side of [-1, 1]) put(site, sphereGeometry, material(0xf19a49), side * 1.9, 1.55, 0, 0.7, 0.7, 0.7);
+              }
+              put(site, cylinderGeometry, darkSteel, 0, 4.1, 0, 0.42, 6.4, 0.42);
+              const lampColor = isData ? 0x68dfff : 0xffde72;
+              put(site, sphereGeometry, basic(lampColor), 0, 7.5, 0, 1.55, 1.55, 1.55);
+              const lamp = new THREE.PointLight(lampColor, 0, isData ? 620 : 520, 1.5);
+              lamp.position.y = 7.5;
+              site.add(lamp);
+              siteLights.push({ lamp, site, phase: index * 0.73, isData });
+              animatedSites.push(site);
+            };
+            missionAnchors.rescueSites.forEach(rescueSite);
+
+            // Two hovering SAR helicopters make the rescue operation visible before
+            // the player reaches a pickup sphere. They are scenery here; the moving,
+            // vulnerable rescue aircraft are mission friendlies owned by the host.
+            const rotors = [];
+            const helicopters = [];
+            const addSarHelicopter = (name, x, y, z, yaw) => {
+              const heli = new THREE.Group();
+              heli.name = name;
+              heli.position.set(x, y, z);
+              heli.rotation.y = yaw;
+              heli.userData.baseY = y;
+              heli.userData.phase = helicopters.length * 1.7;
+              root.add(heli);
+              const white = material(0xdfe8eb);
+              const orange = material(0xe85c27, 0x541302);
+              // Opaque glass and a solid two-blade rotor avoid transparent-surface
+              // sorting flashes. The old paper-thin translucent rotor disc was the
+              // most visible flicker when the player crossed beneath a helicopter.
+              const glass = material(0x18303c, 0x07151c);
+              put(heli, sphereGeometry, white, 0, 0, 0, 4.2, 2.2, 6.3);
+              put(heli, sphereGeometry, glass, 0, 0.55, -4.4, 3.05, 1.4, 2.05);
+              put(heli, boxGeometry, orange, 0, -2.02, -0.2, 5.8, 0.3, 3.1);
+              put(heli, boxGeometry, white, 0, -0.1, 7.2, 1.8, 1.5, 9.2);
+              put(heli, boxGeometry, orange, 0, 0.45, 11.2, 0.65, 4.2, 2.4);
+              put(heli, cylinderGeometry, darkSteel, 0, 3.05, 0, 0.48, 1.7, 0.48);
+              for (const side of [-1, 1]) {
+                put(heli, boxGeometry, darkSteel, side * 3.35, -2.65, -0.2, 0.32, 0.32, 7.8);
+                put(heli, boxGeometry, darkSteel, side * 3.35, -1.75, -2.1, 0.22, 1.9, 0.22, [0, 0, side * 0.32]);
+                put(heli, boxGeometry, darkSteel, side * 3.35, -1.75, 2.0, 0.22, 1.9, 0.22, [0, 0, side * 0.32]);
+              }
+              put(heli, boxGeometry, material(0xc6d4db), 0, 0.45, 12.48, 0.16, 6.2, 0.54);
+              put(heli, boxGeometry, material(0xc6d4db), 0, 0.45, 12.48, 3.6, 0.16, 0.54);
+              const rotor = new THREE.Group();
+              rotor.position.y = 4.05;
+              heli.add(rotor);
+              put(rotor, boxGeometry, material(0xb8c8d2), 0, 0, 0, 22, 0.12, 0.58);
+              put(rotor, sphereGeometry, darkSteel, 0, 0.2, 0, 0.72, 0.42, 0.72);
+              rotors.push(rotor);
+              const searchLight = new THREE.SpotLight(0xdaf2ff, 4.2, 900, 0.22, 0.7, 1.2);
+              searchLight.position.set(0, -1.2, -3);
+              searchLight.target.position.set(0, -170, -40);
+              heli.add(searchLight, searchLight.target);
+              helicopters.push(heli);
+            };
+            addSarHelicopter("damarSarHelicopter1", -920, 145, 40, -0.6);
+            addSarHelicopter("damarSarHelicopter2", 900, 175, 770, 2.2);
+
+            // Wind-driven rain. Geometry belongs to the world and the tiny host hook
+            // calls root.userData.worldTick; no global scene resource survives a swap.
+            let rainSeed = 0x44414d0b >>> 0;
+            const rand = () => {
+              rainSeed = Math.imul(rainSeed ^ (rainSeed >>> 15), 2246822519) >>> 0;
+              rainSeed = Math.imul(rainSeed ^ (rainSeed >>> 13), 3266489917) >>> 0;
+              return ((rainSeed ^= rainSeed >>> 16) >>> 0) / 4294967296;
+            };
+            const rainCount = 760;
+            const rainPositions = new Float32Array(rainCount * 6);
+            for (let i = 0; i < rainCount; i += 1) {
+              const x = (rand() - 0.5) * 2800;
+              const y = (rand() - 0.5) * 1300;
+              const z = (rand() - 0.5) * 2800;
+              const at = i * 6;
+              rainPositions[at] = x;
+              rainPositions[at + 1] = y;
+              rainPositions[at + 2] = z;
+              rainPositions[at + 3] = x - 18;
+              rainPositions[at + 4] = y - 54;
+              rainPositions[at + 5] = z + 8;
+            }
+            const rainGeometry = keepGeometry(new THREE.BufferGeometry());
+            rainGeometry.setAttribute("position", new THREE.BufferAttribute(rainPositions, 3));
+            const rainMaterial = keepMaterial(new THREE.LineBasicMaterial({
+              color: 0xb8d1e3,
+              transparent: true,
+              opacity: 0.24,
+              depthWrite: false,
+              fog: true
+            }));
+            const rain = new THREE.LineSegments(rainGeometry, rainMaterial);
+            rain.name = "damarStormRain";
+            rain.frustumCulled = false;
+            root.add(rain);
+
+            const lightningGeometry = keepGeometry(new THREE.BufferGeometry());
+            lightningGeometry.setAttribute("position", new THREE.Float32BufferAttribute([
+              0, 1250, 0, 70, 1000, 35,
+              70, 1000, 35, 10, 790, 80,
+              10, 790, 80, 115, 560, 135,
+              115, 560, 135, 70, 360, 180
+            ], 3));
+            const lightningMaterial = keepMaterial(new THREE.LineBasicMaterial({
+              color: 0xeaf6ff,
+              transparent: true,
+              opacity: 0,
+              depthWrite: false,
+              fog: true
+            }));
+            const lightning = new THREE.LineSegments(lightningGeometry, lightningMaterial);
+            lightning.name = "damarLightningBolt";
+            lightning.position.set(-900, 0, -1450);
+            root.add(lightning);
+            const lightningLight = new THREE.PointLight(0xd8ecff, 0, 5200, 1.1);
+            lightningLight.position.set(-900, 680, -1450);
+            root.add(lightningLight);
+
+            root.userData.worldTick = ({ camera, dt, time }) => {
+              rain.position.x = camera.position.x;
+              rain.position.y = camera.position.y;
+              rain.position.z = camera.position.z;
+              const attr = rainGeometry.getAttribute("position");
+              const values = attr.array;
+              const fall = Math.min(80, dt * 620);
+              const drift = Math.min(24, dt * 115);
+              for (let i = 0; i < values.length; i += 6) {
+                values[i] -= drift;
+                values[i + 1] -= fall;
+                values[i + 3] -= drift;
+                values[i + 4] -= fall;
+                if (values[i + 1] < -650) {
+                  values[i + 1] += 1300;
+                  values[i + 4] += 1300;
+                }
+                if (values[i] < -1400) {
+                  values[i] += 2800;
+                  values[i + 3] += 2800;
+                }
+              }
+              attr.needsUpdate = true;
+
+              for (const rotor of rotors) rotor.rotation.y = (rotor.rotation.y + dt * 22) % (Math.PI * 2);
+              for (const lane of laneMarkers) {
+                lane.position.y = lane.userData.baseY + Math.sin(time * 0.72 + lane.userData.phase) * 0.18;
+                lane.rotation.z = Math.sin(time * 0.55 + lane.userData.phase) * 0.018;
+              }
+              for (const site of animatedSites) {
+                site.position.y = site.userData.baseY + Math.sin(time * 0.8 + site.userData.phase) * 0.14;
+                site.rotation.z = Math.sin(time * 0.61 + site.userData.phase) * 0.012;
+              }
+              for (const heli of helicopters) {
+                heli.position.y = heli.userData.baseY + Math.sin(time * 0.74 + heli.userData.phase) * 2.2;
+                heli.rotation.z = Math.sin(time * 0.53 + heli.userData.phase) * 0.014;
+              }
+              const lanePulse = 0.55 + Math.max(0, Math.sin(time * 2.1)) * 1.7;
+              laneLights.forEach((lamp, index) => { lamp.intensity = lanePulse * (index % 2 ? 0.8 : 1); });
+              const platformPulse = 0.25 + Math.max(0, Math.sin(time * 3.4)) * 2.2;
+              platformLight.intensity = platformPulse;
+              platformLamp.scale.setScalar(0.82 + platformPulse * 0.08);
+              for (const item of siteLights) {
+                if (!item.site.visible) continue;
+                const pulse = Math.max(0, Math.sin(time * (item.isData ? 4.8 : 3.2) + item.phase));
+                item.lamp.intensity = 0.45 + pulse * (item.isData ? 5.4 : 4.2);
+              }
+
+              // A deterministic 13-second cell: two sharp flashes, then darkness.
+              const phase = time % 13;
+              const flash = phase < 0.08 ? 1 : (phase > 0.19 && phase < 0.28 ? 0.62 : 0);
+              lightningMaterial.opacity = flash * 0.92;
+              lightningLight.intensity = flash * 10;
+              lightning.position.x = camera.position.x - 900;
+              lightning.position.z = camera.position.z - 1450;
+              lightningLight.position.x = lightning.position.x;
+              lightningLight.position.z = lightning.position.z;
+            };
+          }
+        });
+      },
+      "map_damarSeaStorm"
+    ); // @payload:map_damarSeaStorm
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES
+        } = ctx.tables;
+
+        const world = WORLD_PRESETS.damarSeaStorm;
+        if (!world) throw new Error("[sera-m07] damarSeaStorm is not registered; load map_damarSeaStorm first");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m06" && mission.campaign === "sera")) {
+          throw new Error("[sera-m07] latest implemented Sera predecessor sera-m06 is missing");
+        }
+        for (const type of ["fa18", "e2d", "sarFlyingBoat", "su33", "mig31"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m07] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["su33", "mig31"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m07] required enemy profile not registered: ${type}`);
+        }
+        if (!SHIP_TYPES.missileBoat) throw new Error("[sera-m07] missileBoat ship type is missing");
+
+        const sites = Object.freeze(world.missionAnchors.rescueSites.map((site) => Object.freeze({
+          id: site.id,
+          kind: site.kind,
+          label: site.label,
+          at: Object.freeze([...site.at])
+        })));
+        const m07RecoveryContract = Object.freeze({
+          pickupRadius: 650,
+          minimumAltitude: 18,
+          maximumAltitude: 460,
+          maximumSpeed: 430,
+          sites,
+          rescueFirst: Object.freeze({
+            route: "rescue",
+            requiredSurvivors: 3,
+            expireSite: "data",
+            banner: "RESCUE PRIORITY · DATA LOST"
+          }),
+          dataFirst: Object.freeze({
+            route: "intel",
+            requiredSurvivors: 2,
+            expireSite: "crew-c",
+            banner: "DATA SECURED · ONE BEACON LOST",
+            reinforcement: Object.freeze({
+              types: Object.freeze(["mig31", "mig31"]),
+              label: "FOXHOUND INTERCEPT",
+              at: Object.freeze([4300, 3400]),
+              facing: Object.freeze([0, 0]),
+              altitude: 2100,
+              role: "line",
+              skill: "veteran",
+              idBase: 700
+            })
+          }),
+          marks: Object.freeze({
+            route: "m07Route",
+            survivors: "m07SurvivorsRecovered",
+            data: "damarDataRecovered",
+            lostBeacon: "m07LostBeacon",
+            crownEarly: "crown1Recovered"
+          }),
+          score: Object.freeze({ survivor: 900, data: 1200 }),
+          rank: Object.freeze({
+            sTime: 720,
+            aTime: 900,
+            sGuardLosses: 0,
+            ignoreWhiteTargets: true
+          }),
+          epilogueByRoute: Object.freeze({
+            rescue: Object.freeze([
+              "三つの救難信号はすべて回収された。黒い記録球は嵐の底へ消えた。",
+              "CROWNは早期に救助され、後方の病院へ移送された。",
+              "次の空襲で使える敵配置図はない。それでも、帰投する席は一つ多かった。"
+            ]),
+            intel: Object.freeze([
+              "敵無人機の記録球を回収し、次の攻撃に必要な航路データを確保した。",
+              "一つの救難信号は消えた。CROWNを含む残る乗員は救助された。",
+              "嵐の外では、失った一人より救える人数の計算がもう始まっていた。"
+            ])
+          })
+        });
+
+        const anchors = world.missionAnchors;
+        const mission = {
+          key: "sera-m07",
+          campaign: "sera",
+          campaignOrder: 7,
+          world: "damarSeaStorm",
+          title: "BLACK CURRENT",
+          jp: "暴風雨のダマル西救難航路へ進出し、救難航空隊を守りながら人命または敵作戦データを回収せよ。",
+          act: 2,
+          storyNo: 7,
+          story: "WAR DAY 068。RAVENは初めてROOK 1として、黒いダマル海へ入る。\n三つの救難光と一つの記録球。その全てを嵐から拾い上げる時間はない。",
+          // The runtime substitutes route-specific lines from the recovery contract.
+          epilogue: [
+            "ダマル海の救難航路は確保された。",
+            "回収したものと失ったものは、別々の報告書へ記録された。",
+            "嵐は作戦終了後も、何事もなかったように海面を叩き続けた。"
+          ],
+
+          friendlies: {
+            playerStart: {
+              x: anchors.playerStart[0],
+              y: 720,
+              z: anchors.playerStart[1],
+              facing: { x: 0, z: 0 }
+            },
+            wingmen: [
+              {
+                type: "fa18",
+                label: "ROOK 2 LARK",
+                radioSpeaker: "lark",
+                offset: { back: 95, side: 110, up: -12 }
+              }
+            ],
+            transportGroups: [
+              {
+                aircraft: "sarFlyingBoat",
+                callsign: "SEALIGHT",
+                count: 1,
+                vulnerable: true,
+                hp: 980,
+                speed: 74,
+                altitude: 260,
+                start: { x: anchors.sarFlyingBoatStart[0], z: anchors.sarFlyingBoatStart[1] },
+                exit: { x: anchors.sarFlyingBoatExit[0], z: anchors.sarFlyingBoatExit[1] }
+              },
+              {
+                aircraft: "e2d",
+                callsign: "MERIDIAN",
+                count: 1,
+                vulnerable: false,
+                hp: 1200,
+                speed: 112,
+                altitude: 1550,
+                start: { x: anchors.patrolStart[0], z: anchors.patrolStart[1] },
+                exit: { x: anchors.patrolExit[0], z: anchors.patrolExit[1] }
+              }
+            ],
+            guard: {
+              readout: "count",
+              label: "SAR",
+              lossPenalty: 0,
+              hitPenalty: 0,
+              lossBanner: "RESCUE AIRCRAFT LOST",
+              failBanner: "RESCUE OPERATION LOST",
+              lossRadio: "SEALIGHT被撃墜！ 救難作業を続けられない！",
+              failRadio: "救難航空隊を喪失。BLACK CURRENTを中止、ROOKは離脱せよ。",
+              safeRadio: "SEALIGHT、救難航路を離脱。回収地点はROOKへ引き継ぐ。"
+            }
+          },
+
+          sequence: [
+            {
+              types: ["su33", "su33", "su33", "su33"],
+              band: 2,
+              idBase: 0,
+              label: "FLEET CAP",
+              role: "line",
+              skill: "regular",
+              at: [...anchors.enemyCapEntry],
+              altitude: 1450,
+              facing: [0, 0],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "CRITICAL",
+                  text: "Su-33四機、救難航路へ接近。全機TGT指定。SEALIGHTを守れ。",
+                  id: "m07_contact_cap"
+                }
+              ]
+            },
+            {
+              kind: "naval",
+              fleet: ["missileBoat", "missileBoat"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 1,
+              idBase: 40,
+              label: "MISSILE BOAT",
+              at: [...anchors.missileBoats],
+              facing: [0, 0],
+              radio: [
+                {
+                  speaker: "lark",
+                  priority: "NORMAL",
+                  text: "海面にミサイル艇二。白表示だ、回収を止める必要はない。",
+                  id: "m07_contact_boats"
+                }
+              ]
+            }
+          ],
+
+          m07RecoveryContract,
+          fixedRadio: [
+            { id: "m07_intro_meridian", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ダマル西救難航路へ進入。視程二千九百、雲底六百。" },
+            { id: "m07_intro_lark", at: 8, speaker: "lark", priority: "NORMAL", text: "救難光が三つ。黒い記録球も海面に出てる。" },
+            { id: "m07_choice_meridian", at: 14, speaker: "meridian", priority: "URGENT", text: "最初に接近した回収物を優先する。低空四百六十以下、半径六百五十へ入れ。" },
+            { id: "m07_crown", event: "crownRecovered", speaker: "crown", priority: "URGENT", text: "……CROWN。聞こえる。RAVEN、今度はお前が先に帰れ。" },
+            { id: "m07_data", event: "dataRecovered", speaker: "meridian", priority: "URGENT", text: "記録球を確保。敵配置データを受信——高速反応二、こちらへ向かう。" },
+            { id: "m07_route_rescue", event: "rescueRouteLocked", speaker: "lark", priority: "URGENT", text: "人を先に拾う。記録球は捨てる——残りの光へ行こう。" },
+            { id: "m07_route_intel", event: "intelRouteLocked", speaker: "lark", priority: "URGENT", text: "データを取った。……一つ消えた。残り二つは絶対に拾う。" },
+            { id: "m07_recovery_complete", event: "recoveryComplete", speaker: "meridian", priority: "CRITICAL", text: "必要回収を完了。赤TGTを排除し、救難航空隊と離脱せよ。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "BLACK CURRENT完了。生存者と回収物を確認。ROOK、救難航空隊を伴い帰投せよ。",
+            id: "m07-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "救難航空隊を喪失、またはROOKが作戦続行不能。BLACK CURRENTを中止する。",
+            id: "m07-failure"
+          },
+          parTime: 720,
+          hasOutro: false,
+          map: { x: 0.63, y: 0.21 },
+          battleCenter: { x: 0, z: 0 },
+          battleRadius: 7600,
+          briefing: "暴風雨のダマル西救難航路でSEALIGHT救難飛行艇を守り、海面の回収地点へ低空進入する。\n黄色のSOS三地点と青いDATA CAPSULE一地点。高度460以下・半径650以内の最初の通過が作戦方針を固定する。\nSOSを先に取れば三地点すべてを救助できるが、DATAは失われる。DATAを先に取れば一つのSOSが消え、MiG-31二機が増援される。\n赤TGTはSu-33四機。白いミサイル艇は妨害戦力であり、撃破は任意。選択した回収と赤TGT排除の両方で作戦完了。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m06" });
+      },
+      "mission_sera_m07"
+    ); // @payload:mission_sera_m07
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -40675,6 +41345,75 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const fleet = enemies.filter((enemy) => enemy.alive && enemy.m04RedFleet);
         for (const enemy of fleet) damageEnemy(enemy, enemy.hp + 1, true, false);
         return fleet.length > 0;
+      },
+      seraM07Probe: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m07") return null;
+        return {
+          state: gameState,
+          route: m07State.route,
+          recovered: [...m07State.recovered],
+          expiredSite: m07State.expiredSite,
+          recoveryComplete: m07State.recoveryComplete,
+          reinforcementsSpawned: m07State.reinforcementsSpawned,
+          liveTargets: enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy)).map((enemy) => enemy.type),
+          liveWhite: enemies.filter((enemy) => enemy.alive && !isTgtEntry(enemy)).map((enemy) => enemy.type),
+          friendlies: friendlies.filter((friendly) => friendly.kind !== "recovery").map((friendly) => ({
+            kind: friendly.kind,
+            type: friendly.type,
+            label: friendly.label,
+            vulnerable: Boolean(friendly.vulnerable),
+            alive: friendly.alive,
+            retired: Boolean(friendly.retired)
+          })),
+          liveRecoveryMarkers: [...m07State.markerById.entries()]
+            .filter(([, marker]) => marker.alive)
+            .map(([id]) => id),
+          guarded: guardedFriendlies().map((friendly) => ({
+            label: friendly.label,
+            alive: friendly.alive,
+            retired: friendly.retired,
+            hp: friendly.hp
+          })),
+          marks: { ...sortieMarks },
+          outcomePending: outcomePending.active
+        };
+      },
+      forceSeraM07Recover: (id) => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        return recoverM07Site(id);
+      },
+      forceSeraM07FlyToSite: (id) => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const site = m07SiteById(id, mission);
+        if (!site) return false;
+        player.position.set(Number(site.at[0]), 220, Number(site.at[1]));
+        playerSpeed = Math.min(playerSpeed, Number(mission.m07RecoveryContract.maximumSpeed) || playerSpeed);
+        return true;
+      },
+      forceSeraM07DestroyTargets: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const targets = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy));
+        for (const enemy of targets) damageEnemy(enemy, enemy.hp + 1, true, false);
+        updateMission(0.016, 5);
+        return targets.length;
+      },
+      forceSeraM07LoseGuard: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m07") return false;
+        const guarded = guardedFriendlies().filter((friendly) => friendly.alive);
+        for (const friendly of guarded) destroyFriendly(friendly);
+        return guarded.length;
+      },
+      forceSeraM07ResolveOutcome: () => {
+        const mission = MISSIONS[currentMissionIndex];
+        if (!mission || mission.key !== "sera-m07" || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE || gameState === STATE_GAMEOVER;
       },
       // Focused vertical-slice probes. They are intentionally generic enough
       // to remain useful while M01 is tuned, but refuse every other mission so
@@ -44969,6 +45708,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Scenery and installations first: a strike wave lays its run in against
       // the friendly airfield, which therefore has to exist by then.
       spawnMissionGround(MISSIONS[currentMissionIndex]);
+      // M07 recovery HUD points are mission objects, not world geometry. The
+      // visible rafts/capsule already exist in the freshly decorated world;
+      // these empty groups add the corresponding blue HUD/radar references.
+      resetM07State(MISSIONS[currentMissionIndex]);
       // After spawnMissionGround, because a hunting wave is anchored on the
       // friendly it hunts and those are placed by the ground pass; after
       // applyFriendlyPlayerStart above, because the anchor is measured from
@@ -45241,8 +45984,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       epilogueState.revealed = 0;
       epilogueState.charTimer = 0;
       epilogueState.gapTimer = 0;
-      // A failed sortie has no aftermath - the campaign did not move.
-      const lines = success && mission && mission.epilogue ? mission.epilogue : null;
+      // A failed sortie has no aftermath - the campaign did not move. M07 owns
+      // two equally valid aftermaths; select the one the live recovery ledger
+      // actually recorded, falling back to the ordinary authored epilogue if a
+      // development payload omitted either route.
+      const routeEpilogue = success && mission && mission.m07RecoveryContract && m07State.route
+        ? mission.m07RecoveryContract.epilogueByRoute?.[m07State.route]
+        : null;
+      const lines = success && mission ? (routeEpilogue || mission.epilogue) : null;
       if (!lines || lines.length === 0) {
         ui.debriefEpilogueLines.replaceChildren();
         ui.debriefEpilogue.classList.add("hidden");
@@ -48077,6 +48826,209 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return true;
     }
 
+    // SERA M07 BLACK CURRENT -------------------------------------------------
+    // Recovery sites are not enemies and cannot be expressed as TGTs. The
+    // mission therefore owns a tiny proximity contract: empty friendly marker
+    // groups put the sites on the existing blue HUD/radar path, while the map
+    // decorator owns the visible raft/capsule geometry and its disposal.
+    const m07State = {
+      active: false,
+      route: null,
+      recovered: new Set(),
+      expiredSite: null,
+      recoveryComplete: false,
+      reinforcementsSpawned: false,
+      markerById: new Map()
+    };
+
+    function m07Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m07RecoveryContract ? mission : null;
+    }
+
+    function resetM07State(mission) {
+      m07State.active = Boolean(mission && mission.m07RecoveryContract);
+      m07State.route = null;
+      m07State.recovered = new Set();
+      m07State.expiredSite = null;
+      m07State.recoveryComplete = false;
+      m07State.reinforcementsSpawned = false;
+      m07State.markerById = new Map();
+      if (!m07State.active) return;
+
+      for (const site of mission.m07RecoveryContract.sites || []) {
+        const group = new THREE.Group();
+        group.name = `m07-hud-${site.id}`;
+        group.position.set(Number(site.at[0]) || 0, 18, Number(site.at[1]) || 0);
+        scene.add(group);
+        const marker = {
+          kind: "recovery",
+          type: site.kind,
+          label: site.label,
+          alive: true,
+          retired: false,
+          vulnerable: false,
+          group,
+          model: null,
+          radarSymbol: site.kind === "data" ? "ground" : "air"
+        };
+        friendlies.push(marker);
+        m07State.markerById.set(site.id, marker);
+      }
+    }
+
+    function m07SiteById(id, mission = m07Mission()) {
+      if (!mission || !id) return null;
+      return (mission.m07RecoveryContract.sites || []).find((site) => site.id === id) || null;
+    }
+
+    function setM07SiteVisible(id, visible) {
+      const marker = m07State.markerById.get(id);
+      if (marker) {
+        marker.alive = Boolean(visible);
+        marker.group.visible = Boolean(visible);
+      }
+      const scenery = scene.getObjectByName(`m07-site-${id}`);
+      if (scenery) scenery.visible = Boolean(visible);
+    }
+
+    function spawnM07IntelReinforcements(mission) {
+      if (!mission || m07State.reinforcementsSpawned) return 0;
+      const authored = mission.m07RecoveryContract.dataFirst.reinforcement;
+      if (!authored || !Array.isArray(authored.types) || authored.types.length === 0) return 0;
+      m07State.reinforcementsSpawned = true;
+      const wave = {
+        ...authored,
+        types: [...authored.types],
+        tgt: true,
+        band: 2
+      };
+      const before = new Set(enemies);
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawnWave(wave, 2, Number(authored.idBase) || 700, missionWaveIndex + 50);
+      spawningTgt = oldTgt;
+      spawningRankNeutral = oldNeutral;
+      let count = 0;
+      for (const enemy of enemies) {
+        if (before.has(enemy)) continue;
+        enemy.m07IntelReinforcement = true;
+        count += 1;
+      }
+      if (count > 0) {
+        showBanner("MISSION UPDATE · FOXHOUND x2", 2.1, "danger");
+        playTone(78, 0.55, 0.16, "sawtooth");
+      }
+      return count;
+    }
+
+    function updateM07RecoveryComplete(mission) {
+      if (!mission || !m07State.route || m07State.recoveryComplete) return false;
+      const contract = mission.m07RecoveryContract;
+      const survivors = (contract.sites || []).filter(
+        (site) => site.kind === "survivor" && m07State.recovered.has(site.id)
+      ).length;
+      const needed = m07State.route === "rescue"
+        ? Number(contract.rescueFirst.requiredSurvivors) || 3
+        : Number(contract.dataFirst.requiredSurvivors) || 2;
+      const dataSatisfied = m07State.route === "rescue" || m07State.recovered.has("data");
+      if (survivors < needed || !dataSatisfied) return false;
+      m07State.recoveryComplete = true;
+      const marks = contract.marks || {};
+      if (marks.survivors) sortieMarks[marks.survivors] = survivors;
+      fireFixedRadioEvent("recoveryComplete");
+      showBanner("RECOVERY COMPLETE · CLEAR RED TGT", 2.0, "success");
+      return true;
+    }
+
+    function lockM07Route(mission, route) {
+      if (!mission || m07State.route) return false;
+      const contract = mission.m07RecoveryContract;
+      const branch = route === "intel" ? contract.dataFirst : contract.rescueFirst;
+      m07State.route = branch.route;
+      m07State.expiredSite = branch.expireSite;
+      const marks = contract.marks || {};
+      if (marks.route) sortieMarks[marks.route] = branch.route;
+      if (marks.lostBeacon) sortieMarks[marks.lostBeacon] = 1;
+      setM07SiteVisible(branch.expireSite, false);
+      showBanner(branch.banner, 2.2, route === "intel" ? "danger" : "success");
+      fireFixedRadioEvent(route === "intel" ? "intelRouteLocked" : "rescueRouteLocked");
+      if (route === "intel") spawnM07IntelReinforcements(mission);
+      return true;
+    }
+
+    function recoverM07Site(id) {
+      const mission = m07Mission();
+      if (!mission || !m07State.active || m07State.recoveryComplete) return false;
+      const site = m07SiteById(id, mission);
+      if (!site || id === m07State.expiredSite || m07State.recovered.has(id)) return false;
+      if (!m07State.route) lockM07Route(mission, site.kind === "data" ? "intel" : "rescue");
+      // lockM07Route can expire this exact site only on malformed authored data.
+      if (id === m07State.expiredSite) return false;
+
+      m07State.recovered.add(id);
+      setM07SiteVisible(id, false);
+      const contract = mission.m07RecoveryContract;
+      const marks = contract.marks || {};
+      if (site.kind === "data") {
+        if (marks.data) sortieMarks[marks.data] = 1;
+        score += Math.max(0, Number(contract.score && contract.score.data) || 0);
+        showBanner("DATA CAPSULE RECOVERED", 1.8, "success");
+        fireFixedRadioEvent("dataRecovered");
+      } else {
+        const survivors = (contract.sites || []).filter(
+          (entry) => entry.kind === "survivor" && m07State.recovered.has(entry.id)
+        ).length;
+        if (marks.survivors) sortieMarks[marks.survivors] = survivors;
+        if (site.id === "crown" && m07State.route === "rescue" && marks.crownEarly) {
+          sortieMarks[marks.crownEarly] = 1;
+        }
+        score += Math.max(0, Number(contract.score && contract.score.survivor) || 0);
+        showBanner(`SURVIVORS RECOVERED · ${survivors}`, 1.8, "success");
+        if (site.id === "crown") fireFixedRadioEvent("crownRecovered");
+      }
+      playTone(site.kind === "data" ? 980 : 760, 0.16, 0.08, "sine");
+      updateM07RecoveryComplete(mission);
+      return true;
+    }
+
+    function updateM07Recovery() {
+      const mission = m07Mission();
+      if (!mission || !m07State.active || m07State.recoveryComplete) return false;
+      const contract = mission.m07RecoveryContract;
+      const minAltitude = Number(contract.minimumAltitude) || 0;
+      const maxAltitude = Number(contract.maximumAltitude) || Infinity;
+      const maxSpeed = Number(contract.maximumSpeed) || Infinity;
+      if (player.position.y < minAltitude || player.position.y > maxAltitude || playerSpeed > maxSpeed) return false;
+      const radius = Math.max(1, Number(contract.pickupRadius) || 650);
+      for (const site of contract.sites || []) {
+        if (m07State.recovered.has(site.id) || site.id === m07State.expiredSite) continue;
+        const dx = player.position.x - Number(site.at[0]);
+        const dz = player.position.z - Number(site.at[1]);
+        if (dx * dx + dz * dz > radius * radius) continue;
+        return recoverM07Site(site.id);
+      }
+      return false;
+    }
+
+    function updateM07MissionThreat() {
+      const mission = m07Mission();
+      if (!mission || !m07State.active) return false;
+      updateM07Recovery();
+      const limit = Number(mission.m07RecoveryContract.timeLimit) || 1200;
+      if (missionElapsed < limit) return false;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      showBanner("RESCUE WINDOW CLOSED", 2.1, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function m07RecoveryHoldsMission(mission) {
+      return Boolean(mission && mission.m07RecoveryContract && m07State.active && !m07State.recoveryComplete);
+    }
+
     function m03RankShouldCapS(mission) {
       const contract = mission && mission.m03RankContract;
       if (!contract || !m03State.active) return false;
@@ -50027,6 +50979,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
       if (deployment.ships) spawnFriendlyShips(deployment.ships);
+      if (Array.isArray(deployment.transportGroups)) {
+        for (const group of deployment.transportGroups) spawnFriendlyTransports(group);
+      }
       if (deployment.transports) spawnFriendlyTransports(deployment.transports);
       if (Array.isArray(deployment.supportFlights)) {
         for (const flight of deployment.supportFlights) spawnFriendlyTransports(flight);
@@ -53560,6 +54515,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM03MissionThreat()) return;
       if (updateM04MissionThreat()) return;
       if (updateM06Mission()) return;
+      if (updateM07MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -53591,6 +54547,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       const mission = MISSIONS[currentMissionIndex];
+      // BLACK CURRENT is not won by clearing the sky alone. Rescue sites are
+      // friendly proximity objectives, so they do not enter the red TGT count;
+      // hold the normal all-targets path until the selected recovery route is
+      // complete.
+      if (m07RecoveryHoldsMission(mission)) {
+        waveClearTimer = -1;
+        return;
+      }
       // A trailing non-TGT air wave is normally optional. M02's last white
       // cover wave is different: spawning it reveals the red TEL ground phase,
       // so its activation contract must keep the mission progression alive.
@@ -54683,6 +55647,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const follow = world.sunRoad.userData.followOffset;
         world.sunRoad.position.x = camX + follow.x;
         world.sunRoad.position.z = camZ + follow.z;
+      }
+
+      // A decorator may opt into presentation-only animation by attaching one
+      // callback to the root it already handed to addRoot(). The world owns the
+      // root, geometry and materials, so the normal dispose path still releases
+      // everything on a map swap. No gameplay table or collision surface is
+      // exposed here: weather, warning lamps and other scenery motion only.
+      const worldTickTime = performance.now() * 0.001;
+      for (const root of world.roots) {
+        const tick = root && root.userData && root.userData.worldTick;
+        if (typeof tick !== "function") continue;
+        try {
+          tick({ camera, dt, time: worldTickTime, gameState });
+        } catch (error) {
+          // A broken visual callback must not stop the flight loop. Disable the
+          // offending root after the first loud failure instead of logging at
+          // 60fps and turning one scenery bug into an unusable console.
+          console.error(`[world] decorator animation failed on "${root.name || world.preset}":`, error);
+          root.userData.worldTick = null;
+        }
       }
 
       // White-out while the camera is inside a cloud volume. Vertical distance

@@ -23,7 +23,10 @@ const seraCampaign = html.match(/id: "sera",[\s\S]*?locked: (true|false),\s*lock
 assert(seraCampaign, "Sera campaign lock fields are missing");
 assert(seraCampaign[1] === "false" && seraCampaign[2] === "",
   "Sera campaign must be selectable after mission/state migration");
-for (const marker of ["mission_sera_m01", "mission_sera_m02", "mission_sera_m03", "mission_sera_m04", "mission_sera_m05", "mission_sera_m06"]) {
+for (const marker of [
+  "mission_sera_m01", "mission_sera_m02", "mission_sera_m03", "mission_sera_m04",
+  "mission_sera_m05", "mission_sera_m06", "mission_sera_m07", "mission_sera_m08", "mission_sera_m09"
+]) {
   assert(html.includes(`// @payload:${marker}`), `${marker} is not integrated into the campaign build`);
 }
 assert(html.includes('const PRICE_CAP = Object.freeze({ usa: 42000, rus: 44000, sera: 42000 });'),
@@ -41,5 +44,5 @@ assert(radio.includes('sera: { command: "MERIDIAN", wingman: "CROWN" }'),
 
 new vm.SourceTextModule(moduleBody(html));
 console.log("check_campaign_shell: PASS");
-console.log("  unlocked six-mission Sera shell / strict lookup / responsive three-card UI");
+console.log("  unlocked nine-mission Sera shell / strict lookup / responsive three-card UI");
 console.log("  Sera economy defaults / no implicit USA wingman / safe radio labels");

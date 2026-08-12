@@ -11,6 +11,7 @@
 | 分野 | 現在の正本 | 補足 |
 |---|---|---|
 | M01〜M05 | [v0.16 開戦章](./v0.16/README.md) | 各ミッションの地理、フェーズ、敵編成、無線、ランク条件 |
+| M07 | [BLACK CURRENT 実装計画](../implementation/sera_m07_black_current_implementation_plan.md) | Damar Sea救難任務、二分岐、実装・検証記録 |
 | プレイヤー機体解禁・難度 | [v0.17 解禁表](./v0.17/00_player_aircraft_unlock_schedule_and_mission_difficulty.md) | 同じ分野ではv0.7より優先 |
 | F-15C / F-15E / F-35C | [v0.17 中盤機訂正](./v0.17/02_f15_mid_tier_f35_unlock_correction.md) | 解禁表の該当箇所を上書き |
 | RETURN LINE・再武装 | [v0.17 帰還ライン](./v0.17/03_f35_multirole_return_line_doctrine.md) | F-35Cと長時間任務の運用契約 |
@@ -38,6 +39,12 @@
 - M04は対艦任務、M05は地上共同奪還任務として扱う。
 - 序盤の敵戦闘機はMiG-21系を中心とし、MiG-29Aを早期の常用敵にしない。
 
+### Act II
+
+- セラM07「BLACK CURRENT」はDamar Sea西救難レーンへ接続済み。
+- 救助優先／データ優先の両ルート、永続マーク、SAR喪失失敗、Retryを実装済み。
+- M06は未実装。M07は正規番号`campaignOrder: 7`を保持し、現時点ではM05クリア後に解禁する。M06追加時は並び順と直前ミッション判定によりM06の後へ自動移動する。
+
 ### システム
 
 - ミッション進行による購入許可と、セラ用CR価格表を整備する。
@@ -50,7 +57,7 @@
 
 ### 長期制作
 
-- セラM06〜M20、エレムM21〜M40、EX01〜EX04を順次制作する。
+- セラM06およびM08〜M20、エレムM21〜M40、EX01〜EX04を順次制作する。
 - 17基礎地域と必要なvariantを、ミッション接続台帳に従って制作する。
 
 ## 破棄した計画
