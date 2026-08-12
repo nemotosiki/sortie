@@ -4246,30 +4246,92 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     // ---- Hangar economy (purchase record) -------------------------------
-    // Persisted state is ONE array of aircraft ids. Everything else - what a jet
-    // costs, what the player can spend, whether they own it - is derived, so
-    // there is no second counter that can drift out of step with the records.
-    // Placed immediately after AIRCRAFT_TYPES (its only dependency here) and
-    // well before boot's buildHangarUI() call, which needs aircraftPurchases
-    // to read ownership for the hangar list badges.
+    // Purchases are campaign-scoped. Sera shares airframes with the legacy USA
+    // hangar, so a single Set<aircraftId> cannot say which campaign paid for an
+    // F-15C. Version 2 keeps one Set per campaign while preserving the old
+    // storage key so existing profiles migrate in place.
+    const PURCHASES_SCHEMA_VERSION = 2;
+    const PURCHASES_BACKUP_KEY = `${PURCHASES_STORAGE_KEY}.backup.v1`;
+
+    function emptyCampaignPurchases() {
+      return Object.fromEntries(Object.keys(STARTER_AIRCRAFT).map((campaignId) => [campaignId, new Set()]));
+    }
+
+    function campaignRosterHas(campaignId, aircraftId) {
+      const campaign = CAMPAIGNS.find((entry) => entry.id === campaignId);
+      return Boolean(campaign && (campaign.aircraft || []).includes(aircraftId));
+    }
+
+    function writeAircraftPurchases(purchases) {
+      const campaigns = {};
+      for (const campaignId of Object.keys(STARTER_AIRCRAFT)) {
+        campaigns[campaignId] = [...(purchases[campaignId] || [])]
+          .filter((id) => AIRCRAFT_ORDER.includes(id) && campaignRosterHas(campaignId, id));
+      }
+      window.localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify({
+        schemaVersion: PURCHASES_SCHEMA_VERSION,
+        campaigns
+      }));
+    }
+
     function readAircraftPurchases() {
+      const purchases = emptyCampaignPurchases();
       try {
-        const raw = JSON.parse(window.localStorage.getItem(PURCHASES_STORAGE_KEY) || "[]");
-        // Filtered against the hangar order, not just checked for being an
-        // array: a stale id from an older build would otherwise sit in the
-        // wallet's outgoings forever, charging the player for a jet that no
-        // longer exists.
-        return Array.isArray(raw) ? raw.filter((id) => AIRCRAFT_ORDER.includes(id)) : [];
+        const rawText = window.localStorage.getItem(PURCHASES_STORAGE_KEY);
+        if (!rawText) return purchases;
+        const raw = JSON.parse(rawText);
+
+        if (Array.isArray(raw)) {
+          // V1 did not record ownership. Preserve progress by copying a bought
+          // airframe into every campaign roster that contains it, then persist
+          // the unambiguous V2 shape. The untouched raw value is retained once.
+          if (!window.localStorage.getItem(PURCHASES_BACKUP_KEY)) {
+            window.localStorage.setItem(PURCHASES_BACKUP_KEY, rawText);
+          }
+          for (const id of raw) {
+            if (!AIRCRAFT_ORDER.includes(id)) continue;
+            for (const campaignId of Object.keys(purchases)) {
+              if (campaignRosterHas(campaignId, id)) purchases[campaignId].add(id);
+            }
+          }
+          writeAircraftPurchases(purchases);
+          return purchases;
+        }
+
+        const campaigns = raw && raw.schemaVersion === PURCHASES_SCHEMA_VERSION
+          && raw.campaigns && typeof raw.campaigns === "object"
+          ? raw.campaigns
+          : null;
+        if (!campaigns) return purchases;
+        for (const campaignId of Object.keys(purchases)) {
+          const ids = Array.isArray(campaigns[campaignId]) ? campaigns[campaignId] : [];
+          for (const id of ids) {
+            if (AIRCRAFT_ORDER.includes(id) && campaignRosterHas(campaignId, id)) {
+              purchases[campaignId].add(id);
+            }
+          }
+        }
+        return purchases;
       } catch {
-        return [];
+        return purchases;
       }
     }
 
-    const aircraftPurchases = new Set(readAircraftPurchases());
+    const aircraftPurchases = readAircraftPurchases();
+
+    function purchasesFor(campaignId = selectedCampaignId) {
+      const purchases = aircraftPurchases[campaignId];
+      if (!purchases) throw new Error(`[hangar] unknown purchase namespace "${campaignId}"`);
+      return purchases;
+    }
+
+    function clearAircraftPurchases() {
+      for (const purchases of Object.values(aircraftPurchases)) purchases.clear();
+    }
 
     function saveAircraftPurchases() {
       try {
-        window.localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify([...aircraftPurchases]));
+        writeAircraftPurchases(aircraftPurchases);
       } catch {
         // Storage can be unavailable; the hangar simply doesn't persist.
       }
@@ -39183,7 +39245,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // Records are the wallet's income and purchases are its outgoings -
           // wiping one side left every owned jet as unpayable debt and the
           // balance permanently negative.
-          aircraftPurchases.clear();
+          clearAircraftPurchases();
           saveAircraftPurchases();
           // The record store backs unlocks, the wallet and ownership. Rebuild
           // those dependent views immediately; otherwise a cleared profile can
@@ -56008,32 +56070,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return totalWeight > 0 ? sum / totalWeight : 0;
     }
 
-    // Which side's wallet an airframe is bought from. An aircraft belongs to
-    // exactly one campaign roster (the two lists are disjoint), so this is a
-    // lookup rather than a choice; the active campaign is only the fallback for
-    // something not on either list.
-    function aircraftCampaignId(id) {
-      const owner = CAMPAIGNS.find((campaign) => (campaign.aircraft || []).includes(id));
-      return owner ? owner.id : selectedCampaignId;
-    }
-
-    function isStarterAircraft(id, campaignId = aircraftCampaignId(id)) {
+    function isStarterAircraft(id, campaignId = selectedCampaignId) {
       return STARTER_AIRCRAFT[campaignId] === id;
     }
 
-    function aircraftPrice(id) {
-      const campaignId = aircraftCampaignId(id);
+    function aircraftPrice(id, campaignId = selectedCampaignId) {
+      if (!campaignRosterHas(campaignId, id)) {
+        throw new Error(`[hangar] aircraft "${id}" is not in campaign "${campaignId}"`);
+      }
       // The jet the campaign hands you. Free, and priced at zero rather than
       // merely pre-owned, so a wiped purchase list can never leave a player
       // grounded with an empty wallet.
       if (isStarterAircraft(id, campaignId)) return 0;
-      const cap = PRICE_CAP[campaignId] || PRICE_CAP[DEFAULT_CAMPAIGN_ID];
+      const cap = PRICE_CAP[campaignId];
+      if (!Number.isFinite(cap)) throw new Error(`[hangar] campaign "${campaignId}" has no price cap`);
       const raw = cap * (PRICE_FLOOR_FRACTION + (1 - PRICE_FLOOR_FRACTION) * Math.pow(aircraftPower(id), PRICE_CURVE));
       return Math.round(raw / 1000) * 1000;
     }
 
-    function ownsAircraft(id) {
-      return isStarterAircraft(id) || aircraftPurchases.has(id);
+    function ownsAircraft(id, campaignId = selectedCampaignId) {
+      return isStarterAircraft(id, campaignId) || purchasesFor(campaignId).has(id);
     }
 
     // Everything this campaign has ever paid out, less everything it has bought.
@@ -56053,10 +56109,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function campaignSpending(campaignId) {
       let sum = 0;
-      for (const id of aircraftPurchases) {
-        if (aircraftCampaignId(id) !== campaignId) continue;
-        sum += aircraftPrice(id);
-      }
+      for (const id of purchasesFor(campaignId)) sum += aircraftPrice(id, campaignId);
       return sum;
     }
 
@@ -56076,13 +56129,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // shortfall, and "you need 4,000 more" is a goal where "cannot afford" is
     // just a wall.
     function purchaseAircraft(id) {
-      if (ownsAircraft(id)) return { ok: false, reason: "owned" };
-      if (!campaignAircraft().includes(id)) return { ok: false, reason: "roster" };
-      const campaignId = aircraftCampaignId(id);
-      const price = aircraftPrice(id);
+      const campaignId = selectedCampaignId;
+      if (ownsAircraft(id, campaignId)) return { ok: false, reason: "owned" };
+      if (!campaignAircraft(campaignId).includes(id)) return { ok: false, reason: "roster" };
+      const price = aircraftPrice(id, campaignId);
       const wallet = walletFor(campaignId);
       if (wallet < price) return { ok: false, reason: "funds", short: price - wallet, price, wallet };
-      aircraftPurchases.add(id);
+      purchasesFor(campaignId).add(id);
       saveAircraftPurchases();
       return { ok: true, price, wallet: walletFor(campaignId) };
     }
