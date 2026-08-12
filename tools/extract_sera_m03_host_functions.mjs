@@ -9,25 +9,16 @@ function extractFunction(name) {
   if (start < 0) throw new Error(`[sera-m03-extract] function not found: ${name}`);
   const open = source.indexOf("{", start + marker.length);
   if (open < 0) throw new Error(`[sera-m03-extract] opening brace not found: ${name}`);
-
   let depth = 0;
   let mode = "code";
   let quote = "";
   let escaped = false;
   let templateExprDepth = 0;
-
   for (let i = open; i < source.length; i += 1) {
     const ch = source[i];
     const next = source[i + 1];
-
-    if (mode === "lineComment") {
-      if (ch === "\n") mode = "code";
-      continue;
-    }
-    if (mode === "blockComment") {
-      if (ch === "*" && next === "/") { mode = "code"; i += 1; }
-      continue;
-    }
+    if (mode === "lineComment") { if (ch === "\n") mode = "code"; continue; }
+    if (mode === "blockComment") { if (ch === "*" && next === "/") { mode = "code"; i += 1; } continue; }
     if (mode === "string") {
       if (escaped) { escaped = false; continue; }
       if (ch === "\\") { escaped = true; continue; }
@@ -45,7 +36,6 @@ function extractFunction(name) {
       }
       continue;
     }
-
     if (ch === "/" && next === "/") { mode = "lineComment"; i += 1; continue; }
     if (ch === "/" && next === "*") { mode = "blockComment"; i += 1; continue; }
     if (ch === "'" || ch === '"') { mode = "string"; quote = ch; continue; }
@@ -60,41 +50,16 @@ function extractFunction(name) {
 }
 
 const groups = {
-  landing: [
-    "spawnHeli",
-    "updateHeli",
-    "spawnMissionGroundUnit",
-    "spawnMissionGround",
-    "activateGroundPhase"
-  ],
-  support: [
-    "spawnProtectedFacilities",
-    "damageProtectedFacility",
-    "spawnGroundUnit",
-    "updateGroundUnit",
-    "playAuthoredRadio"
-  ],
-  lifecycle: [
-    "normalizeWaveEntry",
-    "normalizeMission",
-    "spawnMissionWave",
-    "updatePendingWaves",
-    "startMission",
-    "clearMissionObjects"
-  ],
-  result: [
-    "updateMission",
-    "computeMissionRank",
-    "recordMissionResult",
-    "completeMission",
-    "failEscapingGroundTarget"
-  ]
+  landing: ["spawnHeli", "updateHeli", "spawnMissionGroundUnit", "spawnMissionGround", "activateGroundPhase"],
+  support: ["spawnProtectedFacilities", "damageProtectedFacility", "spawnGroundUnit", "updateGroundUnit", "playAuthoredRadio"],
+  rank: ["rankValueOf", "registerSpawnedValue", "damageEnemy"],
+  lifecycle: ["normalizeWaveEntry", "normalizeMission", "spawnMissionWave", "updatePendingWaves", "startMission", "clearMissionObjects"],
+  result: ["updateMission", "computeMissionRank", "recordMissionResult", "completeMission", "failEscapingGroundTarget"]
 };
 
 const selected = process.argv[2] || "landing";
 const names = groups[selected];
 if (!names) throw new Error(`[sera-m03-extract] unknown group ${selected}`);
-
 for (const name of names) {
   const body = extractFunction(name);
   console.log(`\n===== ${name} (${body.length} chars) =====\n`);
