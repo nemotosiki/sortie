@@ -2606,6 +2606,17 @@
       createConcurrentMultiLockState,
       updateConcurrentMultiLock
     } from "./src/combat/multi-lock.js?v=20260813-concurrent-lock-1";
+    import {
+      resetAttitudeLiftState,
+      updateAttitudeLiftState
+    } from "./src/flight/attitude-lift.js?v=20260813-attitude-lift-1";
+    import {
+      aircraftTurnRateAtSpeed,
+      constrainedAircraftTurn,
+      managedCombatTurnSpeed,
+      resetAerodynamicStallState,
+      updateAerodynamicStallState
+    } from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -2647,6 +2658,10 @@
     let MISSILE_DAMAGE = 130;
     let STALL_AUTHORITY_LOSS = 0.82;   // how much control a stall steals
     let ROLL_SETTLE = 1;               // stability multiplier on roll damping
+    // The hangar's composite STABILITY rating, shared with the attitude-lift
+    // constraint. Unlike roll damping alone this also accounts for low-speed
+    // stability and how much authority the aircraft retains in a stall.
+    let PLAYER_STABILITY = 0.45;
     // The other two axes, driven off the same per-airframe stability figure
     // (spec.rollDamping, 8.2 on the heavy interceptor to 12.6 on the canard
     // fighter). Roll always had inertia; these two did not, so every aircraft
@@ -4957,11 +4972,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return base + waveIndex * WAVE_BEARING_STEP;
     }
 
-    // Enemies fly the same four airframes as the player and inherit their
-    // performance from AIRCRAFT_TYPES: HP, cruise/boost speed and turn rate all
-    // come from the shared table, so an enemy F-22 is exactly as strong as the
-    // player's F-22. Only the fields below are AI-side behaviour that the player
-    // has no equivalent for (patrol pattern, engagement envelope, gun accuracy).
+    // Enemies inherit the same airframes and aerodynamic limits as the player:
+    // HP, speed, turn table, stall, structural G and stability all come from
+    // AIRCRAFT_TYPES. The fields below are only AI decisions about how much of
+    // that machine a pilot uses (patrol, engagement envelope and gunnery).
     const ENEMY_AI_PROFILES = {
       f16: Object.freeze({
         behavior: "evasive",
@@ -6076,12 +6090,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     };
 
-    // Enemy turn rates are derived from the shared turnRateDeg so the ranking
-    // (F-22 > F-15 > F-16 > F-4) is identical to the player's. Pursuit turning is
-    // the airframe rate scaled up; patrol turning is the airframe rate as-is.
+    // Enemy turn ceilings are derived from shared turnRateDeg, so the ranking
+    // (F-22 > F-15 > F-16 > F-4) is identical to the player's. The live rate is
+    // then reduced by speed and stall in enemyConstrainedTurn().
     const ENEMY_PATROL_TURN_FACTOR = 1.0;
-    // 1.25 = the airframe flown at its corner speed. The player peaks at
-    // 1.45 there, so a well-flown player out-turns the same enemy airframe.
+    // 1.25 is the AI's corner-speed ceiling. It is no longer granted at every
+    // speed: the energy manager has to slow into that band first. The player
+    // peaks at 1.45 there, so a well-flown player still out-turns the same jet.
     const ENEMY_PURSUIT_TURN_FACTOR = 1.25;
     // Fraction of the airframe's boost headroom the AI spends while chasing.
     const ENEMY_PURSUIT_THROTTLE = 0.2;
@@ -6166,11 +6181,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // "how well this thing flies a chase". The UAV needs its full
             // agility for the jink and none of it for the six-o'clock camp:
             // scaling turnRateDeg itself would dull both.
-            pursuitBonus: Math.round(
-              (air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE * (ai.pursuitBonusScale ?? 1)
-            ),
-            maxSpeed: air.boostSpeed,
-            patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
+             pursuitBonus: Math.round(
+               (air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE * (ai.pursuitBonusScale ?? 1)
+             ),
+             // The AI chooses a flight path, but the shared airframe table owns
+             // the aerodynamic envelope that can actually fly it. These are the
+             // same values applyAircraftLoadout resolves for the player.
+             cruiseSpeed: air.cruiseSpeed,
+             maxSpeed: air.boostSpeed,
+             stallEntrySpeed: air.stallEntrySpeed,
+             stallAuthorityLoss: air.stallAuthorityLoss,
+             structuralG: air.structuralG,
+             stability: aircraftStabilityRating(air),
+             patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
             pursuitTurn: THREE.MathUtils.degToRad(
               air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR * (ai.pursuitTurnScale ?? 1)
             )
@@ -42315,10 +42338,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // deriving the tangent here is both stable (no spawn/teleport spikes) and
     // accurate while an aircraft or ship turns. Mounted subsystems inherit the
     // parent hull's motion even though their own authored speed is zero.
+    function playerEffectiveVerticalSpeed() {
+      // Stall and attitude loss describe the same missing lift from different
+      // sides. Taking the stronger sink avoids double-charging a low-speed
+      // inverted aircraft with two independent downward penalties.
+      return Math.min(
+        playerAttitudeLift.verticalSpeed,
+        -STALL_SINK_RATE * stallSeverity
+      );
+    }
+
+    function playerKinematicVelocity(out) {
+      forwardOf(player, out).multiplyScalar(playerSpeed);
+      out.y += playerEffectiveVerticalSpeed();
+      return out;
+    }
+
     function missileTargetVelocity(target, out) {
       if (!target) return out.set(0, 0, 0);
       if (target === player) {
-        return forwardOf(player, out).multiplyScalar(playerSpeed);
+        return playerKinematicVelocity(out);
       }
       const body = target.subsystem && target.parentRef ? target.parentRef : target;
       if (body.velocity?.isVector3) return out.copy(body.velocity);
@@ -42452,6 +42491,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let baseDamagePenalty = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
+    const playerAttitudeLift = resetAttitudeLiftState({});
     let gunCooldown = 0;
     let gunShots = 0;
     let missilesLaunched = 0;
@@ -43730,7 +43770,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         stallSeverity: 0,
         rollRate: 0,
         turnFactor: 1,
-        controlAuthority: 1
+        controlAuthority: 1,
+        stability: PLAYER_STABILITY,
+        attitudeUpDot: 1,
+        attitudeLiftLoss: 0,
+        attitudeDownAcceleration: 0,
+        aerodynamicVerticalSpeed: 0,
+        effectiveVerticalSpeed: 0
       },
       cameraFocus: { active: false, targetId: null, source: null },
       audio: {
@@ -44495,6 +44541,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             yaw: 1 / Math.log(1 / YAW_RESPONSE_K),
             roll: ROLL_SETTLE
           },
+          stability: PLAYER_STABILITY,
+          attitudeLift: { ...playerAttitudeLift },
+          effectiveVerticalSpeed: playerEffectiveVerticalSpeed(),
           aircraft: selectedAircraftId,
           mode: controlMode
         }),
@@ -44565,10 +44614,49 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             Math.sin(pitch),
             -Math.cos(yaw) * Math.cos(pitch)
           );
-          playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
-          playerBank = THREE.MathUtils.degToRad(bankDeg);
-          syncPlayerOrientation();
+           playerFlightFrame.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
+           playerBank = THREE.MathUtils.degToRad(bankDeg);
+          // A forced attitude is a complete deterministic test reset, not an
+          // impulse applied to whatever angular momentum the previous sample
+          // left behind.
+          playerPitchRate = 0;
+          playerYawRate = 0;
+          rollRate = 0;
+          expertRollRate = 0;
+           syncPlayerOrientation();
           return true;
+        },
+        forceResetAttitudeLift: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          resetAttitudeLiftState(playerAttitudeLift);
+          return true;
+        },
+        // Runs only the production player-flight step. Browser checks use this
+        // to compare several seconds of attitude response without waiting for
+        // software WebGL to render every frame; enemies, mission timers and
+        // ordnance deliberately do not advance.
+        forceFlightFrames: (frames, step = 1 / 60) => {
+          if (gameState !== STATE_PLAYING) return null;
+          const count = THREE.MathUtils.clamp(Math.floor(Number(frames) || 0), 0, 720);
+          const slice = THREE.MathUtils.clamp(Number(step) || 0, 1 / 240, 1 / 20);
+          keys.clear();
+          gamepadInput.pitch = 0;
+          gamepadInput.roll = 0;
+          gamepadInput.yaw = 0;
+          gamepadInput.boost = false;
+          gamepadInput.brake = false;
+          gamepadInput.gun = false;
+          for (let frame = 0; frame < count && gameState === STATE_PLAYING; frame += 1) {
+            updatePlayer(slice);
+          }
+          return {
+            frames: count,
+            step: slice,
+            position: { x: player.position.x, y: player.position.y, z: player.position.z },
+            stability: PLAYER_STABILITY,
+            attitudeLift: { ...playerAttitudeLift },
+            effectiveVerticalSpeed: playerEffectiveVerticalSpeed()
+          };
         },
         // What the pitch ladder actually DREW, alongside independently computed
         // ground truth. The truth half deliberately takes the other route: it
@@ -44881,15 +44969,106 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // The enemy speed model has no throttle input, so a gate that wants to
         // see a variable-geometry wing at a chosen sweep has to set the speed
         // the sweep is derived from.
-        forceEnemySpeed: (id, speed) => {
+         forceEnemySpeed: (id, speed) => {
+           if (gameState !== STATE_PLAYING) return false;
+           const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy || enemy.surface || enemy.heli || enemy.subsystem) return false;
+           enemy.speed = speed;
+           enemy.targetSpeed = speed;
+           return enemy.speed;
+         },
+        forceEnemyAttitude: (id, pitchDeg = 0, yawDeg = 0, rollDeg = 0, resetLift = true) => {
           if (gameState !== STATE_PLAYING) return false;
-          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          const enemy = enemies.find((candidate) =>
+            candidate.alive && candidate.id === id &&
+            !candidate.surface && !candidate.heli && !candidate.subsystem
+          );
           if (!enemy) return false;
+          enemy.group.quaternion.setFromEuler(new THREE.Euler(
+            THREE.MathUtils.degToRad(pitchDeg),
+            THREE.MathUtils.degToRad(yawDeg),
+           THREE.MathUtils.degToRad(rollDeg),
+           "YXZ"
+         )).normalize();
+          if (resetLift) resetAttitudeLiftState(enemy.attitudeLift);
+           return true;
+         },
+        forceConfigureEnemyFlight: (id, config = {}) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) =>
+            candidate.alive && candidate.id === id &&
+            !candidate.surface && !candidate.heli && !candidate.subsystem
+          );
+          if (!enemy) return false;
+           const speed = Number.isFinite(Number(config.speed))
+             ? Math.max(0, Number(config.speed))
+             : enemy.spec.cruiseSpeed;
+          const offsetX = Number.isFinite(Number(config.offsetX)) ? Number(config.offsetX) : 0;
+          const offsetY = Number.isFinite(Number(config.offsetY)) ? Number(config.offsetY) : 500;
+          const offsetZ = Number.isFinite(Number(config.offsetZ)) ? Number(config.offsetZ) : -400;
+           enemy.group.position.set(
+            player.position.x + offsetX,
+            player.position.y + offsetY,
+            player.position.z + offsetZ
+           );
+          enemy.group.quaternion.identity();
+          enemy.mode = "pursuit";
+          enemy.hunt = null;
+          enemy.huntRef = null;
+          enemy.strikeTarget = null;
           enemy.speed = speed;
           enemy.targetSpeed = speed;
-          return enemy.speed;
+          resetAerodynamicStallState(enemy.stallState);
+          enemy.stallSeverity = 0;
+          enemy.stalling = false;
+          enemy.controlAuthority = 1;
+          enemy.turnDemand = 1;
+          resetAttitudeLiftState(enemy.attitudeLift);
+          enemy.fireCooldown = 999;
+          enemy.missileCooldown = 999;
+          return true;
         },
-        // Airframe animation state per live aircraft: the sweep angle of a
+        forceEnemyFlightFrames: (frames, step = 1 / 60) => {
+          if (gameState !== STATE_PLAYING) return null;
+          const count = THREE.MathUtils.clamp(Math.floor(Number(frames) || 0), 0, 720);
+          const slice = THREE.MathUtils.clamp(Number(step) || 0, 1 / 240, 1 / 20);
+          for (let frame = 0; frame < count && gameState === STATE_PLAYING; frame += 1) {
+            updateEnemies(slice);
+          }
+          return count;
+        },
+        enemyFlightProbe: (id = null) => enemies
+          .filter((enemy) =>
+            enemy.alive && !enemy.surface && !enemy.heli && !enemy.subsystem &&
+            (id === null || enemy.id === id)
+          )
+          .map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            mode: enemy.mode,
+            aimKind: enemy.aimKind,
+             speed: enemy.speed,
+             targetSpeed: enemy.targetSpeed,
+            cruiseSpeed: enemy.spec.cruiseSpeed,
+            maxSpeed: enemy.spec.maxSpeed,
+            stallEntrySpeed: enemy.spec.stallEntrySpeed,
+            structuralG: enemy.spec.structuralG,
+            stability: enemy.spec.stability,
+            stallTimer: enemy.stallState.timer,
+            stallSeverity: enemy.stallSeverity,
+            stalling: enemy.stalling,
+            controlAuthority: enemy.controlAuthority,
+            turnDemand: enemy.turnDemand,
+            headingErrorDeg: THREE.MathUtils.radToDeg(enemy.headingError),
+            turnEnvelopeGain: enemy.turnEnvelopeGain,
+            turnLimitDeg: THREE.MathUtils.radToDeg(enemy.turnLimit),
+            attitudeUpDot: enemy.attitudeLift.upDot,
+            attitudeLiftLoss: enemy.attitudeLift.severity,
+            aerodynamicVerticalSpeed: enemy.attitudeLift.verticalSpeed,
+            effectiveVerticalSpeed: enemyEffectiveVerticalSpeed(enemy),
+            position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
+          })),
+         // Airframe animation state per live aircraft: the sweep angle of a
         // variable-geometry wing and the rotation of the first propeller disc.
         // Both are presentation, so this is the only way to assert on them
         // short of reading pixels.
@@ -47765,11 +47944,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // limit. That crossover is the corner speed, vStall * sqrt(G), and it is where
     // the turn rate peaks.
     function turnRateAt(speed) {
-      const vStall = Math.max(1, STALL_ENTRY_SPEED);
-      const v = Math.max(speed, 1);
-      const liftLimitedG = Math.pow(v / vStall, 2);
-      const n = Math.min(liftLimitedG, STRUCTURAL_G);
-      return Math.sqrt(Math.max(n * n - 1, 0)) / v;
+      return aircraftTurnRateAtSpeed(speed, STALL_ENTRY_SPEED, STRUCTURAL_G);
     }
 
     // Normalised against cruise speed, so 1.0 is "the turn you get while
@@ -48551,6 +48726,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallTimer = 0;
       stallSeverity = 0;
       stalling = false;
+      resetAttitudeLiftState(playerAttitudeLift);
       syncPlayerOrientation();
     }
 
@@ -48705,9 +48881,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playerBank = 0;
       }
 
+      // Attitude affects translation through the wing lift vector. NORMAL's
+      // authored bank range remains below the 75-degree onset; sustained
+      // knife-edge/inverted EXPERT flight accumulates a downward velocity.
+      // Read the real quaternion rather than playerBank, which is intentionally
+      // zero in EXPERT mode.
+      upOf(player, tmpV2);
+      updateAttitudeLiftState(
+        playerAttitudeLift,
+        tmpV2.dot(WORLD_UP),
+        PLAYER_STABILITY,
+        dt
+      );
+
       forwardOf(player, tmpV1);
       player.position.addScaledVector(tmpV1, playerSpeed * dt);
-      if (stallSeverity > 0.005) player.position.y -= STALL_SINK_RATE * stallSeverity * dt;
+      player.position.y += playerEffectiveVerticalSpeed() * dt;
 
       if (player.position.y <= 4) {
         player.position.y = 4;
@@ -49307,7 +49496,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       upOf(player, tmpV3);
       const dropSpeed = PLAYER_SPW ? PLAYER_SPW.dropSpeed : 9;
       originOut.copy(player.position).addScaledVector(tmpV3, -2.2);
-      velocityOut.copy(tmpV1).multiplyScalar(playerSpeed).addScaledVector(tmpV3, -dropSpeed);
+      playerKinematicVelocity(velocityOut).addScaledVector(tmpV3, -dropSpeed);
     }
 
     function ballisticPoint(origin, velocity, t, out) {
@@ -50971,9 +51160,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return true;
     }
 
-    function updateM08RetreatingAircraft(enemy, dt) {
-      if (!enemy || !enemy.m08Retreating || !enemy.m08RetreatPoint) return false;
-      enemy.aimKind = "m08-retreat";
+     function updateM08RetreatingAircraft(enemy, dt) {
+       if (!enemy || !enemy.m08Retreating || !enemy.m08RetreatPoint) return false;
+      updateEnemyAerodynamicState(enemy, dt);
+       enemy.aimKind = "m08-retreat";
       enemy.huntRef = null;
       tmpV4.copy(enemy.m08RetreatPoint).sub(enemy.group.position);
       const remaining = tmpV4.length();
@@ -50983,17 +51173,37 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.hitbox.visible = false;
         enemy.group.visible = false;
         return true;
+       }
+       tmpV4.normalize();
+      forwardOf(enemy.group, tmpV8);
+      enemy.headingError = tmpV8.angleTo(tmpV4);
+      const retreatEnergy = managedCombatTurnSpeed({
+        commandedSpeed: enemy.spec.maxSpeed,
+        headingErrorRad: enemy.headingError,
+        stallSeverity: enemy.stallSeverity,
+        stallEntrySpeed: enemy.spec.stallEntrySpeed,
+        structuralG: enemy.spec.structuralG,
+        cruiseSpeed: enemy.spec.cruiseSpeed,
+        maxSpeed: enemy.spec.maxSpeed
+      });
+      enemy.turnDemand = retreatEnergy.turnDemand;
+       tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
+      enemy.group.quaternion.rotateTowards(
+        tmpQ1,
+        enemyConstrainedTurn(enemy, enemy.spec.pursuitTurn * 0.8) * dt
+      );
+       enemy.group.quaternion.normalize();
+       enemy.targetSpeed = enemy.spec.maxSpeed;
+       enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(enemy.spec.speedResponse, dt));
+      applyEnemyStallNoseDrop(enemy, dt);
+      moveEnemyFixedWing(enemy, dt);
+      const hardFloor = terrainFloorAt(enemy.group.position) + 26;
+      if (enemy.group.position.y < hardFloor) {
+        enemy.group.position.y = hardFloor;
+        enemy.attitudeLift.verticalSpeed = 0;
       }
-      tmpV4.normalize();
-      tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
-      enemy.group.quaternion.rotateTowards(tmpQ1, enemy.spec.pursuitTurn * 0.8 * dt);
-      enemy.group.quaternion.normalize();
-      enemy.targetSpeed = enemy.spec.maxSpeed;
-      enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(enemy.spec.speedResponse, dt));
-      forwardOf(enemy.group, tmpV4);
-      enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
-      return true;
-    }
+       return true;
+     }
 
     function beginM08RelayBlackout(mission) {
       const contract = mission && mission.m08ChoiceContract;
@@ -52457,9 +52667,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         alive: true,
         maxHp: spec.hp,
         hp: spec.hp,
-        speed: spec.patrolSpeed * 0.92,
-        targetSpeed: spec.patrolSpeed,
-        // What this pilot currently believes the player is doing. Seeded at
+         speed: spec.patrolSpeed * 0.92,
+         targetSpeed: spec.patrolSpeed,
+         // Fixed-wing translation and aerodynamic state. The AI is allowed to
+         // request a target point and throttle, but current energy, structural G,
+         // stall and attitude lift decide how much of that request is delivered.
+         velocity: new THREE.Vector3(),
+         stallState: resetAerodynamicStallState({}),
+         stallSeverity: 0,
+         stalling: false,
+         controlAuthority: 1,
+         turnDemand: 0,
+         headingError: 0,
+         turnEnvelopeGain: 1,
+         turnLimit: spec.patrolTurn,
+         attitudeLift: resetAttitudeLiftState({}),
+         // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
         // still has to notice it, rather than being born knowing.
         perceivedPlayerSpeed: CRUISE_SPEED,
@@ -55727,11 +55950,103 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           bestDistance = distance;
           best = friendly;
         }
-      }
-      return best || fallback;
+       }
+       return best || fallback;
+     }
+
+    function enemyEffectiveVerticalSpeed(enemy) {
+      // As on the player, attitude loss and stall describe the same missing
+      // lift from two directions. Taking the stronger sink prevents a slow,
+      // inverted aircraft from being charged twice for one absent wing force.
+      return Math.min(
+        enemy.attitudeLift.verticalSpeed,
+        -STALL_SINK_RATE * enemy.stallSeverity
+      );
     }
 
-    function updateEnemies(dt) {
+    function updateEnemyAerodynamicState(enemy, dt) {
+      const spec = enemy.spec;
+      forwardOf(enemy.group, tmpV8);
+      updateAerodynamicStallState(enemy.stallState, {
+        speed: enemy.speed,
+        stallEntrySpeed: spec.stallEntrySpeed,
+        deepStallSpeed: STALL_DEEP_SPEED,
+        recoverySpeed: STALL_RECOVERY_SPEED,
+        stallAuthorityLoss: spec.stallAuthorityLoss,
+        turnDemand: enemy.turnDemand,
+        noseHighDemand: Math.max(0, tmpV8.y - 0.18)
+      }, dt);
+      enemy.stallSeverity = enemy.stallState.severity;
+      enemy.stalling = enemy.stallState.stalling;
+      enemy.controlAuthority = enemy.stallState.controlAuthority;
+    }
+
+    function enemyConstrainedTurn(enemy, maximumRate) {
+      const spec = enemy.spec;
+      const baseRate = Math.max(0.00001, spec.patrolTurn);
+      const result = constrainedAircraftTurn({
+        speed: enemy.speed,
+        referenceSpeed: spec.cruiseSpeed,
+        stallEntrySpeed: spec.stallEntrySpeed,
+        structuralG: spec.structuralG,
+        baseTurnRate: baseRate,
+        maximumGain: Math.max(0, maximumRate) / baseRate,
+        minimumGain: TURN_GAIN_FLOOR,
+        stallSeverity: enemy.stallSeverity,
+        stallAuthorityLoss: spec.stallAuthorityLoss
+      });
+      enemy.turnEnvelopeGain = result.gain;
+      enemy.controlAuthority = result.authority;
+      enemy.turnLimit = result.rate;
+      return result.rate;
+    }
+
+    function applyEnemyStallNoseDrop(enemy, dt) {
+      if (enemy.stallSeverity <= 0.005) return;
+      enemy.group.rotateX(-STALL_NOSE_DROP_RATE * enemy.stallSeverity * dt);
+      enemy.group.quaternion.normalize();
+    }
+
+    function moveEnemyFixedWing(enemy, dt) {
+      // Translation is computed from the constrained attitude and retained as a
+      // real velocity so missile lead sees a stalling or inverted target fall.
+      upOf(enemy.group, tmpV8);
+      updateAttitudeLiftState(
+        enemy.attitudeLift,
+        tmpV8.dot(WORLD_UP),
+        enemy.spec.stability,
+        dt
+      );
+      forwardOf(enemy.group, enemy.velocity).multiplyScalar(enemy.speed);
+      enemy.velocity.y += enemyEffectiveVerticalSpeed(enemy);
+      enemy.group.position.addScaledVector(enemy.velocity, dt);
+    }
+
+    function applyEnemyEnergyManagement(enemy, headingError) {
+      const spec = enemy.spec;
+      const energy = managedCombatTurnSpeed({
+        commandedSpeed: enemy.targetSpeed,
+        headingErrorRad: headingError,
+        stallSeverity: enemy.stallSeverity,
+        stallEntrySpeed: spec.stallEntrySpeed,
+        structuralG: spec.structuralG,
+        cruiseSpeed: spec.cruiseSpeed,
+        maxSpeed: spec.maxSpeed
+      });
+      enemy.turnDemand = energy.turnDemand;
+      // Strike, escort formation and authored hunt runs protect a mission object;
+      // only a dogfight or an actual stall may trade their assigned speed for
+      // turn energy. A stalled aircraft always gets recovery throttle.
+      if (
+        energy.recovering || enemy.mode === "pursuit" || enemy.mode === "break" ||
+        enemy.aimKind === "stall-recovery"
+      ) {
+        enemy.targetSpeed = energy.targetSpeed;
+      }
+      return energy;
+    }
+
+     function updateEnemies(dt) {
       const time = performance.now() * 0.001;
       forwardOf(player, tmpV5);
       rightOf(player, tmpV6);
@@ -55806,9 +56121,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         updateEnemyProps(enemy, dt);
 
         // NIGHT AUDIT's relay route revokes the flight's IFF and payroll. The
-        // aircraft turn away at full speed and, critically, never reach the
-        // shared ordnance path below while retreating.
-        if (updateM08RetreatingAircraft(enemy, dt)) continue;
+         // aircraft turn away at full speed and, critically, never reach the
+         // shared ordnance path below while retreating.
+         if (updateM08RetreatingAircraft(enemy, dt)) continue;
+
+        updateEnemyAerodynamicState(enemy, dt);
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
         // quarter it burns - black smoke with orange flame flicker.
@@ -56108,9 +56425,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const arenaDx = enemy.group.position.x - battleArea.centerX;
         const arenaDz = enemy.group.position.z - battleArea.centerZ;
         let arenaReturn = false;
-        if (
-          !enemy.huntRef && !enemy.strikeTarget &&
-          arenaDx * arenaDx + arenaDz * arenaDz > battleArea.radius * battleArea.radius
+         if (
+           !enemy.huntRef && !enemy.strikeTarget &&
+           arenaDx * arenaDx + arenaDz * arenaDz > battleArea.radius * battleArea.radius
         ) {
           arenaReturn = true;
           enemy.aimKind = "arena";
@@ -56122,10 +56439,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.targetSpeed = Math.min(
             spec.maxSpeed + (enemy.wave - 1) * 4,
             Math.max(spec.patrolSpeed, enemy.targetSpeed || 0)
-          );
+           );
+         }
+
+        // Recovery is an AI decision, not immunity from the stall. Above a safe
+        // terrain margin it drops the nose and opens the throttle; close to the
+        // ground, the terrain override below wins and trades speed for survival.
+        const recoveryFloor = terrainFloorAt(enemy.group.position);
+        if (enemy.stallSeverity > 0.08 && enemy.group.position.y > recoveryFloor + 260) {
+          enemy.aimKind = "stall-recovery";
+          forwardOf(enemy.group, tmpV8);
+          targetPoint = enemy.targetPoint.copy(enemy.group.position)
+            .addScaledVector(tmpV8, 280);
+          targetPoint.y = Math.min(targetPoint.y, enemy.group.position.y - 180);
+          enemy.targetSpeed = Math.max(enemy.targetSpeed, spec.cruiseSpeed);
         }
 
-        // Terrain avoidance. Project the altitude ~1.8s ahead along the
+         // Terrain avoidance. Project the altitude ~1.8s ahead along the
         // current descent; if that dips toward the sea - or a mountain the
         // aircraft is near - override the aim point with a climb straight
         // ahead, so the (airframe-limited) turn is spent purely on pulling up.
@@ -56140,15 +56470,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           targetPoint.y = Math.max(enemy.group.position.y, floorHeight) + 240;
         }
 
-        tmpV4.copy(targetPoint).sub(enemy.group.position);
-        if (tmpV4.lengthSq() > 0.00001) {
-          tmpV4.normalize();
-          tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
-          // A break is flown at the pursuit rate - hard, but still the airframe's.
-          const turnRate = enemy.mode === "patrol" && !arenaReturn ? spec.patrolTurn : spec.pursuitTurn;
-          enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
-          enemy.group.quaternion.normalize();
-        }
+         tmpV4.copy(targetPoint).sub(enemy.group.position);
+         if (tmpV4.lengthSq() > 0.00001) {
+           tmpV4.normalize();
+          forwardOf(enemy.group, tmpV8);
+          enemy.headingError = tmpV8.angleTo(tmpV4);
+          applyEnemyEnergyManagement(enemy, enemy.headingError);
+           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
+          // The target-point algorithm asks for a turn; the airframe now grants
+          // only what its current speed, structural G and stall state permit.
+          // At corner speed this reaches the old pursuit maximum, while a fast
+          // interceptor draws a much wider arc and a stalled wing barely answers.
+          const requestedRate = enemy.mode === "patrol" && !arenaReturn
+            ? spec.patrolTurn
+            : spec.pursuitTurn;
+          const turnRate = enemyConstrainedTurn(enemy, requestedRate);
+           enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
+           enemy.group.quaternion.normalize();
+         }
+        applyEnemyStallNoseDrop(enemy, dt);
 
         // Speeding up and slowing down are not the same problem. Opening the
         // throttle is the airframe's business and stays on `speedResponse`;
@@ -56158,10 +56498,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // their tail - and it is why a rookie sails 250m out in front while an
         // ace is only briefly wrong-footed.
         const closing = enemy.targetSpeed < enemy.speed;
-        const speedK = closing ? (spec.speedDecelK ?? spec.speedResponse) : spec.speedResponse;
-        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(speedK, dt));
-        forwardOf(enemy.group, tmpV4);
-        enemy.group.position.addScaledVector(tmpV4, enemy.speed * dt);
+         const speedK = closing ? (spec.speedDecelK ?? spec.speedResponse) : spec.speedResponse;
+         enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(speedK, dt));
+        moveEnemyFixedWing(enemy, dt);
 
         // Last-resort floor: the AI never goes below the sea surface or into
         // a mountainside, even mid-dive - snap up and level the nose.
@@ -56172,13 +56511,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // frame. That snap is the "warp" this clamp was written to remove.
         const hardFloor = Math.max(floorHeight, terrainFloorAt(enemy.group.position)) + 26;
         if (enemy.group.position.y < hardFloor) {
-          enemy.group.position.y = hardFloor;
+           enemy.group.position.y = hardFloor;
+          enemy.attitudeLift.verticalSpeed = 0;
+          forwardOf(enemy.group, tmpV4);
           if (tmpV4.y < 0) {
             tmpV8.set(tmpV4.x, 0.22, tmpV4.z).normalize();
-            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV8);
-            enemy.group.quaternion.rotateTowards(tmpQ1, spec.pursuitTurn * 2.5 * dt);
-            enemy.group.quaternion.normalize();
-          }
+             tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV8);
+             enemy.group.quaternion.rotateTowards(
+               tmpQ1,
+              enemyConstrainedTurn(enemy, spec.pursuitTurn) * dt
+             );
+             enemy.group.quaternion.normalize();
+           }
         }
 
         updateEnemyOrdnance(enemy, dt, time);
@@ -56424,16 +56768,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             }
           }
         }
+       }
+       enemy.group.quaternion.normalize();
+
+       enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
+      // The cobra may command a thrust-vector pitch outside the ordinary turn
+      // table, but it does not get a second translation model: low-speed stall,
+      // inverted lift loss and missile-visible velocity remain the shared ones.
+      applyEnemyStallNoseDrop(enemy, dt);
+      moveEnemyFixedWing(enemy, dt);
+
+      // The script is exempt from the ordinary pitch table, never from physics
+      // translation or terrain.
+       const hardFloor = terrainFloorAt(enemy.group.position) + 26;
+      if (enemy.group.position.y < hardFloor) {
+        enemy.group.position.y = hardFloor;
+        enemy.attitudeLift.verticalSpeed = 0;
       }
-      enemy.group.quaternion.normalize();
-
-      enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
-      forwardOf(enemy.group, tmpAiA);
-      enemy.group.position.addScaledVector(tmpAiA, enemy.speed * dt);
-
-      // The script is exempt from the turn table, never from the terrain.
-      const hardFloor = terrainFloorAt(enemy.group.position) + 26;
-      if (enemy.group.position.y < hardFloor) enemy.group.position.y = hardFloor;
 
       if (enemy.postStallTimer <= 0) enemy.postStallPhase = 0;
     }
@@ -59874,6 +60225,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.flight.rollRate = rollRate;
       hook.flight.turnFactor = playerTurnFactor;
       hook.flight.controlAuthority = playerControlAuthority;
+      hook.flight.stability = PLAYER_STABILITY;
+      hook.flight.attitudeUpDot = playerAttitudeLift.upDot;
+      hook.flight.attitudeLiftLoss = playerAttitudeLift.severity;
+      hook.flight.attitudeDownAcceleration = playerAttitudeLift.downAcceleration;
+      hook.flight.aerodynamicVerticalSpeed = playerAttitudeLift.verticalSpeed;
+      hook.flight.effectiveVerticalSpeed = playerEffectiveVerticalSpeed();
       hook.cameraFocus.active = cameraFocusActive;
       hook.cameraFocus.targetId = cameraFocusTargetId;
       hook.cameraFocus.source = cameraFocusSource;
@@ -63689,6 +64046,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       STALL_WARNING_SPEED = spec.stallWarnSpeed;
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
+      PLAYER_STABILITY = aircraftStabilityRating(spec);
       STRUCTURAL_G = spec.structuralG;
       TIP_OFFSET_X = spec.tipSpan * spec.theme.scale;
       TIP_OFFSET_Z = spec.tipZ * spec.theme.scale;
@@ -63855,6 +64213,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return Math.round(20 + ((value - min) / (max - min)) * 80);
     }
 
+    // One source of truth for both the hangar bar and the attitude-lift
+    // constraint. Its three ingredients already drive roll damping and the
+    // stall model independently; the composite is what determines how much
+    // automatic flight-path correction remains in an unfavourable attitude.
+    function aircraftStabilityScore(spec) {
+      return spec.rollDamping * 10 - spec.stallEntrySpeed * 0.3 -
+        spec.stallAuthorityLoss * 30;
+    }
+
+    function aircraftStabilityRating(spec) {
+      const scores = AIRCRAFT_ORDER.map((id) => aircraftStabilityScore(AIRCRAFT_TYPES[id]));
+      return THREE.MathUtils.clamp(
+        statPercent(
+          aircraftStabilityScore(spec),
+          Math.min(...scores),
+          Math.max(...scores)
+        ) / 100,
+        0.2,
+        1
+      );
+    }
+
     // Scores every airframe against the fleet, so the bars are relative rather
     // than absolute - only computed once, on boot.
     function computeAircraftSpecBars() {
@@ -63887,8 +64267,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const mobilities = specs.map(mobilityScore);
       // STABILITY: heavy roll damping, a low stall entry speed and a small
       // control loss when stalling all mean "stays where you point it".
-      const stabilityScore = (spec) =>
-        spec.rollDamping * 10 - spec.stallEntrySpeed * 0.3 - spec.stallAuthorityLoss * 30;
       // AIR-TO-AIR: per-shot punch weighted with how much ordnance it carries.
       // Deliberately blind to SP.W: feeding special-weapon damage into this sum
       // would move all four existing bars, and an SP.W is not what a jet fights
@@ -63916,7 +64294,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (weapon.lockKind === "surface" || weapon.lockKind === "ship" || weapon.lockKind === "ground") return 0.8;
         return 0.25;
       };
-      const stabilities = specs.map(stabilityScore);
+      const stabilities = specs.map(aircraftStabilityScore);
       const firepowers = specs.map(firepowerScore);
 
       const bars = {};
@@ -63925,7 +64303,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           speed: statPercent(speedScore(spec), Math.min(...speeds), Math.max(...speeds)) / 100,
           accel: statPercent(accelScore(spec), Math.min(...accels), Math.max(...accels)) / 100,
           mobility: statPercent(mobilityScore(spec), Math.min(...mobilities), Math.max(...mobilities)) / 100,
-          stability: statPercent(stabilityScore(spec), Math.min(...stabilities), Math.max(...stabilities)) / 100,
+          stability: statPercent(
+            aircraftStabilityScore(spec),
+            Math.min(...stabilities),
+            Math.max(...stabilities)
+          ) / 100,
           firepower: statPercent(firepowerScore(spec), Math.min(...firepowers), Math.max(...firepowers)) / 100,
           ground: groundScore(spec),
           defense: statPercent(spec.maxHealth, Math.min(...armors), Math.max(...armors)) / 100
