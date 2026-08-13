@@ -103,4 +103,3 @@ console.log("check_attitude_lift: PASS");
 console.log(`  ordinary bank 60deg drop=${ordinaryBank.drop.toFixed(2)}m; knife-edge 90deg drop=${knifeEdge.drop.toFixed(2)}m`);
 console.log(`  inverted 3s: ${stabilityCases.map((entry) => `${entry.id}=${entry.drop.toFixed(1)}m`).join(", ")}`);
 console.log(`  30/60/120fps spread=${(Math.max(...frameDrops) - Math.min(...frameDrops)).toFixed(3)}m; sink cap=${ATTITUDE_LIFT_MAX_SINK_SPEED}m/s`);
-
