@@ -1324,6 +1324,7 @@
     }
 
     #stallWarning,
+    #lockWarning,
     #missileWarning,
     #battleAreaWarning {
       position: absolute;
@@ -1360,6 +1361,26 @@
       animation-duration: 0.85s;
     }
 
+    /* AC separates a hostile fire-control lock from a missile already in the
+       air. Keep the pre-launch cue compact and directly below the compass: the
+       rest of the HUD remains green until MISSILE ALERT takes ownership. */
+    #lockWarning {
+      top: 38%;
+      padding: 5px 13px;
+      color: #ff6670;
+      border-color: rgba(255, 102, 112, 0.55);
+      text-shadow: 0 0 9px rgba(255, 58, 72, 0.95);
+      box-shadow: 0 0 0 2px rgba(255, 74, 85, 0.28);
+    }
+
+    #lockWarning.active {
+      opacity: 1;
+      transform: translateX(-50%) scale(1.03);
+      border-color: rgba(255, 102, 112, 0.9);
+      box-shadow: 0 0 0 2px rgba(255, 74, 85, 0.42), 0 0 10px rgba(255, 42, 58, 0.35);
+      animation: alertPulse 0.52s ease-in-out infinite alternate;
+    }
+
     /* Just above HUD centre, boxed - the AC read. It used to sit at top 18%
        with the banner row; in the reference the alert hangs right over the
        boresight where the eye already is. */
@@ -1373,6 +1394,13 @@
       opacity: 1;
       border-color: rgba(255, 69, 82, 0.9);
       animation: alertPulse 0.34s ease-in-out infinite alternate;
+    }
+
+    /* A launched missile is the higher-priority state. The JS applies the same
+       rule; this guard prevents both captions ever flashing together. */
+    body.missileAlert #lockWarning {
+      opacity: 0;
+      animation: none;
     }
 
     /* MISSILE ALERT owns the whole canopy: while an enemy round is tracking
@@ -2366,6 +2394,7 @@
     </div>
     <div id="boostIndicator">AFTERBURNER</div>
     <div id="stallWarning">STALL · ACCELERATE / LOWER NOSE</div>
+    <div id="lockWarning">WARNING</div>
     <div id="missileWarning">MISSILE ALERT</div>
     <div id="battleAreaWarning">RETURN TO THE BATTLE AREA</div>
     <div id="gamepadStatus">GAMEPAD OFFLINE</div>
@@ -2565,11 +2594,13 @@
       createPlayerGunController
     } from "./src/combat/player-gun.js?v=20260813-ship-collision-3";
     import {
+      DEFAULT_MISSILE_ACCELERATION,
       SEEKER_STATE,
+      accelerateMissileSpeed,
       createMissileGuidance,
       sampleMissileOvershoot,
       updateSeekerState
-    } from "./src/combat/missile-guidance.js?v=20260813-overshoot-guidance-1";
+    } from "./src/combat/missile-guidance.js?v=20260813-launch-phases-1";
     import {
       clearConcurrentMultiLock,
       createConcurrentMultiLockState,
@@ -2731,6 +2762,15 @@
     }
     const LOCK_RANGE = 1200;
     const LOCK_TIME = 0.85;
+    // Hostile fire-control needs the same dwell as the player's standard
+    // seeker. A valid solution must be held for this long before any enemy
+    // aircraft, ship, helicopter or SAM may finish its fire-control lock.
+    const ENEMY_MISSILE_LOCK_TIME = LOCK_TIME;
+    // A completed enemy lock is not an automatic trigger pull. The AI holds
+    // the solution for a short human-scale reaction window before launch,
+    // keeping WARNING visible through the whole interval.
+    const ENEMY_MISSILE_FIRE_DELAY_MIN = 0.5;
+    const ENEMY_MISSILE_FIRE_DELAY_MAX = 1.0;
     const LOCK_DOT = Math.cos(THREE.MathUtils.degToRad(16));
     const LOCK_GRACE_TIME = 0.4;
     const LOCK_HYSTERESIS_BONUS = 0.15;
@@ -3383,10 +3423,12 @@
     // volley empties all eight and puts all eight on the 12 s clock; with only
     // three back, the next trigger pull is a three-round volley.
     // Global guidance ceiling. No player or hostile guided missile may exceed
-    // 100 deg/s; individual weapons can still be slower. The same clamp is
+    // 75 deg/s; individual weapons can still be slower. Predictive intercept
+    // guidance now carries the accuracy instead of excessive turn authority.
+    // The same clamp is
     // applied again at every launch path and inside the shared guidance kernel
     // so a future authored value cannot silently bypass the balance rule.
-    const MAX_MISSILE_TURN_RATE_DEG = 100;
+    const MAX_MISSILE_TURN_RATE_DEG = 75;
     const STANDARD_MISSILE_TURN_RATE_DEG = MAX_MISSILE_TURN_RATE_DEG;
     // 556 m/s = 2001.6 km/h. This is the common cruise-speed floor for every
     // ordinary guided missile in the game: the player's MSL, QAAM and salvo
@@ -3394,14 +3436,12 @@
     // (anti-ship cruise missiles and helicopter rockets) keep their authored
     // speeds because their slow run-in is part of how the weapon is identified.
     const STANDARD_MISSILE_MAX_SPEED = 556;
-    // A proper surface combatant gets the same tracking contract as QAAM:
-    // ordinary-MSL turn authority, a longer motor and one finite second chance.
-    // Carriers and the small missile boat are explicit exclusions.
-    const LARGE_SHIP_SAM_MAX_PASSES = 2;
-    const LARGE_SHIP_SAM_REACQUIRE_DELAY = 0.35;
-    const LARGE_SHIP_SAM_LIFE = 14;
-    const LARGE_SHIP_SAM_CLEARANCE = 55;
-    const LARGE_SHIP_SAM_TERMINAL_RANGE = 180;
+    // Aegis/frigate SAMs retain a sea-clearance flight corridor so a low target
+    // does not drag an otherwise valid shot into the water. This is navigation
+    // assistance only: their seekers remain one-pass. Turn authority and life
+    // match the player's standard missile, without QAAM reacquisition.
+    const SHIP_SAM_CLEARANCE = 55;
+    const SHIP_SAM_TERMINAL_RANGE = 180;
 
     const SPW_TYPES = Object.freeze({
       // F-16: dogfight round with the ordinary missile's exact turn authority.
@@ -3435,7 +3475,7 @@
         label: "LASM",
         kind: "aam",
         damage: 190,
-        // Capped at the same 100 deg/s global ceiling as every guided round.
+        // Capped at the same 75 deg/s global ceiling as every guided round.
         // Its wave-top/terminal profile carries the burden of reaching a hull
         // without granting the anti-ship round a turn-rate exception.
         turnRateDeg: MAX_MISSILE_TURN_RATE_DEG,
@@ -3467,7 +3507,7 @@
         label: "XLAA",
         kind: "aam",
         damage: 98,
-        turnRateDeg: 90,
+        turnRateDeg: MAX_MISSILE_TURN_RATE_DEG,
         maxSpeed: 833,
         life: 12,
         multi: 1,
@@ -3484,7 +3524,7 @@
       // on count, not punch.
       aam4: Object.freeze({
         // Salvo family guidance ladder: the 4AAM tracks like the standard
-        // missile (100), the 6AAM at 95 and the 8AAM at 48.
+        // missile (75), the 6AAM at 75 and the 8AAM at 48.
         // at a quarter (48). Width costs per-round tracking - eight fire-and-
         // forget rounds that all steered like the standard missile made the
         // salvo weapons strictly better than aiming.
@@ -3531,7 +3571,7 @@
         label: "6AAM",
         kind: "aam",
         damage: 84,
-        turnRateDeg: 95,
+        turnRateDeg: MAX_MISSILE_TURN_RATE_DEG,
         maxSpeed: STANDARD_MISSILE_MAX_SPEED,
         life: 9.5,
         multi: 6,
@@ -3592,6 +3632,11 @@
       })
     });
 
+    // Flares are a per-airframe loadout. Fighters and multirole aircraft keep
+    // the standard pair; dedicated ground-attack aircraft carry four.
+    const DEFAULT_FLARE_CAPACITY = 2;
+    const ATTACKER_FLARE_CAPACITY = 4;
+
     const AIRCRAFT_TYPES = {
       f16: Object.freeze({
         id: "f16",
@@ -3615,16 +3660,14 @@ canopy: 0x69dfff, exhaust: 0x8cecff, scale: 1, variant: "viper"
       }),
       // Gripen E: the deliberate valley in the hangar. Where the F-35C is
       // built to have no weakness, this one is built to have exactly one -
-      // 125 HP, level with the F-4 and second-lowest in the set, which reads as
-      // DEFENSE 34. Everything else is bought with lightness: the third-best
+      // 115 HP, only just above the F-2A and F-16. Everything else is bought
+      // with lightness: the third-best
       // roll rate behind only the Raptor, and MOBILITY 87 from an airframe that
       // gives up top speed to every jet above it. The 6AAM is the compensation:
       // it cannot out-armour a swarm, so it clears one in a single trigger pull.
       //
-      // The 125 is load-bearing and must not be lowered. DEFENSE is normalised
-      // against the fleet's min and max HP, and the F-16's 100 is the floor;
-      // anything under 125 that is still above 100 is fine, but dropping below
-      // 100 would move the floor and shift every other aircraft's DEFENSE bar.
+      // DEFENSE is normalised against the fleet's min and max HP, and the
+      // F-16's 100 remains the floor.
       gripen: Object.freeze({
         id: "gripen",
         label: "GRIPEN E",
@@ -3658,7 +3701,7 @@ canopy: 0x9fe6ff, exhaust: 0x9fd8ff, scale: 0.92, variant: "gripen"
         label: "F-2A VIPER ZERO",
         role: "Anti-Ship Multirole",
         tag: "STRIKE",
-        blurb: "F-16を拡大再設計した対艦攻撃の専門機。増えた重量のぶん空戦性能は素のF-16に一歩譲るが、大型主翼が生む安定した射爆軸と長射程の対艦ミサイルで、海上の目標を遠距離から仕留める。",
+        blurb: "F-16を拡大再設計した対艦攻撃の専門機。大型化した機体はF-16よりわずかに頑丈だが、増えた重量のぶん空戦性能は一歩譲る。大型主翼が生む安定した射爆軸と長射程の対艦ミサイルで、海上の目標を遠距離から仕留める。",
         // Ranked below the F-16 (2026-08-02): the anti-ship specialist pays
         // for its magazine in airframe - it should never out-dogfight the
         // jet it was stretched from.
@@ -3668,7 +3711,9 @@ canopy: 0x9fe6ff, exhaust: 0x9fd8ff, scale: 0.92, variant: "gripen"
         rollDamping: 9.4, stallWarnSpeed: 96, stallEntrySpeed: 84, stallAuthorityLoss: 0.72, structuralG: 2.9,
         gunDamage: 18, missileDamage: 98,
         boostResponse: 0.9, brakeResponse: 0.54, cruiseResponse: 0.62,
-        missileCapacity: 24, maxHealth: 95,
+        // Slightly tougher than the F-16's 100 without reaching the Gripen's
+        // 115-point lightweight tier.
+        missileCapacity: 24, maxHealth: 110,
         spw: Object.freeze({ key: "lasm", capacity: 14 }),
         tipSpan: 8.1, tipZ: 3.1,
         theme: Object.freeze({
@@ -4024,7 +4069,7 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.08, variant: "bison"
         rollDamping: 12.6, stallWarnSpeed: 76, stallEntrySpeed: 64, stallAuthorityLoss: 0.50, structuralG: 2.4,
         gunDamage: 19, missileDamage: 98, gunGroundBonus: 3.2,
         boostResponse: 0.82, brakeResponse: 0.70, cruiseResponse: 0.80,
-        missileCapacity: 12, maxHealth: 240,
+        missileCapacity: 12, flareCapacity: ATTACKER_FLARE_CAPACITY, maxHealth: 240,
         spw: Object.freeze({ key: "agm4", capacity: 16 }),
         tipSpan: 9.6, tipZ: 1.6,
         theme: Object.freeze({
@@ -4158,13 +4203,14 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
       // these four burn warm (0xffb9.. through 0xffd9..), so a contact is
       // identified as hostile from directly astern before its planform reads.
       //
-      // HP stays on the 98 quantum: 98 is one missile, 196 is two exactly.
+      // MiG-21 shares the F-16's 100-point baseline durability. The remaining
+      // Russian airframes keep their heavier authored values.
       mig21: Object.freeze({
         id: "mig21",
         label: "MiG-21bis FISHBED",
         role: "Legacy Light Fighter",
         tag: "ENEMY",
-        blurb: "敵の旧世代軽戦闘機。小柄で軽快だが火力も装甲も乏しく、数を頼みに向かってくる。",
+        blurb: "旧世代の軽戦闘機。小柄で軽快だが火力は低く、装甲もF-16と同程度に留まる。敵としては数を頼みに向かってくる。",
         cruiseSpeed: 265, boostSpeed: 580, brakeSpeed: 146,
         // 軽快さが数値に出ていなかったので旋回まわりだけ少し上げた。
         // 速度・装甲・火力は据え置きで、旧世代の軽戦闘機という位置づけは変えていない。
@@ -4173,10 +4219,9 @@ canopy: 0x8fe0ff, exhaust: 0xa8b6c0, scale: 2.6, variant: "transport"
         rollDamping: 8.4, stallWarnSpeed: 98, stallEntrySpeed: 86, stallAuthorityLoss: 0.78, structuralG: 2.8,
         gunDamage: 13, missileDamage: 98,
         boostResponse: 0.91, brakeResponse: 0.58, cruiseResponse: 0.66,
-        // 98 = one missile, the only crewed airframe in the set at that mark
-        // (the UAV is the other). This is what "weak early enemy" means here,
-        // and it is a full step below the F-4's 125.
-        missileCapacity: 12, maxHealth: 98,
+        // Same baseline durability as the F-16; its weaker gun and limited
+        // missile load preserve the early-light-fighter role.
+        missileCapacity: 12, maxHealth: 100,
         spw: Object.freeze({ key: "qaam", capacity: 3 }),
         tipSpan: 6.2, tipZ: 2.6,
         theme: Object.freeze({
@@ -4357,7 +4402,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rollDamping: 7.0, stallWarnSpeed: 72, stallEntrySpeed: 60, stallAuthorityLoss: 0.9, structuralG: 2.2,
         gunDamage: 20, missileDamage: 98,
         boostResponse: 0.75, brakeResponse: 0.7, cruiseResponse: 0.8,
-        missileCapacity: 12, maxHealth: 294,
+        missileCapacity: 12, flareCapacity: ATTACKER_FLARE_CAPACITY, maxHealth: 294,
         spw: Object.freeze({ key: "ugb", capacity: 18 }),
         tipSpan: 8.6, tipZ: 1.4,
         theme: Object.freeze({
@@ -4391,6 +4436,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         })
       })
     };
+
+    function flareCapacityForAircraft(spec) {
+      const capacity = Number(spec && spec.flareCapacity);
+      return Number.isFinite(capacity) && capacity >= 0
+        ? Math.floor(capacity)
+        : DEFAULT_FLARE_CAPACITY;
+    }
 
     // ---- Hangar economy (purchase record) -------------------------------
     // Purchases are campaign-scoped. Sera shares airframes with the legacy USA
@@ -6038,9 +6090,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // A tracked aircraft rolls into a hard break when a player missile is inside
     // the warning radius and still closing. The turn is flown at the airframe's
     // own pursuit rate - nothing is boosted for it - so the round simply has to
-    // spend its 100 deg/s of authority on a line that keeps moving, and sometimes
-    // runs out before the 16m proximity fuse. QAAM now faces the same first-pass
-    // limit; its advantage is one fresh acquisition after that miss.
+    // settle its 75 deg/s-limited nose onto a changing intercept course. A
+    // sufficiently late or violent break can still force an overshoot; QAAM's
+    // advantage is one fresh acquisition after that physical miss.
     const ENEMY_BREAK_RANGE = 800;
     const ENEMY_BREAK_DURATION = 1.6;
     // Measured from the moment the break starts, so a machine cannot chain them.
@@ -6205,7 +6257,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         minRange: 185,
         speed: 405,
         maxSpeed: 495,
-        turnRate: THREE.MathUtils.degToRad(78),
+        turnRate: THREE.MathUtils.degToRad(75),
         damage: 98,
         life: 7.6,
         launchDot: 0.24
@@ -6335,7 +6387,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         launchDot: 0.23
       }),
       // The dogfight round, matching the QAAM the player's Su-37 carries: the
-      // hardest-turning seeker in the air at 88 deg/s, and the shortest legs of
+      // fastest-turning seeker class in the air at the 75 deg/s global cap,
+      // and the shortest legs of
       // any fighter's - it is fired from behind you, not at you from a mile out.
       su37: Object.freeze({
         cooldownMin: 8.4,
@@ -6344,7 +6397,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         minRange: 175,
         speed: 380,
         maxSpeed: 470,
-        turnRate: THREE.MathUtils.degToRad(88),
+        turnRate: THREE.MathUtils.degToRad(75),
         damage: 98,
         life: 8.2,
         launchDot: 0.2
@@ -6385,7 +6438,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         minRange: 188,
         speed: 400,
         maxSpeed: 490,
-        turnRate: THREE.MathUtils.degToRad(76),
+        turnRate: THREE.MathUtils.degToRad(75),
         damage: 98,
         life: 7.7,
         launchDot: 0.24
@@ -6402,7 +6455,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         minRange: 180,
         speed: 412,
         maxSpeed: 502,
-        turnRate: THREE.MathUtils.degToRad(80),
+        turnRate: THREE.MathUtils.degToRad(75),
         damage: 98,
         life: 7.6,
         launchDot: 0.25
@@ -7148,10 +7201,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // that the player has to come down to it.
         hoverBand: Object.freeze([55, 115]),
         clearance: 28,
-        // Read by countEnemiesTargetingPlayer for the "you are being aimed at"
-        // audio cue. Matches the rocket's actual reach (ENEMY_MISSILE_PROFILES
-        // .hind.range = 1300); the old 1500 rang a 200m-wide band of warning
-        // in which the Hind could never actually fire.
+        // Used by the Hind's station/pursuit and gun solution. Missile warning
+        // range comes from ENEMY_MISSILE_PROFILES.hind instead, through the
+        // same real lock solution that gates launch.
         attackRange: 1300,
         aimThreshold: 0.55,
         // Main and tail disc, rad/s. Never zero - a stopped rotor reads as a
@@ -41853,6 +41905,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       radioText: document.getElementById("radioText"),
       boostIndicator: document.getElementById("boostIndicator"),
       stallWarning: document.getElementById("stallWarning"),
+      lockWarning: document.getElementById("lockWarning"),
       missileWarning: document.getElementById("missileWarning"),
       battleAreaWarning: document.getElementById("battleAreaWarning"),
       gamepadStatus: document.getElementById("gamepadStatus"),
@@ -42067,6 +42120,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // terrain test. Its own vector because the step loop between the two reads
     // uses every other scratch.
     const tmpMissileFrom = new THREE.Vector3();
+    // Dedicated guidance scratch. Enemy missiles can be targeting the player,
+    // a friendly or a moving flare inside one update, so these values must not
+    // alias the general tmpV slots used by steering and clearance recovery.
+    const tmpMissileTargetVelocity = new THREE.Vector3();
+    const tmpMissileTargetEnd = new THREE.Vector3();
+    const tmpMissileGuidanceAim = new THREE.Vector3();
+    const tmpMissileLaunchAim = new THREE.Vector3();
     const tmpV10 = new THREE.Vector3();
     // describeMissileDirection consumes (normalises) what it is handed, so the
     // threat scan needs a second scratch rather than a fresh Vector3 per frame
@@ -42232,23 +42292,54 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // reloads one tube at a time on a timer.
     const MISSILE_TUBE_COUNT = 2;
     const MISSILE_RELOAD_TIME = 5;
-    // Deliberately unchanged at 190. Dropping it to 130 and then 110 was measured
-    // against a breaking target and bought almost nothing - 100% -> 95% -> 90%
-    // hit rate, with the miss distance flat at ~10 m the whole way - because the
-    // endgame is decided by frame quantisation rather than seeker authority: at
-    // 520 m/s the round steps ~8.7 m between proximity tests, which swamps the
-    // couple of metres a lazier turn rate would have cost it. Nerfing the rate
-    // would have taxed every ordinary shot in the game to buy that nothing, so
-    // the break is paid for at the fuse instead - see proximityFuseFor().
+    // The common 75 deg/s ceiling is intentionally modest. Airborne guidance
+    // now solves an intercept course from target velocity and uses relative
+    // swept collision, so accuracy comes from leading the target rather than
+    // from snapping the missile nose around after it has fallen behind.
     const MISSILE_TURN_RATE = THREE.MathUtils.degToRad(STANDARD_MISSILE_TURN_RATE_DEG);
     const MAX_MISSILE_TURN_RATE = THREE.MathUtils.degToRad(MAX_MISSILE_TURN_RATE_DEG);
+    // Air-launched rounds inherit the launch aircraft's actual speed. Static
+    // launchers need a non-zero ejection impulse so a VLS round clears its cell
+    // and a trained canister visibly leaves the rail before the motor builds
+    // toward cruise; 100 km/h is 27.78 m/s.
+    const STATIC_MISSILE_EJECTION_SPEED = 100 / 3.6;
     function cappedMissileTurnRate(rate) {
       const numeric = Number(rate);
       return Number.isFinite(numeric) && numeric >= 0
         ? Math.min(numeric, MAX_MISSILE_TURN_RATE)
         : MAX_MISSILE_TURN_RATE;
     }
+
+    // Kinematic velocity contract shared by player and hostile guidance. The
+    // movement systems keep speed on the entity and attitude on its Group, so
+    // deriving the tangent here is both stable (no spawn/teleport spikes) and
+    // accurate while an aircraft or ship turns. Mounted subsystems inherit the
+    // parent hull's motion even though their own authored speed is zero.
+    function missileTargetVelocity(target, out) {
+      if (!target) return out.set(0, 0, 0);
+      if (target === player) {
+        return forwardOf(player, out).multiplyScalar(playerSpeed);
+      }
+      const body = target.subsystem && target.parentRef ? target.parentRef : target;
+      if (body.velocity?.isVector3) return out.copy(body.velocity);
+      const object = body.group || body;
+      if (!object?.quaternion) return out.set(0, 0, 0);
+      const speed = Number(body.wingSpeed ?? body.speed ?? 0);
+      return forwardOf(object, out).multiplyScalar(Number.isFinite(speed) ? speed : 0);
+    }
+
+    function missileLaunchSpeedFor(platform, fallback = 0) {
+      if (platform === player) return Math.max(0, playerSpeed);
+      const platformSpeed = Number(platform?.speed);
+      const inherited = Number.isFinite(platformSpeed)
+        ? Math.max(0, platformSpeed)
+        : Math.max(0, Number(fallback) || 0);
+      return platform?.surface || platform?.ground
+        ? Math.max(STATIC_MISSILE_EJECTION_SPEED, inherited)
+        : inherited;
+    }
     const MISSILE_MAX_SPEED = STANDARD_MISSILE_MAX_SPEED;
+    const MISSILE_ACCELERATION = DEFAULT_MISSILE_ACCELERATION;
     const MISSILE_LIFE = 9.5;
     // Proximity fuse against an aircraft, and the one lever that makes a break
     // turn worth flying. No airframe in the table can drag the miss distance past
@@ -42282,21 +42373,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       THREE,
       localForward: LOCAL_FORWARD,
       forwardOf: (object, out) => forwardOf(object, out),
-      damping: (k, dt) => damping(k, dt),
       defaultTurnRate: MISSILE_TURN_RATE,
       maxTurnRate: MAX_MISSILE_TURN_RATE,
       defaultMaxSpeed: MISSILE_MAX_SPEED,
+      defaultAcceleration: MISSILE_ACCELERATION,
       defaultFuse: MISSILE_FUSE,
       terminalRange: MISSILE_TERMINAL_RANGE,
       terminalSubsteps: MISSILE_TERMINAL_SUBSTEPS,
+      targetVelocityOf: (target, out) => missileTargetVelocity(target, out),
       // Lets surface-bound rounds cruise above the ridges between them and
       // the target, now that touching terrain kills a round.
       surfaceHeightAt: (x, z) => surfaceHeightAt(x, z)
     });
+
     let loadedMissiles = MISSILE_TUBE_COUNT;
     const missileReloadTimers = [];
-    const FLARE_CAPACITY = 2;
-    let flareCount = FLARE_CAPACITY;
+    let PLAYER_FLARE_CAPACITY = DEFAULT_FLARE_CAPACITY;
+    let flareCount = PLAYER_FLARE_CAPACITY;
     let flareCooldown = 0;
     const activeFlares = [];
     // SP.W: a second, independent launcher. `selectedWeapon` only decides what
@@ -42452,6 +42545,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let cameraFocusTargetId = null;
     let cameraFocusSource = null;
     let nearestMissileThreat = null;
+    let playerLockThreatProgress = 0;
     // Test affordance, same pattern as radarBlinkOverride: a fake threat that
     // stands in for getNearestEnemyMissileThreat() so a gate can exercise the
     // whole downstream alert chain (threat hook, warning box, red canopy,
@@ -42459,6 +42553,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // inside their own missile's minRange and gun instead, so a real launch
     // is rare in a scripted run.
     let missileAlertOverride = null;
+    // A visual/audio gate for the pre-launch warning. The real lock state is
+    // still exercised separately; this only makes priority and placement
+    // deterministic in browser checks.
+    let enemyLockWarningOverride = null;
     let damageSmokeTimer = 0;
     let currentCameraFov = BASE_CAMERA_FOV;
     let fearStageReached = 0;
@@ -42690,8 +42788,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     };
 
     let playerTargetedBy = 0;
-    const tmpAudioA = new THREE.Vector3();
-    const tmpAudioB = new THREE.Vector3();
 
     const lock = {
       targetId: null,
@@ -43643,6 +43739,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         threatBeeps: 0,
         rwrBeeps: 0,
         targetedBy: 0,
+        enemyLockProgress: 0,
         music: {
           track: null,          // what is audible now
           targetTrack: null,    // what the state machine wants
@@ -43679,6 +43776,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hud: {
         visibleEnemyMarkers: [],
         visibleFriendlyMarkers: [],
+        lockWarning: { active: false, count: 0, progress: 0 },
+        missileWarning: { active: false },
       },
       friendlies: [],
       // Dormant until a guard sortie arms it. Present from boot so a probe can
@@ -43871,6 +43970,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         },
         gLoadProbe: () => ({ g: currentGLoad, strain: gStrain, streaks: windStreakMaterial.opacity }),
         forceDeployFlare: () => deployFlare(),
+        flareProbe: () => ({
+          aircraft: selectedAircraftId,
+          capacity: PLAYER_FLARE_CAPACITY,
+          count: flareCount,
+          cooldown: flareCooldown
+        }),
         forceSelectAircraft: (id) => selectAircraft(id),
         forceSelectAircraftSpw: (key) => selectAircraftSpw(key),
         aircraftSpwProbe: () => {
@@ -43928,6 +44033,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           popup: Boolean(m.popup),
           diving: Boolean(m.diving),
           loftCeiling: m.loftCeiling ?? null,
+          launchProfile: m.launchProfile || "standard",
+          launchPhase: m.launchPhase || "homing",
+          launchPhaseAge: Number((m.launchPhaseAge || 0).toFixed(4)),
           y: Number(m.mesh.position.y.toFixed(2)),
           targetId: m.targetId ?? null,
           lost: Boolean(m.lost)
@@ -44276,6 +44384,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             : null;
           return Boolean(missileAlertOverride);
         },
+        // Deterministic counterpart for the pre-launch fire-control warning.
+        // MISSILE ALERT still wins when both overrides are enabled.
+        forceEnemyLockWarning: (on, progress = 0.5) => {
+          enemyLockWarningOverride = on
+            ? { count: 1, progress: THREE.MathUtils.clamp(Number(progress) || 0, 0.01, 1) }
+            : null;
+          return Boolean(enemyLockWarningOverride);
+        },
+        // Runs the same three-stage state machine attemptEnemyMissile() uses,
+        // without spawning a round. A fixed 0.5s reaction window makes the
+        // acquisition/locked/launch-ready boundaries deterministic in a gate.
+        enemyMissileLockProbe: (steps = [0.4, 0.44, 0.01, 0.49, 0.01]) => {
+          const probeEnemy = {};
+          const probeTarget = {};
+          const samples = [];
+          for (const step of steps) {
+            const launchReady = advanceEnemyMissileLaunchSequence(
+              probeEnemy,
+              probeTarget,
+              Number(step) || 0,
+              ENEMY_MISSILE_FIRE_DELAY_MIN
+            );
+            samples.push({
+              dt: Number(step),
+              locked: (probeEnemy.missileLockProgress || 0) >= 1,
+              launchReady,
+              phase: probeEnemy.missileLockPhase || "idle",
+              progress: Number((probeEnemy.missileLockProgress || 0).toFixed(4)),
+              fireDelay: Number((probeEnemy.missileFireDelay || 0).toFixed(4))
+            });
+          }
+          return {
+            lockTime: ENEMY_MISSILE_LOCK_TIME,
+            playerLockTime: LOCK_TIME,
+            fireDelayMin: ENEMY_MISSILE_FIRE_DELAY_MIN,
+            fireDelayMax: ENEMY_MISSILE_FIRE_DELAY_MAX,
+            samples
+          };
+        },
         // Collision geometry, measured at a point: the mesh skin the player
         // dies on and the analytic cone the enemy AI avoids.
         terrainProbe: (x, z) => ({
@@ -44568,6 +44715,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.maxHp = Math.max(enemy.maxHp, hp);
           return enemy.hp;
         },
+        // Advances only the initial weapon cooldown. Lock dwell, fire delay,
+        // launch eligibility and the missile flight itself still go through
+        // the production path, which keeps browser guidance probes fast even
+        // under the much slower software WebGL renderer used in CI.
+        forceEnemyMissileReady: (id) => {
+          if (gameState !== STATE_PLAYING) return false;
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy || !ENEMY_MISSILE_PROFILES[enemy.type]) return false;
+          enemy.missileCooldown = 0;
+          return true;
+        },
         // The mirror of forceSetEnemyHp, and it exists for one reason: any
         // probe that measures how OFTEN an enemy shoots has to sit in front of
         // it for a minute or more, which no 100 HP aircraft survives. Without
@@ -44755,6 +44913,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         missileSpeedProbe: () => ({
           floorMps: STANDARD_MISSILE_MAX_SPEED,
           floorKph: STANDARD_MISSILE_MAX_SPEED * 3.6,
+          accelerationMps2: MISSILE_ACCELERATION,
+          launch: {
+            playerMps: missileLaunchSpeedFor(player),
+            playerKph: missileLaunchSpeedFor(player) * 3.6,
+            staticEjectionMps: STATIC_MISSILE_EJECTION_SPEED,
+            staticEjectionKph: STATIC_MISSILE_EJECTION_SPEED * 3.6
+          },
           player: {
             mslMps: MISSILE_MAX_SPEED,
             mslKph: MISSILE_MAX_SPEED * 3.6,
@@ -44785,13 +44950,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ["missileBoat", { type: "missileBoat", surface: true, ground: false }],
           ["samSite", { type: "samSite", surface: true, ground: true }]
         ].map(([id, mockEnemy]) => {
-          const persistent = isPersistentLargeShipSam(mockEnemy, null);
+          const seaClearance = usesShipSamClearance(mockEnemy, null);
+          const profile = ENEMY_MISSILE_PROFILES[id] || null;
           return [id, {
-            maxPasses: persistent ? LARGE_SHIP_SAM_MAX_PASSES : 1,
-            reacquireDelay: persistent ? LARGE_SHIP_SAM_REACQUIRE_DELAY : 0,
-            lifeLimit: persistent ? LARGE_SHIP_SAM_LIFE : (ENEMY_MISSILE_PROFILES[id]?.life ?? null),
-            turnRateDeg: persistent ? STANDARD_MISSILE_TURN_RATE_DEG :
-              Number(THREE.MathUtils.radToDeg(ENEMY_MISSILE_PROFILES[id]?.turnRate || 0).toFixed(3)),
+            maxPasses: 1,
+            reacquireDelay: 0,
+            lifeLimit: seaClearance ? MISSILE_LIFE : (profile?.life ?? null),
+            turnRateDeg: seaClearance ? STANDARD_MISSILE_TURN_RATE_DEG :
+              Number(THREE.MathUtils.radToDeg(profile?.turnRate || 0).toFixed(3)),
+            launchSpeedMps: missileLaunchSpeedFor({ ...mockEnemy, speed: 0 }, profile?.speed),
+            seaClearance,
             launchMode: usesDirectSurfaceMissileLaunch(mockEnemy) ? "direct" : "vertical"
           }];
         })),
@@ -44811,6 +44979,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             diving: Boolean(missile.diving),
             life: missile.life,
             speed: missile.speed,
+            launchSpeed: missile.launchSpeed,
+            acceleration: missile.acceleration ?? MISSILE_ACCELERATION,
             closing: Boolean(missile.closing),
             lost: Boolean(missile.lost),
             turnRateDeg: THREE.MathUtils.radToDeg(missile.turnRate ?? MISSILE_TURN_RATE),
@@ -44823,6 +44993,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             minRange: Number.isFinite(missile.minTargetDistance) ? missile.minTargetDistance : null,
             openingSpeed: Number((missile.openingSpeed || 0).toFixed(2)),
             targetForwardDot: Number((missile.targetForwardDot ?? 1).toFixed(4)),
+            guidanceAge: Number((missile.guidanceAge || 0).toFixed(4)),
+            guidancePhase: missile.airGuidancePhase || "launch",
+            launchProfile: missile.launchProfile || "standard",
+            launchPhase: missile.launchPhase || "homing",
+            launchPhaseAge: Number((missile.launchPhaseAge || 0).toFixed(4)),
+            launchCaptureAngleDeg: Number((missile.launchCaptureAngleDeg || 0).toFixed(3)),
+            launchClosingSpeed: Number((missile.launchClosingSpeed || 0).toFixed(2)),
+            commandedLateralG: Number((missile.commandedLateralG || 0).toFixed(3)),
+            achievedLateralG: Number((missile.achievedLateralG || 0).toFixed(3)),
+            lineOfSightRate: Number((missile.lineOfSightRate || 0).toFixed(5)),
+            terminalCommitted: Boolean(missile.terminalCommitted),
+            terminalCommittedPass: missile.terminalCommittedPass || 0,
+            terminalCommitPoint: missile.terminalCommitted && missile.terminalCommitPoint
+              ? {
+                  x: Number(missile.terminalCommitPoint.x.toFixed(2)),
+                  y: Number(missile.terminalCommitPoint.y.toFixed(2)),
+                  z: Number(missile.terminalCommitPoint.z.toFixed(2))
+                }
+              : null,
             range: target ? missile.mesh.position.distanceTo(target.group.position) : null
           };
         }),
@@ -47466,22 +47655,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       probe.contextState = audioSystem.context ? audioSystem.context.state : "none";
     }
 
-    // How many living enemies currently have us inside their firing cone. Mirrors
-    // the same geometry attemptEnemyMissile() uses to decide it may shoot, so the
-    // warning means "someone can take the shot", not merely "someone is nearby".
-    function countEnemiesTargetingPlayer() {
-      if (gameState !== STATE_PLAYING) return 0;
+    // The RWR is driven by actual hostile missile acquisition, not a rough gun
+    // cone. This includes aircraft, ships, helicopters and SAMs, while naturally
+    // excluding a hunter whose current lock target is a friendly charge.
+    function enemyLockThreatOnPlayer() {
+      if (gameState !== STATE_PLAYING) return { count: 0, progress: 0 };
       let count = 0;
+      let progress = 0;
       for (const enemy of enemies) {
-        if (!enemy.alive || enemy.mode !== "pursuit") continue;
-        tmpAudioA.copy(player.position).sub(enemy.group.position);
-        const distance = tmpAudioA.length();
-        if (!Number.isFinite(distance) || distance < 25 || distance > enemy.spec.attackRange) continue;
-        tmpAudioA.multiplyScalar(1 / distance);
-        forwardOf(enemy.group, tmpAudioB);
-        if (tmpAudioB.dot(tmpAudioA) >= enemy.spec.aimThreshold) count += 1;
+        if (
+          !enemy.alive
+          || enemy.missileLockTarget !== player
+          || !(enemy.missileLockProgress > 0)
+        ) continue;
+        count += 1;
+        progress = Math.max(progress, enemy.missileLockProgress);
       }
-      return count;
+      return { count, progress: THREE.MathUtils.clamp(progress, 0, 1) };
     }
 
     function updateAudioCues(dt) {
@@ -47489,7 +47679,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       nearestMissileThreat = combatCuesActive
         ? (missileAlertOverride || getNearestEnemyMissileThreat())
         : null;
-      playerTargetedBy = combatCuesActive ? countEnemiesTargetingPlayer() : 0;
+      const enemyLockThreat = combatCuesActive
+        ? (enemyLockWarningOverride || enemyLockThreatOnPlayer())
+        : { count: 0, progress: 0 };
+      playerTargetedBy = enemyLockThreat.count;
+      playerLockThreatProgress = enemyLockThreat.progress;
 
       updateEngineAudio();
       updateLockDroneAudio();
@@ -47544,8 +47738,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         audioSystem.threatTimer = 0;
       }
 
-      // Radar warning receiver: steady mid-range chirp while an enemy holds us in
-      // its firing cone. Fires faster when more than one of them is lined up.
+      // Radar warning receiver: steady mid-range chirp while hostile fire-control
+      // is acquiring the player. Fires faster when more than one unit is locking.
       if (playerTargetedBy > 0 && !nearestMissileThreat) {
         audioSystem.rwrTimer -= dt;
         if (audioSystem.rwrTimer <= 0) {
@@ -47710,7 +47904,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       score = 0;
       health = PLAYER_MAX_HEALTH;
       missileCount = PLAYER_MISSILE_CAPACITY;
-      flareCount = FLARE_CAPACITY;
+      flareCount = PLAYER_FLARE_CAPACITY;
       flareCooldown = 0;
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, PLAYER_MISSILE_CAPACITY);
       missileReloadTimers.length = 0;
@@ -48634,11 +48828,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         .addScaledVector(tmpV3, -1.2);
       root.quaternion.copy(player.quaternion);
       scene.add(root);
+      const launchSpeed = missileLaunchSpeedFor(player);
 
       missilesInFlight.push({
         mesh: root,
         targetId: target ? target.id : null,
-        speed: Math.max(playerSpeed + 120, 300),
+        speed: launchSpeed,
+        launchSpeed,
         life: 0,
         trailTimer: 0,
         closing: false,
@@ -48652,6 +48848,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         passesStarted: 1,
         reacquireDelay: 0,
         reacquireTimer: 0,
+        guidanceAge: 0,
+        guidanceTargetRef: null,
+        achievedLateralAcceleration: new THREE.Vector3(),
+        terminalCommitted: false,
+        terminalCommittedPass: 0,
+        terminalCommitPoint: new THREE.Vector3(),
+        launchProfile: "standard",
+        launchPhase: "homing",
+        launchPhaseAge: 0,
         lost: false
       });
 
@@ -48720,7 +48925,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             missile,
             target,
             slice,
-            steps > 1 && step === 0
+            steps > 1 && step === 0,
+            (steps - step - 1) * slice
           );
 
           if (guided.guidanceEndedNow) {
@@ -49034,11 +49240,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         .addScaledVector(tmpV3, -1.2);
       root.quaternion.copy(player.quaternion);
       scene.add(root);
+      const launchSpeed = missileLaunchSpeedFor(player);
 
       missilesInFlight.push({
         mesh: root,
         targetId: target ? target.id : null,
-        speed: Math.max(playerSpeed + 120, 300),
+        speed: launchSpeed,
+        launchSpeed,
         maxSpeed: PLAYER_SPW.maxSpeed,
         turnRate: cappedMissileTurnRate(THREE.MathUtils.degToRad(PLAYER_SPW.turnRateDeg)),
         damage: PLAYER_SPW.damage,
@@ -49065,6 +49273,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         passesStarted: 1,
         reacquireDelay: Math.max(0, Number(PLAYER_SPW.reacquireDelay) || 0),
         reacquireTimer: 0,
+        guidanceAge: 0,
+        guidanceTargetRef: null,
+        achievedLateralAcceleration: new THREE.Vector3(),
+        terminalCommitted: false,
+        terminalCommittedPass: 0,
+        terminalCommitPoint: new THREE.Vector3(),
+        // Only weapons with an authored surface-flight profile receive rail
+        // separation. AAMs, including QAAM/salvo rounds, enter PN normally.
+        launchProfile: PLAYER_SPW.popup ? "safe-separation" : "standard",
+        launchPhase: PLAYER_SPW.popup ? "safe-separation" : "homing",
+        launchPhaseAge: 0,
         lost: false
       });
 
@@ -49387,15 +49606,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : Math.max(STANDARD_MISSILE_MAX_SPEED, authoredMax);
     }
 
-    function isPersistentLargeShipSam(enemy, charge) {
-      // `charge` selects an anti-ship cruise missile aimed at a friendly and
-      // is not the launcher's own SAM. On the player-chasing path, every
-      // missile-capable surface combatant gets one retry except the two hulls
-      // called out by design: the carrier and the small missile boat.
+    function usesShipSamClearance(enemy, charge) {
+      // `charge` selects an anti-ship cruise missile aimed at a friendly, not
+      // the launcher's own SAM. Only the Aegis and frigate use the low-altitude
+      // corridor; this does not grant either missile QAAM-style reacquisition.
       return Boolean(
         !charge &&
         enemy && enemy.surface && !enemy.ground &&
-        enemy.type !== "carrier" && enemy.type !== "missileBoat"
+        (enemy.type === "aegis" || enemy.type === "frigate")
       );
     }
 
@@ -49405,13 +49623,83 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
     }
 
-    function attemptEnemyMissile(enemy, charge = null) {
-      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) return false;
+    function resetEnemyMissileLock(enemy) {
+      if (!enemy) return;
+      enemy.missileLockTarget = null;
+      enemy.missileLockProgress = 0;
+      enemy.missileLockPhase = "idle";
+      enemy.missileFireDelay = null;
+    }
+
+    // Stage 1, shared by every hostile missile platform. Target changes cannot
+    // inherit dwell or trigger delay from the previous contact.
+    function advanceEnemyMissileLock(enemy, target, dt) {
+      if (!enemy || !target) return false;
+      if (enemy.missileLockTarget !== target) {
+        enemy.missileLockTarget = target;
+        enemy.missileLockProgress = 0;
+        enemy.missileLockPhase = "acquiring";
+        enemy.missileFireDelay = null;
+      }
+      enemy.missileLockProgress = Math.min(
+        1,
+        (enemy.missileLockProgress || 0) + Math.max(0, dt) / ENEMY_MISSILE_LOCK_TIME
+      );
+      const locked = enemy.missileLockProgress >= 1;
+      if (locked) enemy.missileLockPhase = "locked";
+      return locked;
+    }
+
+    // Stage 2. Completing acquisition arms, but never consumes, the reaction
+    // delay on that same frame. Only later frames count it down, guaranteeing a
+    // visible locked interval before stage 3 reports launch-ready.
+    function advanceEnemyMissileLaunchSequence(enemy, target, dt, fixedFireDelay = null) {
+      const wasLocked = enemy?.missileLockTarget === target
+        && (enemy.missileLockProgress || 0) >= 1;
+      if (!advanceEnemyMissileLock(enemy, target, dt)) return false;
+
+      if (!wasLocked || !Number.isFinite(enemy.missileFireDelay)) {
+        enemy.missileFireDelay = Number.isFinite(fixedFireDelay)
+          ? THREE.MathUtils.clamp(
+              fixedFireDelay,
+              ENEMY_MISSILE_FIRE_DELAY_MIN,
+              ENEMY_MISSILE_FIRE_DELAY_MAX
+            )
+          : THREE.MathUtils.lerp(
+              ENEMY_MISSILE_FIRE_DELAY_MIN,
+              ENEMY_MISSILE_FIRE_DELAY_MAX,
+              Math.random()
+            );
+        enemy.missileLockPhase = "locked";
+        return false;
+      }
+
+      enemy.missileFireDelay = Math.max(0, enemy.missileFireDelay - Math.max(0, dt));
+      // Decimal frame slices can leave a microscopic positive remainder at an
+      // exact boundary (0.5 - 0.49 - 0.01). Do not turn that into a phantom
+      // extra frame of reaction time.
+      if (enemy.missileFireDelay > 1e-6) return false;
+      enemy.missileFireDelay = 0;
+      enemy.missileLockPhase = "launchReady";
+      return true;
+    }
+
+    function attemptEnemyMissile(enemy, charge = null, dt = 0) {
+      if (gameState !== STATE_PLAYING || missionElapsed < MISSION_GRACE_TIME) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
       const profile = enemyMissileProfileFor(enemy, charge);
-      if (!profile) return false;
+      if (!profile) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
       // Cells shot off means no SAM at all - not a slower one. Checked before
       // anything is built so a silenced ship costs nothing per attempt.
-      if (shipVlsSilenced(enemy)) return false;
+      if (shipVlsSilenced(enemy)) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
 
       // What the round is aimed at. Everything below is written against this
       // point rather than against the player, which is the whole of what makes
@@ -49427,10 +49715,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const launchDot = profile.launchDot * (enemy.spec.missileLaunchDotScale || 1);
       tmpV1.copy(aimAt).sub(enemy.group.position);
       const distance = tmpV1.length();
-      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range * envelope) return false;
+      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range * envelope) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
       tmpV1.multiplyScalar(1 / distance);
       forwardOf(enemy.group, tmpV2);
-      if (tmpV2.dot(tmpV1) < launchDot) return false;
+      if (tmpV2.dot(tmpV1) < launchDot) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
+
+      // A valid range/cone solution now advances acquisition, then a separate
+      // post-lock reaction delay. WARNING remains active in both stages; only
+      // after the delay expires may the spawned missile take over with
+      // MISSILE ALERT.
+      const lockTarget = charge || player;
+      if (!advanceEnemyMissileLaunchSequence(enemy, lockTarget, dt)) return false;
 
       rightOf(enemy.group, tmpV3);
       upOf(enemy.group, tmpV4);
@@ -49498,7 +49799,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A round fired at a friendly leaves the rail already ON the bearing
       // instead of on the launch aircraft's attitude. Inheriting the attitude
       // is right for a dogfight round - the shot comes off the nose of a jet
-      // that is pointing at its target anyway, and its 44-78 deg/s seeker
+      // that is pointing at its target anyway, and its 44-75 deg/s seeker
       // eats the rest - but the geodesic that rotateTowards() flies spends
       // part of its budget unrolling the launcher's bank, and a slow
       // anti-ship round measurably could not afford that: it flew its
@@ -49560,23 +49861,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       } else {
         triggerRadioLine("enemy", "フォックス2！ フォックス2！", RADIO_PRIORITY.NORMAL, `enemy-missile-${enemy.id}`);
       }
-      const persistentLargeShipSam = isPersistentLargeShipSam(enemy, charge);
+      const shipSamClearance = usesShipSamClearance(enemy, charge);
+      const launchSpeed = missileLaunchSpeedFor(enemy, profile.speed);
       enemyMissiles.push({
         id: enemyMissileSerial,
         mesh: root,
         ownerId: enemy.id,
         ownerType: enemy.type,
-        speed: profile.speed,
+        speed: launchSpeed,
+        launchSpeed,
         maxSpeed: enemyMissileMaxSpeed(enemy, charge, profile),
+        acceleration: MISSILE_ACCELERATION,
         turnRate: cappedMissileTurnRate(
-          persistentLargeShipSam ? MISSILE_TURN_RATE : profile.turnRate
+          shipSamClearance ? MISSILE_TURN_RATE : profile.turnRate
         ),
         damage: profile.damage,
-        lifeLimit: persistentLargeShipSam ? Math.max(profile.life, LARGE_SHIP_SAM_LIFE) : profile.life,
+        lifeLimit: shipSamClearance ? MISSILE_LIFE : profile.life,
         life: 0,
         trailTimer: 0,
         // Overshoot state, on the same terms as a player round. A normal hostile
-        // missile gets one tracking pass; a large combatant's SAM gets two.
+        // missile gets one tracking pass. The player's QAAM is the only round
+        // here with a second pass; no hostile ship missile receives one.
         closing: false,
         wasClosing: false,
         lastTargetDistance: Infinity,
@@ -49585,11 +49890,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         targetForwardDot: 1,
         overshootTime: 0,
         lost: false,
-        maxPasses: persistentLargeShipSam ? LARGE_SHIP_SAM_MAX_PASSES : 1,
+        maxPasses: 1,
         passesStarted: 1,
-        reacquireDelay: persistentLargeShipSam ? LARGE_SHIP_SAM_REACQUIRE_DELAY : 0,
+        reacquireDelay: 0,
         reacquireTimer: 0,
-        persistentLargeShipSam,
+        guidanceAge: 0,
+        guidanceTargetRef: null,
+        achievedLateralAcceleration: new THREE.Vector3(),
+        terminalCommitted: false,
+        terminalCommittedPass: 0,
+        terminalCommitPoint: new THREE.Vector3(),
+        launchProfile: shipSamClearance ? "vls" : "standard",
+        launchPhase: shipSamClearance ? "vls-eject" : "homing",
+        launchPhaseAge: 0,
+        launchCaptureAngleDeg: shipSamClearance ? 90 : 0,
+        launchClosingSpeed: 0,
+        shipSamClearance,
         clearanceActive: false,
         // The friendly this round is chasing, or null for every round in the
         // game that is chasing the player. Read by updateEnemyMissiles for
@@ -49598,12 +49914,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // warning (the player is not the one being shot at).
         targetFriendly: charge || null
       });
+      resetEnemyMissileLock(enemy);
       createMuzzleFlash(root.position, enemy.spec.tracerColor);
       return true;
     }
 
-    // Flares: two per sortie. One press ejects a burning decoy that every
-    // missile currently in flight bites and never lets go of - AC rules.
+    // Flares: one press ejects a burning decoy that every missile currently in
+    // flight bites and never lets go of - AC rules. Capacity comes from the
+    // selected airframe (four for dedicated attackers, two for everything else).
     function deployFlare() {
       if (gameState !== STATE_PLAYING || flareCount <= 0 || flareCooldown > 0) return false;
       flareCount -= 1;
@@ -49691,6 +50009,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const missile = enemyMissiles[i];
         missile.life += dt;
         missile.trailTimer -= dt;
+        missile.speed = accelerateMissileSpeed(
+          missile.speed,
+          missile.maxSpeed,
+          missile.acceleration ?? MISSILE_ACCELERATION,
+          dt
+        );
 
         // A round launched at a friendly flies its own guidance: no decoy (the
         // flare was never in front of it), a bigger proximity radius for a
@@ -49706,6 +50030,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             removeEnemyMissile(i);
             continue;
           } else {
+            missileTargetVelocity(guarded, tmpMissileTargetVelocity);
             tmpV1.copy(guarded.group.position).sub(missile.mesh.position);
             const guardedDistance = tmpV1.length();
             // Proximity by target size: a hull is tens of metres of steel, an
@@ -49714,17 +50039,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // carrier does - a round that reaches it has hit it.
             const shipCharge = isFriendlyShip(guarded);
             const hitRadius = shipCharge ? 60 : 22;
-            if (guardedDistance < hitRadius) {
-              createExplosion(
-                missile.mesh.position,
-                0xff4d45,
-                shipCharge ? 1.9 : 1.0
-              );
-              damageFriendly(guarded, missile.damage);
-              removeEnemyMissile(i);
-              if (gameState !== STATE_PLAYING) return;
-              continue;
-            }
             if (guardedDistance > 0.001) {
               tmpV1.multiplyScalar(1 / guardedDistance);
               // A manoeuvring friendly can make a missile hit its turn-rate
@@ -49742,9 +50056,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               const canSteer = seekerState === SEEKER_STATE.TRACKING ||
                 seekerState === SEEKER_STATE.REACQUIRED;
               if (canSteer) {
-                tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
-                missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
-                missile.mesh.quaternion.normalize();
+                if (shipCharge) {
+                  // Surface charges retain the existing hull-intercept path;
+                  // PN and its 50G airframe budget are an air-to-air contract.
+                  missileGuidance.predictiveAimFor(
+                    missile,
+                    guarded.group.position,
+                    tmpMissileTargetVelocity,
+                    tmpMissileGuidanceAim
+                  );
+                  tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpMissileGuidanceAim);
+                  missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+                  missile.mesh.quaternion.normalize();
+                } else {
+                  missileGuidance.guideAirMissile(
+                    missile,
+                    guarded,
+                    guarded.group.position,
+                    tmpMissileTargetVelocity,
+                    dt
+                  );
+                }
               }
               if (seekerState === SEEKER_STATE.LOST_NOW) {
                 for (let puff = 0; puff < 3; puff += 1) {
@@ -49753,8 +50085,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 }
               }
             }
-            missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed, damping(0.022, dt));
             forwardOf(missile.mesh, tmpV2);
+            const guardedMissDistance = missileGuidance.movingTargetMissDistance(
+              missile.mesh.position,
+              tmpV2,
+              missile.speed * dt,
+              guarded.group.position,
+              tmpMissileTargetVelocity,
+              dt
+            );
+            if (guardedMissDistance < hitRadius) {
+              createExplosion(
+                missile.mesh.position,
+                0xff4d45,
+                shipCharge ? 1.9 : 1.0
+              );
+              damageFriendly(guarded, missile.damage);
+              removeEnemyMissile(i);
+              if (gameState !== STATE_PLAYING) return;
+              continue;
+            }
             missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
             if (missile.trailTimer <= 0) {
               tmpV3.copy(missile.mesh.position).addScaledVector(tmpV2, -2.1);
@@ -49776,44 +50126,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // once the flare burns out it just flies straight until timeout.
         const decoyed = Boolean(missile.decoy);
         const decoyAlive = decoyed && missile.decoy.active;
-        const aimPoint = decoyAlive ? missile.decoy.position : player.position;
+        if (decoyAlive) {
+          // Flares update after ordnance in the frame. Predict the endpoint
+          // they will occupy when this missile slice finishes so guidance and
+          // relative collision use the same interval as player/friendly motion.
+          tmpMissileTargetVelocity.copy(missile.decoy.velocity);
+          tmpMissileTargetEnd.copy(missile.decoy.position)
+            .addScaledVector(tmpMissileTargetVelocity, dt);
+        } else {
+          missileTargetVelocity(player, tmpMissileTargetVelocity);
+          tmpMissileTargetEnd.copy(player.position);
+        }
+        const aimPoint = tmpMissileTargetEnd;
         tmpV1.copy(aimPoint).sub(missile.mesh.position);
         const distance = tmpV1.length();
-        // Swept, not sampled. Head-on against a boosting jet the closing speed
-        // is ~1378 m/s: a frame covers 23m against a 13m fuse, so a round on a
-        // hitting line passed clean through between samples and flew on to its
-        // timeout. The same geometry made flares miss their 15m decoy check.
-        // Measured over the segment this frame will travel, before it moves.
         forwardOf(missile.mesh, tmpV4);
-        const sweptDistance = Math.min(
-          distance,
-          sweptMissDistance(missile.mesh.position, tmpV4, missile.speed * dt, aimPoint)
-        );
-        if (decoyAlive && sweptDistance < 15) {
-          createExplosion(missile.mesh.position, 0xffb45e, 0.55);
-          removeEnemyMissile(i);
-          continue;
-        }
-        if (!decoyed && sweptDistance < 13) {
-          createExplosion(missile.mesh.position, 0xff4d45, 0.72);
-          applyPlayerDamage(missile.damage);
-          removeEnemyMissile(i);
-          if (gameState !== STATE_PLAYING) return;
-          continue;
-        }
 
         if ((!decoyed || decoyAlive) && distance > 0.001) {
           tmpV1.multiplyScalar(1 / distance);
           let canSteer = !missile.lost;
+          const vlsLaunchActive = missileGuidance.isVlsLaunchPhaseActive(missile);
           // Physical turn authority and seeker persistence are separate. A
-          // 100 deg/s round keeps trying through a hard crossing; a pursuit
+          // 75 deg/s round keeps trying through a hard crossing; a pursuit
           // pass is spent only after it has closed, flown past the target and
           // continued opening the range. Aircraft, sites and missile boats
-          // have one pass. A large Aegis/frigate SAM gets two in total, the
-          // same initial pass plus one reacquisition as QAAM.
+          // all have one pass. QAAM alone receives a second acquisition.
           if (!decoyed) {
             const waitingToReacquire = (missile.reacquireTimer || 0) > 0;
-            const overshot = waitingToReacquire ? false : sampleMissileOvershoot(
+            const overshot = waitingToReacquire || vlsLaunchActive ? false : sampleMissileOvershoot(
               missile,
               dt,
               distance,
@@ -49834,35 +50174,51 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               }
             }
           }
-          // Keep long-lived ship SAMs above water between attacks. Pure pursuit
-          // at a low aircraft points below the horizon; after an overshoot the
-          // old round simply held that dive during the 0.35 s reacquisition and
-          // struck the sea. Outside the terminal 180 m, aim no lower than a
-          // 55 m corridor. The recovery-distance term starts the pull-up early
-          // enough for the current downward angle and speed. During the brief
-          // seeker coast only this terrain autopilot may steer; it does not know
-          // where the player is and therefore does not grant an extra track.
-          let steeringAim = tmpV1;
+          // Keep Aegis/frigate SAMs above water during their single pursuit
+          // pass. Predictive pursuit at a low aircraft can still point below the horizon;
+          // outside the terminal range, aim no lower than the sea corridor. The
+          // recovery-distance term starts the pull-up early enough for the
+          // current downward angle and speed. This navigation correction does
+          // not reset a lost seeker or grant another tracking pass.
+          let steeringAim = null;
+          let launchGuidancePoint = aimPoint;
+          let clearanceSteering = false;
           let clearanceRecovery = false;
-          if (missile.persistentLargeShipSam) {
+          if (missile.shipSamClearance) {
             const lookAhead = THREE.MathUtils.clamp(missile.speed * 0.45, 80, 250);
             const currentFloor = surfaceHeightAt(missile.mesh.position.x, missile.mesh.position.z);
             const aheadFloor = surfaceHeightAt(
               missile.mesh.position.x + tmpV4.x * lookAhead,
               missile.mesh.position.z + tmpV4.z * lookAhead
             );
-            const corridorY = Math.max(currentFloor, aheadFloor) + LARGE_SHIP_SAM_CLEARANCE;
+            const corridorY = Math.max(currentFloor, aheadFloor) + SHIP_SAM_CLEARANCE;
             const downwardAngle = Math.asin(THREE.MathUtils.clamp(-tmpV4.y, 0, 1));
             const recoveryDrop = missile.speed * (1 - Math.cos(downwardAngle)) /
               Math.max(missile.turnRate, 0.001);
             clearanceRecovery = tmpV4.y < -0.01 &&
               missile.mesh.position.y < corridorY + recoveryDrop;
 
-            if (distance > LARGE_SHIP_SAM_TERMINAL_RANGE && aimPoint.y < corridorY) {
-              tmpV3.copy(aimPoint);
-              tmpV3.y = corridorY;
-              tmpV3.sub(missile.mesh.position);
-              if (tmpV3.lengthSq() > 0.001) steeringAim = tmpV3.normalize();
+            if (aimPoint.y < corridorY) {
+              // Blend the 55m corridor out from 420m to the 180m terminal
+              // range. A one-frame removal kicked the nose abruptly downward
+              // just as the fuse geometry became important.
+              const corridorWeight = THREE.MathUtils.smoothstep(
+                distance,
+                SHIP_SAM_TERMINAL_RANGE,
+                420
+              );
+              tmpMissileLaunchAim.copy(aimPoint);
+              tmpMissileLaunchAim.y = THREE.MathUtils.lerp(
+                aimPoint.y,
+                corridorY,
+                corridorWeight
+              );
+              launchGuidancePoint = tmpMissileLaunchAim;
+              tmpV3.copy(launchGuidancePoint).sub(missile.mesh.position);
+              if (tmpV3.lengthSq() > 0.001) {
+                steeringAim = tmpV3.normalize();
+                clearanceSteering = corridorWeight > 0.001;
+              }
             }
             if (clearanceRecovery) {
               // Merely aiming at a point on the 55 m corridor is too shallow
@@ -49873,17 +50229,42 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               tmpV3.copy(tmpV4);
               tmpV3.y = Math.max(0.35, tmpV3.y);
               steeringAim = tmpV3.normalize();
+              tmpMissileLaunchAim.copy(missile.mesh.position)
+                .addScaledVector(steeringAim, lookAhead);
+              launchGuidancePoint = tmpMissileLaunchAim;
+              clearanceSteering = true;
             }
           }
-          missile.clearanceActive = clearanceRecovery || steeringAim !== tmpV1;
+          missile.clearanceActive = clearanceRecovery || clearanceSteering;
 
           // A round whose last pass overshot stops steering and flies on
           // ballistically. The fuse above stays live, so a round that happens
           // to remain on a hitting line still kills - it just cannot chase.
           if (canSteer) {
-            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, steeringAim);
-            missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
-            missile.mesh.quaternion.normalize();
+            if (vlsLaunchActive) {
+              missileGuidance.guideAirMissile(
+                missile,
+                decoyAlive ? missile.decoy : player,
+                launchGuidancePoint,
+                tmpMissileTargetVelocity,
+                dt
+              );
+            } else if (clearanceSteering) {
+              tmpQ1.setFromUnitVectors(LOCAL_FORWARD, steeringAim);
+              missile.mesh.quaternion.rotateTowards(
+                tmpQ1,
+                missileGuidance.effectiveAirTurnRateFor(missile) * dt
+              );
+              missile.mesh.quaternion.normalize();
+            } else {
+              missileGuidance.guideAirMissile(
+                missile,
+                decoyAlive ? missile.decoy : player,
+                aimPoint,
+                tmpMissileTargetVelocity,
+                dt
+              );
+            }
           } else if (!missile.lost && clearanceRecovery) {
             // Inertial/terrain channel only: preserve the current horizontal
             // course and pull toward level flight without following aimPoint.
@@ -49891,13 +50272,38 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             tmpV3.y = Math.max(0.35, tmpV3.y);
             tmpV3.normalize();
             tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV3);
-            missile.mesh.quaternion.rotateTowards(tmpQ1, missile.turnRate * dt);
+            missile.mesh.quaternion.rotateTowards(
+              tmpQ1,
+              missileGuidance.effectiveAirTurnRateFor(missile) * dt
+            );
             missile.mesh.quaternion.normalize();
           }
         }
 
-        missile.speed = THREE.MathUtils.lerp(missile.speed, missile.maxSpeed, damping(0.022, dt));
         forwardOf(missile.mesh, tmpV2);
+        // Both bodies move during the frame. Compare their relative segment,
+        // not the missile segment against the target's endpoint, so a valid
+        // crossing or head-on hit cannot fall through a frame boundary.
+        const sweptDistance = missileGuidance.movingTargetMissDistance(
+          missile.mesh.position,
+          tmpV2,
+          missile.speed * dt,
+          aimPoint,
+          tmpMissileTargetVelocity,
+          dt
+        );
+        if (decoyAlive && sweptDistance < 15) {
+          createExplosion(missile.mesh.position, 0xffb45e, 0.55);
+          removeEnemyMissile(i);
+          continue;
+        }
+        if (!decoyed && sweptDistance < 13) {
+          createExplosion(missile.mesh.position, 0xff4d45, 0.72);
+          applyPlayerDamage(missile.damage);
+          removeEnemyMissile(i);
+          if (gameState !== STATE_PLAYING) return;
+          continue;
+        }
         missile.mesh.position.addScaledVector(tmpV2, missile.speed * dt);
 
         if (missile.trailTimer <= 0) {
@@ -55007,7 +55413,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       // AC-style checkpoint resupply: the anti-ship leg starts with full tubes
       // and a full SP.W launcher - the leg the UGB exists for.
-      // Flares deliberately do NOT restock - two per sortie is the contract.
+      // Flares deliberately do NOT restock - each airframe's capacity is the
+      // full-sortie allowance.
       missileCount = PLAYER_MISSILE_CAPACITY;
       loadedMissiles = Math.min(MISSILE_TUBE_COUNT, missileCount);
       missileReloadTimers.length = 0;
@@ -55803,7 +56210,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.missileCooldown -= dt;
       if (enemy.missileCooldown <= 0) {
         const profile = enemyMissileProfileFor(enemy, charge);
-        const launched = attemptEnemyMissile(enemy, charge);
+        const launched = attemptEnemyMissile(enemy, charge, dt);
         // Role x skill decides how often this aircraft is even ALLOWED to think
         // about a launch. Trash sits at ~2x the airframe's own cadence, which
         // is what "滅多に撃たない" is: the same missile, half as often. The
@@ -55812,7 +56219,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const scale = enemy.spec.missileCooldownScale || 1;
         enemy.missileCooldown = launched && profile
           ? (profile.cooldownMin + Math.random() * profile.cooldownSpread) * scale
-          : (1.15 + Math.random() * 0.85) * scale;
+          : enemy.missileLockProgress > 0
+            ? 0
+            : (1.15 + Math.random() * 0.85) * scale;
       }
     }
 
@@ -56153,10 +56562,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.missileCooldown -= dt;
         if (enemy.missileCooldown <= 0) {
           const profile = ENEMY_MISSILE_PROFILES[enemy.type];
-          const launched = attemptEnemyMissile(enemy);
+          const launched = attemptEnemyMissile(enemy, null, dt);
           enemy.missileCooldown = launched
             ? profile.cooldownMin + Math.random() * profile.cooldownSpread
-            : 1.3 + Math.random() * 0.9;
+            : enemy.missileLockProgress > 0
+              ? 0
+              : 1.3 + Math.random() * 0.9;
         }
       }
     }
@@ -56330,10 +56741,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (profile) {
         enemy.missileCooldown -= dt;
         if (enemy.missileCooldown <= 0) {
-          const launched = attemptEnemyMissile(enemy);
+          const launched = attemptEnemyMissile(enemy, null, dt);
           enemy.missileCooldown = launched
             ? (profile.cooldownMin + Math.random() * profile.cooldownSpread) * enemy.roleCooldownScale
-            : 1.5 + Math.random() * 1.2;
+            : enemy.missileLockProgress > 0
+              ? 0
+              : 1.5 + Math.random() * 1.2;
         }
       }
     }
@@ -56650,10 +57063,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.missileCooldown -= dt;
         if (enemy.missileCooldown <= 0) {
           const profile = ENEMY_MISSILE_PROFILES[enemy.type];
-          const launched = attemptEnemyMissile(enemy);
+          const launched = attemptEnemyMissile(enemy, null, dt);
           enemy.missileCooldown = launched
             ? profile.cooldownMin + Math.random() * profile.cooldownSpread
-            : 1.3 + Math.random() * 0.9;
+            : enemy.missileLockProgress > 0
+              ? 0
+              : 1.3 + Math.random() * 0.9;
         }
       }
     }
@@ -59330,9 +59745,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       const threat = nearestMissileThreat;
       ui.missileWarning.classList.toggle("active", Boolean(threat));
+      const hostileLockWarning = inFlight && playerTargetedBy > 0 && !threat;
+      ui.lockWarning.classList.toggle("active", hostileLockWarning);
       // Plain "MISSILE ALERT" in its box, per the AC reference - the bearing
       // and range that used to ride the caption are on the scope already (the
-      // round is drawn there), and the whole-HUD red carries the urgency.
+      // round is drawn there), and the whole-HUD red carries the urgency. It
+      // suppresses the lower-priority pre-launch WARNING above.
       document.body.classList.toggle(
         "missileAlert",
         Boolean(threat) && inFlight
@@ -59463,6 +59881,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.hud.visibleFriendlyMarkers = friendlyMarkerScreenState.map((marker) => ({ ...marker }));
       hook.hud.contactPalette = { ...CONTACT_COLORS };
       hook.hud.radarBlinkOn = radarBlinkOn;
+      hook.hud.lockWarning = {
+        active: ui.lockWarning.classList.contains("active"),
+        count: playerTargetedBy,
+        progress: Number(playerLockThreatProgress.toFixed(4))
+      };
+      hook.hud.missileWarning = {
+        active: ui.missileWarning.classList.contains("active")
+      };
       // The friendly roster, for the probe that proves a friendly is never a
       // contact: whatever is in here must never appear in enemies[], never be
       // lockable and never be scored.
@@ -59655,6 +60081,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.audio.threatBeeps = audioSystem.threatBeeps;
       hook.audio.rwrBeeps = audioSystem.rwrBeeps;
       hook.audio.targetedBy = playerTargetedBy;
+      hook.audio.enemyLockProgress = Number(playerLockThreatProgress.toFixed(4));
       syncMusicHook(hook);
       hook.radio.active = radioState.active;
       hook.radio.speakerId = radioState.speakerId;
@@ -59709,6 +60136,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         formationLeaderId: enemy.formationLeaderId,
         formationActive: enemy.formationActive,
         missileReadyIn: Math.max(0, enemy.missileCooldown),
+        missileLockProgress: Number((enemy.missileLockProgress || 0).toFixed(4)),
+        missileLockPhase: enemy.missileLockPhase || "idle",
+        missileFireDelay: Number(Math.max(0, enemy.missileFireDelay || 0).toFixed(4)),
+        missileLockTarget: enemy.missileLockTarget === player
+          ? "player"
+          : enemy.missileLockTarget?.label || null,
         // Designated-target flag and, on the guard sorties, what this aircraft
         // is flying at instead of the player.
         tgt: isTgtEntry(enemy),
@@ -59721,7 +60154,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ownerId: missile.ownerId,
         ownerType: missile.ownerType,
         speed: missile.speed,
+        launchSpeed: missile.launchSpeed,
         maxSpeed: missile.maxSpeed,
+        acceleration: missile.acceleration ?? MISSILE_ACCELERATION,
         position: {
           x: missile.mesh.position.x,
           y: missile.mesh.position.y,
@@ -59739,6 +60174,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         openingSpeed: missile.openingSpeed || 0,
         targetForwardDot: missile.targetForwardDot ?? 1,
         reacquireTimer: missile.reacquireTimer || 0,
+        guidanceAge: missile.guidanceAge || 0,
+        guidancePhase: missile.airGuidancePhase || "launch",
+        launchProfile: missile.launchProfile || "standard",
+        launchPhase: missile.launchPhase || "homing",
+        launchPhaseAge: missile.launchPhaseAge || 0,
+        launchCaptureAngleDeg: missile.launchCaptureAngleDeg || 0,
+        launchClosingSpeed: missile.launchClosingSpeed || 0,
+        commandedLateralG: missile.commandedLateralG || 0,
+        achievedLateralG: missile.achievedLateralG || 0,
+        lineOfSightRate: missile.lineOfSightRate || 0,
+        terminalCommitted: Boolean(missile.terminalCommitted),
+        terminalCommittedPass: missile.terminalCommittedPass || 0,
+        terminalCommitPoint: missile.terminalCommitted && missile.terminalCommitPoint
+          ? {
+              x: missile.terminalCommitPoint.x,
+              y: missile.terminalCommitPoint.y,
+              z: missile.terminalCommitPoint.z
+            }
+          : null,
         clearanceActive: Boolean(missile.clearanceActive),
         clearance: missile.mesh.position.y - surfaceHeightAt(
           missile.mesh.position.x,
@@ -59955,15 +60409,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const angle = Math.atan2(rightDistance, forwardDistance);
         const px = center + Math.sin(angle) * radius * scale;
         const py = center - Math.cos(angle) * radius * scale;
-        ctx.fillStyle = "#ffd84f";
-        ctx.shadowColor = "#ff7b32";
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.moveTo(px, py - 4);
-        ctx.lineTo(px - 3.5, py + 3);
-        ctx.lineTo(px + 3.5, py + 3);
-        ctx.closePath();
-        ctx.fill();
+        // Incoming missiles are small white square contacts. At 3px they stay
+        // visibly subordinate to the 4.5px ground-enemy square and cannot be
+        // mistaken for the old yellow directional warning triangle.
+        ctx.fillStyle = "#f4f7fa";
+        ctx.shadowColor = "#f4f7fa";
+        ctx.shadowBlur = 4;
+        ctx.fillRect(px - 1.5, py - 1.5, 3, 3);
         ctx.shadowBlur = 0;
       }
 
@@ -63205,6 +63657,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       NORMAL_ROLL_RATE_LIMIT = THREE.MathUtils.degToRad(spec.rollRateLimitDeg);
       COORDINATED_TURN_RATE = THREE.MathUtils.degToRad(spec.turnRateDeg);
       PLAYER_MISSILE_CAPACITY = spec.missileCapacity;
+      PLAYER_FLARE_CAPACITY = flareCapacityForAircraft(spec);
       PLAYER_MAX_HEALTH = spec.maxHealth;
       // Most aircraft keep one fixed SP.W. F/A-18F alone resolves the choice
       // made in the hangar, then applies it through the same generic launcher.
@@ -63553,7 +64006,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.ammoGrid.innerHTML =
         `<dt>GUN</dt><dd>---</dd><dt>MSL</dt><dd>${String(spec.missileCapacity)}</dd>` +
         `<dt>SP.W</dt><dd>${spwSpec ? `${spwSpec.label} ×${spwLoadout.capacity}` : "---"}</dd>` +
-        `<dt>FLR</dt><dd>${String(FLARE_CAPACITY)}</dd>`;
+        `<dt>FLR</dt><dd>${String(flareCapacityForAircraft(spec))}</dd>`;
       ui.aircraftBlurbLine.textContent = spec.blurb;
       ui.hangarMissionTag.textContent =
         `${missionNumberLabel(currentMissionIndex)} ${MISSIONS[currentMissionIndex].title}`;

@@ -16,7 +16,7 @@ function assert(condition, message) {
   }
 }
 
-const cap = 100;
+const cap = 75;
 assert(
   indexSource.includes(`const MAX_MISSILE_TURN_RATE_DEG = ${cap};`),
   `global missile turn cap must be ${cap} deg/s`
@@ -32,6 +32,18 @@ assert(
 assert(
   guidanceSource.includes("Math.min(missile.turnRate ?? defaultTurnRate, maxTurnRate)"),
   "guidance-kernel turn-rate clamp missing"
+);
+assert(
+  guidanceSource.includes("export const AIR_MISSILE_MAX_LATERAL_G = 50;"),
+  "air-to-air 50G lateral-acceleration cap missing"
+);
+assert(
+  guidanceSource.includes("AIR_MISSILE_MAX_LATERAL_ACCELERATION / speed"),
+  "air guidance does not convert its 50G cap into a speed-dependent turn rate"
+);
+assert(
+  guidanceSource.includes("Math.min(authored, absolute, accelerationRate)"),
+  "air guidance does not apply authored, 75deg/s and 50G limits together"
 );
 
 const spwSource = indexSource.slice(
@@ -72,3 +84,4 @@ console.log("check_missile_turn_cap: PASS");
 console.log(`  player/enemy guided-missile maximum = ${cap} deg/s`);
 console.log(`  authored SP.W max = ${Math.max(...spwRates)} deg/s`);
 console.log(`  authored hostile-profile max = ${Math.max(...enemyRates)} deg/s`);
+console.log("  air-to-air lateral acceleration maximum = 50G");

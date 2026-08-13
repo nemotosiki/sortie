@@ -16,11 +16,12 @@ function assert(condition, message) {
 }
 
 const qaam = indexSource.match(/qaam: Object\.freeze\(\{[\s\S]*?^      \}\),/m)?.[0] || "";
-assert(indexSource.includes("const MAX_MISSILE_TURN_RATE_DEG = 100;"), "global missile turn-rate ceiling changed");
+assert(indexSource.includes("const MAX_MISSILE_TURN_RATE_DEG = 75;"), "global missile turn-rate ceiling changed");
 assert(
   indexSource.includes("const STANDARD_MISSILE_TURN_RATE_DEG = MAX_MISSILE_TURN_RATE_DEG;"),
-  "standard missile must use the global 100 deg/s ceiling"
+  "standard missile must use the global 75 deg/s ceiling"
 );
+assert(indexSource.includes("const MISSILE_LIFE = 9.5;"), "player standard missile life is not 9.5 seconds");
 assert(qaam.includes("turnRateDeg: STANDARD_MISSILE_TURN_RATE_DEG"), "QAAM must turn like normal MSL");
 assert(qaam.includes("life: 14"), "QAAM must have the extended 14 second life");
 assert(qaam.includes("maxPasses: 2"), "QAAM must have exactly two total pursuit passes");
@@ -32,25 +33,27 @@ assert(
   "terminal first-substep range-rate sample guard missing"
 );
 assert(
-  indexSource.includes("missile-guidance.js?v=20260813-overshoot-guidance-1"),
-  "browser cache-buster for overshoot guidance missing"
+  indexSource.includes("missile-guidance.js?v=20260813-launch-phases-1"),
+  "browser cache-buster for air PN guidance missing"
 );
-assert(indexSource.includes("const LARGE_SHIP_SAM_MAX_PASSES = 2;"), "large-ship SAM must have two total passes");
-assert(indexSource.includes("const LARGE_SHIP_SAM_REACQUIRE_DELAY = 0.35;"), "large-ship SAM coast changed");
-assert(indexSource.includes("const LARGE_SHIP_SAM_LIFE = 14;"), "large-ship SAM life changed");
-assert(indexSource.includes("const LARGE_SHIP_SAM_CLEARANCE = 55;"), "large-ship SAM clearance changed");
-assert(indexSource.includes("const LARGE_SHIP_SAM_TERMINAL_RANGE = 180;"), "large-ship SAM terminal range changed");
-const largeShipPolicy = indexSource.match(/function isPersistentLargeShipSam[\s\S]*?^    \}/m)?.[0] || "";
-assert(largeShipPolicy.includes('enemy.type !== "carrier"'), "carrier must not receive the persistent SAM");
-assert(largeShipPolicy.includes('enemy.type !== "missileBoat"'), "missile boat must not receive the persistent SAM");
-assert(largeShipPolicy.includes("enemy.surface && !enemy.ground"), "persistent SAM must be limited to ships");
+assert(indexSource.includes("const SHIP_SAM_CLEARANCE = 55;"), "ship-SAM clearance changed");
+assert(indexSource.includes("const SHIP_SAM_TERMINAL_RANGE = 180;"), "ship-SAM terminal range changed");
+assert(!indexSource.includes("LARGE_SHIP_SAM_MAX_PASSES"), "large-ship SAM still has a QAAM pass override");
+assert(!indexSource.includes("LARGE_SHIP_SAM_REACQUIRE_DELAY"), "large-ship SAM still has a QAAM reacquisition delay");
+assert(!indexSource.includes("LARGE_SHIP_SAM_LIFE"), "large-ship SAM still has a QAAM lifetime override");
+const shipClearancePolicy = indexSource.match(/function usesShipSamClearance[\s\S]*?^    \}/m)?.[0] || "";
+assert(shipClearancePolicy.includes('enemy.type === "aegis"'), "Aegis sea-clearance assist is missing");
+assert(shipClearancePolicy.includes('enemy.type === "frigate"'), "frigate sea-clearance assist is missing");
+assert(shipClearancePolicy.includes("enemy.surface && !enemy.ground"), "ship-SAM clearance must be limited to ships");
+assert(indexSource.includes("maxPasses: 1,"), "enemy SAMs are not initialized with one pursuit pass");
+assert(indexSource.includes("reacquireDelay: 0,"), "enemy SAMs still initialize a reacquisition coast");
 assert(
-  indexSource.includes("maxPasses: persistentLargeShipSam ? LARGE_SHIP_SAM_MAX_PASSES : 1"),
-  "large-ship SAM pass count is not initialized"
+  indexSource.includes("lifeLimit: shipSamClearance ? MISSILE_LIFE : profile.life"),
+  "Aegis/frigate SAM life does not match the player's standard missile"
 );
 assert(
-  indexSource.includes("lifeLimit: persistentLargeShipSam ? Math.max(profile.life, LARGE_SHIP_SAM_LIFE) : profile.life"),
-  "large-ship SAM does not have enough life to complete its second pass"
+  indexSource.includes("shipSamClearance ? MISSILE_TURN_RATE : profile.turnRate"),
+  "Aegis/frigate SAMs do not use the common 75 deg/s turn authority"
 );
 assert(
   indexSource.includes("turnRate: cappedMissileTurnRate("),
@@ -78,15 +81,15 @@ assert(!indexSource.includes("const overloaded ="), "legacy turn-saturation loss
 assert(!guidanceSource.includes("seekerLossTime"), "shared guidance still accepts the old overload timeout");
 assert(
   indexSource.includes("const recoveryDrop = missile.speed * (1 - Math.cos(downwardAngle))"),
-  "large-ship SAM pull-up does not account for speed and turn radius"
+  "ship-SAM pull-up does not account for speed and turn radius"
 );
 assert(
   indexSource.includes("tmpV3.y = Math.max(0.35, tmpV3.y);"),
-  "large-ship SAM clearance recovery has no positive climb command"
+  "ship-SAM clearance recovery has no positive climb command"
 );
 assert(
   indexSource.includes("else if (!missile.lost && clearanceRecovery)"),
-  "large-ship SAM has no inertial clearance recovery during reacquisition"
+  "ship-SAM has no inertial clearance recovery"
 );
 assert(
   indexSource.includes('enemy && enemy.surface && (enemy.ground || enemy.type === "missileBoat")'),
@@ -158,12 +161,27 @@ try {
   );
 
   const qaamState = missileState(2, 0.35);
+  qaamState.guidanceAge = 1.25;
+  qaamState.guidanceTargetRef = { id: "first-pass-target" };
+  qaamState.commandedLateralG = 12;
+  qaamState.achievedLateralG = 9;
+  qaamState.terminalCommitted = true;
+  qaamState.terminalCommittedPass = 1;
   confirmOvershoot(qaamState);
   assert(
     updateSeekerState(qaamState, 0.05, true) === SEEKER_STATE.RETRY_STARTED,
     "QAAM first confirmed overshoot must start its second pass"
   );
   assert(!qaamState.lost && qaamState.passesStarted === 2, "QAAM total-pass accounting is wrong");
+  assert(
+    qaamState.guidanceAge === 0 &&
+      qaamState.guidanceTargetRef === null &&
+      qaamState.commandedLateralG === 0 &&
+      qaamState.achievedLateralG === 0 &&
+      !qaamState.terminalCommitted &&
+      qaamState.terminalCommittedPass === 0,
+    "QAAM carried first-pass PN/autopilot state into reacquisition"
+  );
   assert(
     updateSeekerState(qaamState, 0.20, false) === SEEKER_STATE.REACQUIRING,
     "QAAM must coast without target steering during reacquisition"
@@ -225,11 +243,11 @@ try {
   );
 
   console.log("check_qaam_reattack: PASS");
-  console.log("  turn ceiling=100deg/s; turn saturation alone never ends guidance");
-  console.log("  normal MSL=1 pass; QAAM/large-ship SAM=2 total passes");
+  console.log("  turn ceiling=75deg/s; turn saturation alone never ends guidance");
+  console.log("  normal MSL and all enemy SAMs=1 pass; player QAAM=2 total passes");
   console.log("  miss=closing then target behind + opening >=20m/s and >=20m for 0.1s");
   console.log("  overshoot timing checked at 30/60/120fps; no third QAAM pass");
-  console.log("  large-ship SAM retains 14s life and sea-clearance recovery");
+  console.log("  Aegis/frigate match player MSL turn/life, with one pass and sea clearance");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

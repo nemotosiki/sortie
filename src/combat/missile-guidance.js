@@ -74,7 +74,7 @@ export const TERRAIN_SAMPLES = 6;
 
 // Guidance state is kept separate from steering geometry so the pass count and
 // overshoot contract can be exercised without constructing a Three.js scene.
-// Physical turn authority is NOT seeker authority: reaching the 100 deg/s turn
+// Physical turn authority is NOT seeker authority: reaching the configured turn
 // cap merely means the airframe cannot bend any harder. It keeps tracking until
 // it has actually flown past the target and the range is opening.
 export const SEEKER_STATE = Object.freeze({
@@ -95,6 +95,115 @@ export const OVERSHOOT_CONFIRM_TIME = 0.1;
 export const OVERSHOOT_MIN_SEPARATION = 20;
 export const OVERSHOOT_MIN_OPENING_SPEED = 20;
 export const OVERSHOOT_REAR_DOT = -0.1;
+
+// Air-to-air guidance does not chase the target's current position. It solves
+// the constant-velocity intercept course again every guided slice, then spends
+// only the physical turn budget needed to settle onto that course. Six seconds
+// is deliberately longer than any normal terminal engagement but finite: a
+// receding target just inside the speed envelope must not make the aim point
+// jump kilometres beyond the playable fight.
+export const MAX_INTERCEPT_LEAD_TIME = 6;
+
+// Longitudinal motor acceleration is a real rate, not a smoothing half-life.
+// 180 m/s^2 (about 18 g) takes a round released at 260 m/s roughly 1.65 s to
+// reach the ordinary 556 m/s ceiling. The speed only rises: aircraft-style
+// throttle drag and turn-energy loss are intentionally outside this arcade
+// flight model.
+export const DEFAULT_MISSILE_ACCELERATION = 180;
+
+// Air-to-air homing is acceleration-commanded proportional navigation, not
+// "point the body at a freshly solved intercept point".  N=3 is the classical
+// baseline: it drives LOS rotation toward zero without asking the round to cut
+// sideways onto the shortest geometric line every frame.
+export const AIR_MISSILE_NAVIGATION_RATIO = 3;
+export const AIR_MISSILE_MAX_LATERAL_G = 50;
+export const STANDARD_GRAVITY = 9.81;
+export const AIR_MISSILE_MAX_LATERAL_ACCELERATION =
+  AIR_MISSILE_MAX_LATERAL_G * STANDARD_GRAVITY;
+
+// A guidance law only commands acceleration; fins, autopilot and airframe take
+// finite time to achieve it.  The 0.18s first-order response is deliberately
+// kept separate from the 0.04-0.24s launch-authority ramp.  Together they keep
+// the inherited launch tangent continuous before the round bends smoothly onto
+// a collision course.
+export const AIR_MISSILE_AUTOPILOT_TIME_CONSTANT = 0.18;
+export const AIR_MISSILE_GUIDANCE_RAMP_START = 0.04;
+export const AIR_MISSILE_GUIDANCE_RAMP_END = 0.24;
+// Once only 0.44s of predicted flight remains, freeze the collision point for
+// this pursuit pass.  A steady turn remains on the collision geometry, while a
+// correctly timed brake/re-acceleration can move the aircraft off it.  PN is
+// still used to fly to that point, so there is no attitude hard switch.
+export const AIR_MISSILE_TERMINAL_COMMIT_TIME = 0.44;
+
+// A missile which leaves a vertical cell does not yet have useful closing
+// geometry for proportional navigation. Keep the cold-launch tangent long
+// enough to clear the deck, establish a target-bearing attitude with the same
+// 50G / 75deg/s authority as every other round, then blend into PN. These are
+// launch-platform states, deliberately separate from seeker pass/reacquisition
+// state: a flare or QAAM retry must never put a live round back in its cell.
+export const VLS_EJECT_TIME = 0.18;
+export const VLS_CAPTURE_ANGLE_DEG = 25;
+export const VLS_CAPTURE_MIN_CLOSING_SPEED = 40;
+export const VLS_CAPTURE_RESPONSE_TIME = 0.35;
+export const VLS_TO_PN_BLEND_TIME = 0.5;
+
+// LASM and 4AGM inherit the launch aircraft's velocity and attitude for one
+// short, deterministic rail-clearance leg before sea-skimming or loft guidance
+// is allowed to move the nose. At 260m/s this is about 31m of separation.
+export const SPECIAL_PROFILE_SAFE_SEPARATION_TIME = 0.12;
+
+export function accelerateMissileSpeed(
+  currentSpeed,
+  maximumSpeed,
+  acceleration = DEFAULT_MISSILE_ACCELERATION,
+  elapsed = 0
+) {
+  const current = Math.max(0, Number(currentSpeed) || 0);
+  const maximum = Number(maximumSpeed);
+  if (!Number.isFinite(maximum) || maximum < 0) return current;
+  if (current >= maximum) return maximum;
+
+  const rate = Math.max(0, Number(acceleration) || 0);
+  const seconds = Math.max(0, Number(elapsed) || 0);
+  return Math.min(maximum, current + rate * seconds);
+}
+
+export function solveInterceptTime(relativePosition, targetVelocity, projectileSpeed) {
+  const speed = Math.max(0, Number(projectileSpeed) || 0);
+  const c = relativePosition.lengthSq();
+  if (c <= 1e-9 || speed <= 1e-6) return 0;
+
+  const a = targetVelocity.lengthSq() - speed * speed;
+  const b = 2 * relativePosition.dot(targetVelocity);
+  if (Math.abs(a) <= 1e-9) {
+    const linear = Math.abs(b) > 1e-9 ? -c / b : NaN;
+    return Number.isFinite(linear) && linear > 0 ? linear : Math.sqrt(c) / speed;
+  }
+
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return Math.sqrt(c) / speed;
+  const root = Math.sqrt(discriminant);
+  const first = (-b - root) / (2 * a);
+  const second = (-b + root) / (2 * a);
+  let intercept = Infinity;
+  if (first > 0) intercept = first;
+  if (second > 0) intercept = Math.min(intercept, second);
+  return Number.isFinite(intercept) ? intercept : Math.sqrt(c) / speed;
+}
+
+export function resetMissileAirGuidanceState(missile) {
+  missile.guidanceAge = 0;
+  missile.guidanceTargetRef = null;
+  missile.commandedLateralG = 0;
+  missile.achievedLateralG = 0;
+  missile.lineOfSightRate = 0;
+  missile.airGuidancePhase = "launch";
+  missile.terminalCommitted = false;
+  missile.terminalCommittedPass = 0;
+  if (missile.achievedLateralAcceleration?.set) {
+    missile.achievedLateralAcceleration.set(0, 0, 0);
+  }
+}
 
 export function resetMissileOvershootTracking(missile) {
   missile.closing = false;
@@ -179,6 +288,7 @@ export function updateSeekerState(missile, dt, overshot) {
   if (passesStarted < maxPasses) {
     missile.passesStarted = passesStarted + 1;
     missile.reacquireTimer = Math.max(0, Number(missile.reacquireDelay) || 0);
+    resetMissileAirGuidanceState(missile);
     resetMissileOvershootTracking(missile);
     return SEEKER_STATE.RETRY_STARTED;
   }
@@ -191,19 +301,35 @@ export function createMissileGuidance({
   THREE,
   localForward,
   forwardOf,
-  damping,
   defaultTurnRate,
   maxTurnRate = Infinity,
   defaultMaxSpeed,
+  defaultAcceleration = DEFAULT_MISSILE_ACCELERATION,
   defaultFuse,
   terminalRange,
   terminalSubsteps,
+  targetVelocityOf = (_target, out) => out.set(0, 0, 0),
   surfaceHeightAt = () => -Infinity
 }) {
   const toTarget = new THREE.Vector3();
   const horizontal = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const swept = new THREE.Vector3();
+  const targetVelocity = new THREE.Vector3();
+  const targetPosition = new THREE.Vector3();
+  const targetStart = new THREE.Vector3();
+  const relativeDelta = new THREE.Vector3();
+  const relativeVelocity = new THREE.Vector3();
+  const missileVelocity = new THREE.Vector3();
+  const losRate = new THREE.Vector3();
+  const commandedAcceleration = new THREE.Vector3();
+  const pnAcceleration = new THREE.Vector3();
+  const captureAcceleration = new THREE.Vector3();
+  const captureDirection = new THREE.Vector3();
+  const lateralDirection = new THREE.Vector3();
+  const steeredDirection = new THREE.Vector3();
+  const guidanceRelativePosition = new THREE.Vector3();
+  const guidanceRelativeVelocity = new THREE.Vector3();
   const targetQuaternion = new THREE.Quaternion();
   const result = {
     direction,
@@ -229,6 +355,304 @@ export function createMissileGuidance({
     swept.copy(point).sub(from);
     const along = THREE.MathUtils.clamp(swept.dot(dir), 0, length);
     return swept.addScaledVector(dir, -along).length();
+  }
+
+  // Continuous closest approach of two moving points over one simulation
+  // slice. The old test swept the missile against the target's final point;
+  // at high closing speed a target that crossed the missile's path during the
+  // same frame could therefore be reported as a miss even when the two paths
+  // intersected. `targetEnd` is the already-updated entity position and the
+  // start is reconstructed from its kinematic velocity.
+  function movingTargetMissDistance(from, dir, length, targetEnd, velocity, dt) {
+    const elapsed = Math.max(0, Number(dt) || 0);
+    targetStart.copy(targetEnd).addScaledVector(velocity, -elapsed);
+    swept.copy(targetStart).sub(from);
+    relativeDelta.copy(velocity).multiplyScalar(elapsed).addScaledVector(dir, -length);
+    const relativeTravelSq = relativeDelta.lengthSq();
+    const along = relativeTravelSq > 1e-9
+      ? THREE.MathUtils.clamp(-swept.dot(relativeDelta) / relativeTravelSq, 0, 1)
+      : 0;
+    return swept.addScaledVector(relativeDelta, along).length();
+  }
+
+  // Recomputed lead-pursuit course. The target velocity is supplied by the
+  // composition root, keeping this kernel independent of aircraft, ships and
+  // mission entities. A target can manoeuvre freely: the tangent changes next
+  // frame and a new intercept is solved, while rotateTowards() below remains
+  // the single authority that enforces the physical turn-rate ceiling.
+  function predictiveAimFor(missile, point, velocity, out) {
+    out.copy(point).sub(missile.mesh.position);
+    const interceptTime = THREE.MathUtils.clamp(
+      solveInterceptTime(out, velocity, missile.speed),
+      0,
+      MAX_INTERCEPT_LEAD_TIME
+    );
+    out.addScaledVector(velocity, interceptTime);
+    if (out.lengthSq() <= 1e-9) return out.copy(direction);
+    return out.normalize();
+  }
+
+  function lineOfSightRateFor(relativePosition, velocity, out) {
+    const rangeSq = relativePosition.lengthSq();
+    if (!(rangeSq > 1e-9)) return out.set(0, 0, 0);
+    return out.crossVectors(relativePosition, velocity).multiplyScalar(1 / rangeSq);
+  }
+
+  // True proportional navigation in vector form.  The guidance law produces a
+  // lateral acceleration command; it never produces an attitude or aim point.
+  // `omega_LOS x forward` selects the normal direction which reduces LOS
+  // rotation, while closing speed supplies the physically useful gain.
+  function proportionalNavigationAccelerationFor(
+    relativePosition,
+    velocity,
+    missileForward,
+    navigationRatio,
+    out
+  ) {
+    const range = relativePosition.length();
+    if (!(range > 1e-6)) return out.set(0, 0, 0);
+    const closingSpeed = Math.max(0, -relativePosition.dot(velocity) / range);
+    if (!(closingSpeed > 1e-6)) return out.set(0, 0, 0);
+    lineOfSightRateFor(relativePosition, velocity, losRate);
+    return out.crossVectors(losRate, missileForward).multiplyScalar(
+      Math.max(0, Number(navigationRatio) || 0) * closingSpeed
+    );
+  }
+
+  function guidanceAuthorityAt(age) {
+    return THREE.MathUtils.smoothstep(
+      Math.max(0, Number(age) || 0),
+      AIR_MISSILE_GUIDANCE_RAMP_START,
+      AIR_MISSILE_GUIDANCE_RAMP_END
+    );
+  }
+
+  function effectiveAirTurnRateFor(missile) {
+    const authored = Math.max(0, Number(missile.turnRate ?? defaultTurnRate) || 0);
+    const absolute = Math.max(0, Number(maxTurnRate));
+    const speed = Math.max(0, Number(missile.speed) || 0);
+    const accelerationRate = speed > 1e-6
+      ? AIR_MISSILE_MAX_LATERAL_ACCELERATION / speed
+      : Infinity;
+    return Math.min(authored, absolute, accelerationRate);
+  }
+
+  function updateAirMissileAutopilot(missile, command, missileForward, slice) {
+    if (!missile.achievedLateralAcceleration?.isVector3) {
+      missile.achievedLateralAcceleration = new THREE.Vector3();
+    }
+    const achieved = missile.achievedLateralAcceleration;
+    const elapsed = Math.max(0, Number(slice) || 0);
+    const response = AIR_MISSILE_AUTOPILOT_TIME_CONSTANT > 0
+      ? 1 - Math.exp(-elapsed / AIR_MISSILE_AUTOPILOT_TIME_CONSTANT)
+      : 1;
+    achieved.lerp(command, response);
+    // Numerical integration and a changing forward axis can leave a tiny axial
+    // component.  A missile cannot use the PN channel as extra thrust, so strip
+    // it every slice before enforcing the airframe acceleration limit.
+    achieved.addScaledVector(missileForward, -achieved.dot(missileForward));
+    if (achieved.lengthSq() > AIR_MISSILE_MAX_LATERAL_ACCELERATION ** 2) {
+      achieved.setLength(AIR_MISSILE_MAX_LATERAL_ACCELERATION);
+    }
+    return achieved;
+  }
+
+  function isVlsLaunchPhaseActive(missile) {
+    return missile?.launchProfile === "vls" && missile.launchPhase !== "homing";
+  }
+
+  function holdSafeSeparation(missile, slice) {
+    if (missile?.launchProfile !== "safe-separation" ||
+        missile.launchPhase !== "safe-separation") {
+      return false;
+    }
+    const elapsed = Math.max(0, Number(slice) || 0);
+    missile.launchPhaseAge = Math.max(0, Number(missile.launchPhaseAge) || 0) + elapsed;
+    missile.airGuidancePhase = "safe-separation";
+    if (missile.launchPhaseAge >= SPECIAL_PROFILE_SAFE_SEPARATION_TIME) {
+      missile.launchPhase = "profile";
+      missile.launchPhaseAge = 0;
+    }
+    // The complete current slice remains on the inherited launch tangent. This
+    // can exceed 0.12s by at most one simulation slice and avoids splitting the
+    // game loop's swept collision/terrain contract at a second time boundary.
+    return true;
+  }
+
+  function vlsCaptureAccelerationFor(missile, relativePosition, missileForward, out) {
+    if (relativePosition.lengthSq() <= 1e-9) return out.set(0, 0, 0);
+    captureDirection.copy(relativePosition).normalize();
+    const forwardDot = THREE.MathUtils.clamp(
+      missileForward.dot(captureDirection),
+      -1,
+      1
+    );
+    out.copy(captureDirection).addScaledVector(missileForward, -forwardDot);
+    if (out.lengthSq() <= 1e-9) return out.set(0, 0, 0);
+    const headingError = Math.acos(forwardDot);
+    const requestedRate = Math.min(
+      effectiveAirTurnRateFor(missile),
+      headingError / VLS_CAPTURE_RESPONSE_TIME
+    );
+    const requestedAcceleration = Math.min(
+      AIR_MISSILE_MAX_LATERAL_ACCELERATION,
+      requestedRate * Math.max(0, Number(missile.speed) || 0)
+    );
+    return out.setLength(requestedAcceleration);
+  }
+
+  function guideAirMissile(missile, targetRef, point, velocity, slice) {
+    if (missile.guidanceTargetRef !== targetRef) {
+      resetMissileAirGuidanceState(missile);
+      missile.guidanceTargetRef = targetRef;
+    }
+    const elapsed = Math.max(0, Number(slice) || 0);
+    const age = Math.max(0, Number(missile.guidanceAge) || 0);
+    forwardOf(missile.mesh, direction);
+    relativeDelta.copy(point).sub(missile.mesh.position);
+    missileVelocity.copy(direction).multiplyScalar(Math.max(0, Number(missile.speed) || 0));
+    relativeVelocity.copy(velocity).sub(missileVelocity);
+    const interceptTime = THREE.MathUtils.clamp(
+      solveInterceptTime(relativeDelta, velocity, missile.speed),
+      0,
+      MAX_INTERCEPT_LEAD_TIME
+    );
+    const vlsActive = isVlsLaunchPhaseActive(missile);
+    if (!vlsActive &&
+        !missile.terminalCommitted &&
+        interceptTime <= AIR_MISSILE_TERMINAL_COMMIT_TIME) {
+      if (!missile.terminalCommitPoint?.isVector3) {
+        missile.terminalCommitPoint = new THREE.Vector3();
+      }
+      missile.terminalCommitPoint.copy(point).addScaledVector(velocity, interceptTime);
+      missile.terminalCommitted = true;
+      missile.terminalCommittedPass = Math.max(
+        1,
+        Math.floor(Number(missile.passesStarted) || 1)
+      );
+    }
+    if (missile.terminalCommitted && missile.terminalCommitPoint?.isVector3) {
+      guidanceRelativePosition.copy(missile.terminalCommitPoint).sub(missile.mesh.position);
+      // The committed collision point is stationary in world space.  Once the
+      // round flies past it, closing speed becomes negative and PN commands
+      // zero acceleration instead of U-turning toward an obsolete point.
+      guidanceRelativeVelocity.copy(missileVelocity).multiplyScalar(-1);
+    } else {
+      guidanceRelativePosition.copy(relativeDelta);
+      guidanceRelativeVelocity.copy(relativeVelocity);
+    }
+    proportionalNavigationAccelerationFor(
+      guidanceRelativePosition,
+      guidanceRelativeVelocity,
+      direction,
+      missile.navigationRatio ?? AIR_MISSILE_NAVIGATION_RATIO,
+      pnAcceleration
+    );
+    const authority = guidanceAuthorityAt(age);
+    pnAcceleration.multiplyScalar(authority);
+    commandedAcceleration.copy(pnAcceleration);
+
+    if (vlsActive) {
+      let launchPhase = missile.launchPhase || "vls-eject";
+      let launchPhaseAge = Math.max(0, Number(missile.launchPhaseAge) || 0);
+      const range = relativeDelta.length();
+      const closingSpeed = range > 1e-6
+        ? Math.max(0, -relativeDelta.dot(relativeVelocity) / range)
+        : 0;
+      const captureAngle = range > 1e-6
+        ? Math.acos(THREE.MathUtils.clamp(
+            direction.dot(captureDirection.copy(relativeDelta).normalize()),
+            -1,
+            1
+          ))
+        : 0;
+
+      missile.launchCaptureAngleDeg = THREE.MathUtils.radToDeg(captureAngle);
+      missile.launchClosingSpeed = closingSpeed;
+
+      if (launchPhase === "vls-eject") {
+        commandedAcceleration.set(0, 0, 0);
+        launchPhaseAge += elapsed;
+        if (launchPhaseAge >= VLS_EJECT_TIME) {
+          launchPhase = "vls-capture";
+          launchPhaseAge = 0;
+          if (missile.achievedLateralAcceleration?.set) {
+            missile.achievedLateralAcceleration.set(0, 0, 0);
+          }
+        }
+      } else {
+        vlsCaptureAccelerationFor(
+          missile,
+          relativeDelta,
+          direction,
+          captureAcceleration
+        );
+        if (launchPhase === "vls-capture") {
+          commandedAcceleration.copy(captureAcceleration);
+          launchPhaseAge += elapsed;
+          if (captureAngle <= THREE.MathUtils.degToRad(VLS_CAPTURE_ANGLE_DEG) &&
+              closingSpeed >= VLS_CAPTURE_MIN_CLOSING_SPEED) {
+            launchPhase = "vls-blend";
+            launchPhaseAge = 0;
+          }
+        } else if (launchPhase === "vls-blend") {
+          const captureWeight = 1 - THREE.MathUtils.clamp(
+            launchPhaseAge / VLS_TO_PN_BLEND_TIME,
+            0,
+            1
+          );
+          commandedAcceleration.copy(pnAcceleration).lerp(
+            captureAcceleration,
+            captureWeight
+          );
+          launchPhaseAge += elapsed;
+          if (launchPhaseAge >= VLS_TO_PN_BLEND_TIME) {
+            launchPhase = "homing";
+            launchPhaseAge = 0;
+          }
+        }
+      }
+
+      missile.launchPhase = launchPhase;
+      missile.launchPhaseAge = launchPhaseAge;
+    }
+    if (commandedAcceleration.lengthSq() > AIR_MISSILE_MAX_LATERAL_ACCELERATION ** 2) {
+      commandedAcceleration.setLength(AIR_MISSILE_MAX_LATERAL_ACCELERATION);
+    }
+    const achieved = updateAirMissileAutopilot(
+      missile,
+      commandedAcceleration,
+      direction,
+      elapsed
+    );
+    const achievedMagnitude = achieved.length();
+    const speed = Math.max(0, Number(missile.speed) || 0);
+    const requestedRate = speed > 1e-6 ? achievedMagnitude / speed : 0;
+    const turnRate = Math.min(requestedRate, effectiveAirTurnRateFor(missile));
+    const turn = Math.max(0, turnRate * elapsed);
+
+    if (turn > 1e-9 && achievedMagnitude > 1e-9) {
+      lateralDirection.copy(achieved).multiplyScalar(1 / achievedMagnitude);
+      steeredDirection.copy(direction)
+        .multiplyScalar(Math.cos(turn))
+        .addScaledVector(lateralDirection, Math.sin(turn))
+        .normalize();
+      targetQuaternion.setFromUnitVectors(localForward, steeredDirection);
+      missile.mesh.quaternion.copy(targetQuaternion).normalize();
+    }
+
+    lineOfSightRateFor(guidanceRelativePosition, guidanceRelativeVelocity, losRate);
+    missile.guidanceAge = age + elapsed;
+    missile.commandedLateralG = commandedAcceleration.length() / STANDARD_GRAVITY;
+    missile.achievedLateralG = achievedMagnitude / STANDARD_GRAVITY;
+    missile.lineOfSightRate = losRate.length();
+    missile.airGuidancePhase = isVlsLaunchPhaseActive(missile)
+      ? missile.launchPhase
+      : (missile.terminalCommitted
+          ? "terminal-commit"
+          : (authority >= 1 ? "homing" : "launch"));
+    forwardOf(missile.mesh, direction);
+    return direction;
   }
 
   // Ground units carry both flags - `surface` for "not in the air" and `ground`
@@ -329,14 +753,28 @@ export function createMissileGuidance({
     return defaultFuse;
   }
 
-  function step(missile, target, slice, skipSeekerSample = false) {
+  function step(missile, target, slice, skipSeekerSample = false, targetLag = 0) {
     result.hit = false;
     result.guidanceEndedNow = false;
     result.reattackStartedNow = false;
     result.reacquiredNow = false;
+    const safeSeparationHeld = holdSafeSeparation(missile, slice);
 
     if (target) {
-      toTarget.copy(target.group.position).sub(missile.mesh.position);
+      targetVelocityOf(target, targetVelocity);
+      if (!Number.isFinite(targetVelocity.x) ||
+          !Number.isFinite(targetVelocity.y) ||
+          !Number.isFinite(targetVelocity.z)) {
+        targetVelocity.set(0, 0, 0);
+      }
+      // The target has already advanced for the full frame. Terminal missile
+      // substeps replay that frame in order instead of steering every substep
+      // at the final target point.
+      targetPosition.copy(target.group.position).addScaledVector(
+        targetVelocity,
+        -Math.max(0, Number(targetLag) || 0)
+      );
+      toTarget.copy(targetPosition).sub(missile.mesh.position);
       const distance = toTarget.length();
       toTarget.normalize();
 
@@ -444,23 +882,39 @@ export function createMissileGuidance({
             if (slope > 0) aim = climbAim(slope, groundRange);
           }
         }
-        if (canSteer) {
+        if (canSteer && target.surface && !safeSeparationHeld) {
           targetQuaternion.setFromUnitVectors(localForward, aim);
           missile.mesh.quaternion.rotateTowards(targetQuaternion, seekerRate * slice);
+        } else if (canSteer && !safeSeparationHeld) {
+          guideAirMissile(
+            missile,
+            target,
+            targetPosition,
+            targetVelocity,
+            slice
+          );
         }
       }
     }
 
-    missile.speed = THREE.MathUtils.lerp(
+    missile.speed = accelerateMissileSpeed(
       missile.speed,
       missile.maxSpeed ?? defaultMaxSpeed,
-      damping(0.012, slice)
+      missile.acceleration ?? defaultAcceleration,
+      slice
     );
     forwardOf(missile.mesh, direction);
     result.travel = missile.speed * slice;
     result.hit = Boolean(
       target &&
-      sweptMissDistance(missile.mesh.position, direction, result.travel, target.group.position)
+      movingTargetMissDistance(
+        missile.mesh.position,
+        direction,
+        result.travel,
+        targetPosition,
+        targetVelocity,
+        slice
+      )
         < proximityFuseFor(target)
     );
     return result;
@@ -470,6 +924,17 @@ export function createMissileGuidance({
     stepsFor,
     step,
     sweptMissDistance,
+    movingTargetMissDistance,
+    predictiveAimFor,
+    lineOfSightRateFor,
+    proportionalNavigationAccelerationFor,
+    guidanceAuthorityAt,
+    effectiveAirTurnRateFor,
+    updateAirMissileAutopilot,
+    isVlsLaunchPhaseActive,
+    holdSafeSeparation,
+    vlsCaptureAccelerationFor,
+    guideAirMissile,
     proximityFuseFor,
     isGroundTarget
   });

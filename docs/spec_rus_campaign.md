@@ -30,7 +30,7 @@
 
 | id | label | boost | turn | HP | gunDmg | 現状 |
 |---|---|---|---|---|---|---|
-| `mig21` | MiG-21bis FISHBED | 330 | 26 | 98 | 13 | enemyOnly |
+| `mig21` | MiG-21bis FISHBED | 330 | 26 | 100 | 13 | enemyOnly |
 | `mig23` | MiG-23 FLOGGER | 372 | 24 | 135 | 16 | enemyOnly |
 | `mig29` | MiG-29A FULCRUM | 392 | 32 | 135 | 19 | enemyOnly |
 | `mig31` | MiG-31B FOXHOUND | 530 | 18 | 150 | 20 | **選択可** |
