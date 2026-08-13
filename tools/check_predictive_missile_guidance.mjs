@@ -195,6 +195,46 @@ try {
     fastRateDeg
   );
 
+  const groundAimProbe = guidanceModule.createMissileGuidance({
+    THREE,
+    localForward,
+    forwardOf,
+    defaultTurnRate: THREE.MathUtils.degToRad(75),
+    maxTurnRate: THREE.MathUtils.degToRad(75),
+    defaultMaxSpeed: 556,
+    defaultFuse: 16,
+    terminalRange: 150,
+    terminalSubsteps: 8,
+    targetPositionOf: (target, out) => {
+      out.copy(target.group.position);
+      out.y += 8;
+      return out;
+    }
+  });
+  const groundTarget = {
+    group: new Group(),
+    surface: true,
+    ground: true,
+    spec: { hitRadius: 18 }
+  };
+  groundTarget.group.position.set(100, 0, 0);
+  const groundMissile = {
+    mesh: new Group(),
+    speed: 260,
+    maxSpeed: 556,
+    turnRate: THREE.MathUtils.degToRad(75),
+    diving: true,
+    lost: false,
+    lastTargetDistance: Infinity
+  };
+  groundMissile.mesh.quaternion.setFromUnitVectors(localForward, new Vector3(1, 0, 0));
+  const groundGuided = groundAimProbe.step(groundMissile, groundTarget, 0.1);
+  assert(
+    groundGuided.direction.y > 0.05,
+    "ground guidance ignored the above-terrain hitbox centre",
+    groundGuided.direction
+  );
+
   function run(range, targetTurnDeg, fps, launchSpeed) {
     const target = {
       group: new Group(),

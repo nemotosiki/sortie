@@ -309,6 +309,7 @@ export function createMissileGuidance({
   terminalRange,
   terminalSubsteps,
   targetVelocityOf = (_target, out) => out.set(0, 0, 0),
+  targetPositionOf = (target, out) => out.copy(target.group.position),
   surfaceHeightAt = () => -Infinity
 }) {
   const toTarget = new THREE.Vector3();
@@ -342,7 +343,13 @@ export function createMissileGuidance({
 
   function stepsFor(missile, target) {
     if (target) {
-      if (missile.mesh.position.distanceTo(target.group.position) < terminalRange) {
+      targetPositionOf(target, targetPosition);
+      if (!Number.isFinite(targetPosition.x) ||
+          !Number.isFinite(targetPosition.y) ||
+          !Number.isFinite(targetPosition.z)) {
+        targetPosition.copy(target.group.position);
+      }
+      if (missile.mesh.position.distanceTo(targetPosition) < terminalRange) {
         return terminalSubsteps;
       }
     } else {
@@ -770,7 +777,13 @@ export function createMissileGuidance({
       // The target has already advanced for the full frame. Terminal missile
       // substeps replay that frame in order instead of steering every substep
       // at the final target point.
-      targetPosition.copy(target.group.position).addScaledVector(
+      targetPositionOf(target, targetPosition);
+      if (!Number.isFinite(targetPosition.x) ||
+          !Number.isFinite(targetPosition.y) ||
+          !Number.isFinite(targetPosition.z)) {
+        targetPosition.copy(target.group.position);
+      }
+      targetPosition.addScaledVector(
         targetVelocity,
         -Math.max(0, Number(targetLag) || 0)
       );

@@ -42367,6 +42367,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return forwardOf(object, out).multiplyScalar(Number.isFinite(speed) ? speed : 0);
     }
 
+    // Ground-unit roots sit on the terrain because route following and slope
+    // alignment own that transform. Their actual damage volume is centred
+    // above it. Steering at the root made a visually guided round aim into the
+    // soil; on a slope the swept terrain test could then remove it before its
+    // proximity fuse reached the vehicle. Aircraft and hulls retain their
+    // established group-origin aim point.
+    function missileTargetPosition(target, out) {
+      const body = target?.subsystem && target.parentRef ? target.parentRef : target;
+      if (!body?.group) return out.set(0, 0, 0);
+      out.copy(body.group.position);
+      if (body.ground && body.hitbox?.position && body.group.quaternion) {
+        out.copy(body.hitbox.position)
+          .applyQuaternion(body.group.quaternion)
+          .add(body.group.position);
+      }
+      return out;
+    }
+
     function missileLaunchSpeedFor(platform, fallback = 0) {
       if (platform === player) return Math.max(0, playerSpeed);
       const platformSpeed = Number(platform?.speed);
@@ -42420,6 +42438,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       terminalRange: MISSILE_TERMINAL_RANGE,
       terminalSubsteps: MISSILE_TERMINAL_SUBSTEPS,
       targetVelocityOf: (target, out) => missileTargetVelocity(target, out),
+      targetPositionOf: (target, out) => missileTargetPosition(target, out),
       // Lets surface-bound rounds cruise above the ridges between them and
       // the target, now that touching terrain kills a round.
       surfaceHeightAt: (x, z) => surfaceHeightAt(x, z)
