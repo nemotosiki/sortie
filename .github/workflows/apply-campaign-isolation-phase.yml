@@ -1,0 +1,97 @@
+name: Apply campaign isolation phase
+
+# Retry marker: M03 isolation check is committed outside the generated patch.
+on:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - tools/apply_campaign_isolation_phase.mjs
+      - tools/phases/**
+      - tools/migrate_registry_mission_snapshot.mjs
+      - .github/workflows/apply-campaign-isolation-phase.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-campaign-isolation-phase
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply and statically validate phase
+        run: |
+          node tools/apply_campaign_isolation_phase.mjs
+          git diff --check
+          test -n "$(git status --porcelain)"
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save --package-lock=false playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Capture and selectively migrate the registry snapshot
+        run: |
+          cp tools/registry_snapshot.json /tmp/registry_snapshot.before.json
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs --update
+          node tools/migrate_registry_mission_snapshot.mjs \
+            --baseline=/tmp/registry_snapshot.before.json \
+            --current=tools/registry_snapshot.json \
+            --mission=m-heli:sera-m03
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" \
+            node tools/registry_gate.mjs
+          git diff --check
+
+      - name: Commit checked generated change locally
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          message=$(cat .git/campaign-isolation-message)
+          git add -A
+          git commit -m "$message"
+
+      - name: Start local game server
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          echo $! > /tmp/sortie-http.pid
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/sortie-http.log
+          exit 1
+
+      - name: Run campaign isolation browser gates
+        run: |
+          node tools/check_campaign_records_e2e.mjs
+          node tools/check_campaign_economy_e2e.mjs
+
+      - name: Preserve Sera M01-M03 vertical slices
+        run: |
+          node tools/check_sera_m03_e2e.mjs
+          node tools/check_sera_m02_e2e.mjs
+          node tools/check_sera_m01_e2e.mjs
+
+      - name: Verify clean tracked worktree
+        run: |
+          rm -rf node_modules package-lock.json
+          test -z "$(git status --porcelain)"
+
+      - name: Push checked commit
+        run: git push origin HEAD:chatgpt/sera-act1-implementation
+
+      - name: Stop local game server
+        if: always()
+        run: |
+          if [ -f /tmp/sortie-http.pid ]; then kill "$(cat /tmp/sortie-http.pid)" || true; fi

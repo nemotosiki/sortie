@@ -22,13 +22,16 @@
   transform: translate(-50%, 0);
 }
 
-/* AC5 shows every radio callsign underlined. Friendly traffic (command /
-   wingman) reads in the blue already used across the friendly HUD; hostile
-   traffic keeps the red. One variable so the callsign and the 《 》 brackets
-   can never drift apart. */
+/* AC5 shows every radio callsign underlined. Friendly traffic reads in the
+   blue already used across the friendly HUD; hostile traffic keeps the red.
+   Explicit ROOK identities share the friendly channel without changing the
+   legacy command / wingman selectors used by the existing campaigns. */
 #radioPanel { --radio-accent: #ff4a52; }
 #radioPanel.command,
-#radioPanel.wingman { --radio-accent: #78beff; }
+#radioPanel.wingman,
+#radioPanel.meridian,
+#radioPanel.crown,
+#radioPanel.lark { --radio-accent: #78beff; }
 #radioPanel.enemy { --radio-accent: #ff4a52; }
 
 #radioPanel #radioSpeaker { color: var(--radio-accent); }

@@ -79,22 +79,22 @@ export default function register(ctx) {
     // not correspond to hardware this hull draws. It exists only because the
     // spread carries it; the live mounts are the `subsystems` entries below.
 
-    // ---- Subsystems: NEXT-target walk = hull, VLS x4, CIWS ------------------
+    // ---- Destructible subsystems: VLS x4, CIWS -------------------------------
     // Every offset is the centre of a part build() actually draws, so a player
-    // who locks one is aiming at hardware they can see.
+    // who strafes one is hitting hardware they can see.
     //   vls-1 { 0, 9.4, -73 }  hatch field drawn at z -73 ( 80 cells,  8x10)
     //   vls-2 { 0, 9.4, -34 }  hatch field drawn at z -34 (168 cells, 12x14)
     //   vls-3 { 0, 9.4,  18 }  hatch field drawn at z  18 (168 cells, 12x14)
     //   vls-4 { 0, 9.4,  62 }  hatch field drawn at z  62 (120 cells, 12x10)
     //   ciws  { -18, 13.4, 78 } port drum, on its tub at x -18 / z +78
-    // y 9.4 is the deck plane (8.4) plus the hatch coaming: the lock box sits
+    // y 9.4 is the deck plane (8.4) plus the hatch coaming: the hit box sits
     // on the cell mouths rather than inside the hull.
     subsystems: Object.freeze([
-      Object.freeze({ key: "vls-1", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -73 }) }),
-      Object.freeze({ key: "vls-2", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: -34 }) }),
-      Object.freeze({ key: "vls-3", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 18 }) }),
-      Object.freeze({ key: "vls-4", kind: "vls", offset: Object.freeze({ x: 0, y: 9.4, z: 62 }) }),
-      Object.freeze({ key: "ciws", kind: "ciws", offset: Object.freeze({ x: -18, y: 13.4, z: 78 }) })
+      Object.freeze({ key: "vls-1", kind: "vls", hitBox: Object.freeze({ x: 26, y: 3, z: 32 }), offset: Object.freeze({ x: 0, y: 9.4, z: -73 }) }),
+      Object.freeze({ key: "vls-2", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 44 }), offset: Object.freeze({ x: 0, y: 9.4, z: -34 }) }),
+      Object.freeze({ key: "vls-3", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 44 }), offset: Object.freeze({ x: 0, y: 9.4, z: 18 }) }),
+      Object.freeze({ key: "vls-4", kind: "vls", hitBox: Object.freeze({ x: 38, y: 3, z: 32 }), offset: Object.freeze({ x: 0, y: 9.4, z: 62 }) }),
+      Object.freeze({ key: "ciws", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 8, z: 10 }), offset: Object.freeze({ x: -18, y: 13.4, z: 78 }) })
     ])
   });
 
@@ -328,8 +328,7 @@ export default function register(ctx) {
       add(geometry.shipCylinder, light, -18, 13.4, 78, 2.1, 2.4, 2.1);
       add(geometry.panel, dark, -18, 15.4, 74.4, 0.55, 0.55, 6.4, -0.3);
       // Starboard drum: hardware only, no subsystem entry — the design intent
-      // is a single lockable CIWS, and a second lock box on a 250m hull whose
-      // point is its cell fields would dilute the NEXT walk.
+      // is a single destructible CIWS record; the other remains visual detail.
       add(geometry.panel, house, 15.6, 15.2, 92, 6, 3.2, 8);
       add(geometry.shipCylinder, light, 15.6, 17.5, 92, 2, 2.3, 2);
       add(geometry.panel, dark, 15.6, 19.4, 88.6, 0.5, 0.5, 6, -0.3);

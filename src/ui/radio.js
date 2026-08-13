@@ -7,14 +7,25 @@
 const RADIO_SPEAKERS = {
   command: { label: "SKYEYE", toneFreq: 620, toneType: "square" },
   wingman: { label: "HAMMER 2", toneFreq: 460, toneType: "sine" },
-  enemy: { label: "HOSTILE", toneFreq: 340, toneType: "sawtooth" }
+  enemy: { label: "HOSTILE", toneFreq: 340, toneType: "sawtooth" },
+  // Reboot missions use explicit identities instead of overloading the legacy
+  // command/wingman channels. The old ids remain untouched for all forty stock
+  // missions; only a mission that authors one of these ids sees the new label.
+  meridian: { label: "MERIDIAN", toneFreq: 620, toneType: "square" },
+  crown: { label: "CROWN", toneFreq: 460, toneType: "sine" },
+  lark: { label: "LARK", toneFreq: 520, toneType: "triangle" }
 };
 
 // Per-campaign overrides. `enemy` is deliberately absent: "HOSTILE" is what
-// the other side is called from either cockpit.
+// the other side is called from either cockpit. Explicit reboot identities do
+// not need overrides because their label is already mission-specific.
 const RADIO_SPEAKER_LABELS = {
   usa: { command: "SKYEYE", wingman: "HAMMER 2" },
-  rus: { command: "NORTHSTAR", wingman: "SICKLE 2" }
+  rus: { command: "NORTHSTAR", wingman: "SICKLE 2" },
+  // Transitional safety net while generic combat callouts are converted to
+  // role-based speakers. Explicit Sera mission lines still use meridian,
+  // crown and lark directly.
+  sera: { command: "MERIDIAN", wingman: "CROWN" }
 };
 
 export const RADIO_PRIORITY = { NORMAL: 1, URGENT: 2, CRITICAL: 3 };
@@ -118,7 +129,11 @@ export function createRadioController({
   getPlayerNickname
 }) {
   const queue = [];
-  const speakerReadyAt = { command: 0, wingman: 0, enemy: 0 };
+  // Derived from the registry so adding a speaker cannot create an undefined
+  // cooldown slot. Legacy and reboot speakers all obey the same scheduler.
+  const speakerReadyAt = Object.fromEntries(
+    Object.keys(RADIO_SPEAKERS).map((speakerId) => [speakerId, 0])
+  );
   let lineReadyAt = {};
   let gapUntil = 0;
   // The radio runs on its own clock rather than missionElapsed: the mission
@@ -281,9 +296,7 @@ export function createRadioController({
     state.revealedChars = 0;
     state.charTimer = 0;
     state.holdTimer = 0;
-    speakerReadyAt.command = 0;
-    speakerReadyAt.wingman = 0;
-    speakerReadyAt.enemy = 0;
+    for (const speakerId of Object.keys(speakerReadyAt)) speakerReadyAt[speakerId] = 0;
     lineReadyAt = {};
     gapUntil = 0;
     clock = 0;

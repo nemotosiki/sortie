@@ -88,17 +88,16 @@ export default function register(ctx) {
     subsystems: Object.freeze([
       // Forward VLS grid on the forecastle - the 4x5 cell field at z -58,
       // y 15 = the hatch deck on top of its plinth.
-      Object.freeze({ key: "vls-fore", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -58 }) }),
+      Object.freeze({ key: "vls-fore", kind: "vls", hitBox: Object.freeze({ x: 18, y: 5, z: 20 }), offset: Object.freeze({ x: 0, y: 15, z: -58 }) }),
       // Second VLS grid immediately aft of it at z -38, ahead of the bridge.
-      Object.freeze({ key: "vls-aft", kind: "vls", offset: Object.freeze({ x: 0, y: 15, z: -38 }) }),
+      Object.freeze({ key: "vls-aft", kind: "vls", hitBox: Object.freeze({ x: 18, y: 5, z: 20 }), offset: Object.freeze({ x: 0, y: 15, z: -38 }) }),
       // Amidships gun mounts, port and starboard, on tier 1's shoulder roof.
-      Object.freeze({ key: "aa-port", kind: "aa", offset: Object.freeze({ x: -12.5, y: 30, z: -16 }) }),
-      Object.freeze({ key: "aa-stbd", kind: "aa", offset: Object.freeze({ x: 12.5, y: 30, z: -16 }) }),
-      // Two of the four CIWS drums are lockable: the forward pair on the beam
-      // sponsons at z +42. The aft pair at z +70 are drawn but not lockable, so
-      // the NEXT walk stays six stops long instead of eight.
-      Object.freeze({ key: "ciws-port", kind: "ciws", offset: Object.freeze({ x: -15.5, y: 19, z: 42 }) }),
-      Object.freeze({ key: "ciws-stbd", kind: "ciws", offset: Object.freeze({ x: 15.5, y: 19, z: 42 }) })
+      Object.freeze({ key: "aa-port", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: -12.5, y: 30, z: -16 }) }),
+      Object.freeze({ key: "aa-stbd", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: 12.5, y: 30, z: -16 }) }),
+      // Two of the four CIWS drums are destructible: the forward pair on the
+      // beam sponsons at z +42. The aft pair at z +70 remain visual detail.
+      Object.freeze({ key: "ciws-port", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: -15.5, y: 19, z: 42 }) }),
+      Object.freeze({ key: "ciws-stbd", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: 15.5, y: 19, z: 42 }) })
     ]),
 
     radarColor: "#ffa878",
@@ -312,7 +311,7 @@ export default function register(ctx) {
       // so four of them read as "four of those" and not as a new part.
       //   forward pair z +42  -> subsystems "ciws-port"/"ciws-stbd"
       //                          { x -/+15.5, y 19, z 42 }
-      //   aft pair     z +70  -> drawn only; not lockable (see subsystems note)
+      //   aft pair     z +70  -> drawn only; no destructible subsystem record
       for (const side of [-1, 1]) {
         for (const dz of [42, 70]) {
           add(geometry.panel, dark, side * 15.5, 14.4, dz, 7, 4.5, 13);

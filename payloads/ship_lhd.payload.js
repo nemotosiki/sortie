@@ -81,13 +81,13 @@ export default function register(ctx) {
     // position up on the island, and a CIWS drum at each end of the deck.
     subsystems: Object.freeze([
       // -> island gun tub: shipCylinder at (18, 24.4, -20), barrel above it.
-      Object.freeze({ key: "aa-island", kind: "aa", offset: Object.freeze({ x: 18, y: 25, z: -20 }) }),
+      Object.freeze({ key: "aa-island", kind: "aa", hitBox: Object.freeze({ x: 7, y: 8, z: 13 }), offset: Object.freeze({ x: 18, y: 25, z: -20 }) }),
       // -> forward CIWS drum: shipCylinder at (-24, 23.6, -108) on the port
       //    bow deck-edge sponson.
-      Object.freeze({ key: "ciws-fore", kind: "ciws", offset: Object.freeze({ x: -24, y: 24, z: -108 }) }),
+      Object.freeze({ key: "ciws-fore", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: -24, y: 24, z: -108 }) }),
       // -> aft CIWS drum: shipCylinder at (24, 23.6, 110) on the starboard
       //    quarter sponson.
-      Object.freeze({ key: "ciws-aft", kind: "ciws", offset: Object.freeze({ x: 24, y: 24, z: 110 }) })
+      Object.freeze({ key: "ciws-aft", kind: "ciws", hitBox: Object.freeze({ x: 7, y: 9, z: 9 }), offset: Object.freeze({ x: 24, y: 24, z: 110 }) })
     ])
   });
 

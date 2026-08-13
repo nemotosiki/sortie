@@ -96,8 +96,6 @@ export function createPlayerGunController({
   getPlayer,
   getPlayerSpeed,
   getEnemies,
-  getPreferredTargetId,
-  getLockTargetId,
   getCamera,
   getUi,
   getDamage,
@@ -153,6 +151,8 @@ export function createPlayerGunController({
   const tmpV7 = new THREE.Vector3();
   const tmpV8 = new THREE.Vector3();
   const tmpV9 = new THREE.Vector3();
+  const hitRaycaster = new THREE.Raycaster();
+  const hitRayResults = [];
 
   // Where the barrel at `index` sits right now, in world space. Offsets are read
   // against the aircraft's own axes, so a wing-root cannon stays on the wing
@@ -196,6 +196,77 @@ export function createPlayerGunController({
     if (box) return Math.max(box.x, box.y, box.z) * 0.5;
     if (enemy.spec.hitRadius) return enemy.spec.hitRadius;
     return getEnemyHitboxRadius() * (enemy.spec.hitboxScale || 1);
+  }
+
+  // Resolve a hull against every visible mesh that actually makes up the ship:
+  // bow, deck, superstructure and all. This is both tighter than the authored
+  // envelope box and complete over the vessel's real rendered dimensions. A
+  // subsystem has no separate visible model, so its small oriented hit box is
+  // the collision surface. The old length-derived sphere made the empty water
+  // beside a carrier as solid as its flight deck.
+  function preciseShipIntersection(start, direction, enemy, maxRange) {
+    if (!enemy.surface || enemy.ground || !enemy.hitbox) return null;
+    if (!(maxRange > 0) || direction.lengthSq() < 1e-10) return null;
+
+    const collisionRoot = enemy.subsystem
+      ? enemy.hitbox
+      : (enemy.model && enemy.model.group ? enemy.model.group : enemy.hitbox);
+    collisionRoot.updateWorldMatrix(true, true);
+    hitRaycaster.near = 0;
+    hitRaycaster.far = maxRange;
+    hitRaycaster.set(start, tmpV2.copy(direction).normalize());
+    hitRayResults.length = 0;
+    hitRaycaster.intersectObject(collisionRoot, !enemy.subsystem, hitRayResults);
+    const intersection = hitRayResults[0];
+    if (!intersection) return null;
+    return {
+      enemy,
+      distance: intersection.distance,
+      missDistance: 0,
+      point: intersection.point.clone(),
+      precise: true
+    };
+  }
+
+  function intersectEnemy(start, direction, enemy, maxRange = profile.range) {
+    if (!enemy || !enemy.alive) return null;
+
+    const shipHit = preciseShipIntersection(start, direction, enemy, maxRange);
+    if (enemy.surface && !enemy.ground) return shipHit;
+
+    const range = leadPoint(start, enemy, tmpV5);
+    if (range > maxRange) return null;
+    tmpV5.sub(start);
+    const along = tmpV5.dot(direction);
+    if (along <= 0 || along > maxRange) return null;
+    const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
+    const baseRadius = enemyHitSphereRadius(enemy);
+    if (baseRadius <= 0) return null;
+    const radius = baseRadius * aimForgiveness(range, enemy);
+    if (missDistance > radius) return null;
+    return {
+      enemy,
+      distance: along,
+      missDistance,
+      point: new THREE.Vector3().copy(start).addScaledVector(direction, along),
+      precise: false
+    };
+  }
+
+  function resolveHit(start, direction, maxRange = profile.range) {
+    const hits = [];
+    for (const enemy of getEnemies()) {
+      const hit = intersectEnemy(start, direction, enemy, maxRange);
+      if (hit) hits.push(hit);
+    }
+    hits.sort((a, b) => a.distance - b.distance);
+    if (hits.length === 0) return null;
+    // Pure nearest-surface resolution is now possible because hulls use their
+    // rendered meshes rather than one envelope box. A mount wins only when its
+    // own box is encountered first; a far-side mount behind steel cannot be
+    // damaged through the hull, and a subsystem on another ship can never
+    // steal a shot from the vessel in front of it.
+    return hits[0];
   }
 
   function aimForgiveness(range, target = null) {
@@ -282,42 +353,23 @@ export function createPlayerGunController({
       }
     }
 
-    const hits = [];
-    for (const enemy of enemies) {
-      if (!enemy.alive) continue;
-      const range = leadPoint(start, enemy, tmpV5);
-      if (range > profile.range) continue;
-      tmpV5.sub(start);
-      const along = tmpV5.dot(tmpV1);
-      if (along <= 0) continue;
-      const missDistance = Math.sqrt(Math.max(0, tmpV5.lengthSq() - along * along));
-      const baseRadius = enemyHitSphereRadius(enemy);
-      if (baseRadius <= 0) continue;
-      const radius = baseRadius * aimForgiveness(range, enemy);
-      if (missDistance > radius) continue;
-      hits.push({ enemy, distance: along, missDistance });
-    }
-    hits.sort((a, b) => a.distance - b.distance);
     let end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, profile.range);
 
-    if (hits.length > 0) {
-      const focusId = getPreferredTargetId() ?? getLockTargetId();
-      let hit = hits.find((entry) => entry.enemy.subsystem && entry.enemy.id === focusId);
-      if (!hit) hit = hits.find((entry) => !entry.enemy.subsystem);
-      if (hit) {
-        const victim = hit.enemy;
-        end = new THREE.Vector3().copy(start).addScaledVector(tmpV1, hit.distance);
-        damageEnemy(
-          victim,
-          victim.surface ? getDamage() * getGroundBonus() : getDamage(),
-          false
-        );
-        createImpactBurst(end, 0xffb04a, 0.7);
-      }
+    const hit = resolveHit(start, tmpV1, profile.range);
+    if (hit) {
+      const victim = hit.enemy;
+      end.copy(hit.point);
+      damageEnemy(
+        victim,
+        victim.surface ? getDamage() * getGroundBonus() : getDamage(),
+        false
+      );
+      createImpactBurst(end, 0xffb04a, 0.7);
     }
 
     createTracer(start, end, 0xffd35f, 0.11, 0.9);
     createMuzzleFlash(start, 0xffe39a);
+    return hit ? hit.enemy.id : null;
   }
 
   function updateGunsight(dt = 0) {
@@ -413,6 +465,8 @@ export function createPlayerGunController({
     muzzleOrigin,
     leadPoint,
     enemyHitSphereRadius,
+    intersectEnemy,
+    resolveHit,
     aimForgiveness,
     gimbalDecision,
     assistCap,

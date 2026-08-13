@@ -1,0 +1,35 @@
+name: Export campaign-isolation worktree
+
+# Refresh marker: post Sera M02 isolation.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - .github/workflows/export-campaign-isolation-worktree.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-campaign-isolation-worktree
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Remove checkout metadata
+        run: rm -rf .git
+
+      - name: Upload branch worktree
+        uses: actions/upload-artifact@v4
+        with:
+          name: sortie-campaign-isolation-${{ github.sha }}
+          path: .
+          include-hidden-files: true
+          retention-days: 1

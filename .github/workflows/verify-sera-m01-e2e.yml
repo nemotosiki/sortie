@@ -1,0 +1,83 @@
+name: Verify Sera M01 in Chromium
+
+# Permanent read-only regression gate for the committed M01 vertical slice.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - chatgpt/sera-act1-implementation
+    paths:
+      - index.html
+      - payloads/map_renBay.payload.js
+      - payloads/mission_sera_m01.payload.js
+      - tools/check_map_ren_bay.mjs
+      - tools/check_ren_bay_continent.mjs
+      - tools/check_ocean_horizon_coverage.mjs
+      - tools/check_sera_m01_payload.mjs
+      - tools/check_sera_m01_breach_host.mjs
+      - tools/check_sera_m01_rook_host.mjs
+      - tools/check_sera_m01_tu22_strike.mjs
+      - tools/check_sera_m01_wave_host.mjs
+      - tools/check_sera_m01_e2e.mjs
+      - .github/workflows/verify-sera-m01-e2e.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-sera-m01-e2e
+  cancel-in-progress: true
+
+jobs:
+  m01-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run M01 static contracts
+        run: |
+          node tools/check_map_ren_bay.mjs
+          node tools/check_ren_bay_continent.mjs
+          node tools/check_ocean_horizon_coverage.mjs
+          node tools/check_sera_m01_payload.mjs
+          node tools/check_sera_m01_breach_host.mjs
+          node tools/check_sera_m01_rook_host.mjs
+          node tools/check_sera_m01_tu22_strike.mjs
+          node tools/check_sera_m01_wave_host.mjs
+          node tools/check_air_iff_foundation.mjs
+          node tools/check_legacy_airframe_variants.mjs
+          node tools/check_fa18f_spw_select.mjs
+          node tools/check_multirole_mobility_balance.mjs
+          node --check tools/check_sera_m01_e2e.mjs
+          git diff --check
+
+      - name: Install Chromium harness
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Run normal-start registry gate
+        shell: bash
+        run: |
+          chrome_path=$(node -e "process.stdout.write(require('playwright').chromium.executablePath())")
+          SORTIE_PLAYWRIGHT=playwright SORTIE_CHROME="$chrome_path" node tools/registry_gate.mjs
+
+      - name: Start local game server
+        shell: bash
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/sortie-http.log 2>&1 &
+          echo $! > /tmp/sortie-http.pid
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/index.html > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/sortie-http.log
+          exit 1
+
+      - name: Run full M01 browser E2E
+        run: node tools/check_sera_m01_e2e.mjs
+
+      - name: Stop local game server
+        if: always()
+        run: |
+          if [ -f /tmp/sortie-http.pid ]; then kill "$(cat /tmp/sortie-http.pid)" || true; fi
