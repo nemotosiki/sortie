@@ -61,15 +61,18 @@ const browser = await chromium.launch({
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
 });
 
-async function openPage(url) {
+async function openPage(url, records = null) {
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
-  await context.addInitScript(() => {
+  await context.addInitScript((seedRecords) => {
     navigator.getGamepads = () => [];
     localStorage.setItem("sortieHangarPurchases", JSON.stringify({
       schemaVersion: 2,
       campaigns: { usa: [], rus: [], sera: ["f16"] }
     }));
-  });
+    if (seedRecords) {
+      localStorage.setItem("sortieMissionRecords", JSON.stringify(seedRecords));
+    }
+  }, records);
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
@@ -109,6 +112,71 @@ function assertClean(opened, label) {
 }
 
 try {
+  const seraKeys = Array.from({ length: 10 }, (_, index) => `sera-m${String(index + 1).padStart(2, "0")}`);
+  const clearedThrough = (last) => Object.fromEntries(
+    seraKeys.slice(0, last).map((key) => [key, { cleared: true, rank: "A" }])
+  );
+
+  // Production campaign chain: M10 remains hidden after M08, then becomes a
+  // normal selectable sortie as soon as M09 has a clear record. This uses no
+  // seraDev override and drives the same campaign/list buttons as the player.
+  const lockedShell = await openPage(`${baseUrl}/index.html`, clearedThrough(8));
+  await lockedShell.page.waitForFunction(
+    () => Boolean(window.__game?.debug?.forceCampaignCursor),
+    null,
+    { timeout: 120_000 }
+  );
+  assert(await lockedShell.page.evaluate(() => window.__game.debug.forceCampaignCursor("sera")),
+    "Sera campaign card could not be selected before the M09 gate");
+  await lockedShell.page.click("#campaignConfirmBtn");
+  await lockedShell.page.waitForFunction(
+    () => document.body.dataset.gameState === "missionSelect",
+    null,
+    { timeout: 20_000 }
+  );
+  await lockedShell.page.click('[data-mission="sera-m10"]');
+  const lockedM10 = await lockedShell.page.evaluate(() => ({
+    keys: window.__game.mission.campaignKeys,
+    name: document.getElementById("missionInfoName")?.textContent,
+    disabled: document.getElementById("missionConfirmBtn")?.disabled
+  }));
+  assert(JSON.stringify(lockedM10.keys) === JSON.stringify(seraKeys),
+    "Sera campaign order is not M01-M10", lockedM10.keys);
+  assert(lockedM10.name === "?????" && lockedM10.disabled === true,
+    "M10 unlocked without an M09 clear", lockedM10);
+  assertClean(lockedShell, "M10 locked campaign shell");
+  await lockedShell.context.close();
+
+  const unlockedShell = await openPage(`${baseUrl}/index.html`, clearedThrough(9));
+  await unlockedShell.page.waitForFunction(
+    () => Boolean(window.__game?.debug?.forceCampaignCursor),
+    null,
+    { timeout: 120_000 }
+  );
+  assert(await unlockedShell.page.evaluate(() => window.__game.debug.forceCampaignCursor("sera")),
+    "Sera campaign card could not be selected after the M09 gate");
+  await unlockedShell.page.click("#campaignConfirmBtn");
+  await unlockedShell.page.waitForFunction(
+    () => document.body.dataset.gameState === "missionSelect",
+    null,
+    { timeout: 20_000 }
+  );
+  await unlockedShell.page.click('[data-mission="sera-m10"]');
+  const unlockedM10 = await unlockedShell.page.evaluate(() => ({
+    name: document.getElementById("missionInfoName")?.textContent,
+    disabled: document.getElementById("missionConfirmBtn")?.disabled
+  }));
+  assert(unlockedM10.name === "LAST TRAIN" && unlockedM10.disabled === false,
+    "M09 clear did not unlock M10", unlockedM10);
+  await unlockedShell.page.click("#missionConfirmBtn");
+  await unlockedShell.page.waitForFunction(
+    () => document.body.dataset.gameState === "briefing",
+    null,
+    { timeout: 20_000 }
+  );
+  assertClean(unlockedShell, "M10 unlocked campaign shell");
+  await unlockedShell.context.close();
+
   // The integrated decorator must build with valid meshes before the mission
   // contract is exercised. This also catches missing tracked GPU resources.
   const map = await openPage(`${baseUrl}/index.html?worldPreview=norIndustrialDusk`);
@@ -210,7 +278,7 @@ try {
   await failure.context.close();
 
   console.log("check_sera_m10_e2e: PASS");
-  console.log("  Nor preview + 17-contact board + precision/bridge/escape/Retry routes");
+  console.log("  M01-M10 order + M09 unlock gate + Nor preview + precision/bridge/escape/Retry routes");
 } finally {
   await browser.close();
   if (served.server) await new Promise((resolve) => served.server.close(resolve));
