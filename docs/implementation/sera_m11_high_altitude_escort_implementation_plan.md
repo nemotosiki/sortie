@@ -99,13 +99,13 @@ the white diversion exists to pull the player away from the escort line.
 - [x] Audit friendly transport, guard, hunt-air, payload, and unlock hosts
 - [x] Choose the retained title/map and a registered Sera bomber airframe
 - [x] Add and pass a read-only M11 preflight gate
-- [ ] Commit and push the plan checkpoint
+- [x] Commit and push the plan checkpoint
 
 ### Checkpoint 2 — Ver Ice Coast
 
-- [ ] Add `payloads/map_verIceCoast.payload.js`
-- [ ] Register `verIceCoast`, anchors, preview cameras, and tracked decorator resources
-- [ ] Add static and browser map gates, including far-distance/mesh integrity
+- [x] Add `payloads/map_verIceCoast.payload.js`
+- [x] Register `verIceCoast`, anchors, preview focus, and tracked decorator resources
+- [x] Add static and browser map gates, including far-distance/mesh integrity
 - [ ] Commit and push the map independently
 
 ### Checkpoint 3 — mission payload
