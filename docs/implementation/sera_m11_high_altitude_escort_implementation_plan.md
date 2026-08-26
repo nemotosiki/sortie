@@ -106,15 +106,15 @@ the white diversion exists to pull the player away from the escort line.
 - [x] Add `payloads/map_verIceCoast.payload.js`
 - [x] Register `verIceCoast`, anchors, preview focus, and tracked decorator resources
 - [x] Add static and browser map gates, including far-distance/mesh integrity
-- [ ] Commit and push the map independently
+- [x] Commit and push the map independently
 
 ### Checkpoint 3 — mission payload
 
-- [ ] Add `payloads/mission_sera_m11.payload.js`
-- [ ] Deploy HALO 1–3 and LARK through the payload-friendly host
-- [ ] Insert after `sera-m10` with `campaignOrder: 11`
-- [ ] Add the 6 red / 2 white staggered air order and authored radio
-- [ ] Add and pass a static payload gate
+- [x] Add `payloads/mission_sera_m11.payload.js`
+- [x] Deploy HALO 1–3 and LARK through the payload-friendly host
+- [x] Insert after `sera-m10` with `campaignOrder: 11`
+- [x] Add the 6 red / 2 white staggered air order and authored radio
+- [x] Add and pass a static payload gate
 - [ ] Commit and push the payload independently
 
 ### Checkpoint 4 — escort runtime

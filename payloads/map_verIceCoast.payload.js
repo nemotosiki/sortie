@@ -16,7 +16,7 @@ export default function register(ctx) {
     battleCenter: Object.freeze([0, 0]),
     firstIntercept: Object.freeze([-1800, 4100]),
     northIntercept: Object.freeze([3100, 8600]),
-    southIntercept: Object.freeze([6500, -5000]),
+    southIntercept: Object.freeze([11200, -6500]),
     diversionEntry: Object.freeze([-2500, -8200]),
     weatherStation: Object.freeze([4300, -2500]),
     fishingHarbour: Object.freeze([-3300, 3300])
