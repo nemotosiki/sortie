@@ -5,12 +5,11 @@
 ## 最初に読む文書
 
 1. [リポジトリREADME](../README.md) — 起動方法、構成、現在地
-2. [セラACT I実装状況](implementation/sera_act1_status.md) — GitHub上に実在し、検証済みの内容
-3. [キャンペーン分離計画](architecture/campaign_isolation_plan.md) — 旧USA/RUSとセラ編を完全分離する次工程
-4. [セラACT I安全実装計画](implementation/sera_act1_safe_implementation_plan.md) — M01〜M05を安全に積み上げる実装原則
-5. [M03 LOW WATER安全実装計画](implementation/sera_m03_low_water_safe_implementation_plan.md) — M03の実装判断と検証契約
-6. [M08 NIGHT AUDIT実装計画](implementation/sera_m08_night_audit_implementation_plan.md) — 夜間基地、燃料／決済分岐、検証契約
-7. [M08 NIGHT AUDIT完成報告](implementation/sera_m08_night_audit_report.md) — プレイURL、完成範囲、検証結果、統合境界
+2. [セラキャンペーン実装状況](implementation/sera_act1_status.md) — M01〜M10の実在範囲と検証状態
+3. [ストーリー正本入口](story_reboot/CURRENT_PLAN.md) — 現行の物語、マップ、戦力、機体解禁文書
+4. [M10 LAST TRAIN実装計画](implementation/sera_m10_last_train_implementation_plan.md) — 最新ミッションの契約と完了状況
+5. [キャンペーン分離計画](architecture/campaign_isolation_plan.md) — 完了済み構造移行の設計根拠
+6. [セラACT I安全実装計画](implementation/sera_act1_safe_implementation_plan.md) — M01〜M05で確立した実装原則
 
 ## 文書の優先順位
 
@@ -19,7 +18,7 @@
 1. **現在のコードと永続CI**
 2. **`implementation/*_status.md`**
 3. **`architecture/*_plan.md`または決定文書**
-4. **ストーリー正本** — `chatgpt/sera-act1-implementation`ブランチの`docs/story_reboot/CURRENT_PLAN.md`
+4. **ストーリー正本** — このcheckoutの`docs/story_reboot/CURRENT_PLAN.md`から参照する非versioned文書
 5. **個別の実装計画**
 6. **`spec_*.md`、`request_*.md`、`roadmap_*.md`**
 7. **調査・バグハント・作業ログ**
@@ -32,7 +31,7 @@
 
 今後の構造変更と移行計画を置きます。
 
-- [campaign_isolation_plan.md](architecture/campaign_isolation_plan.md) — キャンペーン、ミッションID、記録、イベント、無線、経済の分離
+- [campaign_isolation_plan.md](architecture/campaign_isolation_plan.md) — 完了済みのキャンペーン、記録、無線、経済分離の設計根拠
 
 ### `implementation/`
 
@@ -43,6 +42,8 @@
 - [sera_m03_low_water_safe_implementation_plan.md](implementation/sera_m03_low_water_safe_implementation_plan.md) — M03個別計画
 - [sera_m08_night_audit_implementation_plan.md](implementation/sera_m08_night_audit_implementation_plan.md) — M08個別計画
 - [sera_m08_night_audit_report.md](implementation/sera_m08_night_audit_report.md) — M08完成報告と検証結果
+- [sera_m09_iron_harvest_implementation_plan.md](implementation/sera_m09_iron_harvest_implementation_plan.md) — M09個別計画
+- [sera_m10_last_train_implementation_plan.md](implementation/sera_m10_last_train_implementation_plan.md) — M10個別計画と完了チェックポイント
 - [air_iff_foundation.md](implementation/air_iff_foundation.md) — 三色IFF基盤
 
 ### `spec_*.md`
@@ -59,7 +60,7 @@
 
 ### `PLAN.md`と`roadmap_*.md`
 
-ルートの`PLAN.md`と各種ロードマップは、プロジェクト初期からの進化を示す履歴です。現在のセラ編実装順は、`implementation/sera_act1_status.md`と`architecture/campaign_isolation_plan.md`で判断します。
+ルートの`PLAN.md`と各種ロードマップは、プロジェクト初期からの進化を示す履歴です。現在のセラ編実装順は、`implementation/sera_act1_status.md`と`story_reboot/CURRENT_PLAN.md`で判断します。
 
 ## 今後の命名規約
 

@@ -139,9 +139,9 @@ civilian reconstruction dialogue.
 - [x] Cover bridge clear, precision clear, escape failure, and Retry
 - [x] Verify page errors and console errors are zero
 - [x] Inline map and mission payloads for normal startup
-- [ ] Verify ten-mission campaign order and M10 unlock
-- [ ] Re-run M01-M09 payload and campaign gates
-- [ ] Update current-plan/status documents from implementation evidence
+- [x] Verify ten-mission campaign order and M10 unlock
+- [x] Re-run M01-M09 payload and campaign gates
+- [x] Update current-plan/status documents from implementation evidence
 - [ ] Commit and push the verified checkpoint
 
 ## Guardrails

@@ -1,6 +1,6 @@
 # Sortie 新キャンペーン 現行計画
 
-**更新日:** 2026-08-12
+**更新日:** 2026-08-27
 **役割:** 計画書を読むときの唯一の入口
 **全体規模:** 本編40ミッション＋EX4ミッション
 
@@ -10,8 +10,13 @@
 
 | 分野 | 現在の正本 | 補足 |
 |---|---|---|
+| 実装済み範囲 | [Sera実装ステータス](../implementation/sera_act1_status.md) | M01〜M10の実在・検証状態。計画書より優先 |
 | M01〜M05 | [v0.16 開戦章](./v0.16/README.md) | 各ミッションの地理、フェーズ、敵編成、無線、ランク条件 |
-| M07 | [BLACK CURRENT 実装計画](../implementation/sera_m07_black_current_implementation_plan.md) | Damar Sea救難任務、二分岐、実装・検証記録 |
+| M06〜M20 | [Sera Act II](./11_sera_act2.md) | M06以降の物語と任務契約。個別実装計画がある場合は併読 |
+| M07 | [BLACK CURRENT 実装計画](../implementation/sera_m07_black_current_implementation_plan.md) | Damar Sea救難護衛、SEALIGHT HP、増援、実装・検証記録 |
+| M08 | [NIGHT AUDIT 実装計画](../implementation/sera_m08_night_audit_implementation_plan.md) | 夜間基地、燃料／決済経路、VESPER |
+| M09 | [IRON HARVEST 実装計画](../implementation/sera_m09_iron_harvest_implementation_plan.md) | Karan Plain、三色IFF、Kedem護衛 |
+| M10 | [LAST TRAIN 実装計画](../implementation/sera_m10_last_train_implementation_plan.md) | Nor Industrial、橋／精密攻撃の二経路 |
 | プレイヤー機体解禁・難度 | [v0.17 解禁表](./v0.17/00_player_aircraft_unlock_schedule_and_mission_difficulty.md) | 同じ分野ではv0.7より優先 |
 | F-15C / F-15E / F-35C | [v0.17 中盤機訂正](./v0.17/02_f15_mid_tier_f35_unlock_correction.md) | 解禁表の該当箇所を上書き |
 | RETURN LINE・再武装 | [v0.17 帰還ライン](./v0.17/03_f35_multirole_return_line_doctrine.md) | F-35Cと長時間任務の運用契約 |
@@ -30,20 +35,27 @@
 
 ### 統合済みの開戦章基盤
 
-- M01〜M05のmission payload、M04対艦フロー、M05地上共同奪還フローを開発正本へ統合済み。
+- M01〜M05のmission payload、M04対艦フロー、M05地上共同奪還フローを通常起動へ統合済み。
 - Nahar Straitの地形、道路、港湾、建物、雲、遠景地形を品質改善済み。
+- USA/RUS/Seraのキャンペーン、記録、購入状態、解禁鎖を分離済み。
 
-### 開戦章
+### 開戦章（M01〜M05）
 
-- セラM01〜M05を新キャンペーンとして接続する。
+- セラM01〜M05をSeraキャンペーンとして接続済み。
 - M04は対艦任務、M05は地上共同奪還任務として扱う。
 - 序盤の敵戦闘機はMiG-21系を中心とし、MiG-29Aを早期の常用敵にしない。
 
-### Act II
+### Act II（M06〜M10）
 
-- セラM07「BLACK CURRENT」はDamar Sea西救難レーンへ接続済み。
-- 救助優先／データ優先の両ルート、永続マーク、SAR喪失失敗、Retryを実装済み。
-- M06は未実装。M07は正規番号`campaignOrder: 7`を保持し、現時点ではM05クリア後に解禁する。M06追加時は並び順と直前ミッション判定によりM06の後へ自動移動する。
+- M06 `WHITE PASS`からM10 `LAST TRAIN`まで正規順序で通常起動へ接続済み。
+- M07 `BLACK CURRENT`はプレイヤー捜索ではなく、SEALIGHT救助隊へ救助を任せる護衛・迎撃任務として確定。護衛HPゲージとSu-33の2+2+2増援を実装済み。
+- M08 `NIGHT AUDIT`、M09 `IRON HARVEST`、M10 `LAST TRAIN`の分岐結果とRetryを実装済み。
+- M09クリア後にM10が解禁される10ミッション鎖を通常UIで検証済み。
+
+### 次の縦切り
+
+- 次の新規ミッションはM11。M04〜M06の専用E2E不足は並行する品質負債として扱い、物語番号を巻き戻さない。
+- M11着手前に`11_sera_act2.md`、マップ接続台帳、敵戦力ドクトリン、機体解禁表を突き合わせた専用計画とpreflightを作る。
 
 ### システム
 
@@ -57,7 +69,7 @@
 
 ### 長期制作
 
-- セラM06およびM08〜M20、エレムM21〜M40、EX01〜EX04を順次制作する。
+- セラM11〜M20、エレムM21〜M40、EX01〜EX04を順次制作する。
 - 17基礎地域と必要なvariantを、ミッション接続台帳に従って制作する。
 
 ## 破棄した計画

@@ -2,7 +2,7 @@
 
 Three.jsで制作している、エースコンバット風の3Dアーケード空戦ゲームです。ビルド不要の`index.html`を中心に、機体・敵・地上兵器・艦船・マップ・ミッションをペイロード方式で追加します。
 
-このブランチでは、セラ編ACT IのM01〜M03が通常起動へ統合され、Chromium E2Eでclear / fail / Retryまで検証されています。M04以降へ進む前に、旧USA/RUSキャンペーンとセラ編が同じミッションID・進行記録・イベントを共有している構造を分離します。
+セラ編M01〜M10が通常起動へ統合されています。旧USA/RUSとのミッションID、進行記録、購入状態、キャンペーンUIの分離も完了しています。M01〜M03とM07〜M10はChromium E2Eでclear / fail / Retryまで検証済みで、M04〜M06は専用の全経路E2Eが残っています。
 
 ## 起動
 
@@ -27,11 +27,12 @@ http://127.0.0.1:8000/index.html
 | セラM01 `FIRST CONTACT` | 自動E2Eでテストプレイ可能 |
 | セラM02 `SHATTERED MORNING` | 自動E2Eでテストプレイ可能 |
 | セラM03 `LOW WATER` | 自動E2Eでテストプレイ可能 |
-| セラM04〜M05 | 未実装 |
+| セラM04〜M06 | 通常起動へ統合済み、専用全経路E2Eは未整備 |
+| セラM07〜M10 | 自動E2Eでテストプレイ可能 |
 | 人間による難易度・音量・視認性調整 | 未完了 |
-| 旧キャンペーンとセラ編の完全分離 | 計画確定、未実装 |
+| 旧キャンペーンとセラ編の完全分離 | 実装・回帰確認済み |
 
-詳細は[セラACT I実装状況](docs/implementation/sera_act1_status.md)を参照してください。
+詳細は[セラキャンペーン実装状況](docs/implementation/sera_act1_status.md)を参照してください。
 
 ## 重要な設計方針
 
@@ -39,7 +40,7 @@ http://127.0.0.1:8000/index.html
 - セラ編は`sera-m01`、`sera-m02`、`sera-m03`のような固有キーへ移行する。
 - クリア記録、解禁、財布、購入機体、難易度、無線、ストーリーイベント、チェックポイントをキャンペーン単位で分離する。
 - 新規コンテンツは旧ミッションの置換ではなく、独立したキャンペーンへの追加として登録する。
-- M04着手前にキャンペーン分離回帰ゲートをgreenにする。
+- ミッション解禁は各キャンペーン内の直前ミッションクリアだけを参照する。
 
 移行手順と受入条件は[キャンペーン分離計画](docs/architecture/campaign_isolation_plan.md)にまとめています。
 
@@ -59,7 +60,7 @@ docs/                      設計、実装状況、調査記録
 
 ## 検証
 
-M01〜M03にはそれぞれ静的契約とChromium E2Eがあります。
+M01〜M10には静的payload契約があります。M01〜M03とM07〜M10にはChromium E2Eがあり、M10では通常キャンペーンのM01〜M10順序とM09クリア後の解禁も確認します。
 
 ```text
 .github/workflows/verify-sera-m01-e2e.yml
@@ -67,7 +68,7 @@ M01〜M03にはそれぞれ静的契約とChromium E2Eがあります。
 .github/workflows/verify-sera-m03-e2e.yml
 ```
 
-M03の永続ゲートは、通常起動、低空ヘリ戦、輸送ヘリ着陸、APC変換、司令所防衛、失敗後Retry、ゼロ着陸Sクリアに加え、M01/M02の回帰も再実行します。
+全体ゲートとして、キャンペーン記録移行、購入状態の分離、registry欠損、三角/Tabターゲット切替のブラウザ回帰があります。詳細は[セラ実装状況](docs/implementation/sera_act1_status.md)を参照してください。
 
 ## 開発時の原則
 
@@ -79,4 +80,4 @@ M03の永続ゲートは、通常起動、低空ヘリ戦、輸送ヘリ着陸�
 
 ## ストーリー正本
 
-セラ編ACT Iの物語・マップ・無線脚本の正本は、`chatgpt/story-campaign-reboot`ブランチの`docs/story_reboot/v0.16/`です。実装状況はこのブランチの`docs/implementation/`を正本とします。
+セラ編の物語・マップ・無線脚本は[CURRENT_PLAN](docs/story_reboot/CURRENT_PLAN.md)から参照する非versioned文書を正本とします。`v0.*`は検討履歴です。実装済み範囲と検証状態は[セラキャンペーン実装状況](docs/implementation/sera_act1_status.md)を正本とします。
