@@ -112,10 +112,10 @@ civilian reconstruction dialogue.
 
 ### Checkpoint 2 — map
 
-- [ ] Add `payloads/map_norIndustrial.payload.js`
-- [ ] Add deterministic map contract test
-- [ ] Verify decorator ownership and surface corridor
-- [ ] Commit map independently
+- [x] Add `payloads/map_norIndustrial.payload.js`
+- [x] Add deterministic map contract test
+- [x] Verify decorator ownership and surface corridor
+- [x] Commit map independently
 
 ### Checkpoint 3 — mission payload
 
