@@ -119,11 +119,11 @@ civilian reconstruction dialogue.
 
 ### Checkpoint 3 — mission payload
 
-- [ ] Add any M10-specific train/bridge ground types and models through payload
-- [ ] Add `payloads/mission_sera_m10.payload.js`
-- [ ] Insert after `sera-m09` with `campaignOrder: 10`
-- [ ] Add static payload contract test
-- [ ] Commit payload independently
+- [x] Add any M10-specific train/bridge ground types and models through payload
+- [x] Add `payloads/mission_sera_m10.payload.js`
+- [x] Insert after `sera-m09` with `campaignOrder: 10`
+- [x] Add static payload contract test
+- [x] Commit payload independently
 
 ### Checkpoint 4 — runtime choice
 
