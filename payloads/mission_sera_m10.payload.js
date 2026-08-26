@@ -2,8 +2,10 @@
 //
 // Three red cars make up the precision objective. The remaining train cars,
 // bridge target, and bridge defences remain selectable white contacts. The
-// host interprets `m10Contract` to resolve bridge destruction, escapes, radio,
-// and the persistent result without making white contacts completion targets.
+// train's six-aircraft cover is designated too: stopping the train chooses the
+// route, but the sortie is not secure until that cover has been defeated. The
+// host interprets `m10Contract` to resolve both stages, escapes, radio, and the
+// persistent result without making white contacts completion targets.
 export default function register(ctx) {
   const {
     MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, GROUND_TYPES
@@ -111,6 +113,10 @@ export default function register(ctx) {
       powerIds: Object.freeze([203, 206]),
       materialMark: "m10Material",
       materialIds: Object.freeze([204, 207, 208])
+    }),
+    airCover: Object.freeze({
+      missionTag: "m10TrainCover",
+      required: 6
     }),
     escape: Object.freeze({
       distanceTolerance: 18,
@@ -228,9 +234,10 @@ export default function register(ctx) {
     sequence: [
       {
         types: ["su34", "su34"],
-        tgt: false,
-        rankNeutral: true,
+        tgt: true,
+        rankNeutral: false,
         concurrent: true,
+        missionTag: "m10TrainCover",
         band: 2,
         idBase: 300,
         label: "FULLBACK STRIKE 1",
@@ -250,9 +257,10 @@ export default function register(ctx) {
       },
       {
         types: ["su34", "su34"],
-        tgt: false,
-        rankNeutral: true,
+        tgt: true,
+        rankNeutral: false,
         concurrent: true,
+        missionTag: "m10TrainCover",
         delay: 65,
         band: 2,
         idBase: 310,
@@ -265,9 +273,10 @@ export default function register(ctx) {
       },
       {
         types: ["mig29", "mig29"],
-        tgt: false,
-        rankNeutral: true,
+        tgt: true,
+        rankNeutral: false,
         concurrent: true,
+        missionTag: "m10TrainCover",
         delay: 135,
         band: 2,
         idBase: 320,
@@ -295,6 +304,7 @@ export default function register(ctx) {
       { id: "m10_bridge_warning", at: 21, speaker: "lark", priority: "NORMAL", text: "橋を落とせば早い。でもノルの輸送路も、戦後の復旧も一緒に失う。" },
       { id: "m10_bridge_down", event: "bridgeDestroyed", speaker: "meridian", priority: "CRITICAL", text: "鉄道橋崩落。列車停止を確認。周辺の民間鉄道は長期運休となる。" },
       { id: "m10_precision_clear", event: "precisionRoute", speaker: "lark", priority: "CRITICAL", text: "機関車と高射車、全て停止！ 橋は残った。白い貨車は追わなくていい。" },
+      { id: "m10_air_cover_remains", event: "trainStopped", speaker: "meridian", priority: "URGENT", text: "列車防空隊はなお交戦中。Su-34四、MiG-29A二を排除し、離脱路を確保せよ。" },
       { id: "m10_power_escape", event: "trainPowerEscaped", speaker: "meridian", priority: "NORMAL", text: "KEREN電力車がアラド連絡線へ通過。後方電力への影響を記録する。" },
       { id: "m10_material_escape", event: "trainMaterialEscaped", speaker: "meridian", priority: "NORMAL", text: "軍需資材車が連絡線へ通過。残存物資として記録。" },
       { id: "m10_critical_escape", event: "trainCriticalEscaped", speaker: "meridian", priority: "CRITICAL", text: "装甲列車の中核車両がアラド連絡線を突破。阻止任務失敗。" }
@@ -302,7 +312,7 @@ export default function register(ctx) {
     successRadio: {
       speaker: "meridian",
       priority: "CRITICAL",
-      text: "装甲列車停止。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
+      text: "装甲列車停止、防空隊の排除を確認。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
       id: "m10-success"
     },
     failureRadio: {
@@ -316,7 +326,7 @@ export default function register(ctx) {
     map: { x: 0.63, y: 0.42 },
     battleCenter: { x: -150, z: 350 },
     battleRadius: 10800,
-    briefing: "ノル工業地帯を北東へ走る八両編成の装甲列車を、アラド連絡線の手前で止めろ。\n赤TGTは機関車一、高射車二。三両を精密破壊すれば橋を残して任務完了となる。白い電力車二・資材車三は任意交戦で、撃破も逃走も任務達成を妨げない。\nもう一つの選択は、河川上の白い鉄道橋を破壊して列車を即時停止させること。ただし民間輸送と復旧へ長期の損害が残る。\nSu-34は二機ずつ二波、MiG-29A二機が後着する。全て白の任意交戦。橋周辺のSPAAG二両も任意交戦だ。"
+    briefing: "ノル工業地帯を北東へ走る八両編成の装甲列車を、アラド連絡線の手前で止めろ。\n赤TGTは機関車一、高射車二。三両を精密破壊すれば橋を残して列車を停止できる。白い電力車二・資材車三は任意交戦で、撃破も逃走も任務達成を妨げない。\nもう一つの選択は、河川上の白い鉄道橋を破壊して列車を即時停止させること。ただし民間輸送と復旧へ長期の損害が残る。\n列車防空隊も赤TGTだ。Su-34は二機ずつ二波、MiG-29A二機が後着する。停止方法を選んだ後も全六機を撃退し、離脱路を確保せよ。橋周辺のSPAAG二両だけは任意交戦だ。"
   };
 
   ctx.addMission(mission, { after: "sera-m09" });

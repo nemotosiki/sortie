@@ -71,9 +71,11 @@ not block completion and do not count toward rank.
 
 ### Air and ground pressure
 
-- Su-34 x4 arrive as two delayed pairs; they are strike-cover pressure, not the
-  primary objective
-- MiG-29A x2 arrive as one later pair
+- Su-34 x4 arrive as two delayed pairs and MiG-29A x2 as one later pair
+- all six aircraft are designated train-cover targets; stopping the train does
+  not complete the sortie while any of these aircraft are alive or pending
+- this creates two linked objectives without changing the authored train choice:
+  stop the train, then secure the withdrawal airspace
 - bridge SPAAG x2 are white/rank-neutral contacts
 - no Su-35 or Su-57 appears in M10
 - delayed flights spawn far enough away to avoid an unfair immediate attack
@@ -143,6 +145,14 @@ civilian reconstruction dialogue.
 - [x] Re-run M01-M09 payload and campaign gates
 - [x] Update current-plan/status documents from implementation evidence
 - [x] Commit and push the verified checkpoint
+
+### Checkpoint 6 — combat-density correction
+
+- [x] Promote the existing Su-34 x4 / MiG-29A x2 train cover to red TGT
+- [x] Hold ACCOMPLISHED after bridge/precision stop until all six are defeated
+- [x] Keep the route-specific TGT REMAIN accurate after bridge destruction
+- [x] Re-verify both routes, critical escape, Retry, rank, and normal unlock
+- [x] Commit and push the density correction independently
 
 ## Guardrails
 

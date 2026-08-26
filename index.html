@@ -41806,6 +41806,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             materialMark: "m10Material",
             materialIds: Object.freeze([204, 207, 208])
           }),
+          airCover: Object.freeze({
+            missionTag: "m10TrainCover",
+            required: 6
+          }),
           escape: Object.freeze({
             distanceTolerance: 18,
             criticalMark: "m10Precision",
@@ -41922,9 +41926,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               types: ["su34", "su34"],
-              tgt: false,
-              rankNeutral: true,
+              tgt: true,
+              rankNeutral: false,
               concurrent: true,
+              missionTag: "m10TrainCover",
               band: 2,
               idBase: 300,
               label: "FULLBACK STRIKE 1",
@@ -41944,9 +41949,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             },
             {
               types: ["su34", "su34"],
-              tgt: false,
-              rankNeutral: true,
+              tgt: true,
+              rankNeutral: false,
               concurrent: true,
+              missionTag: "m10TrainCover",
               delay: 65,
               band: 2,
               idBase: 310,
@@ -41959,9 +41965,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             },
             {
               types: ["mig29", "mig29"],
-              tgt: false,
-              rankNeutral: true,
+              tgt: true,
+              rankNeutral: false,
               concurrent: true,
+              missionTag: "m10TrainCover",
               delay: 135,
               band: 2,
               idBase: 320,
@@ -41989,6 +41996,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             { id: "m10_bridge_warning", at: 21, speaker: "lark", priority: "NORMAL", text: "橋を落とせば早い。でもノルの輸送路も、戦後の復旧も一緒に失う。" },
             { id: "m10_bridge_down", event: "bridgeDestroyed", speaker: "meridian", priority: "CRITICAL", text: "鉄道橋崩落。列車停止を確認。周辺の民間鉄道は長期運休となる。" },
             { id: "m10_precision_clear", event: "precisionRoute", speaker: "lark", priority: "CRITICAL", text: "機関車と高射車、全て停止！ 橋は残った。白い貨車は追わなくていい。" },
+            { id: "m10_air_cover_remains", event: "trainStopped", speaker: "meridian", priority: "URGENT", text: "列車防空隊はなお交戦中。Su-34四、MiG-29A二を排除し、離脱路を確保せよ。" },
             { id: "m10_power_escape", event: "trainPowerEscaped", speaker: "meridian", priority: "NORMAL", text: "KEREN電力車がアラド連絡線へ通過。後方電力への影響を記録する。" },
             { id: "m10_material_escape", event: "trainMaterialEscaped", speaker: "meridian", priority: "NORMAL", text: "軍需資材車が連絡線へ通過。残存物資として記録。" },
             { id: "m10_critical_escape", event: "trainCriticalEscaped", speaker: "meridian", priority: "CRITICAL", text: "装甲列車の中核車両がアラド連絡線を突破。阻止任務失敗。" }
@@ -41996,7 +42004,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           successRadio: {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "装甲列車停止。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
+            text: "装甲列車停止、防空隊の排除を確認。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
             id: "m10-success"
           },
           failureRadio: {
@@ -42010,7 +42018,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.63, y: 0.42 },
           battleCenter: { x: -150, z: 350 },
           battleRadius: 10800,
-          briefing: "ノル工業地帯を北東へ走る八両編成の装甲列車を、アラド連絡線の手前で止めろ。\n赤TGTは機関車一、高射車二。三両を精密破壊すれば橋を残して任務完了となる。白い電力車二・資材車三は任意交戦で、撃破も逃走も任務達成を妨げない。\nもう一つの選択は、河川上の白い鉄道橋を破壊して列車を即時停止させること。ただし民間輸送と復旧へ長期の損害が残る。\nSu-34は二機ずつ二波、MiG-29A二機が後着する。全て白の任意交戦。橋周辺のSPAAG二両も任意交戦だ。"
+          briefing: "ノル工業地帯を北東へ走る八両編成の装甲列車を、アラド連絡線の手前で止めろ。\n赤TGTは機関車一、高射車二。三両を精密破壊すれば橋を残して列車を停止できる。白い電力車二・資材車三は任意交戦で、撃破も逃走も任務達成を妨げない。\nもう一つの選択は、河川上の白い鉄道橋を破壊して列車を即時停止させること。ただし民間輸送と復旧へ長期の損害が残る。\n列車防空隊も赤TGTだ。Su-34は二機ずつ二波、MiG-29A二機が後着する。停止方法を選んだ後も全六機を撃退し、離脱路を確保せよ。橋周辺のSPAAG二両だけは任意交戦だ。"
         };
 
         ctx.addMission(mission, { after: "sera-m09" });
@@ -44240,6 +44248,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           m10: {
             active: m10State.active,
             route: m10State.route,
+            airCoverCleared: m10State.airCoverCleared,
+            airCoverRemaining: m10AirCoverRemaining(mission),
+            targetRemaining: m10TargetRemaining(mission),
             bridgeDestroyed: m10State.bridgeDestroyed,
             powerCarsEscaped: m10State.powerCarsEscaped,
             materialCarsEscaped: m10State.materialCarsEscaped,
@@ -44273,7 +44284,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const bridge = enemies.find((enemy) => enemy.alive && enemy.mark === mission.m10Contract.bridge.mark);
         if (!bridge) return false;
         damageEnemy(bridge, bridge.hp + 1, true, false);
-        return outcomePending.active && m10State.route === mission.m10Contract.routes.bridge;
+        updateMission(0.016, 0.016);
+        return m10State.route === mission.m10Contract.routes.bridge;
       },
       forceSeraM10DeployPending: () => {
         const mission = m10Mission();
@@ -44289,7 +44301,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.alive && enemy.mark === mission.m10Contract.precision.mark
         ));
         for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
-        return outcomePending.active && m10State.route === mission.m10Contract.routes.precision;
+        updateMission(0.016, 0.016);
+        return m10State.route === mission.m10Contract.routes.precision;
+      },
+      forceSeraM10ClearAirCover: () => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        const tag = mission.m10Contract.airCover.missionTag;
+        const cover = enemies.filter((enemy) => (
+          enemy.alive && enemy.missionTag === tag && isTgtEntry(enemy)
+        ));
+        for (const target of cover) damageEnemy(target, target.hp + 1, true, false);
+        updateMission(0.016, 2.0);
+        return m10AirCoverRemaining(mission) === 0;
       },
       forceSeraM10CargoEscape: (kind = "power") => {
         const mission = m10Mission();
@@ -52303,6 +52329,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const m10State = {
       active: false,
       route: null,
+      airCoverCleared: false,
       bridgeDestroyed: false,
       powerCarsEscaped: 0,
       materialCarsEscaped: 0,
@@ -52339,6 +52366,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function resetM10State(mission) {
       m10State.active = Boolean(mission && mission.m10Contract);
       m10State.route = null;
+      m10State.airCoverCleared = false;
       m10State.bridgeDestroyed = false;
       m10State.powerCarsEscaped = 0;
       m10State.materialCarsEscaped = 0;
@@ -52370,6 +52398,48 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return stopped;
     }
 
+    // The train stop and the air battle are two halves of one objective. The
+    // cover flights are authored as delayed concurrent waves, so remaining
+    // means both aircraft already on the board and aircraft still inbound.
+    function m10AirCoverRemaining(mission = m10Mission()) {
+      const contract = mission && mission.m10Contract;
+      const tag = contract?.airCover?.missionTag;
+      if (!tag) return 0;
+      const live = enemies.filter((enemy) => (
+        enemy.alive && !enemy.ground && enemy.missionTag === tag && isTgtEntry(enemy)
+      )).length;
+      const queued = pendingWaves.reduce((sum, entry) => {
+        const wave = entry && entry.wave;
+        return sum + (wave && wave.missionTag === tag && isTgtEntry(wave) ? waveSizeOf(wave) : 0);
+      }, 0);
+      return live + queued;
+    }
+
+    // M10 has an alternative ground objective. Before a route is selected the
+    // HUD shows the precision cars plus the cover. Once the bridge is used,
+    // those stopped red cars are no longer owed and only the cover remains.
+    function m10TargetRemaining(mission = m10Mission()) {
+      // updateHud runs during boot before this block's const state is
+      // initialised. Non-M10 screens must short-circuit on the mission contract
+      // before touching m10State, or the campaign menu dies in the TDZ.
+      if (!mission || !mission.m10Contract) return null;
+      if (!m10State.active) return null;
+      const required = Math.max(1, Number(mission.m10Contract.precision.required) || 3);
+      const ground = m10State.route
+        ? 0
+        : Math.max(0, required - m10State.precisionTargetsDestroyed);
+      return ground + m10AirCoverRemaining(mission);
+    }
+
+    function updateM10MissionThreat() {
+      const mission = m10Mission();
+      if (!mission || !m10State.active || m10State.failed || !m10State.route) return false;
+      if (m10AirCoverRemaining(mission) > 0) return false;
+      m10State.airCoverCleared = true;
+      completeMission(true);
+      return true;
+    }
+
     function handleM10GroundDestroyed(enemy) {
       const mission = m10Mission();
       const contract = mission && mission.m10Contract;
@@ -52382,7 +52452,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           m10State.route = contract.routes.precision;
           fireFixedRadioEvent("precisionRoute");
           stopM10Train(mission);
-          return { complete: true, route: m10State.route };
+          fireFixedRadioEvent("trainStopped");
+          return { route: m10State.route };
         }
       }
 
@@ -52393,7 +52464,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         setM10BridgeDestroyedVisual(mission, true);
         stopM10Train(mission);
         fireFixedRadioEvent("bridgeDestroyed");
-        return { complete: true, route: m10State.route };
+        fireFixedRadioEvent("trainStopped");
+        return { route: m10State.route };
       }
       return null;
     }
@@ -58600,7 +58672,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // installations this sortie already destroyed.
       if (enemy.ground) destroyedGroundIds.add(enemy.id);
       const m09Outcome = handleM09GroundDestroyed(enemy, byWingman);
-      const m10Outcome = handleM10GroundDestroyed(enemy);
+      handleM10GroundDestroyed(enemy);
       let chainBlast = null;
       if (enemy.subsystem) {
         // A mount neither sinks nor leaves a hulk in the sky: it blows up where
@@ -58751,7 +58823,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!byWingman && !(m09Outcome && m09Outcome.protectedLoss)) onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
       if (m09Outcome && m09Outcome.failBanner) failM09Mission(m09Outcome.failBanner);
-      if (m10Outcome && m10Outcome.complete) completeMission(true);
+      // M10's ground kill selects how the train was stopped. Completion is
+      // deliberately owned by updateM10MissionThreat: the six-aircraft cover
+      // remains mandatory after either route has been chosen.
     }
 
     // Feedback for the two mount kills that change how the fight is flown: the
@@ -59021,6 +59095,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM07MissionThreat(dt)) return;
       if (updateM08MissionThreat()) return;
       if (updateM09MissionThreat(dt)) return;
+      if (updateM10MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -61000,7 +61075,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.health.textContent = `${Math.round((1 - health / PLAYER_MAX_HEALTH) * 100)}%`;
       ui.flares.textContent = String(flareCount);
       ui.kills.textContent = String(Math.round(kills));
-      const remaining = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
+      const mission = MISSIONS[currentMissionIndex];
+      const m10Remaining = m10TargetRemaining(mission);
+      const remaining = m10Remaining === null
+        ? Math.max(0, mission.totalTargets - kills)
+        : m10Remaining;
       ui.tgtRemain.textContent = String(remaining);
       ui.tgtRemainRow.classList.toggle("cleared", remaining === 0);
       updateGuardReadout();
@@ -61111,7 +61190,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         shown: audioHintShown,
         unlocked: audioIsUnlocked()
       };
-      hook.tgtRemain = Math.max(0, MISSIONS[currentMissionIndex].totalTargets - kills);
+      {
+        const mission = MISSIONS[currentMissionIndex];
+        const m10Remaining = m10TargetRemaining(mission);
+        hook.tgtRemain = m10Remaining === null
+          ? Math.max(0, mission.totalTargets - kills)
+          : m10Remaining;
+      }
       hook.controlMode = controlMode;
       hook.cameraMode = cameraMode;
       // Exposed to CSS so the cockpit can wear a smaller HUD. Third-person

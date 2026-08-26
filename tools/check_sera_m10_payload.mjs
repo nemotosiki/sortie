@@ -70,7 +70,7 @@ try {
   assert(added?.key === "sera-m10" && added?.campaignOrder === 10, "mission identity changed");
   assert(insertion?.after === "sera-m09", "M10 is not inserted after M09");
   assert(added?.railLine === railRoute, "mission does not use the map-authored rail route");
-  assert(added?.totalTargets === 3, `expected 3 red TGT, got ${added?.totalTargets}`);
+  assert(added?.totalTargets === 9, `expected 9 red TGT, got ${added?.totalTargets}`);
   assert(added?.totalContacts === 17, `expected 17 contacts, got ${added?.totalContacts}`);
   assert(addedTypes.has("trainPower") && addedModels.has("trainPower"), "power car extension missing");
   assert(addedTypes.has("railBridgeControl") && addedModels.has("railBridgeControl"), "bridge extension missing");
@@ -99,18 +99,22 @@ try {
   assert(air.filter((type) => type === "su34").length === 4, "Su-34 count changed");
   assert(air.filter((type) => type === "mig29").length === 2, "MiG-29A count changed");
   assert(!air.includes("su35") && !air.includes("su57"), "late-game fighter leaked into M10");
-  assert(added.sequence.every((wave) => wave.tgt === false && wave.rankNeutral && wave.concurrent),
-    "air pressure must remain optional, rank-neutral, and concurrently scheduled");
+  assert(added.sequence.every((wave) => wave.tgt === true && !wave.rankNeutral && wave.concurrent),
+    "all six train-cover aircraft must be designated and concurrently scheduled");
+  assert(added.sequence.every((wave) => (
+    wave.missionTag === added.m10Contract.airCover.missionTag
+  )), "train-cover waves lost their mission tag");
   assert(added.sequence[1].delay === 65 && added.sequence[2].delay === 135,
     "delayed reinforcement timing changed");
   assert(added.m10Contract?.precision?.required === 3, "precision objective count changed");
+  assert(added.m10Contract?.airCover?.required === 6, "air-cover objective count changed");
   assert(added.m10Contract?.bridge?.decoratorNames?.includes("nor-rail-bridge-deck")
     && added.m10Contract.bridge.decoratorNames.includes("nor-rail-bridge-rails"),
   "bridge visual names no longer match the Nor decorator");
   assert(added.m10Contract?.rank?.bridgeRouteCap === "A", "bridge-route consequence changed");
 
   console.log("check_sera_m10_payload: PASS");
-  console.log("  red=train3 white=cargo5/bridge1/SPAAG2/air6 routes=precision|bridge");
+  console.log("  red=train3+air6 white=cargo5/bridge1/SPAAG2 routes=precision|bridge");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

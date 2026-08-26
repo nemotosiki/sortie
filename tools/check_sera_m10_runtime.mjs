@@ -16,16 +16,20 @@ for (const token of [
   "function resetM10State(mission)",
   "function handleM10GroundDestroyed(enemy)",
   "function handleM10GroundRouteEnd(enemy)",
+  "function m10AirCoverRemaining(mission = m10Mission())",
+  "function m10TargetRemaining(mission = m10Mission())",
+  "function updateM10MissionThreat()",
   "function m10ResultSnapshot(mission)",
   "function m10RankCap(mission)",
   "else if (handleM10GroundRouteEnd(enemy)) return;",
-  "const m10Outcome = handleM10GroundDestroyed(enemy);",
-  "if (m10Outcome && m10Outcome.complete) completeMission(true);",
+  "handleM10GroundDestroyed(enemy);",
+  "if (updateM10MissionThreat()) return;",
   "const m10Result = m10ResultSnapshot(mission);",
   "resetM10State(MISSIONS[currentMissionIndex]);",
   "forceSeraM10BridgeRoute",
   "forceSeraM10DeployPending",
   "forceSeraM10PrecisionRoute",
+  "forceSeraM10ClearAirCover",
   "forceSeraM10CriticalEscape",
   "forceSeraM10ResolveOutcome"
 ]) {
@@ -41,11 +45,11 @@ const legacyEscape = host.indexOf("else failEscapingGroundTarget(enemy);", route
 assert(routeHook >= 0 && legacyEscape > routeHook,
   "M10 route-end ownership must run before the generic escape contract");
 
-const damageHook = host.indexOf("const m10Outcome = handleM10GroundDestroyed(enemy);");
+const damageHook = host.indexOf("handleM10GroundDestroyed(enemy);");
 const scoring = host.indexOf("const isTgtKill = isTgtEntry(enemy);", damageHook);
-const resolve = host.indexOf("if (m10Outcome && m10Outcome.complete) completeMission(true);", scoring);
-assert(damageHook >= 0 && scoring > damageHook && resolve > scoring,
-  "M10 must resolve only after the destroyed contact has been scored");
+const missionThreat = host.indexOf("if (updateM10MissionThreat()) return;", scoring);
+assert(damageHook >= 0 && scoring > damageHook && missionThreat > scoring,
+  "M10 route selection must score before the mission threat resolves completion");
 
 for (const field of [
   "route", "bridgeDestroyed", "powerCarsEscaped", "materialCarsEscaped",
@@ -58,9 +62,13 @@ for (const field of [
 assert(host.includes("setM10BridgeDestroyedVisual(mission, true);"),
   "bridge route does not alter the physical bridge");
 assert(host.includes("stopM10Train(mission);"), "successful route does not stop the surviving train");
+assert(!host.includes("return { complete: true, route: m10State.route };"),
+  "train stop still completes M10 before the air cover is defeated");
+assert(host.includes("m10AirCoverRemaining(mission) > 0"),
+  "air cover does not hold ACCOMPLISHED");
 assert(host.includes("m10State.failed = true;"), "critical escape has no deterministic failure latch");
 assert(host.includes("m10State.escapedIds = new Set();"), "Retry does not reset the escape ledger");
 assert(host.includes("m10Cap && rank === m10Cap"), "bridge-route rank cap is absent from debrief math");
 
 console.log("check_sera_m10_runtime: PASS");
-console.log("  bridge|precision success, critical escape failure, result snapshot, rank cap, and Retry reset are wired");
+console.log("  bridge|precision stop, mandatory air-cover clear, escape failure, result, rank, and Retry are wired");

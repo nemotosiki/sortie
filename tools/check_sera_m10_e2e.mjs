@@ -92,6 +92,7 @@ async function openMission() {
     && window.__game?.forceSeraM10BridgeRoute
     && window.__game?.forceSeraM10DeployPending
     && window.__game?.forceSeraM10PrecisionRoute
+    && window.__game?.forceSeraM10ClearAirCover
     && window.__game?.forceSeraM10CargoEscape
     && window.__game?.forceSeraM10CriticalEscape
   ), null, { timeout: 120_000 });
@@ -204,9 +205,9 @@ try {
   const live = probe.contacts.filter((contact) => contact.alive);
   assert(probe.missionKey === "sera-m10" && probe.worldKey === "norIndustrialDusk",
     "wrong mission/world started", probe);
-  assert(probe.totalTargets === 3 && live.length === 17, "M10 contact board changed", probe);
-  assert(live.filter((contact) => contact.tgt).length === 3
-    && live.filter((contact) => !contact.tgt).length === 14,
+  assert(probe.totalTargets === 9 && live.length === 17, "M10 contact board changed", probe);
+  assert(live.filter((contact) => contact.tgt).length === 9
+    && live.filter((contact) => !contact.tgt).length === 8,
   "M10 red/white contact split changed", live);
   assert(probe.bridgeVisuals.length === 2 && probe.bridgeVisuals.every((object) => object.visible),
     "intact bridge visual is absent", probe.bridgeVisuals);
@@ -215,15 +216,23 @@ try {
   assert(await precision.page.evaluate(() => window.__game.forceSeraM10CargoEscape("material")),
     "material car could not cross the transfer line");
   assert(await precision.page.evaluate(() => window.__game.forceSeraM10PrecisionRoute()),
-    "precision route did not enter ACCOMPLISHED hold");
+    "precision route did not stop the train");
   probe = await precision.page.evaluate(() => window.__game.seraM10Probe());
   assert(probe.m10.route === "precision" && probe.m10.precisionTargetsDestroyed === 3
     && probe.m10.trainCarsDestroyed === 3 && probe.m10.powerCarsEscaped === 1
-    && probe.m10.materialCarsEscaped === 1 && !probe.m10.bridgeDestroyed,
+    && probe.m10.materialCarsEscaped === 1 && !probe.m10.bridgeDestroyed
+    && probe.m10.airCoverRemaining === 6 && probe.m10.targetRemaining === 6
+    && !probe.m10.airCoverCleared && !probe.outcomePending,
   "precision outcome ledger is wrong", probe.m10);
   assert(probe.contacts.filter((contact) => contact.alive && contact.mark?.startsWith("m10")).every(
     (contact) => contact.speed === 0
   ), "surviving train did not stop on precision completion", probe.contacts);
+  assert(await precision.page.evaluate(() => window.__game.forceSeraM10ClearAirCover()),
+    "precision route air cover could not be cleared");
+  probe = await precision.page.evaluate(() => window.__game.seraM10Probe());
+  assert(probe.outcomePending && probe.m10.airCoverCleared
+    && probe.m10.airCoverRemaining === 0 && probe.m10.targetRemaining === 0,
+  "precision route completed before or without defeating the air cover", probe.m10);
   assert(await precision.page.evaluate(() => window.__game.forceSeraM10ResolveOutcome()),
     "precision outcome did not resolve to debrief");
   probe = await precision.page.evaluate(() => window.__game.seraM10Probe());
@@ -236,16 +245,23 @@ try {
   // Bridge route: immediate stop, visible missing span, persistent disruption.
   const bridge = await openMission();
   assert(await bridge.page.evaluate(() => window.__game.forceSeraM10BridgeRoute()),
-    "bridge route did not enter ACCOMPLISHED hold");
+    "bridge route did not stop the train");
   probe = await bridge.page.evaluate(() => window.__game.seraM10Probe());
   assert(probe.m10.route === "bridge" && probe.m10.bridgeDestroyed
-    && probe.m10.civilianRailDisruption,
+    && probe.m10.civilianRailDisruption && probe.m10.airCoverRemaining === 6
+    && probe.m10.targetRemaining === 6 && !probe.outcomePending,
   "bridge outcome ledger is wrong", probe.m10);
   assert(probe.bridgeVisuals.length === 2 && probe.bridgeVisuals.every((object) => !object.visible),
     "bridge centre span did not disappear", probe.bridgeVisuals);
   const train = probe.contacts.filter((contact) => contact.id >= 201 && contact.id <= 208 && contact.alive);
   assert(train.length === 8 && train.every((contact) => contact.speed === 0),
     "bridge route did not stop all surviving cars", train);
+  assert(await bridge.page.evaluate(() => window.__game.forceSeraM10ClearAirCover()),
+    "bridge route air cover could not be cleared");
+  probe = await bridge.page.evaluate(() => window.__game.seraM10Probe());
+  assert(probe.outcomePending && probe.m10.airCoverCleared
+    && probe.m10.airCoverRemaining === 0 && probe.m10.targetRemaining === 0,
+  "bridge route completed before or without defeating the air cover", probe.m10);
   assert(await bridge.page.evaluate(() => window.__game.forceSeraM10ResolveOutcome()),
     "bridge outcome did not resolve to debrief");
   probe = await bridge.page.evaluate(() => window.__game.seraM10Probe());
@@ -278,7 +294,7 @@ try {
   await failure.context.close();
 
   console.log("check_sera_m10_e2e: PASS");
-  console.log("  M01-M10 order + M09 unlock gate + Nor preview + precision/bridge/escape/Retry routes");
+  console.log("  M01-M10 order + M09 unlock + Nor preview + train-stop/air-cover phases + escape/Retry");
 } finally {
   await browser.close();
   if (served.server) await new Promise((resolve) => served.server.close(resolve));
