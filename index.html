@@ -2737,10 +2737,10 @@
       GAME_ABSOLUTE_CEILING_M,
       GAME_SERVICE_CEILING_M,
       HIGH_ALTITUDE_EFFECT_START_M,
+      altitudeAdjustedFlightVelocity,
       altitudeAdjustedResponseK,
-      altitudeAdjustedVerticalSpeed,
       highAltitudeEnvelopeAt
-    } from "./src/flight/high-altitude-envelope.js?v=20260827-high-altitude-1";
+    } from "./src/flight/high-altitude-envelope.js?v=20260827-high-altitude-2";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -43656,10 +43656,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     // Kinematic velocity contract shared by player and hostile guidance. The
-    // movement systems keep speed on the entity and attitude on its Group, so
-    // deriving the tangent here is both stable (no spawn/teleport spikes) and
-    // accurate while an aircraft or ship turns. Mounted subsystems inherit the
-    // parent hull's motion even though their own authored speed is zero.
+    // movement systems keep speed on the entity and attitude on its Group. The
+    // high-altitude helper turns that attitude into a constrained flight path
+    // without changing the speed magnitude shown by the HUD. Mounted
+    // subsystems inherit the parent hull's motion even though their own
+    // authored speed is zero.
     function playerEffectiveVerticalSpeed() {
       // Stall and attitude loss describe the same missing lift from different
       // sides. Taking the stronger sink avoids double-charging a low-speed
@@ -43671,9 +43672,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function playerKinematicVelocity(out) {
-      forwardOf(player, out).multiplyScalar(playerSpeed);
-      out.y = altitudeAdjustedVerticalSpeed(out.y, playerHighAltitudeEnvelope) +
-        playerEffectiveVerticalSpeed();
+      forwardOf(player, out);
+      altitudeAdjustedFlightVelocity(
+        out,
+        playerSpeed,
+        playerHighAltitudeEnvelope,
+        playerEffectiveVerticalSpeed(),
+        playerHorizontalFlightDirection,
+        out
+      );
+      const horizontalLength = Math.hypot(out.x, out.z);
+      if (horizontalLength > 1e-9) {
+        playerHorizontalFlightDirection.set(
+          out.x / horizontalLength,
+          0,
+          out.z / horizontalLength
+        );
+      }
       return out;
     }
 
@@ -43834,6 +43849,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     const playerAttitudeLift = resetAttitudeLiftState({});
+    const playerHorizontalFlightDirection = new THREE.Vector3(0, 0, -1);
     let playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(0);
     let gunCooldown = 0;
     let gunShots = 0;
@@ -46328,10 +46344,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           for (let frame = 0; frame < count && gameState === STATE_PLAYING; frame += 1) {
             updatePlayer(slice);
           }
+          playerKinematicVelocity(tmpV10);
           return {
             frames: count,
             step: slice,
             position: { x: player.position.x, y: player.position.y, z: player.position.z },
+            speedMps: playerSpeed,
+            hudSpeedKph: Math.round(playerSpeed * 3.6),
+            kinematicSpeedMps: tmpV10.length(),
+            velocity: { x: tmpV10.x, y: tmpV10.y, z: tmpV10.z },
             stability: PLAYER_STABILITY,
             attitudeLift: { ...playerAttitudeLift },
             effectiveVerticalSpeed: playerEffectiveVerticalSpeed()
@@ -50426,6 +50447,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallSeverity = 0;
       stalling = false;
       playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+      playerHorizontalFlightDirection.set(0, 0, -1);
       resetAttitudeLiftState(playerAttitudeLift);
       syncPlayerOrientation();
     }
@@ -50616,15 +50638,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         dt
       );
 
-      forwardOf(player, tmpV1);
-      player.position.x += tmpV1.x * playerSpeed * dt;
-      player.position.z += tmpV1.z * playerSpeed * dt;
-      player.position.y += (
-        altitudeAdjustedVerticalSpeed(
-          tmpV1.y * playerSpeed,
-          playerHighAltitudeEnvelope
-        ) + playerEffectiveVerticalSpeed()
-      ) * dt;
+      playerKinematicVelocity(tmpV1);
+      player.position.addScaledVector(tmpV1, dt);
 
       if (player.position.y <= 4) {
         player.position.y = 4;
@@ -58401,11 +58416,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.spec.stability,
         dt
       );
-      forwardOf(enemy.group, enemy.velocity).multiplyScalar(enemy.speed);
-      enemy.velocity.y = altitudeAdjustedVerticalSpeed(
-        enemy.velocity.y,
-        enemy.highAltitudeEnvelope
-      ) + enemyEffectiveVerticalSpeed(enemy);
+      forwardOf(enemy.group, tmpV8);
+      altitudeAdjustedFlightVelocity(
+        tmpV8,
+        enemy.speed,
+        enemy.highAltitudeEnvelope,
+        enemyEffectiveVerticalSpeed(enemy),
+        enemy.velocity,
+        enemy.velocity
+      );
       enemy.group.position.addScaledVector(enemy.velocity, dt);
     }
 

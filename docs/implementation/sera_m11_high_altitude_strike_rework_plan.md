@@ -53,6 +53,9 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 - reduced throttle response and attainable speed;
 - progressively reduced positive climb authority;
 - a soft sink term between 9,144 m and 11,000 m;
+- conserve translational speed magnitude when climb is restricted by rotating
+  the flight path back toward horizontal, so HUD speed and coordinate motion
+  cannot diverge at a steep nose-up attitude;
 - no penalty to descent and no hard altitude clamp.
 
 ## Mission contract
@@ -116,6 +119,8 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
   11,000 m.
 - [x] Add a pure high-altitude envelope module and deterministic simulation.
 - [x] Apply it to both player and enemy fixed-wing flight.
+- [x] Keep HUD speed and measured displacement speed equal while high-altitude
+  climb authority redirects the flight path.
 - [x] Expose a browser/debug probe and high-altitude HUD caution.
 - [x] Verify no behaviour change at or below 6,500 m.
 

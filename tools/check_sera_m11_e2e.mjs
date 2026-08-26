@@ -127,6 +127,24 @@ try {
     assert(probe.directive.visible && probe.directive.title.startsWith("JAMMING ACTIVE")
         && probe.directive.instruction.includes("DESCEND"),
       "opening AC-style EW directive is wrong", probe.directive);
+    const speedParity = await page.evaluate(() => {
+      window.__game.forceSeraM11SetPlayerAltitude(10625);
+      window.__game.debug.forceAttitude(90, 87, 0);
+      const before = window.__game.debug.forceFlightFrames(0, 1 / 60);
+      const after = window.__game.debug.forceFlightFrames(1, 1 / 60);
+      const dx = after.position.x - before.position.x;
+      const dy = after.position.y - before.position.y;
+      const dz = after.position.z - before.position.z;
+      const displacementSpeedMps = Math.hypot(dx, dy, dz) / after.step;
+      window.__game.debug.forceAttitude(0, 0, 0);
+      window.__game.debug.forceResetAttitudeLift();
+      window.__game.forceSeraM11SetPlayerAltitude(9144);
+      return { before, after, displacementSpeedMps };
+    });
+    assert(Math.abs(speedParity.displacementSpeedMps - speedParity.after.speedMps) < 0.1
+        && Math.abs(speedParity.after.kinematicSpeedMps - speedParity.after.speedMps) < 1e-6
+        && speedParity.after.hudSpeedKph === Math.round(speedParity.after.speedMps * 3.6),
+      "high-altitude HUD speed diverged from actual displacement speed", speedParity);
     assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
       "HALO damage probe failed");
     probe = await page.evaluate(() => window.__game.seraM11Probe());
@@ -206,7 +224,10 @@ try {
 
     assert(await page.evaluate(() => window.__game.forceSeraM11SetPlayerAltitude(9000)),
       "9,000m sanctuary did not arm");
-    await page.waitForTimeout(100);
+    await page.waitForFunction((id) => {
+      const missile = window.__game.seraM11Probe().missiles.find((entry) => entry.id === id);
+      return !missile || missile.lost;
+    }, boosted.id, { timeout: 2_000 });
     probe = await page.evaluate(() => window.__game.seraM11Probe());
     const escaped = probe.missiles.find((missile) => missile.id === boosted.id);
     assert(!escaped || escaped.lost, "enhanced SAM kept guidance above sanctuary", escaped);

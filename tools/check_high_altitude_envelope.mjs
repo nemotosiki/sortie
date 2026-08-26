@@ -3,6 +3,7 @@ import {
   GAME_ABSOLUTE_CEILING_M,
   GAME_SERVICE_CEILING_M,
   HIGH_ALTITUDE_EFFECT_START_M,
+  altitudeAdjustedFlightVelocity,
   altitudeAdjustedResponseK,
   altitudeAdjustedVerticalSpeed,
   highAltitudeEnvelopeAt,
@@ -51,6 +52,33 @@ near(absolute.climbAuthority, 0, 1e-12, "absolute-ceiling climb authority");
 near(absolute.ceilingSinkSpeed, -32, 1e-12, "absolute-ceiling sink");
 near(altitudeAdjustedVerticalSpeed(200, absolute), -32, 1e-12,
   "positive climb cannot cross the soft absolute ceiling");
+const verticalNose = altitudeAdjustedFlightVelocity(
+  { x: 0, y: 1, z: 0 },
+  500,
+  absolute,
+  0,
+  { x: 1, y: 0, z: 0 },
+  {}
+);
+near(Math.hypot(verticalNose.x, verticalNose.y, verticalNose.z), 500, 1e-9,
+  "absolute-ceiling velocity magnitude");
+near(verticalNose.y, -32, 1e-12, "absolute-ceiling vertical flight-path speed");
+assert(verticalNose.x > 498 && verticalNose.z === 0,
+  `blocked climb did not remain as horizontal inertia: ${JSON.stringify(verticalNose)}`);
+
+const steepAngle = 87 * Math.PI / 180;
+const steepHigh = altitudeAdjustedFlightVelocity(
+  { x: Math.cos(steepAngle), y: Math.sin(steepAngle), z: 0 },
+  518,
+  highAltitudeEnvelopeAt(10625),
+  0,
+  { x: 1, y: 0, z: 0 },
+  {}
+);
+near(Math.hypot(steepHigh.x, steepHigh.y, steepHigh.z), 518, 1e-9,
+  "10,625m steep-climb velocity magnitude");
+assert(Math.abs(steepHigh.x) > 500,
+  `10,625m climb restriction deleted forward speed: ${JSON.stringify(steepHigh)}`);
 
 near(altitudeAdjustedResponseK(0.6, 1), 0.6, 1e-12,
   "sea-level throttle response");

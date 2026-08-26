@@ -125,8 +125,9 @@ for (const required of [
   "moveEnemyFixedWing(enemy, dt);",
   "stallState: resetAerodynamicStallState({}),",
   "stability: aircraftStabilityRating(air),",
-  "enemy.velocity.y = altitudeAdjustedVerticalSpeed(",
-  ") + enemyEffectiveVerticalSpeed(enemy);"
+  "altitudeAdjustedFlightVelocity(",
+  "enemyEffectiveVerticalSpeed(enemy)",
+  "enemy.velocity,\n        enemy.velocity"
 ]) {
   assert(indexSource.includes(required), `production integration is missing: ${required}`);
 }

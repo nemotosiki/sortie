@@ -84,3 +84,55 @@ export function altitudeAdjustedVerticalSpeed(forwardVerticalSpeed, envelope) {
     : commanded;
   return climb + (Number(envelope?.ceilingSinkSpeed) || 0);
 }
+
+// Restrict the flight-path angle without deleting translational speed. The
+// old integration scaled only the upward component, so a jet pointing nearly
+// vertical at the ceiling kept a large HUD airspeed while barely changing
+// position. Thin air should make the velocity vector lag behind the nose, not
+// make hundreds of metres per second disappear. The disallowed climb is kept
+// in the horizontal component and the resulting vector retains `speedMps`.
+export function altitudeAdjustedFlightVelocity(
+  forwardDirection,
+  speedMps,
+  envelope,
+  aerodynamicVerticalSpeed = 0,
+  fallbackHorizontal = null,
+  out = forwardDirection
+) {
+  const speed = Math.max(0, Number(speedMps) || 0);
+  const fx = Number(forwardDirection?.x) || 0;
+  const fy = Number(forwardDirection?.y) || 0;
+  const fz = Number(forwardDirection?.z) || 0;
+  const forwardLength = Math.hypot(fx, fy, fz);
+  const nx = forwardLength > 1e-12 ? fx / forwardLength : 0;
+  const ny = forwardLength > 1e-12 ? fy / forwardLength : 0;
+  const nz = forwardLength > 1e-12 ? fz / forwardLength : -1;
+  const fallbackX = Number(fallbackHorizontal?.x) || 0;
+  const fallbackZ = Number(fallbackHorizontal?.z) || 0;
+
+  const verticalSpeed = clamp(
+    altitudeAdjustedVerticalSpeed(ny * speed, envelope) +
+      (Number(aerodynamicVerticalSpeed) || 0),
+    -speed,
+    speed
+  );
+  const horizontalSpeed = Math.sqrt(Math.max(0, speed * speed - verticalSpeed * verticalSpeed));
+  let hx = nx;
+  let hz = nz;
+  let horizontalLength = Math.hypot(hx, hz);
+  if (horizontalLength <= 1e-12) {
+    hx = fallbackX;
+    hz = fallbackZ;
+    horizontalLength = Math.hypot(hx, hz);
+  }
+  if (horizontalLength <= 1e-12) {
+    hx = 0;
+    hz = -1;
+    horizontalLength = 1;
+  }
+
+  out.x = hx / horizontalLength * horizontalSpeed;
+  out.y = verticalSpeed;
+  out.z = hz / horizontalLength * horizontalSpeed;
+  return out;
+}
