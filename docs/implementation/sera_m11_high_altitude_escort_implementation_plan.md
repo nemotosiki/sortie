@@ -1,5 +1,10 @@
 # Sera M11 `FROZEN EYE` — high-altitude escort implementation plan
 
+> Superseded on 2026-08-27 by
+> `sera_m11_high_altitude_strike_rework_plan.md` after the user replaced the
+> escort-clear objective with a 30,000 ft base strike under MiG-31 pressure.
+> This file remains as the implementation record for commit `7cd15c9`.
+
 **Created:** 2026-08-27  
 **Branch:** `codex/sera-m11-high-altitude-escort`  
 **Base:** `bb8465d685a80a93773d84a4acab3dd13dae223d`

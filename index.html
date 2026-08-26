@@ -2617,6 +2617,14 @@
       resetAerodynamicStallState,
       updateAerodynamicStallState
     } from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1";
+    import {
+      GAME_ABSOLUTE_CEILING_M,
+      GAME_SERVICE_CEILING_M,
+      HIGH_ALTITUDE_EFFECT_START_M,
+      altitudeAdjustedResponseK,
+      altitudeAdjustedVerticalSpeed,
+      highAltitudeEnvelopeAt
+    } from "./src/flight/high-altitude-envelope.js?v=20260827-high-altitude-1";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -43569,7 +43577,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function playerKinematicVelocity(out) {
       forwardOf(player, out).multiplyScalar(playerSpeed);
-      out.y += playerEffectiveVerticalSpeed();
+      out.y = altitudeAdjustedVerticalSpeed(out.y, playerHighAltitudeEnvelope) +
+        playerEffectiveVerticalSpeed();
       return out;
     }
 
@@ -43730,6 +43739,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     const playerAttitudeLift = resetAttitudeLiftState({});
+    let playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(0);
     let gunCooldown = 0;
     let gunShots = 0;
     let missilesLaunched = 0;
@@ -45270,7 +45280,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         attitudeLiftLoss: 0,
         attitudeDownAcceleration: 0,
         aerodynamicVerticalSpeed: 0,
-        effectiveVerticalSpeed: 0
+        effectiveVerticalSpeed: 0,
+        altitudeM: 0,
+        highAltitude: null
       },
       cameraFocus: { active: false, targetId: null, source: null },
       audio: {
@@ -46501,10 +46513,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const offsetY = Number.isFinite(Number(config.offsetY)) ? Number(config.offsetY) : 500;
           const offsetZ = Number.isFinite(Number(config.offsetZ)) ? Number(config.offsetZ) : -400;
            enemy.group.position.set(
-            player.position.x + offsetX,
-            player.position.y + offsetY,
-            player.position.z + offsetZ
-           );
+             player.position.x + offsetX,
+             Number.isFinite(Number(config.altitude))
+               ? Math.max(0, Number(config.altitude))
+               : player.position.y + offsetY,
+             player.position.z + offsetZ
+            );
           enemy.group.quaternion.identity();
           enemy.mode = "pursuit";
           enemy.hunt = null;
@@ -46515,7 +46529,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           resetAerodynamicStallState(enemy.stallState);
           enemy.stallSeverity = 0;
           enemy.stalling = false;
-          enemy.controlAuthority = 1;
+           enemy.controlAuthority = 1;
+           enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(enemy.group.position.y);
           enemy.turnDemand = 1;
           resetAttitudeLiftState(enemy.attitudeLift);
           enemy.fireCooldown = 999;
@@ -46559,8 +46574,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             attitudeUpDot: enemy.attitudeLift.upDot,
             attitudeLiftLoss: enemy.attitudeLift.severity,
             aerodynamicVerticalSpeed: enemy.attitudeLift.verticalSpeed,
-            effectiveVerticalSpeed: enemyEffectiveVerticalSpeed(enemy),
-            position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
+             effectiveVerticalSpeed: enemyEffectiveVerticalSpeed(enemy),
+             highAltitude: {
+               densityRatio: enemy.highAltitudeEnvelope?.densityRatio ?? 1,
+               stallSpeedMultiplier: enemy.highAltitudeEnvelope?.stallSpeedMultiplier ?? 1,
+               turnAuthority: enemy.highAltitudeEnvelope?.turnAuthority ?? 1,
+               thrustFactor: enemy.highAltitudeEnvelope?.thrustFactor ?? 1,
+               maxSpeedFactor: enemy.highAltitudeEnvelope?.maxSpeedFactor ?? 1,
+               climbAuthority: enemy.highAltitudeEnvelope?.climbAuthority ?? 1
+             },
+             position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
           })),
          // Airframe animation state per live aircraft: the sweep angle of a
         // variable-geometry wing and the rotation of the first propeller disc.
@@ -49438,17 +49461,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // make at that speed, (v / vStall)^2; above it, by the airframe's structural
     // limit. That crossover is the corner speed, vStall * sqrt(G), and it is where
     // the turn rate peaks.
-    function turnRateAt(speed) {
-      return aircraftTurnRateAtSpeed(speed, STALL_ENTRY_SPEED, STRUCTURAL_G);
+    function turnRateAt(speed, stallEntrySpeed = STALL_ENTRY_SPEED) {
+      return aircraftTurnRateAtSpeed(speed, stallEntrySpeed, STRUCTURAL_G);
     }
 
     // Normalised against cruise speed, so 1.0 is "the turn you get while
     // cruising", above 1 is the reward for bleeding speed toward the corner, and
     // below 1 is the penalty for going slower than the wing can carry.
-    function cornerTurnGain(speed) {
-      const reference = turnRateAt(CRUISE_SPEED);
+    function cornerTurnGain(
+      speed,
+      stallEntrySpeed = STALL_ENTRY_SPEED,
+      referenceSpeed = CRUISE_SPEED
+    ) {
+      const reference = turnRateAt(referenceSpeed, stallEntrySpeed);
       if (reference <= 0) return 1;
-      return turnRateAt(speed) / reference;
+      return turnRateAt(speed, stallEntrySpeed) / reference;
     }
 
     function readHighscore() {
@@ -50223,6 +50250,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallTimer = 0;
       stallSeverity = 0;
       stalling = false;
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
       resetAttitudeLiftState(playerAttitudeLift);
       syncPlayerOrientation();
     }
@@ -50248,46 +50276,68 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? THREE.MathUtils.smoothstep(Math.abs(pitchInput), 0.55, 1)
         : 0;
       const brakeTargetSpeed = BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP * highGBrakeLoad;
-      const targetSpeed = boost ? BOOST_SPEED : (brake ? brakeTargetSpeed : CRUISE_SPEED);
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+      const highAltitudeSpeedFactor = playerHighAltitudeEnvelope.maxSpeedFactor;
+      const targetSpeed = (boost ? BOOST_SPEED : (brake ? brakeTargetSpeed : CRUISE_SPEED)) *
+        highAltitudeSpeedFactor;
       // Acceleration and deceleration are different machines: gaining speed
       // is the ENGINE (boostResponse - the per-airframe acceleration stat,
       // T/W-graded), losing it is drag or the airbrake. Keying on the mode
       // instead of the direction let a jet recover from a brake at its
       // cruise-settle rate, which was quicker than its own engine.
-      const speedResponse = targetSpeed > playerSpeed
+      const baseSpeedResponse = targetSpeed > playerSpeed
         ? BOOST_SPEED_RESPONSE_K
         : (brake ? BRAKE_SPEED_RESPONSE_K : CRUISE_SPEED_RESPONSE_K);
+      const speedResponse = targetSpeed > playerSpeed
+        ? altitudeAdjustedResponseK(baseSpeedResponse, playerHighAltitudeEnvelope.thrustFactor)
+        : baseSpeedResponse;
       playerSpeed = THREE.MathUtils.lerp(playerSpeed, targetSpeed, damping(speedResponse, dt));
 
       forwardOf(player, tmpV9);
+      const highAltitudeStallMultiplier = playerHighAltitudeEnvelope.stallSpeedMultiplier;
+      const effectiveStallEntrySpeed = STALL_ENTRY_SPEED * highAltitudeStallMultiplier;
+      const effectiveDeepStallSpeed = STALL_DEEP_SPEED * highAltitudeStallMultiplier;
+      const effectiveRecoverySpeed = STALL_RECOVERY_SPEED * highAltitudeStallMultiplier;
       const lowSpeedRatio = THREE.MathUtils.clamp(
-        (STALL_ENTRY_SPEED - playerSpeed) / Math.max(1, STALL_ENTRY_SPEED - STALL_DEEP_SPEED),
+        (effectiveStallEntrySpeed - playerSpeed) /
+          Math.max(1, effectiveStallEntrySpeed - effectiveDeepStallSpeed),
         0,
         1
       );
       const pitchDemand = Math.abs(pitchInput);
       const noseHighDemand = Math.max(0, tmpV9.y - 0.18);
-      if (playerSpeed < STALL_ENTRY_SPEED) {
+      if (playerSpeed < effectiveStallEntrySpeed) {
         const buildRate = 0.28 + lowSpeedRatio * 1.35 + pitchDemand * 0.42 + noseHighDemand * 0.32;
         stallTimer += dt * buildRate;
       } else {
-        const recoveryRate = playerSpeed > STALL_RECOVERY_SPEED ? 1.9 : 0.78;
+        const recoveryRate = playerSpeed > effectiveRecoverySpeed ? 1.9 : 0.78;
         stallTimer -= dt * recoveryRate;
       }
       stallTimer = THREE.MathUtils.clamp(stallTimer, 0, 1);
       const targetSeverity = THREE.MathUtils.smoothstep(stallTimer, 0.18, 0.88);
       stallSeverity = THREE.MathUtils.lerp(stallSeverity, targetSeverity, damping(0.025, dt));
-      if (playerSpeed > STALL_RECOVERY_SPEED && stallTimer <= 0.02) stallSeverity = Math.max(0, stallSeverity - dt * 1.4);
+      if (playerSpeed > effectiveRecoverySpeed && stallTimer <= 0.02) {
+        stallSeverity = Math.max(0, stallSeverity - dt * 1.4);
+      }
       stallSeverity = THREE.MathUtils.clamp(stallSeverity, 0, 1);
       stalling = stallSeverity > 0.24;
 
-      playerControlAuthority = THREE.MathUtils.clamp(1 - stallSeverity * STALL_AUTHORITY_LOSS, 0.18, 1);
+      playerControlAuthority = THREE.MathUtils.clamp(
+        (1 - stallSeverity * STALL_AUTHORITY_LOSS) * playerHighAltitudeEnvelope.turnAuthority,
+        0.12,
+        1
+      );
       const rawTurnFactor = THREE.MathUtils.clamp(
-        cornerTurnGain(playerSpeed),
+        cornerTurnGain(
+          playerSpeed,
+          effectiveStallEntrySpeed,
+          CRUISE_SPEED * highAltitudeSpeedFactor
+        ),
         TURN_GAIN_FLOOR,
         TURN_GAIN_CEILING
       );
-      playerTurnFactor = rawTurnFactor * (1 - stallSeverity * 0.78);
+      playerTurnFactor = rawTurnFactor * (1 - stallSeverity * 0.78) *
+        playerHighAltitudeEnvelope.turnAuthority;
       // Pitch follows the same curve but with the swing compressed, so nosing
       // around still feels usable at the extremes of the speed range.
       const pitchManeuverFactor = THREE.MathUtils.clamp(
@@ -50392,8 +50442,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
 
       forwardOf(player, tmpV1);
-      player.position.addScaledVector(tmpV1, playerSpeed * dt);
-      player.position.y += playerEffectiveVerticalSpeed() * dt;
+      player.position.x += tmpV1.x * playerSpeed * dt;
+      player.position.z += tmpV1.z * playerSpeed * dt;
+      player.position.y += (
+        altitudeAdjustedVerticalSpeed(
+          tmpV1.y * playerSpeed,
+          playerHighAltitudeEnvelope
+        ) + playerEffectiveVerticalSpeed()
+      ) * dt;
 
       if (player.position.y <= 4) {
         player.position.y = 4;
@@ -54589,6 +54645,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          headingError: 0,
          turnEnvelopeGain: 1,
          turnLimit: spec.patrolTurn,
+         highAltitudeEnvelope: highAltitudeEnvelopeAt(position.y),
          attitudeLift: resetAttitudeLiftState({}),
          // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
@@ -57874,28 +57931,32 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function updateEnemyAerodynamicState(enemy, dt) {
       const spec = enemy.spec;
+      enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(enemy.group.position.y);
+      const stallMultiplier = enemy.highAltitudeEnvelope.stallSpeedMultiplier;
       forwardOf(enemy.group, tmpV8);
       updateAerodynamicStallState(enemy.stallState, {
         speed: enemy.speed,
-        stallEntrySpeed: spec.stallEntrySpeed,
-        deepStallSpeed: STALL_DEEP_SPEED,
-        recoverySpeed: STALL_RECOVERY_SPEED,
+        stallEntrySpeed: spec.stallEntrySpeed * stallMultiplier,
+        deepStallSpeed: STALL_DEEP_SPEED * stallMultiplier,
+        recoverySpeed: STALL_RECOVERY_SPEED * stallMultiplier,
         stallAuthorityLoss: spec.stallAuthorityLoss,
         turnDemand: enemy.turnDemand,
         noseHighDemand: Math.max(0, tmpV8.y - 0.18)
       }, dt);
       enemy.stallSeverity = enemy.stallState.severity;
       enemy.stalling = enemy.stallState.stalling;
-      enemy.controlAuthority = enemy.stallState.controlAuthority;
+      enemy.controlAuthority = enemy.stallState.controlAuthority *
+        enemy.highAltitudeEnvelope.turnAuthority;
     }
 
     function enemyConstrainedTurn(enemy, maximumRate) {
       const spec = enemy.spec;
+      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(enemy.group.position.y);
       const baseRate = Math.max(0.00001, spec.patrolTurn);
       const result = constrainedAircraftTurn({
         speed: enemy.speed,
-        referenceSpeed: spec.cruiseSpeed,
-        stallEntrySpeed: spec.stallEntrySpeed,
+        referenceSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
+        stallEntrySpeed: spec.stallEntrySpeed * envelope.stallSpeedMultiplier,
         structuralG: spec.structuralG,
         baseTurnRate: baseRate,
         maximumGain: Math.max(0, maximumRate) / baseRate,
@@ -57904,9 +57965,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         stallAuthorityLoss: spec.stallAuthorityLoss
       });
       enemy.turnEnvelopeGain = result.gain;
-      enemy.controlAuthority = result.authority;
-      enemy.turnLimit = result.rate;
-      return result.rate;
+      enemy.controlAuthority = result.authority * envelope.turnAuthority;
+      enemy.turnLimit = result.rate * envelope.turnAuthority;
+      return enemy.turnLimit;
     }
 
     function applyEnemyStallNoseDrop(enemy, dt) {
@@ -57926,20 +57987,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         dt
       );
       forwardOf(enemy.group, enemy.velocity).multiplyScalar(enemy.speed);
-      enemy.velocity.y += enemyEffectiveVerticalSpeed(enemy);
+      enemy.velocity.y = altitudeAdjustedVerticalSpeed(
+        enemy.velocity.y,
+        enemy.highAltitudeEnvelope
+      ) + enemyEffectiveVerticalSpeed(enemy);
       enemy.group.position.addScaledVector(enemy.velocity, dt);
     }
 
     function applyEnemyEnergyManagement(enemy, headingError) {
       const spec = enemy.spec;
+      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(enemy.group.position.y);
       const energy = managedCombatTurnSpeed({
         commandedSpeed: enemy.targetSpeed,
         headingErrorRad: headingError,
         stallSeverity: enemy.stallSeverity,
-        stallEntrySpeed: spec.stallEntrySpeed,
+        stallEntrySpeed: spec.stallEntrySpeed * envelope.stallSpeedMultiplier,
         structuralG: spec.structuralG,
-        cruiseSpeed: spec.cruiseSpeed,
-        maxSpeed: spec.maxSpeed
+        cruiseSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
+        maxSpeed: spec.maxSpeed * envelope.maxSpeedFactor
       });
       enemy.turnDemand = energy.turnDemand;
       // Strike, escort formation and authored hunt runs protect a mission object;
@@ -58405,8 +58470,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // carries a pursuer past a braking player instead of parking it on
         // their tail - and it is why a rookie sails 250m out in front while an
         // ace is only briefly wrong-footed.
+        const altitudeMaxSpeed = spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor;
+        enemy.targetSpeed = Math.min(enemy.targetSpeed, altitudeMaxSpeed);
         const closing = enemy.targetSpeed < enemy.speed;
-         const speedK = closing ? (spec.speedDecelK ?? spec.speedResponse) : spec.speedResponse;
+         const speedK = closing
+           ? (spec.speedDecelK ?? spec.speedResponse)
+           : altitudeAdjustedResponseK(
+               spec.speedResponse,
+               enemy.highAltitudeEnvelope.thrustFactor
+             );
          enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(speedK, dt));
         moveEnemyFixedWing(enemy, dt);
 
@@ -61996,13 +62068,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Both halves need the flight gate. `stalling` is frozen at whatever it
       // was when updatePlayer stopped running, so gating only `lowSpeed` left
       // STALL burning on the debrief of every sortie that ended in a stall.
-      const lowSpeed = inFlight && playerSpeed < STALL_WARNING_SPEED;
+      const effectiveStallWarningSpeed = STALL_WARNING_SPEED *
+        playerHighAltitudeEnvelope.stallSpeedMultiplier;
+      const lowSpeed = inFlight && playerSpeed < effectiveStallWarningSpeed;
       const stallLit = inFlight && stalling;
-      ui.stallWarning.classList.toggle("active", lowSpeed || stallLit);
-      ui.stallWarning.classList.toggle("caution", lowSpeed && !stallLit);
+      const highAltitudeCaution = inFlight && playerHighAltitudeEnvelope.thinAir >= 0.85;
+      ui.stallWarning.classList.toggle("active", lowSpeed || stallLit || highAltitudeCaution);
+      ui.stallWarning.classList.toggle("caution", !stallLit && (lowSpeed || highAltitudeCaution));
       ui.stallWarning.textContent = stalling
         ? "STALL · ACCELERATE / LOWER NOSE"
-        : "LOW SPEED · STALL RISK";
+        : (lowSpeed
+          ? "LOW SPEED · STALL RISK"
+          : `HIGH ALTITUDE · THIN AIR ${Math.round(player.position.y)}M`);
 
       const boundaryWarning = gameState === STATE_PLAYING && battleArea.warning;
       ui.battleAreaWarning.classList.toggle("active", boundaryWarning);
@@ -62156,6 +62233,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.flight.attitudeDownAcceleration = playerAttitudeLift.downAcceleration;
       hook.flight.aerodynamicVerticalSpeed = playerAttitudeLift.verticalSpeed;
       hook.flight.effectiveVerticalSpeed = playerEffectiveVerticalSpeed();
+      hook.flight.altitudeM = player.position.y;
+      hook.flight.highAltitude = {
+        onsetM: HIGH_ALTITUDE_EFFECT_START_M,
+        serviceCeilingM: GAME_SERVICE_CEILING_M,
+        absoluteCeilingM: GAME_ABSOLUTE_CEILING_M,
+        densityRatio: playerHighAltitudeEnvelope.densityRatio,
+        stallSpeedMultiplier: playerHighAltitudeEnvelope.stallSpeedMultiplier,
+        turnAuthority: playerHighAltitudeEnvelope.turnAuthority,
+        thrustFactor: playerHighAltitudeEnvelope.thrustFactor,
+        maxSpeedFactor: playerHighAltitudeEnvelope.maxSpeedFactor,
+        climbAuthority: playerHighAltitudeEnvelope.climbAuthority,
+        ceilingSinkSpeed: playerHighAltitudeEnvelope.ceilingSinkSpeed
+      };
       hook.cameraFocus.active = cameraFocusActive;
       hook.cameraFocus.targetId = cameraFocusTargetId;
       hook.cameraFocus.source = cameraFocusSource;

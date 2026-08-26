@@ -96,6 +96,14 @@ try {
     const cornerSpeed = spec.stallEntrySpeed * Math.sqrt(spec.structuralG);
     const corner = sample(cornerSpeed);
 
+    debug.forceConfigureEnemyFlight(id, {
+      speed: spec.cruiseSpeed,
+      altitude: 9144,
+      offsetZ: -400
+    });
+    debug.forceEnemyFlightFrames(1, 1 / 60);
+    const highAltitude = debug.enemyFlightProbe(id)[0];
+
     resetState(spec.stallEntrySpeed * 0.55);
     let peakStall = null;
     for (let frame = 0; frame < 90; frame += 1) {
@@ -132,6 +140,7 @@ try {
       high,
       cruise,
       corner,
+      highAltitude,
       cornerSpeed,
       peakStall,
       recovered,
@@ -144,6 +153,9 @@ try {
     "production AI did not lose turn authority at maximum speed", results);
   assert(results.corner.turnEnvelopeGain > results.cruise.turnEnvelopeGain,
     "production AI did not gain high-G authority near corner speed", results);
+  assert(results.highAltitude.highAltitude.stallSpeedMultiplier > 1.62 &&
+      results.highAltitude.highAltitude.turnAuthority < 0.73,
+    "production AI did not receive the 30,000 ft thin-air envelope", results.highAltitude);
   assert(results.peakStall.stalling && results.peakStall.stallSeverity > 0.24,
     "production AI never entered a forced low-speed stall", results.peakStall);
   assert(results.recovered.speed > results.peakStall.speed &&
@@ -162,6 +174,7 @@ try {
       cruise: results.cruise.turnEnvelopeGain,
       corner: results.corner.turnEnvelopeGain
     },
+    highAltitude: results.highAltitude.highAltitude,
     peakStall: {
       speed: results.peakStall.speed,
       severity: results.peakStall.stallSeverity,
