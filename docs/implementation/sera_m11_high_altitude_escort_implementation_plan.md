@@ -115,14 +115,14 @@ the white diversion exists to pull the player away from the escort line.
 - [x] Insert after `sera-m10` with `campaignOrder: 11`
 - [x] Add the 6 red / 2 white staggered air order and authored radio
 - [x] Add and pass a static payload gate
-- [ ] Commit and push the payload independently
+- [x] Commit and push the payload independently
 
 ### Checkpoint 4 — escort runtime
 
-- [ ] Add mission-scoped progress, proximity warning, success, and failure logic
-- [ ] Persist the M11 escort result
-- [ ] Add deterministic debug probes without changing production behaviour
-- [ ] Hold generic ACCOMPLISHED until the formation contract resolves
+- [x] Add mission-scoped progress, proximity warning, success, and failure logic
+- [x] Persist the M11 escort result
+- [x] Add deterministic debug probes without changing production behaviour
+- [x] Hold generic ACCOMPLISHED until the formation contract resolves
 - [ ] Commit and push the runtime independently
 
 ### Checkpoint 5 — integration and play

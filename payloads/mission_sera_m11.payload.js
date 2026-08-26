@@ -37,6 +37,10 @@ export default function register(ctx) {
     timeLimit: 330,
     missionTag: "m11HaloHunter",
     operationAltitude: 5100,
+    route: Object.freeze({
+      start: Object.freeze([...anchors.strikeStart]),
+      exit: Object.freeze([...anchors.strikeExit])
+    }),
     proximity: Object.freeze({
       warningDistance: 4300,
       clearDistance: 3000,

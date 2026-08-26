@@ -94,6 +94,9 @@ try {
   const contract = mission.m11EscortContract;
   assert(contract.total === 3 && contract.requiredSaved === 2 && contract.timeLimit === 330,
     "2-of-3 escort objective changed");
+  assert(JSON.stringify(contract.route.start) === JSON.stringify(anchors.strikeStart)
+      && JSON.stringify(contract.route.exit) === JSON.stringify(anchors.strikeExit),
+    "runtime escort route no longer matches the map anchors");
   assert(contract.proximity.warningDistance > contract.proximity.clearDistance,
     "proximity warning hysteresis is malformed");
   assert(contract.rank.sGuardLosses === 0 && contract.rank.ignoreWhiteTargets,

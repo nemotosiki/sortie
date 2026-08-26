@@ -42294,6 +42294,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m10Cap = m10RankCap(mission);
       if (m10Cap && RANK_ORDER[rank] > RANK_ORDER[m10Cap]) rank = m10Cap;
 
+      const m11Cap = m11RankCap(mission);
+      if (m11Cap && RANK_ORDER[rank] > RANK_ORDER[m11Cap]) rank = m11Cap;
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -42315,6 +42318,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         || (m04Cap && rank === m04Cap)
         || Boolean(m08Rank)
         || (m10Cap && rank === m10Cap)
+        || (m11Cap && rank === m11Cap)
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -42453,6 +42457,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m08Result) Object.assign(entry, m08Result);
       const m10Result = m10ResultSnapshot(mission);
       if (m10Result) Object.assign(entry, m10Result);
+      const m11Result = m11ResultSnapshot(mission);
+      if (m11Result) Object.assign(entry, m11Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -44343,6 +44349,150 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forceSeraM10ResolveOutcome: () => {
         const mission = m10Mission();
         if (!mission || mission.key !== "sera-m10" || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM11Probe: () => {
+        const mission = m11Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          escort: {
+            ...m11State,
+            nearestHalo: Number.isFinite(m11State.nearestHalo)
+              ? Number(m11State.nearestHalo.toFixed(1))
+              : null
+          },
+          guard: {
+            active: guardState.active,
+            total: guardState.total,
+            saved: guardState.saved,
+            lost: guardState.lost,
+            failed: guardState.failed
+          },
+          halo: m11HaloAircraft(mission).map((friendly) => ({
+            label: friendly.label,
+            type: friendly.type,
+            alive: friendly.alive,
+            retired: friendly.retired,
+            hp: Math.max(0, Math.round(friendly.hp)),
+            maxHp: friendly.maxHp,
+            position: [
+              Number(friendly.group.position.x.toFixed(1)),
+              Number(friendly.group.position.y.toFixed(1)),
+              Number(friendly.group.position.z.toFixed(1))
+            ]
+          })),
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            hunt: enemy.hunt || null,
+            charge: enemy.huntRef ? enemy.huntRef.label : null,
+            missionTag: enemy.missionTag || null
+          })),
+          pending: pendingWaves.map((entry) => ({
+            delay: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            tgt: entry.wave ? isTgtEntry(entry.wave) : false,
+            missionTag: entry.wave?.missionTag || null
+          })),
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM11DeployPending: () => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        return pendingWaves.length === 0;
+      },
+      forceSeraM11ClearTargets: () => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const enemy of enemies.filter((candidate) => candidate.alive && isTgtEntry(candidate))) {
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+        }
+        updateMission(0.016, 2.0);
+        return gameState === STATE_PLAYING && !outcomePending.active;
+      },
+      forceSeraM11Progress: (fraction = 0.5) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const route = mission.m11EscortContract.route;
+        const progress = THREE.MathUtils.clamp(Number(fraction) || 0, 0, 0.99);
+        const dx = route.exit[0] - route.start[0];
+        const dz = route.exit[1] - route.start[1];
+        for (const friendly of m11HaloAircraft(mission)) {
+          if (!friendly.alive || friendly.retired) continue;
+          friendly.group.position.x = route.start[0] + dx * progress;
+          friendly.group.position.z = route.start[1] + dz * progress;
+        }
+        updateM11MissionThreat();
+        return m11State.progress >= progress - 0.01;
+      },
+      forceSeraM11PlayerFar: () => {
+        const mission = m11Mission();
+        const active = mission && m11HaloAircraft(mission).find((friendly) => friendly.alive && !friendly.retired);
+        if (gameState !== STATE_PLAYING || !active) return false;
+        const distance = Number(mission.m11EscortContract.proximity.warningDistance) + 700;
+        player.position.copy(active.group.position);
+        player.position.x += distance;
+        updateM11MissionThreat();
+        return m11State.proximityOutside;
+      },
+      forceSeraM11PlayerNear: () => {
+        const mission = m11Mission();
+        const active = mission && m11HaloAircraft(mission).find((friendly) => friendly.alive && !friendly.retired);
+        if (gameState !== STATE_PLAYING || !active) return false;
+        player.position.copy(active.group.position);
+        player.position.x += 250;
+        updateM11MissionThreat();
+        return !m11State.proximityOutside;
+      },
+      forceSeraM11Save: (count = 1) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let saved = 0;
+        for (const friendly of m11HaloAircraft(mission)) {
+          if (saved >= Math.max(0, Number(count) || 0)) break;
+          if (!friendly.alive || friendly.retired) continue;
+          retireFriendly(friendly);
+          saved += 1;
+        }
+        updateM11MissionThreat();
+        return saved;
+      },
+      forceSeraM11Lose: (count = 1) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let lost = 0;
+        for (const friendly of m11HaloAircraft(mission)) {
+          if (lost >= Math.max(0, Number(count) || 0)) break;
+          if (!friendly.alive || friendly.retired) continue;
+          destroyFriendly(friendly);
+          lost += 1;
+          if (gameState !== STATE_PLAYING) break;
+        }
+        if (gameState === STATE_PLAYING) updateM11MissionThreat();
+        return lost;
+      },
+      forceSeraM11Timeout: () => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        missionElapsed = Number(mission.m11EscortContract.timeLimit) || 330;
+        updateM11MissionThreat();
+        return gameState === STATE_GAMEOVER;
+      },
+      forceSeraM11ResolveOutcome: () => {
+        const mission = m11Mission();
+        if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
         return gameState === STATE_COMPLETE;
@@ -48943,6 +49093,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM08State(MISSIONS[currentMissionIndex]);
       resetM09State(MISSIONS[currentMissionIndex]);
       resetM10State(MISSIONS[currentMissionIndex]);
+      resetM11State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -52528,6 +52679,207 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const contract = mission && mission.m10Contract;
       if (!contract || !m10State.active || m10State.route !== contract.routes.bridge) return null;
       return contract.rank?.bridgeRouteCap || "A";
+    }
+
+    // SERA M11 RUNTIME CONTRACT
+    //
+    // FROZEN EYE is won by formation progress rather than by clearing the red
+    // board. The generic guard host still owns HP, enemy-only damage, losses,
+    // retirement, and the count HUD; this layer only decides whether enough
+    // HALO aircraft can still cross the operation line and keeps the ordinary
+    // all-target completion path from ending the escort early.
+    const m11State = {
+      active: false,
+      completed: false,
+      failed: false,
+      halfwayFired: false,
+      nearLineFired: false,
+      oneLostFired: false,
+      requiredSafeFired: false,
+      proximityOutside: false,
+      proximityWarnings: 0,
+      nextProximityWarningAt: 0,
+      progress: 0,
+      nearestHalo: null,
+      finalSaved: 0,
+      finalLost: 0
+    };
+
+    function m11Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m11EscortContract ? mission : null;
+    }
+
+    function resetM11State(mission) {
+      m11State.active = Boolean(mission && mission.m11EscortContract);
+      m11State.completed = false;
+      m11State.failed = false;
+      m11State.halfwayFired = false;
+      m11State.nearLineFired = false;
+      m11State.oneLostFired = false;
+      m11State.requiredSafeFired = false;
+      m11State.proximityOutside = false;
+      m11State.proximityWarnings = 0;
+      m11State.nextProximityWarningAt = 0;
+      m11State.progress = 0;
+      m11State.nearestHalo = null;
+      m11State.finalSaved = 0;
+      m11State.finalLost = 0;
+    }
+
+    function m11HaloAircraft(mission = m11Mission()) {
+      const contract = mission && mission.m11EscortContract;
+      if (!contract) return [];
+      const callsign = `${contract.callsign || "HALO"} `;
+      return friendlies.filter((friendly) => (
+        friendly.kind === "transport"
+        && friendly.type === contract.aircraft
+        && typeof friendly.label === "string"
+        && friendly.label.startsWith(callsign)
+      ));
+    }
+
+    function m11FormationProgress(mission = m11Mission()) {
+      const contract = mission && mission.m11EscortContract;
+      const route = contract && contract.route;
+      if (!route || !Array.isArray(route.start) || !Array.isArray(route.exit)) return 0;
+      const dx = Number(route.exit[0]) - Number(route.start[0]);
+      const dz = Number(route.exit[1]) - Number(route.start[1]);
+      const lengthSq = dx * dx + dz * dz;
+      if (lengthSq < 1) return 0;
+      const halo = m11HaloAircraft(mission);
+      if (halo.length === 0) return 0;
+      let furthest = 0;
+      for (const friendly of halo) {
+        if (friendly.retired) {
+          furthest = 1;
+          continue;
+        }
+        if (!friendly.alive) continue;
+        const px = friendly.group.position.x - Number(route.start[0]);
+        const pz = friendly.group.position.z - Number(route.start[1]);
+        furthest = Math.max(furthest, THREE.MathUtils.clamp((px * dx + pz * dz) / lengthSq, 0, 1));
+      }
+      return furthest;
+    }
+
+    function updateM11Proximity(mission) {
+      const contract = mission.m11EscortContract;
+      const proximity = contract.proximity || {};
+      const active = m11HaloAircraft(mission).filter((friendly) => friendly.alive && !friendly.retired);
+      if (active.length === 0) {
+        m11State.nearestHalo = null;
+        m11State.proximityOutside = false;
+        return;
+      }
+      let nearest = Infinity;
+      for (const friendly of active) {
+        nearest = Math.min(nearest, player.position.distanceTo(friendly.group.position));
+      }
+      m11State.nearestHalo = nearest;
+      const warningDistance = Math.max(500, Number(proximity.warningDistance) || 4300);
+      const clearDistance = Math.min(warningDistance, Math.max(250, Number(proximity.clearDistance) || 3000));
+      if (nearest <= clearDistance) {
+        m11State.proximityOutside = false;
+        return;
+      }
+      if (nearest < warningDistance) return;
+      const repeatDelay = Math.max(8, Number(proximity.repeatDelay) || 34);
+      if (!m11State.proximityOutside || missionElapsed >= m11State.nextProximityWarningAt) {
+        m11State.proximityOutside = true;
+        m11State.proximityWarnings += 1;
+        m11State.nextProximityWarningAt = missionElapsed + repeatDelay;
+        showBanner(proximity.banner || "RETURN TO ESCORT FORMATION", 1.8, "danger");
+        radioSay(
+          "command",
+          "RAVEN、HALO編隊から離れすぎている。赤TGTは攻撃隊を狙う——直ちに護衛位置へ戻れ。",
+          RADIO_PRIORITY.URGENT,
+          `m11-proximity-${m11State.proximityWarnings}`
+        );
+      }
+    }
+
+    function failM11Mission(mission, banner) {
+      if (!mission || !m11State.active || m11State.failed || m11State.completed) return false;
+      m11State.failed = true;
+      m11State.finalSaved = guardState.saved;
+      m11State.finalLost = guardState.lost;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      if (banner) showBanner(banner, 2.1, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function updateM11MissionThreat() {
+      const mission = m11Mission();
+      if (!mission || !m11State.active) return false;
+      if (m11State.failed || m11State.completed) return true;
+      const contract = mission.m11EscortContract;
+      const required = Math.max(1, Number(contract.requiredSaved) || 2);
+      const active = m11HaloAircraft(mission).filter((friendly) => friendly.alive && !friendly.retired).length;
+      const capable = guardState.saved + active;
+
+      m11State.progress = m11FormationProgress(mission);
+      updateM11Proximity(mission);
+      if (!m11State.halfwayFired && m11State.progress >= 0.5) {
+        m11State.halfwayFired = true;
+        fireFixedRadioEvent("haloHalfway");
+      }
+      if (!m11State.nearLineFired && m11State.progress >= 0.82) {
+        m11State.nearLineFired = true;
+        fireFixedRadioEvent("haloNearLine");
+      }
+      if (!m11State.oneLostFired && guardState.lost > 0) {
+        m11State.oneLostFired = true;
+        fireFixedRadioEvent("haloOneLost");
+      }
+
+      if (guardState.saved >= required) {
+        m11State.completed = true;
+        m11State.finalSaved = guardState.saved;
+        m11State.finalLost = guardState.lost;
+        if (!m11State.requiredSafeFired) {
+          m11State.requiredSafeFired = true;
+          fireFixedRadioEvent("haloRequiredSafe");
+        }
+        completeMission(true);
+        return true;
+      }
+      if (capable < required) {
+        failM11Mission(mission, "HALO REQUIRED STRENGTH LOST");
+        return true;
+      }
+      const limit = Number(contract.timeLimit) || 330;
+      if (missionElapsed >= limit) {
+        failM11Mission(mission, "OPERATION WINDOW CLOSED");
+        return true;
+      }
+
+      // Own the mission frame while unresolved. All M11 flights are scheduled
+      // concurrent waves, so updatePendingWaves above continues to deploy them;
+      // only the generic destroy-all resolver is skipped.
+      return true;
+    }
+
+    function m11ResultSnapshot(mission) {
+      const contract = mission && mission.m11EscortContract;
+      if (!contract || !m11State.active || (!m11State.completed && !m11State.failed)) return null;
+      const fields = contract.outcomes || {};
+      const saved = m11State.finalSaved || guardState.saved;
+      const lost = m11State.finalLost || guardState.lost;
+      return {
+        [fields.saved || "attackAircraftSaved"]: saved,
+        [fields.lost || "attackAircraftLost"]: lost,
+        [fields.allSafe || "allAttackAircraftSafe"]: saved >= Number(contract.total || 3) && lost === 0
+      };
+    }
+
+    function m11RankCap(mission) {
+      const contract = mission && mission.m11EscortContract;
+      if (!contract || !m11State.active) return null;
+      const saved = m11State.finalSaved || guardState.saved;
+      const allSafe = saved >= Number(contract.total || 3) && (m11State.finalLost || guardState.lost) === 0;
+      return allSafe ? null : "A";
     }
 
     function m03CommandFacility(mission = m03Mission()) {
@@ -59096,6 +59448,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM08MissionThreat()) return;
       if (updateM09MissionThreat(dt)) return;
       if (updateM10MissionThreat()) return;
+      if (updateM11MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
