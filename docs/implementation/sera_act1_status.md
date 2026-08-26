@@ -91,7 +91,7 @@ http://127.0.0.1:8000/index.html?seraDev=1
 ## 次の実装境界
 
 1. M04〜M06へ専用のclear / fail / Retry E2Eを追加する。
-2. canonical storyのM11を監査し、専用計画とread-only preflightを作る。
+2. v0.15で上書きされたM11高高度攻撃機護衛を監査し、専用計画とread-only preflightを作る。
 3. M11を専用branch/worktreeで縦切り実装する。
 4. M07〜M10のローカルE2EをCI workflowへ整理する。
 
