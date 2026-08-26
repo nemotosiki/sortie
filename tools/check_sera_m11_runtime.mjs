@@ -35,6 +35,25 @@ for (const token of [
   "forceSeraM11Timeout: () =>"
 ]) assert(host.includes(token), `host contract missing ${token}`);
 
+const transientWarningCss = host.match(
+  /#stallWarning,\s*#lockWarning,\s*#missileWarning,\s*#battleAreaWarning\s*\{([\s\S]*?)\n\s*\}/
+)?.[1] || "";
+const m11DirectiveCss = host.match(/#m11EwDirective\s*\{([\s\S]*?)\n\s*\}/)?.[1] || "";
+const missionBannerCss = host.match(/#missionBanner\s*\{([\s\S]*?)\n\s*\}/)?.[1] || "";
+assert(transientWarningCss.includes("background: transparent;")
+    && transientWarningCss.includes("border: 0;"),
+  "transient HUD warnings returned to opaque web-style panels");
+assert(m11DirectiveCss.includes("background: transparent;")
+    && m11DirectiveCss.includes("border: 0;"),
+  "M11 directive returned to an opaque web-style panel");
+assert(missionBannerCss.includes("background: transparent;")
+    && missionBannerCss.includes("border: 0;"),
+  "mission banner returned to an opaque web-style panel");
+assert(host.includes("#m11EwDirective::before")
+    && host.includes("#battleAreaWarning::after")
+    && host.includes("#missionBanner::after"),
+  "transparent warning captions are missing HUD corner rails");
+
 assert(host.includes("const capable = guardState.saved + active;"),
   "runtime does not fail as soon as two HALO survivors become impossible");
 assert(host.includes("if (m11State.baseRemaining === 0 && baseTargets.length > 0)"),

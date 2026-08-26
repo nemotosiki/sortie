@@ -1103,19 +1103,34 @@
       position: absolute;
       left: 50%;
       top: 27%;
-      min-width: min(560px, 76vw);
+      max-width: 76vw;
       transform: translate(-50%, -12px);
-      padding: 11px 24px;
+      padding: 8px 18px;
       text-align: center;
-      border-top: 1px solid var(--hud-soft);
-      border-bottom: 1px solid var(--hud-soft);
-      background: linear-gradient(90deg, transparent, rgba(2, 18, 8, 0.8) 18%, rgba(2, 18, 8, 0.8) 82%, transparent);
+      border: 0;
+      background: transparent;
       opacity: 0;
-      transition: opacity 160ms ease, transform 160ms ease;
+      transition: transform 160ms ease;
       font-size: clamp(13px, 1.4vw, 18px);
       font-weight: 800;
       letter-spacing: 0.25em;
+      white-space: nowrap;
+      text-shadow: 0 0 9px currentColor, 0 1px 2px rgba(0, 14, 5, 0.9);
     }
+
+    #missionBanner::before,
+    #missionBanner::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: clamp(30px, 5vw, 72px);
+      height: 1px;
+      background: currentColor;
+      box-shadow: 0 0 5px currentColor;
+      opacity: 0.58;
+    }
+    #missionBanner::before { right: 100%; }
+    #missionBanner::after { left: 100%; }
 
     #missionBanner.visible {
       opacity: 1;
@@ -1348,14 +1363,51 @@
       left: 50%;
       transform: translateX(-50%);
       padding: 7px 15px;
-      border: 1px solid transparent;
-      background: rgba(0, 0, 0, 0.45);
+      border: 0;
+      background: transparent;
       opacity: 0;
       font-size: 10px;
       font-weight: 900;
       letter-spacing: 0.2em;
       white-space: nowrap;
-      transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease;
+      transition: transform 120ms ease, color 120ms ease;
+    }
+
+    /* Canopy symbology, not a web panel: short corner rails keep the caption
+       legible against sky/terrain without putting an opaque black card over
+       the flight picture. Every transient flight warning shares this shape. */
+    #stallWarning::before,
+    #stallWarning::after,
+    #lockWarning::before,
+    #lockWarning::after,
+    #missileWarning::before,
+    #missileWarning::after,
+    #battleAreaWarning::before,
+    #battleAreaWarning::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      width: 9px;
+      opacity: 0.78;
+      border-top: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+    }
+
+    #stallWarning::before,
+    #lockWarning::before,
+    #missileWarning::before,
+    #battleAreaWarning::before {
+      left: 0;
+      border-left: 1px solid currentColor;
+    }
+
+    #stallWarning::after,
+    #lockWarning::after,
+    #missileWarning::after,
+    #battleAreaWarning::after {
+      right: 0;
+      border-right: 1px solid currentColor;
     }
 
     /* FROZEN EYE's AC-style mission directive. It stays above the reticle and
@@ -1364,40 +1416,50 @@
       position: absolute;
       left: 50%;
       top: 14%;
-      min-width: 300px;
+      min-width: 260px;
       transform: translate(-50%, -6px);
-      padding: 7px 16px 6px;
-      border: 1px solid rgba(83, 255, 92, 0.58);
-      background: rgba(0, 17, 7, 0.58);
+      padding: 7px 18px 6px;
+      border: 0;
+      background: transparent;
       color: #71ff75;
       text-align: center;
       font-family: "Courier New", "Lucida Console", monospace;
       font-weight: 900;
       letter-spacing: 0.16em;
+      text-shadow: 0 0 7px rgba(83, 255, 92, 0.82), 0 1px 1px rgba(0, 20, 8, 0.9);
       opacity: 0;
       pointer-events: none;
-      transition: opacity 120ms ease, transform 120ms ease, color 120ms ease,
-        border-color 120ms ease;
+      transition: transform 120ms ease;
     }
+
+    #m11EwDirective::before,
+    #m11EwDirective::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      width: 12px;
+      opacity: 0.78;
+      border-top: 1px solid currentColor;
+      border-bottom: 1px solid currentColor;
+    }
+    #m11EwDirective::before { left: 0; border-left: 1px solid currentColor; }
+    #m11EwDirective::after { right: 0; border-right: 1px solid currentColor; }
 
     #m11EwDirective.visible { opacity: 1; transform: translate(-50%, 0); }
     #m11EwDirective strong { display: block; font-size: 11px; }
     #m11EwDirective span { display: block; margin-top: 3px; font-size: 9px; }
     #m11EwDirective.warning {
       color: #ffc85c;
-      border-color: rgba(255, 200, 92, 0.78);
-      background: rgba(36, 19, 0, 0.62);
-      animation: alertPulse 0.8s ease-in-out infinite alternate;
+      text-shadow: 0 0 9px rgba(255, 190, 56, 0.9), 0 1px 1px rgba(25, 12, 0, 0.92);
     }
     #m11EwDirective.danger {
       color: #ff5962;
-      border-color: rgba(255, 89, 98, 0.9);
-      background: rgba(35, 0, 4, 0.68);
-      animation: alertPulse 0.42s ease-in-out infinite alternate;
+      text-shadow: 0 0 10px rgba(255, 50, 66, 0.95), 0 1px 1px rgba(28, 0, 4, 0.92);
     }
     #m11EwDirective.safe {
       color: #8cff90;
-      border-color: rgba(140, 255, 144, 0.82);
+      text-shadow: 0 0 8px rgba(100, 255, 112, 0.82), 0 1px 1px rgba(0, 20, 8, 0.9);
     }
 
     #stallWarning {
@@ -1409,13 +1471,11 @@
     #stallWarning.active {
       opacity: 1;
       transform: translateX(-50%) scale(1.03);
-      border-color: rgba(255, 72, 82, 0.7);
       animation: alertPulse 0.42s ease-in-out infinite alternate;
     }
 
     #stallWarning.caution {
       color: #ffd45a;
-      border-color: rgba(255, 212, 90, 0.55);
       text-shadow: 0 0 10px rgba(255, 190, 56, 0.85);
       animation-duration: 0.85s;
     }
@@ -1427,16 +1487,12 @@
       top: 38%;
       padding: 5px 13px;
       color: #ff6670;
-      border-color: rgba(255, 102, 112, 0.55);
       text-shadow: 0 0 9px rgba(255, 58, 72, 0.95);
-      box-shadow: 0 0 0 2px rgba(255, 74, 85, 0.28);
     }
 
     #lockWarning.active {
       opacity: 1;
       transform: translateX(-50%) scale(1.03);
-      border-color: rgba(255, 102, 112, 0.9);
-      box-shadow: 0 0 0 2px rgba(255, 74, 85, 0.42), 0 0 10px rgba(255, 42, 58, 0.35);
       animation: alertPulse 0.52s ease-in-out infinite alternate;
     }
 
@@ -1451,7 +1507,6 @@
 
     #missileWarning.active {
       opacity: 1;
-      border-color: rgba(255, 69, 82, 0.9);
       animation: alertPulse 0.34s ease-in-out infinite alternate;
     }
 
@@ -1505,7 +1560,6 @@
 
     #battleAreaWarning.active {
       opacity: 1;
-      border-color: rgba(255, 212, 90, 0.75);
       animation: alertPulse 0.5s ease-in-out infinite alternate;
     }
 
@@ -1513,7 +1567,6 @@
        to the same red the stall and missile alerts use. */
     #battleAreaWarning.critical {
       color: #ff4d58;
-      border-color: rgba(255, 72, 82, 0.8);
       text-shadow: 0 0 12px rgba(255, 38, 54, 0.95);
       animation-duration: 0.3s;
     }
@@ -42421,7 +42474,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         const baseMark = "m11BaseNode";
         const hunterTag = "m11HaloHunter";
-        const operationAltitude = 9144;
+        // RAVEN enters at the authored 30,000 ft combat band. HALO remains much
+        // closer to the soft ceiling, so the MiG-31s hunting it have a visible
+        // reason to stay high instead of diving down into an ordinary dogfight.
+        const playerStartAltitude = 9144;
+        const operationAltitude = 10500;
         const safeAltitude = 9000;
         const interceptorAltitude = 10650;
         const baseX = anchors.weatherStation[0];
@@ -42482,7 +42539,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           jp: "HALO電子支援隊の妨害窓を使い、敵基地の射撃管制網と全施設を無力化せよ。",
           act: 2,
           storyNo: 11,
-          story: "WAR DAY 121。氷海岸上空、高度三万フィート。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\n妨害の切れ目には基地SAMの誘導網が復活する。ROOKは白い海岸へ降り、次の切れ目までにFROZEN EYEを潰す。",
+          story: "WAR DAY 121。氷海岸上空、高度一万五百メートル。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
           epilogue: [
             "射撃管制レーダーとベースステーションは沈黙し、氷海岸のミサイル網は目を失った。",
             "HALOの妨害記録には、基地が最後に空を見た十八秒が残されていた。",
@@ -42491,7 +42548,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           friendlies: {
             playerStart: {
               x: anchors.playerStart[0],
-              y: operationAltitude,
+              y: playerStartAltitude,
               z: anchors.playerStart[1],
               facing: { x: baseX, z: baseZ }
             },
@@ -42565,7 +42622,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ],
           m11EscortContract,
           fixedRadio: [
-            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、HALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
+            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、上空一万五百のHALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
             { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
             { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
             { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
@@ -42583,7 +42640,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.65, y: 0.18 },
           battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
           battleRadius: 19000,
-          briefing: "VER ICE COAST上空、高度9,144mでHALO電子支援隊と合流し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙う残存航空戦力で、撃墜は二次目標となる。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+          briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙って10,650m帯に張り付く残存航空戦力で、撃墜は二次目標となる。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
         };
 
         ctx.addMission(mission, { after: "sera-m10" });
@@ -53641,7 +53698,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ) {
         m11State.jammingWarningFired = true;
         fireFixedRadioEvent("haloJammingWarning");
-        showBanner("CLIMB ABOVE ALT 9000", 2.0, "warn");
       }
 
       if (!m11State.jammingActive && m11State.playerSafe) {
@@ -62401,33 +62457,39 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const mission = MISSIONS[currentMissionIndex];
       const contract = mission && mission.m11EscortContract;
       const panel = ui.m11EwDirective;
-      panel.classList.remove("visible", "warning", "danger", "safe");
-      if (gameState !== STATE_PLAYING || !m11State.active || !contract) return;
+      if (gameState !== STATE_PLAYING || !m11State.active || !contract) {
+        panel.classList.remove("visible", "warning", "danger", "safe");
+        return;
+      }
 
       const title = panel.querySelector("strong");
       const instruction = panel.querySelector("span");
       const seconds = Math.max(0, Math.ceil(m11State.jammingRemaining));
       const warningLead = Math.max(1, Number(contract.electronicWarfare?.warningLead) || 35);
+      let tone = "";
       if (m11State.fireControlDisabled) {
         title.textContent = "FIRE CONTROL RADAR DESTROYED";
         instruction.textContent = "DESCEND & DESTROY REMAINING BASE TGT";
-        panel.classList.add("safe");
+        tone = "safe";
       } else if (m11State.jammingActive && m11State.jammingRemaining > warningLead) {
         title.textContent = `JAMMING ACTIVE · ${seconds}S`;
         instruction.textContent = "DESCEND & STRIKE BASE TGT";
       } else if (m11State.jammingActive) {
         title.textContent = `JAMMING ENDS · ${seconds}S`;
         instruction.textContent = `CLIMB ABOVE ALT ${Math.round(m11State.safeAltitude)}`;
-        panel.classList.add("warning");
+        tone = "warning";
       } else if (m11State.playerSafe) {
         title.textContent = `SAFE ALTITUDE · ${Math.round(player.position.y)}M`;
         instruction.textContent = `HOLD ABOVE ${Math.round(m11State.safeAltitude)} · JAMMING IN ${seconds}S`;
-        panel.classList.add("safe");
+        tone = "safe";
       } else {
         title.textContent = `FIRE CONTROL ONLINE · ${seconds}S`;
         instruction.textContent = `CLIMB ABOVE ALT ${Math.round(m11State.safeAltitude)}`;
-        panel.classList.add("danger");
+        tone = "danger";
       }
+      panel.classList.toggle("warning", tone === "warning");
+      panel.classList.toggle("danger", tone === "danger");
+      panel.classList.toggle("safe", tone === "safe");
       panel.classList.add("visible");
     }
 

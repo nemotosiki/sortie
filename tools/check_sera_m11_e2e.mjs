@@ -107,7 +107,7 @@ try {
     assert(probe.worldKey === "verIceCoast", "M11 did not create Ver Ice Coast");
     assert(probe.halo.length === 3 && probe.halo.every((aircraft) => (
       aircraft.type === "jammer" && aircraft.alive && !aircraft.retired
-        && aircraft.position[1] >= 9120 && aircraft.position[1] <= 9170
+        && aircraft.position[1] >= 10470 && aircraft.position[1] <= 10530
     )), "HALO electronic-support formation is malformed", probe.halo);
     assert(probe.guard.active && probe.guard.total === 3 && probe.guard.lost === 0,
       "HALO guard did not arm cleanly", probe.guard);
@@ -116,6 +116,10 @@ try {
     assert(probe.contacts.filter((contact) => !contact.tgt && contact.type === "mig31").length === 2
         && probe.pending.length === 1,
       "opening MiG-31 pair/queue is malformed", probe);
+    assert(probe.contacts.filter((contact) => contact.type === "mig31").every((contact) => (
+      contact.hunt === "air" && contact.charge?.startsWith("HALO")
+        && contact.position[1] >= 10400
+    )), "MiG-31 did not remain in HALO's high-altitude band", probe.contacts);
     assert(probe.recoveryGauge.visible && probe.recoveryGauge.label === "HALO TOTAL HP"
         && probe.recoveryGauge.value === "1176/1176"
         && probe.recoveryGauge.className.includes("formation"),
@@ -123,8 +127,6 @@ try {
     assert(probe.directive.visible && probe.directive.title.startsWith("JAMMING ACTIVE")
         && probe.directive.instruction.includes("DESCEND"),
       "opening AC-style EW directive is wrong", probe.directive);
-    await page.screenshot({ path: screenshotPath, type: "png" });
-
     assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
       "HALO damage probe failed");
     probe = await page.evaluate(() => window.__game.seraM11Probe());
@@ -136,6 +138,41 @@ try {
     probe = await page.evaluate(() => window.__game.seraM11Probe());
     assert(probe.directive.className.includes("warning") && probe.directive.instruction.includes("9000"),
       "HUD did not order a climb before jamming stopped", probe.directive);
+    await page.waitForTimeout(220);
+    const warningVisual = await page.evaluate(() => {
+      const sample = (element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return {
+          visible: element.classList.contains("visible") || element.classList.contains("active"),
+          className: element.className,
+          opacity: Number(style.opacity),
+          color: style.color,
+          background: style.backgroundColor,
+          borderTop: style.borderTopWidth,
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+        };
+      };
+      return {
+        directive: sample(document.getElementById("m11EwDirective")),
+        altitude: sample(document.getElementById("stallWarning")),
+        banner: sample(document.getElementById("missionBanner"))
+      };
+    });
+    assert(warningVisual.directive.opacity >= 0.95
+        && warningVisual.directive.color === "rgb(255, 200, 92)"
+        && warningVisual.directive.background === "rgba(0, 0, 0, 0)"
+        && warningVisual.directive.borderTop === "0px",
+      "M11 warning is not opaque transparent HUD symbology", warningVisual.directive);
+    assert(warningVisual.altitude.opacity >= 0.8
+        && warningVisual.altitude.background === "rgba(0, 0, 0, 0)"
+        && warningVisual.altitude.borderTop === "0px",
+      "high-altitude caution retained a web-style panel", warningVisual.altitude);
+    assert((!warningVisual.banner.visible || warningVisual.banner.opacity >= 0.8)
+        && warningVisual.banner.background === "rgba(0, 0, 0, 0)"
+        && warningVisual.banner.borderTop === "0px",
+      "transient mission banner retained a web-style panel", warningVisual.banner);
+    await page.screenshot({ path: screenshotPath, type: "png" });
 
     const online = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(36));
     assert(!online.active && online.phase === "radar-online", "radar-online window did not start", online);

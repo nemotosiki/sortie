@@ -41,7 +41,7 @@ their real absolute ceiling:
 | Boundary | Altitude | Game meaning |
 |---|---:|---|
 | thin-air onset | 6,500 m / 21,325 ft | penalties begin smoothly; existing low/medium missions remain unchanged |
-| combat/service ceiling | 9,144 m / 30,000 ft | M11 operating band; full density-derived stall-speed penalty, materially reduced manoeuvre/thrust margin |
+| combat/service ceiling | 9,144 m / 30,000 ft | M11 player ingress/retreat band; full density-derived stall-speed penalty, materially reduced manoeuvre/thrust margin |
 | soft absolute ceiling | 11,000 m / 36,089 ft | positive climb authority reaches zero and ceiling sink prevents sustained climb; no invisible wall |
 
 At and above the onset, the shared player/enemy fixed-wing envelope must apply:
@@ -57,7 +57,10 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
 ## Mission contract
 
-- HALO 1–3 fly IL-22PP electronic-support aircraft at 9,144 m. Their story and
+- HALO 1–3 fly IL-22PP electronic-support aircraft at 10,500 m, close to the
+  11,000 m soft ceiling. RAVEN and LARK enter below them at 9,144 m. HALO's
+  altitude is what keeps its MiG-31 attackers in the difficult high-altitude
+  band instead of bringing the fight down to the player. Their story and
   gameplay purpose is to jam the enemy base's missile fire-control radars.
 - The top-right escort panel displays one green bar for the sum of all three
   aircraft's current HP over their combined maximum HP. Destroyed aircraft
@@ -81,7 +84,7 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
   pause, hold above 9,000 m, then descend when jamming resumes.
 - Destroying every fire-control radar permanently removes the enhanced phase,
   so target order can replace repeated altitude cycles with an early radar kill.
-- The player starts with HALO at the 30,000 ft band.
+- The player starts at the 30,000 ft band, below HALO's 10,500 m orbit.
 - Four MiG-31s attack HALO in two delayed pairs from approximately 10,650 m.
 - MiG-31s are white optional contacts, because destroying them is not the
   mission objective. They retain a high-altitude attack floor and long-range

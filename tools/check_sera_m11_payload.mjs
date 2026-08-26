@@ -14,7 +14,8 @@ const assert = (condition, message) => {
 assert(!source.includes("\r"), "payload must be LF-only");
 for (const token of [
   'key: "sera-m11"', 'title: "FROZEN EYE"', 'world: "verIceCoast"',
-  'aircraft: "jammer"', 'spw: "aam4"', 'operationAltitude = 9144',
+  'aircraft: "jammer"', 'spw: "aam4"', 'playerStartAltitude = 9144',
+  'operationAltitude = 10500',
   'safeAltitude = 9000', 'interceptorAltitude = 10650', 'jamDuration: 100',
   'radarOnlineDuration: 18', 'warningLead: 35', 'enhancedTurnRateDeg: 75',
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
@@ -68,7 +69,9 @@ try {
   assert(mission.friendlies.transportGroups.length === 1 && halo.aircraft === "jammer"
       && halo.count === 3 && halo.vulnerable && halo.holdAtExit,
     "HALO electronic-support formation is malformed");
-  assert(halo.altitude === 9144 && halo.hp === 392 && halo.speed === 180,
+  assert(mission.friendlies.playerStart.y === 9144,
+    "RAVEN/LARK must enter below the HALO/MiG-31 high-altitude fight");
+  assert(halo.altitude === 10500 && halo.hp === 392 && halo.speed === 180,
     "HALO altitude/HP/speed changed");
   assert(mission.friendlies.guard.readout === "integrity", "HALO aggregate integrity readout missing");
 
@@ -90,15 +93,18 @@ try {
   const contract = mission.m11EscortContract;
   assert(contract.total === 3 && contract.requiredSaved === 2 && contract.timeLimit === 330,
     "HALO survival contract changed");
-  assert(contract.operationAltitude === 9144 && contract.safeAltitude === 9000
+  assert(contract.operationAltitude === 10500 && contract.safeAltitude === 9000
       && contract.interceptorAltitude === 10650,
     "mission altitude geometry changed");
   assert(contract.base.total === 10 && contract.rank.secondaryKillsForS === 4,
     "base/secondary result contract changed");
   assert(contract.electronicWarfare.enhancedTurnRateDeg <= 75,
     "M11 SAM boost bypasses the global turn ceiling");
-  assert(10650 - 9144 > 1200 && 10650 - 9144 < 2000,
+  assert(10650 - mission.friendlies.playerStart.y > 1200
+      && 10650 - mission.friendlies.playerStart.y < 2000,
     "MiG-31 vertical separation must exceed MSL and fit 4AAM range");
+  assert(Math.abs(10650 - halo.altitude) <= 200,
+    "MiG-31 must remain in HALO's high-altitude band while hunting it");
 
   console.log("check_sera_m11_payload: PASS");
   console.log("  HALO EW x3 / base TGT x10 / 100s jam + 18s online / white MiG-31 x4");

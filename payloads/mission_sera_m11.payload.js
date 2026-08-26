@@ -40,7 +40,11 @@ export default function register(ctx) {
 
   const baseMark = "m11BaseNode";
   const hunterTag = "m11HaloHunter";
-  const operationAltitude = 9144;
+  // RAVEN enters at the authored 30,000 ft combat band. HALO remains much
+  // closer to the soft ceiling, so the MiG-31s hunting it have a visible
+  // reason to stay high instead of diving down into an ordinary dogfight.
+  const playerStartAltitude = 9144;
+  const operationAltitude = 10500;
   const safeAltitude = 9000;
   const interceptorAltitude = 10650;
   const baseX = anchors.weatherStation[0];
@@ -101,7 +105,7 @@ export default function register(ctx) {
     jp: "HALO電子支援隊の妨害窓を使い、敵基地の射撃管制網と全施設を無力化せよ。",
     act: 2,
     storyNo: 11,
-    story: "WAR DAY 121。氷海岸上空、高度三万フィート。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\n妨害の切れ目には基地SAMの誘導網が復活する。ROOKは白い海岸へ降り、次の切れ目までにFROZEN EYEを潰す。",
+    story: "WAR DAY 121。氷海岸上空、高度一万五百メートル。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
     epilogue: [
       "射撃管制レーダーとベースステーションは沈黙し、氷海岸のミサイル網は目を失った。",
       "HALOの妨害記録には、基地が最後に空を見た十八秒が残されていた。",
@@ -110,7 +114,7 @@ export default function register(ctx) {
     friendlies: {
       playerStart: {
         x: anchors.playerStart[0],
-        y: operationAltitude,
+        y: playerStartAltitude,
         z: anchors.playerStart[1],
         facing: { x: baseX, z: baseZ }
       },
@@ -184,7 +188,7 @@ export default function register(ctx) {
     ],
     m11EscortContract,
     fixedRadio: [
-      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、HALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
+      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、上空一万五百のHALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
       { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
       { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
       { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
@@ -202,7 +206,7 @@ export default function register(ctx) {
     map: { x: 0.65, y: 0.18 },
     battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
     battleRadius: 19000,
-    briefing: "VER ICE COAST上空、高度9,144mでHALO電子支援隊と合流し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙う残存航空戦力で、撃墜は二次目標となる。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙って10,650m帯に張り付く残存航空戦力で、撃墜は二次目標となる。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
   };
 
   ctx.addMission(mission, { after: "sera-m10" });
