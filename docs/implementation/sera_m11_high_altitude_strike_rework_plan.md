@@ -142,5 +142,5 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
   one-loss clear, two-loss fail, Retry, and timeout.
 - [x] Synchronise the inlined map/mission payloads into `index.html`.
 - [x] Inspect Chrome console/page errors and gameplay screenshot.
-- [ ] Commit/push verified checkpoints and confirm local/remote SHA.
-- [ ] Keep the single persistent play server on port 8340 pointed at this worktree.
+- [x] Commit/push verified checkpoints and confirm local/remote SHA.
+- [x] Keep the single persistent play server on port 8340 pointed at this worktree.
