@@ -47996,9 +47996,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function visibleTargetCycleEntry(enemy) {
       // Triangle/Tab uses the actual camera viewport, not the HUD's loose
       // draw margin. A strict 1.0 NDC limit excludes contacts outside the image.
-      const point = enemyAimPoint(enemy, tmpHudWorld);
-      tmpV6.copy(point).applyMatrix4(camera.matrixWorldInverse);
-      tmpV7.copy(point).project(camera);
+      // Keep this projection identical to updateEnemyHudMarkers. The previous
+      // implementation called an enemyAimPoint helper that never existed,
+      // throwing on every Triangle/Tab press and leaving target input stuck.
+      tmpV6.copy(enemy.group.position).applyMatrix4(camera.matrixWorldInverse);
+      tmpV7.copy(enemy.group.position).project(camera);
       if (!isHudProjectionVisible(tmpV7, tmpV6, 1.0)) return null;
 
       return {
