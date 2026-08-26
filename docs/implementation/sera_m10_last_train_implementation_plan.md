@@ -127,12 +127,12 @@ civilian reconstruction dialogue.
 
 ### Checkpoint 4 — runtime choice
 
-- [ ] Add mission-scoped bridge/precision state machine
-- [ ] Stop/resolve the train when the bridge route is chosen
-- [ ] Track car escapes and deterministic success/failure
-- [ ] Add result snapshot and fixed-radio events
-- [ ] Add host contract test
-- [ ] Commit runtime independently
+- [x] Add mission-scoped bridge/precision state machine
+- [x] Stop/resolve the train when the bridge route is chosen
+- [x] Track car escapes and deterministic success/failure
+- [x] Add result snapshot and fixed-radio events
+- [x] Add host contract test
+- [x] Commit runtime independently
 
 ### Checkpoint 5 — E2E and integration
 

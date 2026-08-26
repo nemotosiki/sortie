@@ -41614,6 +41614,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const m09Cap = m09RankCap(mission);
       if (m09Cap && RANK_ORDER[rank] > RANK_ORDER[m09Cap]) rank = m09Cap;
 
+      const m10Cap = m10RankCap(mission);
+      if (m10Cap && RANK_ORDER[rank] > RANK_ORDER[m10Cap]) rank = m10Cap;
+
       // A sortie that had to be restarted from a checkpoint is not a flawless
       // sortie: being shot down happened, and an S that reads as "nothing went
       // wrong" would be claiming otherwise. It is only a cap, though - being
@@ -41634,6 +41637,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         || (m03RankCapped && rank === "A")
         || (m04Cap && rank === m04Cap)
         || Boolean(m08Rank)
+        || (m10Cap && rank === m10Cap)
         || (checkpoint.used && rank === "A");
       const nextRankDelta = nextThreshold === null || capped || max <= 0
         ? null
@@ -41770,6 +41774,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m03Result) Object.assign(entry, m03Result);
       const m08Result = m08ResultSnapshot(mission);
       if (m08Result) Object.assign(entry, m08Result);
+      const m10Result = m10ResultSnapshot(mission);
+      if (m10Result) Object.assign(entry, m10Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -43548,6 +43554,81 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forceSeraM09ResolveOutcome: () => {
         const mission = MISSIONS[currentMissionIndex];
         if (!mission || mission.key !== "sera-m09" || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM10Probe: () => {
+        const mission = m10Mission();
+        if (!mission || mission.key !== "sera-m10") return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          outcomePending: outcomePending.active,
+          kills,
+          totalTargets: mission.totalTargets,
+          m10: {
+            active: m10State.active,
+            route: m10State.route,
+            bridgeDestroyed: m10State.bridgeDestroyed,
+            powerCarsEscaped: m10State.powerCarsEscaped,
+            materialCarsEscaped: m10State.materialCarsEscaped,
+            trainCarsDestroyed: m10State.trainCarsDestroyed,
+            precisionTargetsDestroyed: m10State.precisionTargetsDestroyed,
+            civilianRailDisruption: m10State.civilianRailDisruption,
+            escapedIds: [...m10State.escapedIds],
+            failed: m10State.failed
+          },
+          bridgeVisuals: m10BridgeObjects(mission).map((object) => ({
+            name: object.name,
+            visible: object.visible
+          })),
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            mark: enemy.mark || null,
+            speed: Number(enemy.speed) || 0,
+            routeDistance: Number(enemy.routeDistance) || 0,
+            routeEnd: enemy.route && enemy.route.length ? enemy.route[enemy.route.length - 1].d : null
+          })),
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM10BridgeRoute: () => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        const bridge = enemies.find((enemy) => enemy.alive && enemy.mark === mission.m10Contract.bridge.mark);
+        if (!bridge) return false;
+        damageEnemy(bridge, bridge.hp + 1, true, false);
+        return outcomePending.active && m10State.route === mission.m10Contract.routes.bridge;
+      },
+      forceSeraM10PrecisionRoute: () => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        const targets = enemies.filter((enemy) => (
+          enemy.alive && enemy.mark === mission.m10Contract.precision.mark
+        ));
+        for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+        return outcomePending.active && m10State.route === mission.m10Contract.routes.precision;
+      },
+      forceSeraM10CriticalEscape: () => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        const target = enemies.find((enemy) => (
+          enemy.alive && enemy.mark === mission.m10Contract.precision.mark && enemy.route?.length
+        ));
+        if (!target) return false;
+        target.routeDistance = target.route[target.route.length - 1].d;
+        placeOnRoute(target, true);
+        return handleM10GroundRouteEnd(target) && gameState === STATE_GAMEOVER;
+      },
+      forceSeraM10ResolveOutcome: () => {
+        const mission = m10Mission();
+        if (!mission || mission.key !== "sera-m10" || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
         return gameState === STATE_COMPLETE;
@@ -48145,6 +48226,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM06State(MISSIONS[currentMissionIndex]);
       resetM08State(MISSIONS[currentMissionIndex]);
       resetM09State(MISSIONS[currentMissionIndex]);
+      resetM10State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -51520,6 +51602,170 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (alive < (Number(contract.rank.aFriendlyArmorAlive) || 3)) return "B";
       if (alive < (Number(contract.rank.sFriendlyArmorAlive) || 4)) return "A";
       return null;
+    }
+
+    // SERA M10 RUNTIME CONTRACT
+    //
+    // Train movement, independent hitboxes, target IFF, and scoring stay in the
+    // generic ground host. M10 owns only the choice made on top of that host:
+    // drop the bridge and stop every car, or kill the three red cars while
+    // allowing surviving white cargo to pass into the Arad transfer line.
+    const m10State = {
+      active: false,
+      route: null,
+      bridgeDestroyed: false,
+      powerCarsEscaped: 0,
+      materialCarsEscaped: 0,
+      trainCarsDestroyed: 0,
+      precisionTargetsDestroyed: 0,
+      civilianRailDisruption: false,
+      escapedIds: new Set(),
+      failed: false
+    };
+
+    function m10Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m10Contract ? mission : null;
+    }
+
+    function m10BridgeObjects(mission = m10Mission()) {
+      const names = new Set(mission?.m10Contract?.bridge?.decoratorNames || []);
+      if (names.size === 0 || !world || !Array.isArray(world.roots)) return [];
+      const found = [];
+      for (const root of world.roots) {
+        root.traverse((object) => {
+          if (names.has(object.name)) found.push(object);
+        });
+      }
+      return found;
+    }
+
+    function setM10BridgeDestroyedVisual(mission, destroyed) {
+      const objects = m10BridgeObjects(mission);
+      for (const object of objects) object.visible = !destroyed;
+      return objects.length;
+    }
+
+    function resetM10State(mission) {
+      m10State.active = Boolean(mission && mission.m10Contract);
+      m10State.route = null;
+      m10State.bridgeDestroyed = false;
+      m10State.powerCarsEscaped = 0;
+      m10State.materialCarsEscaped = 0;
+      m10State.trainCarsDestroyed = 0;
+      m10State.precisionTargetsDestroyed = 0;
+      m10State.civilianRailDisruption = false;
+      m10State.escapedIds = new Set();
+      m10State.failed = false;
+      if (m10State.active) setM10BridgeDestroyedVisual(mission, false);
+    }
+
+    function m10TrainIds(contract) {
+      return [
+        ...(contract?.precision?.targetIds || []),
+        ...(contract?.cargo?.powerIds || []),
+        ...(contract?.cargo?.materialIds || [])
+      ];
+    }
+
+    function stopM10Train(mission = m10Mission()) {
+      const ids = new Set(m10TrainIds(mission?.m10Contract));
+      let stopped = 0;
+      for (const enemy of enemies) {
+        if (!enemy.alive || !ids.has(enemy.id) || !enemy.route) continue;
+        enemy.speed = 0;
+        enemy.targetSpeed = 0;
+        stopped += 1;
+      }
+      return stopped;
+    }
+
+    function handleM10GroundDestroyed(enemy) {
+      const mission = m10Mission();
+      const contract = mission && mission.m10Contract;
+      if (!mission || !contract || !m10State.active || !enemy || !enemy.ground) return null;
+
+      if (m10TrainIds(contract).includes(enemy.id)) m10State.trainCarsDestroyed += 1;
+      if (enemy.mark === contract.precision.mark) {
+        m10State.precisionTargetsDestroyed += 1;
+        if (m10State.precisionTargetsDestroyed >= Math.max(1, Number(contract.precision.required) || 3)) {
+          m10State.route = contract.routes.precision;
+          fireFixedRadioEvent("precisionRoute");
+          stopM10Train(mission);
+          return { complete: true, route: m10State.route };
+        }
+      }
+
+      if (enemy.mark === contract.bridge.mark) {
+        m10State.route = contract.routes.bridge;
+        m10State.bridgeDestroyed = true;
+        m10State.civilianRailDisruption = true;
+        setM10BridgeDestroyedVisual(mission, true);
+        stopM10Train(mission);
+        fireFixedRadioEvent("bridgeDestroyed");
+        return { complete: true, route: m10State.route };
+      }
+      return null;
+    }
+
+    function handleM10GroundRouteEnd(enemy) {
+      const mission = m10Mission();
+      const contract = mission && mission.m10Contract;
+      if (!mission || !contract || !m10State.active || !enemy || !enemy.alive) return false;
+      if (m10State.escapedIds.has(enemy.id)) return true;
+      const isPrecision = enemy.mark === contract.precision.mark;
+      const isPower = enemy.mark === contract.cargo.powerMark;
+      const isMaterial = enemy.mark === contract.cargo.materialMark;
+      if (!isPrecision && !isPower && !isMaterial) return false;
+
+      m10State.escapedIds.add(enemy.id);
+      enemy.speed = 0;
+      enemy.targetSpeed = 0;
+      enemy.alive = false;
+      enemy.hitbox.visible = false;
+      enemy.group.visible = false;
+      enemy.deadTimer = 0;
+      if (lock.targetId === enemy.id) resetLock();
+      if (preferredTargetId === enemy.id) preferredTargetId = null;
+
+      if (isPower) {
+        m10State.powerCarsEscaped += 1;
+        fireFixedRadioEvent("trainPowerEscaped");
+        return true;
+      }
+      if (isMaterial) {
+        m10State.materialCarsEscaped += 1;
+        fireFixedRadioEvent("trainMaterialEscaped");
+        return true;
+      }
+
+      m10State.failed = true;
+      fireFixedRadioEvent(contract.escape.failEvent || "trainCriticalEscaped");
+      missionFailureRadioOverride = mission.failureRadio || null;
+      showBanner("ARMOURED TRAIN BROKE THROUGH", 2.0, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function m10ResultSnapshot(mission) {
+      const contract = mission && mission.m10Contract;
+      if (!contract || !m10State.active || !m10State.route) return null;
+      const fields = contract.outcomes || {};
+      return {
+        [fields.route || "route"]: m10State.route,
+        [fields.bridgeDestroyed || "bridgeDestroyed"]: Boolean(m10State.bridgeDestroyed),
+        [fields.powerCarsEscaped || "powerCarsEscaped"]: m10State.powerCarsEscaped,
+        [fields.materialCarsEscaped || "materialCarsEscaped"]: m10State.materialCarsEscaped,
+        [fields.trainCarsDestroyed || "trainCarsDestroyed"]: m10State.trainCarsDestroyed,
+        [fields.precisionTargetsDestroyed || "precisionTargetsDestroyed"]: m10State.precisionTargetsDestroyed,
+        [fields.civilianRailDisruption || "civilianRailDisruption"]: Boolean(m10State.civilianRailDisruption)
+      };
+    }
+
+    function m10RankCap(mission) {
+      const contract = mission && mission.m10Contract;
+      if (!contract || !m10State.active || m10State.route !== contract.routes.bridge) return null;
+      return contract.rank?.bridgeRouteCap || "A";
     }
 
     function m03CommandFacility(mission = m03Mission()) {
@@ -57391,6 +57637,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // The authored M02 TEL contract may fail the sortie here. Every
           // pre-existing mobile unit still follows the legacy park-at-end path.
           if (enemy.m03Apc) arriveM03Apc(enemy);
+          else if (handleM10GroundRouteEnd(enemy)) return;
           else failEscapingGroundTarget(enemy);
           enemy.speed = 0;
         }
@@ -57663,6 +57910,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // installations this sortie already destroyed.
       if (enemy.ground) destroyedGroundIds.add(enemy.id);
       const m09Outcome = handleM09GroundDestroyed(enemy, byWingman);
+      const m10Outcome = handleM10GroundDestroyed(enemy);
       let chainBlast = null;
       if (enemy.subsystem) {
         // A mount neither sinks nor leaves a hulk in the sky: it blows up where
@@ -57813,6 +58061,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!byWingman && !(m09Outcome && m09Outcome.protectedLoss)) onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
       if (m09Outcome && m09Outcome.failBanner) failM09Mission(m09Outcome.failBanner);
+      if (m10Outcome && m10Outcome.complete) completeMission(true);
     }
 
     // Feedback for the two mount kills that change how the fight is flown: the
