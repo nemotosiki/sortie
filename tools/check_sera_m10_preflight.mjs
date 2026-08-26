@@ -27,7 +27,8 @@ for (const token of [
   'ctx.addEnemyProfile("su34"',
   'ctx.addEnemyMissileProfile("su34"',
   'function recordMissionResult(',
-  'function resetMissionRuntime()',
+  'function startMission()',
+  'function flyAgain()',
   'addWorldDecorator(id, def)',
   'addGroundModel(kind, def)'
 ]) {

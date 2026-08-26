@@ -108,7 +108,7 @@ civilian reconstruction dialogue.
 
 - [x] Read the canonical M10 story and map ledger
 - [x] Audit train, Su-34, payload, route, result, and E2E host contracts
-- [ ] Add a read-only M10 preflight gate
+- [x] Add a read-only M10 preflight gate
 
 ### Checkpoint 2 — map
 
@@ -154,4 +154,3 @@ civilian reconstruction dialogue.
 - Do not introduce Tornado F.3, J-10, J-15, or J-20.
 - Do not add Su-35/Su-57 as generic M10 pressure.
 - Keep every commit independently parseable and its focused check green.
-
