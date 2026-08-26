@@ -97,8 +97,8 @@ civilian reconstruction dialogue.
 
 - leaving the battle area and ordinary player destruction use existing failure
   paths
-- if all three precision targets escape across an intact bridge, the train has
-  reached the Arad transfer line and M10 fails
+- if any surviving precision target crosses the Arad transfer line intact, the
+  train's critical section has broken through and M10 fails
 - Retry must restore the bridge, train, timers, escape counters, fixed radio,
   and result snapshot
 

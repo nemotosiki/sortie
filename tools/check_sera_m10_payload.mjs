@@ -104,6 +104,9 @@ try {
   assert(added.sequence[1].delay === 65 && added.sequence[2].delay === 135,
     "delayed reinforcement timing changed");
   assert(added.m10Contract?.precision?.required === 3, "precision objective count changed");
+  assert(added.m10Contract?.bridge?.decoratorNames?.includes("nor-rail-bridge-deck")
+    && added.m10Contract.bridge.decoratorNames.includes("nor-rail-bridge-rails"),
+  "bridge visual names no longer match the Nor decorator");
   assert(added.m10Contract?.rank?.bridgeRouteCap === "A", "bridge-route consequence changed");
 
   console.log("check_sera_m10_payload: PASS");

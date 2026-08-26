@@ -103,7 +103,7 @@ export default function register(ctx) {
       mark: "m10Bridge",
       targetId: 290,
       decoratorNames: Object.freeze([
-        "nor-rail-bridge-deck", "nor-rail-bridge-rail-west", "nor-rail-bridge-rail-east"
+        "nor-rail-bridge-deck", "nor-rail-bridge-rails"
       ])
     }),
     cargo: Object.freeze({
