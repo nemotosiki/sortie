@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const hostSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const m11Inlined = hostSource.includes("// @payload:map_verIceCoast")
+  && hostSource.includes("// @payload:mission_sera_m11");
 const externalBaseUrl = String(process.env.SORTIE_BASE_URL || "").replace(/\/$/, "");
 const chromePath = process.env.SORTIE_CHROME
   || "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -46,7 +50,12 @@ const browser = await chromium.launch({
   executablePath: chromePath,
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
 });
-const payloadQuery = "payloads=payloads/map_verIceCoast.payload.js,payloads/mission_sera_m11.payload.js";
+const payloadQuery = m11Inlined
+  ? ""
+  : "payloads=payloads/map_verIceCoast.payload.js,payloads/mission_sera_m11.payload.js";
+const screenshotPath = path.resolve(
+  process.env.SORTIE_M11_SCREENSHOT || path.join(os.tmpdir(), "sortie-sera-m11-gameplay.png")
+);
 const pageErrors = [];
 const consoleErrors = [];
 
@@ -61,7 +70,7 @@ async function newMissionPage() {
   const page = await context.newPage();
   page.on("pageerror", (error) => pageErrors.push(String(error)));
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
-  await page.goto(`${baseUrl}/index.html?${payloadQuery}`, { waitUntil: "load", timeout: 45000 });
+  await page.goto(`${baseUrl}/index.html${payloadQuery ? `?${payloadQuery}` : ""}`, { waitUntil: "load", timeout: 45000 });
   await page.waitForFunction(
     () => window.__game?.debug?.missionKeys?.().includes("sera-m11"),
     null,
@@ -102,6 +111,7 @@ try {
       "delayed M11 waves did not deploy");
     await page.waitForTimeout(500);
     const deployed = await page.evaluate(() => window.__game.seraM11Probe());
+    await page.screenshot({ path: screenshotPath, type: "png" });
     const red = deployed.contacts.filter((contact) => contact.tgt);
     const white = deployed.contacts.filter((contact) => !contact.tgt);
     assert(red.length === 6 && red.filter((contact) => contact.type === "mig31").length === 4,
@@ -203,6 +213,7 @@ try {
   assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join(" | ")}`);
   console.log("check_sera_m11_e2e: PASS");
   console.log("  M10 unlock / HALO x3 / red6+white2 / target-clear hold / proximity / all-safe / one-loss / impossible-loss / Retry / timeout");
+  console.log(`  screenshot: ${screenshotPath}`);
 } finally {
   await browser.close();
   if (served.server) await new Promise((resolve) => served.server.close(resolve));

@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const hostSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const mapInlined = hostSource.includes("// @payload:map_verIceCoast");
 const externalBaseUrl = String(process.env.SORTIE_BASE_URL || "").replace(/\/$/, "");
 const screenshotPath = path.resolve(
   process.env.SORTIE_VER_ICE_SCREENSHOT || path.join(os.tmpdir(), "sortie-ver-ice-coast-preview.png")
@@ -59,7 +61,8 @@ try {
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
   await page.addInitScript(() => { navigator.getGamepads = () => []; });
 
-  const url = `${baseUrl}/index.html?payloads=payloads/map_verIceCoast.payload.js&worldPreview=verIceCoast`;
+  const payloadPart = mapInlined ? "" : "payloads=payloads/map_verIceCoast.payload.js&";
+  const url = `${baseUrl}/index.html?${payloadPart}worldPreview=verIceCoast`;
   await page.goto(url, { waitUntil: "load", timeout: 45000 });
   await page.waitForFunction(
     () => window.__game?.debug?.worldDecorators?.().activeOn === "verIceCoast",

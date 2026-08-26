@@ -123,16 +123,16 @@ the white diversion exists to pull the player away from the escort line.
 - [x] Persist the M11 escort result
 - [x] Add deterministic debug probes without changing production behaviour
 - [x] Hold generic ACCOMPLISHED until the formation contract resolves
-- [ ] Commit and push the runtime independently
+- [x] Commit and push the runtime independently
 
 ### Checkpoint 5 — integration and play
 
-- [ ] Inline both payloads and verify zero page/console errors
-- [ ] Cover all-safe success, one-loss success, impossible-survival failure, and Retry
-- [ ] Verify M10 clear unlocks M11 in the normal campaign shell
-- [ ] Re-run M01–M10 and registry gates
-- [ ] Point the single port-8340 server at the verified build
-- [ ] Commit and push the completed M11 checkpoint
+- [x] Inline both payloads and verify zero page/console errors
+- [x] Cover all-safe success, one-loss success, impossible-survival failure, and Retry
+- [x] Verify M10 clear unlocks M11 in the normal campaign shell
+- [x] Re-run M01–M10 and registry gates
+- [x] Point the single port-8340 server at the verified build
+- [x] Commit and push the completed M11 checkpoint
 
 ## Guardrails
 

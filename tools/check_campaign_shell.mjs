@@ -26,7 +26,7 @@ assert(seraCampaign[1] === "false" && seraCampaign[2] === "",
 for (const marker of [
   "mission_sera_m01", "mission_sera_m02", "mission_sera_m03", "mission_sera_m04",
   "mission_sera_m05", "mission_sera_m06", "mission_sera_m07", "mission_sera_m08", "mission_sera_m09",
-  "mission_sera_m10"
+  "mission_sera_m10", "mission_sera_m11"
 ]) {
   assert(html.includes(`// @payload:${marker}`), `${marker} is not integrated into the campaign build`);
 }
@@ -45,5 +45,5 @@ assert(radio.includes('sera: { command: "MERIDIAN", wingman: "CROWN" }'),
 
 new vm.SourceTextModule(moduleBody(html));
 console.log("check_campaign_shell: PASS");
-console.log("  unlocked ten-mission Sera shell / strict lookup / responsive three-card UI");
+console.log("  unlocked eleven-mission Sera shell / strict lookup / responsive three-card UI");
 console.log("  Sera economy defaults / no implicit USA wingman / safe radio labels");

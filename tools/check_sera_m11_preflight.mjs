@@ -43,8 +43,9 @@ for (const token of [
 ]) {
   assert(host.includes(token), `host prerequisite missing: ${token}`);
 }
-assert(!host.includes('// @payload:mission_sera_m11'), "M11 is already integrated; preflight is stale");
-assert(!host.includes('// @payload:map_verIceCoast'), "Ver Ice Coast is already integrated; preflight is stale");
+const missionIntegrated = host.includes('// @payload:mission_sera_m11');
+const mapIntegrated = host.includes('// @payload:map_verIceCoast');
+assert(missionIntegrated === mapIntegrated, "M11 map/mission integration is only half-applied");
 
 for (const token of [
   "old M11 radar/SAM suppression body", "B-1B", "MiG-31 x2", "success: `guardState.saved >= 2`",
@@ -54,4 +55,4 @@ for (const token of [
 }
 
 console.log("check_sera_m11_preflight: PASS");
-console.log("  corrected high-altitude escort / FROZEN EYE title / Ver Ice Coast / B-1B x3 / MiG-31 host ready");
+console.log(`  corrected high-altitude escort / FROZEN EYE / Ver Ice Coast / B-1B x3 / MiG-31 / ${missionIntegrated ? "integrated" : "ready"}`);

@@ -113,7 +113,7 @@ function assertClean(opened, label) {
 }
 
 try {
-  const seraKeys = Array.from({ length: 10 }, (_, index) => `sera-m${String(index + 1).padStart(2, "0")}`);
+  const seraKeys = Array.from({ length: 11 }, (_, index) => `sera-m${String(index + 1).padStart(2, "0")}`);
   const clearedThrough = (last) => Object.fromEntries(
     seraKeys.slice(0, last).map((key) => [key, { cleared: true, rank: "A" }])
   );
@@ -142,7 +142,7 @@ try {
     disabled: document.getElementById("missionConfirmBtn")?.disabled
   }));
   assert(JSON.stringify(lockedM10.keys) === JSON.stringify(seraKeys),
-    "Sera campaign order is not M01-M10", lockedM10.keys);
+    "Sera campaign order is not M01-M11", lockedM10.keys);
   assert(lockedM10.name === "?????" && lockedM10.disabled === true,
     "M10 unlocked without an M09 clear", lockedM10);
   assertClean(lockedShell, "M10 locked campaign shell");
@@ -294,7 +294,7 @@ try {
   await failure.context.close();
 
   console.log("check_sera_m10_e2e: PASS");
-  console.log("  M01-M10 order + M09 unlock + Nor preview + train-stop/air-cover phases + escape/Retry");
+  console.log("  M01-M11 order + M09 unlock + Nor preview + train-stop/air-cover phases + escape/Retry");
 } finally {
   await browser.close();
   if (served.server) await new Promise((resolve) => served.server.close(resolve));
