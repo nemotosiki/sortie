@@ -142,7 +142,7 @@ civilian reconstruction dialogue.
 - [x] Verify ten-mission campaign order and M10 unlock
 - [x] Re-run M01-M09 payload and campaign gates
 - [x] Update current-plan/status documents from implementation evidence
-- [ ] Commit and push the verified checkpoint
+- [x] Commit and push the verified checkpoint
 
 ## Guardrails
 
