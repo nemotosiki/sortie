@@ -12,8 +12,7 @@ const hostSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const m11Inlined = hostSource.includes("// @payload:map_verIceCoast")
   && hostSource.includes("// @payload:mission_sera_m11");
 const externalBaseUrl = String(process.env.SORTIE_BASE_URL || "").replace(/\/$/, "");
-const chromePath = process.env.SORTIE_CHROME
-  || "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const chromePath = process.env.SORTIE_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const candidates = [
   process.env.SORTIE_PLAYWRIGHT,
   "playwright",
@@ -25,7 +24,10 @@ const loadPlaywright = () => {
   }
   throw new Error("playwright not found; set SORTIE_PLAYWRIGHT");
 };
-const assert = (condition, message) => { if (!condition) throw new Error(`check_sera_m11_e2e: ${message}`); };
+const assert = (condition, message, details = null) => {
+  if (condition) return;
+  throw new Error(`check_sera_m11_e2e: ${message}${details ? `\n${JSON.stringify(details, null, 2)}` : ""}`);
+};
 const mime = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json" };
 
 async function serve() {
@@ -47,14 +49,15 @@ const { chromium } = loadPlaywright();
 const served = externalBaseUrl ? { server: null, port: null } : await serve();
 const baseUrl = externalBaseUrl || `http://127.0.0.1:${served.port}`;
 const browser = await chromium.launch({
-  executablePath: chromePath,
+  executablePath: fs.existsSync(chromePath) ? chromePath : undefined,
+  headless: true,
   args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
 });
 const payloadQuery = m11Inlined
   ? ""
   : "payloads=payloads/map_verIceCoast.payload.js,payloads/mission_sera_m11.payload.js";
 const screenshotPath = path.resolve(
-  process.env.SORTIE_M11_SCREENSHOT || path.join(os.tmpdir(), "sortie-sera-m11-gameplay.png")
+  process.env.SORTIE_M11_SCREENSHOT || path.join(os.tmpdir(), "sortie-sera-m11-ew-strike.png")
 );
 const pageErrors = [];
 const consoleErrors = [];
@@ -68,151 +71,191 @@ async function newMissionPage() {
     }));
   });
   const page = await context.newPage();
-  page.on("pageerror", (error) => pageErrors.push(String(error)));
-  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
-  await page.goto(`${baseUrl}/index.html${payloadQuery ? `?${payloadQuery}` : ""}`, { waitUntil: "load", timeout: 45000 });
+  page.on("pageerror", (error) => pageErrors.push(String(error?.stack || error)));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.goto(`${baseUrl}/index.html${payloadQuery ? `?${payloadQuery}` : ""}`, {
+    waitUntil: "load",
+    timeout: 60_000
+  });
   await page.waitForFunction(
     () => window.__game?.debug?.missionKeys?.().includes("sera-m11"),
     null,
-    { timeout: 45000 }
+    { timeout: 60_000 }
   );
   const unlock = await page.evaluate(() => {
     const index = window.__game.debug.missionIndexOf("sera-m11");
     return { index, unlocked: window.__game.mission.unlocked[index] };
   });
-  assert(unlock.index >= 0 && unlock.unlocked, "M10 clear does not unlock M11 in the normal campaign chain");
+  assert(unlock.index >= 0 && unlock.unlocked, "M10 clear does not unlock M11");
   const started = await page.evaluate(() => window.__game.forceStartMissionByKey("sera-m11", "f16"));
   assert(started, "production launcher could not start M11");
-  await page.waitForFunction(
-    () => window.__game?.seraM11Probe?.()?.missionKey === "sera-m11",
-    null,
-    { timeout: 45000 }
-  );
+  await page.waitForFunction(() => window.__game?.seraM11Probe?.()?.missionKey === "sera-m11", null, {
+    timeout: 60_000
+  });
   await page.waitForTimeout(250);
   return { context, page };
 }
 
 try {
-  // Production boot and unresolved-escort hold.
+  // Full mission loop: aggregate HP, EW transitions, boosted SAM, sanctuary,
+  // radar-first counterplay, secondary sweep, base clear and S-cap record.
   {
     const { context, page } = await newMissionPage();
-    const opening = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(opening.worldKey === "verIceCoast", "M11 did not create Ver Ice Coast");
-    assert(opening.halo.length === 3 && opening.halo.every((aircraft) => (
-      aircraft.type === "b1b" && aircraft.alive && !aircraft.retired
-        && aircraft.position[1] >= 5080 && aircraft.position[1] <= 5120
-    )), "HALO B-1B x3 opening formation is malformed");
-    assert(opening.guard.active && opening.guard.total === 3 && opening.guard.saved === 0 && opening.guard.lost === 0,
-      "HALO count guard did not arm cleanly");
-    assert(opening.contacts.filter((contact) => contact.tgt).length === 2 && opening.pending.length === 3,
-      "opening/interceptor queue is malformed");
+    let probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.worldKey === "verIceCoast", "M11 did not create Ver Ice Coast");
+    assert(probe.halo.length === 3 && probe.halo.every((aircraft) => (
+      aircraft.type === "jammer" && aircraft.alive && !aircraft.retired
+        && aircraft.position[1] >= 9120 && aircraft.position[1] <= 9170
+    )), "HALO electronic-support formation is malformed", probe.halo);
+    assert(probe.guard.active && probe.guard.total === 3 && probe.guard.lost === 0,
+      "HALO guard did not arm cleanly", probe.guard);
+    assert(probe.contacts.filter((contact) => contact.tgt && contact.mark === "m11BaseNode").length === 10,
+      "ten red base nodes did not spawn", probe.contacts);
+    assert(probe.contacts.filter((contact) => !contact.tgt && contact.type === "mig31").length === 2
+        && probe.pending.length === 1,
+      "opening MiG-31 pair/queue is malformed", probe);
+    assert(probe.recoveryGauge.visible && probe.recoveryGauge.label === "HALO TOTAL HP"
+        && probe.recoveryGauge.value === "1176/1176"
+        && probe.recoveryGauge.className.includes("formation"),
+      "aggregate HALO HP panel is malformed", probe.recoveryGauge);
+    assert(probe.directive.visible && probe.directive.title.startsWith("JAMMING ACTIVE")
+        && probe.directive.instruction.includes("DESCEND"),
+      "opening AC-style EW directive is wrong", probe.directive);
+    await page.screenshot({ path: screenshotPath, type: "png" });
+
+    assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
+      "HALO damage probe failed");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.recoveryGauge.value === "1078/1176" && parseFloat(probe.recoveryGauge.width) < 92,
+      "aggregate HP did not sum individual damage", probe.recoveryGauge);
+
+    const warning = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(65));
+    assert(warning.active && warning.remaining <= 35, "35-second jam warning did not arm", warning);
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.directive.className.includes("warning") && probe.directive.instruction.includes("9000"),
+      "HUD did not order a climb before jamming stopped", probe.directive);
+
+    const online = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(36));
+    assert(!online.active && online.phase === "radar-online", "radar-online window did not start", online);
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.escort.playerSafe && probe.directive.className.includes("safe")
+        && probe.directive.title.includes("SAFE ALTITUDE"),
+      "9,144m did not read as sanctuary during radar-online", probe.directive);
+
+    const nearBase = await page.evaluate(() => window.__game.forceSeraM11SetPlayerNearBase(1500, 3500));
+    assert(nearBase?.samId && nearBase.distance > 1500 && nearBase.distance < 12000,
+      "SAM test geometry is outside jammed/enhanced envelopes", nearBase);
+    assert(await page.evaluate((id) => window.__game.debug.forceEnemyMissileReady(id), nearBase.samId),
+      "base SAM could not be armed");
+    await page.waitForFunction(
+      () => window.__game.seraM11Probe().missiles.some((missile) => missile.radarBoosted),
+      null,
+      { timeout: 5_000 }
+    );
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    const boosted = probe.missiles.find((missile) => missile.radarBoosted);
+    assert(boosted && boosted.maxSpeed >= 700 && boosted.turnRateDeg <= 75
+        && boosted.navigationRatio === 5,
+      "radar-online SAM did not receive bounded enhanced guidance", {
+        missiles: probe.missiles,
+        sam: probe.contacts.find((contact) => contact.id === nearBase.samId),
+        escort: probe.escort
+      });
+    assert(probe.directive.className.includes("danger") && probe.directive.instruction.includes("9000"),
+      "low-altitude radar-online HUD is not critical", probe.directive);
+
+    assert(await page.evaluate(() => window.__game.forceSeraM11SetPlayerAltitude(9000)),
+      "9,000m sanctuary did not arm");
+    await page.waitForTimeout(100);
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    const escaped = probe.missiles.find((missile) => missile.id === boosted.id);
+    assert(!escaped || escaped.lost, "enhanced SAM kept guidance above sanctuary", escaped);
+
+    assert(await page.evaluate(() => window.__game.forceSeraM11ClearRadar()) === 2,
+      "fire-control radars could not be neutralised");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.escort.fireControlDisabled && probe.escort.fireControlRadarsAlive === 0
+        && probe.directive.title.includes("RADAR DESTROYED"),
+      "radar-first permanent counterplay did not latch", probe);
 
     assert(await page.evaluate(() => window.__game.forceSeraM11DeployPending()),
-      "delayed M11 waves did not deploy");
-    await page.waitForTimeout(500);
-    const deployed = await page.evaluate(() => window.__game.seraM11Probe());
-    await page.screenshot({ path: screenshotPath, type: "png" });
-    const red = deployed.contacts.filter((contact) => contact.tgt);
-    const white = deployed.contacts.filter((contact) => !contact.tgt);
-    assert(red.length === 6 && red.filter((contact) => contact.type === "mig31").length === 4,
-      "six designated interceptors did not reach the board");
-    assert(white.length === 2 && white.every((contact) => contact.type === "mig29" && !contact.hunt),
-      "white MiG-29A diversion is malformed");
-    assert(red.every((contact) => contact.hunt === "air" && String(contact.charge || "").startsWith("HALO ")),
-      "red TGTs are not actually charging HALO aircraft");
+      "second MiG-31 pair did not deploy");
+    assert(await page.evaluate(() => window.__game.forceSeraM11ClearSecondary()) === 4,
+      "four MiG-31 secondary contacts could not be cleared");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.escort.secondaryKills === 4, "secondary kill ledger did not reach four", probe.escort);
 
     assert(await page.evaluate(() => window.__game.forceSeraM11ClearTargets()),
-      "clearing the red board incorrectly ended M11 before escort arrival");
-    let held = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(held.state === "playing" && !held.outcomePending && held.guard.saved === 0,
-      `destroy-all resolver escaped the M11 escort hold: ${JSON.stringify(held)}`);
-
-    assert(await page.evaluate(() => window.__game.forceSeraM11PlayerFar()),
-      "far-from-formation warning did not arm");
-    held = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(held.escort.proximityWarnings === 1 && held.escort.nearestHalo >= 4300,
-      "proximity warning did not measure live HALO range");
-    assert(await page.evaluate(() => window.__game.forceSeraM11PlayerNear()),
-      "proximity warning hysteresis did not clear near HALO");
-    assert(await page.evaluate(() => window.__game.forceSeraM11Progress(0.52)),
-      "HALO halfway debug drive failed");
-    assert(await page.evaluate(() => window.__game.forceSeraM11Progress(0.84)),
-      "HALO operation-line approach debug drive failed");
-    held = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(held.escort.halfwayFired && held.escort.nearLineFired,
-      "formation-progress radio milestones did not fire");
-
-    assert(await page.evaluate(() => window.__game.forceSeraM11Save(3)) === 3,
-      "all-safe HALO arrival could not be driven through retireFriendly");
-    const success = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(success.outcomePending && success.escort.completed
-        && success.escort.finalSaved === 3 && success.escort.finalLost === 0,
-      "all-safe success snapshot is wrong");
+      "base neutralisation did not enter ACCOMPLISHED hold");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.outcomePending && probe.escort.completed && probe.escort.baseRemaining === 0
+        && probe.escort.finalSaved === 3 && probe.escort.finalLost === 0,
+      "all-safe base-clear snapshot is wrong", probe);
     assert(await page.evaluate(() => window.__game.forceSeraM11ResolveOutcome()),
       "all-safe ACCOMPLISHED hold did not resolve");
-    const record = await page.evaluate(() => window.__game.seraM11Probe().record);
-    assert(record?.cleared && record.attackAircraftSaved === 3
-        && record.attackAircraftLost === 0 && record.allAttackAircraftSafe === true,
-      `all-safe record is wrong: ${JSON.stringify(record)}`);
+    const result = await page.evaluate(() => ({
+      record: window.__game.seraM11Probe().record,
+      rank: window.__game.seraM11Probe().record?.rank || null
+    }));
+    assert(result.record?.cleared && result.record.electronicSupportAircraftSaved === 3
+        && result.record.electronicSupportAircraftLost === 0
+        && result.record.allElectronicSupportAircraftSafe === true
+        && result.record.secondaryAircraftDestroyed === 4,
+      "all-safe EW strike record is wrong", result.record);
+    assert(result.rank === "S", `full secondary/all-safe clear should retain S, got ${result.rank}`);
     await context.close();
   }
 
-  // One loss remains a clear but cannot be an all-safe/S result.
+  // One loss and an incomplete secondary objective still clear the base but cap S.
   {
     const { context, page } = await newMissionPage();
     assert(await page.evaluate(() => window.__game.forceSeraM11Lose(1)) === 1,
       "single HALO loss could not be driven");
-    let probe = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(probe.state === "playing" && probe.guard.lost === 1 && probe.escort.oneLostFired,
-      "M11 did not continue after one loss");
-    assert(await page.evaluate(() => window.__game.forceSeraM11Save(2)) === 2,
-      "two surviving HALO aircraft could not reach the line");
-    probe = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(probe.outcomePending && probe.escort.finalSaved === 2 && probe.escort.finalLost === 1,
-      "one-loss success snapshot is wrong");
+    assert(await page.evaluate(() => window.__game.forceSeraM11ClearTargets()),
+      "one-loss base clear did not enter ACCOMPLISHED hold");
     assert(await page.evaluate(() => window.__game.forceSeraM11ResolveOutcome()),
-      "one-loss ACCOMPLISHED hold did not resolve");
+      "one-loss outcome did not resolve");
     const result = await page.evaluate(() => ({
       record: window.__game.seraM11Probe().record,
-      rank: window.__game.mission.rank
+      rank: window.__game.seraM11Probe().record?.rank || null
     }));
-    assert(result.record?.cleared && result.record.attackAircraftSaved === 2
-        && result.record.attackAircraftLost === 1 && result.record.allAttackAircraftSafe === false,
-      `one-loss record is wrong: ${JSON.stringify(result.record)}`);
-    assert(result.rank !== "S", `one-loss clear incorrectly received S rank: ${result.rank}`);
+    assert(result.record?.cleared && result.record.electronicSupportAircraftSaved === 2
+        && result.record.electronicSupportAircraftLost === 1
+        && result.record.allElectronicSupportAircraftSafe === false,
+      "one-loss record is wrong", result.record);
+    assert(result.rank !== "S", "one-loss/incomplete-secondary clear incorrectly received S");
     await context.close();
   }
 
-  // Two losses make the required force impossible and Retry rebuilds all state.
+  // Two losses fail immediately; Retry rebuilds HP/EW/base state, then timeout fails.
   {
     const { context, page } = await newMissionPage();
     assert(await page.evaluate(() => window.__game.forceSeraM11Lose(2)) === 2,
       "two-loss failure drive did not destroy two HALO aircraft");
     let probe = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(probe.state === "gameover" && probe.escort.failed
-        && probe.escort.finalLost === 2 && probe.guard.saved === 0,
-      "impossible-survival condition did not fail immediately");
+    assert(probe.state === "gameover" && probe.escort.failed && probe.escort.finalLost === 2,
+      "HALO network collapse did not fail immediately", probe);
     await page.locator("#retryBtn").click();
-    await page.waitForFunction(
-      () => window.__game?.seraM11Probe?.()?.state === "playing",
-      null,
-      { timeout: 10000 }
-    );
+    await page.waitForFunction(() => window.__game?.seraM11Probe?.()?.state === "playing", null, {
+      timeout: 10_000
+    });
     probe = await page.evaluate(() => window.__game.seraM11Probe());
-    assert(probe.halo.length === 3 && probe.halo.every((aircraft) => aircraft.alive && !aircraft.retired),
-      "Retry did not rebuild all three HALO aircraft");
-    assert(probe.guard.saved === 0 && probe.guard.lost === 0
-        && !probe.escort.failed && !probe.escort.completed && probe.escort.proximityWarnings === 0,
-      "Retry retained stale M11 guard/progress state");
+    assert(probe.halo.length === 3 && probe.halo.every((aircraft) => aircraft.alive),
+      "Retry did not rebuild HALO x3", probe.halo);
+    assert(probe.guard.lost === 0 && !probe.escort.failed && probe.escort.jammingActive
+        && probe.escort.baseRemaining === 10 && probe.recoveryGauge.value === "1176/1176",
+      "Retry retained stale EW/HP/base state", probe);
     assert(await page.evaluate(() => window.__game.forceSeraM11Timeout()),
       "operation-window timeout did not fail M11");
     await context.close();
   }
 
-  assert(pageErrors.length === 0, `page errors: ${pageErrors.join(" | ")}`);
-  assert(consoleErrors.length === 0, `console errors: ${consoleErrors.join(" | ")}`);
+  assert(pageErrors.length === 0, "page errors", pageErrors);
+  assert(consoleErrors.length === 0, "console errors", consoleErrors);
   console.log("check_sera_m11_e2e: PASS");
-  console.log("  M10 unlock / HALO x3 / red6+white2 / target-clear hold / proximity / all-safe / one-loss / impossible-loss / Retry / timeout");
+  console.log("  unlock / HALO total HP / EW HUD / 35s climb / enhanced SAM / 9000m sanctuary / radar-first / MiG-31 secondary / base clear / Retry / timeout");
   console.log(`  screenshot: ${screenshotPath}`);
 } finally {
   await browser.close();

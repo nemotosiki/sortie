@@ -14,41 +14,42 @@ for (const [name, source] of Object.entries({ host, payload })) {
   assert(!source.includes("\r"), `${name} must be LF-only`);
 }
 for (const token of [
-  "const m11State =",
-  "function resetM11State(mission)",
-  "function m11HaloAircraft(mission = m11Mission())",
-  "function m11FormationProgress(mission = m11Mission())",
-  "function updateM11Proximity(mission)",
+  "function m11BaseTargets(mission = m11Mission(), aliveOnly = false)",
+  "function m11SecondaryKills(mission = m11Mission())",
+  "function m11FireControlRadars(mission = m11Mission())",
+  "function m11EnhancedSamTuning(enemy)",
+  "function updateM11ElectronicWarfare(mission)",
   "function updateM11MissionThreat()",
-  "function m11ResultSnapshot(mission)",
-  "function m11RankCap(mission)",
-  "resetM11State(MISSIONS[currentMissionIndex]);",
-  "if (updateM11MissionThreat()) return;",
-  "const m11Result = m11ResultSnapshot(mission);",
-  "const m11Cap = m11RankCap(mission);",
-  "seraM11Probe: () =>",
-  "forceSeraM11ClearTargets: () =>",
-  "forceSeraM11Save: (count = 1) =>",
-  "forceSeraM11Lose: (count = 1) =>",
+  "m11State.jammingRemaining <= warningLead",
+  'm11State.jammingPhase = "radar-online"',
+  'm11State.jammingPhase = "fire-control-destroyed"',
+  "player.position.y >= m11State.safeAltitude",
+  "missile.m11RadarBoosted", 'missile.airGuidancePhase = "altitude-sanctuary"',
+  "cullDistance: enhancedTuning", "profileRange * envelope + 400",
+  "distanceToSquared(player.position) > cullDistance * cullDistance",
+  "function updateM11EwDirective()", 'id="m11EwDirective"',
+  'ui.recoveryGaugeLabel.textContent = "HALO TOTAL HP"',
+  "forceSeraM11ClearRadar: () =>", "forceSeraM11SetPlayerAltitude: (altitude = 9000) =>",
+  "forceSeraM11AdvanceJamming: (seconds = 1) =>", "forceSeraM11DamageHalo: (index = 0, damage = 98) =>",
+  "forceSeraM11ClearSecondary: () =>", "forceSeraM11Lose: (count = 1) =>",
   "forceSeraM11Timeout: () =>"
 ]) assert(host.includes(token), `host contract missing ${token}`);
 
 assert(host.includes("const capable = guardState.saved + active;"),
-  "runtime does not fail as soon as two survivors become impossible");
-assert(host.includes("if (guardState.saved >= required)"),
-  "runtime does not clear on the required operation-line arrivals");
-assert(host.includes("return true;\n    }\n\n    function m11ResultSnapshot"),
-  "M11 does not own the unresolved frame against generic destroy-all completion");
-assert(host.includes("player.position.distanceTo(friendly.group.position)"),
-  "formation proximity is not measured against live HALO aircraft");
-assert(host.includes("missionElapsed >= m11State.nextProximityWarningAt"),
-  "proximity warning has no repeat throttle");
+  "runtime does not fail as soon as two HALO survivors become impossible");
+assert(host.includes("if (m11State.baseRemaining === 0 && baseTargets.length > 0)"),
+  "runtime does not complete on base neutralisation");
+assert(host.includes("secondaryComplete ? null : \"A\""),
+  "secondary objective does not participate in S-rank cap");
+assert(host.includes("Math.min(\n              MAX_MISSILE_TURN_RATE_DEG"),
+  "enhanced SAM does not retain the global turn-rate clamp");
 
 for (const token of [
-  "route: Object.freeze({", "start: Object.freeze([...anchors.strikeStart])",
-  "exit: Object.freeze([...anchors.strikeExit])", "requiredSaved: 2",
-  "warningDistance: 4300", "clearDistance: 3000", "timeLimit: 330"
+  "jamDuration: 100", "radarOnlineDuration: 18", "warningLead: 35",
+  "safeAltitude,", "enhancedRange: 12000", "enhancedTurnRateDeg: 75",
+  'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
+  "secondaryKillsForS: 4"
 ]) assert(payload.includes(token), `payload/runtime handshake missing ${token}`);
 
 console.log("check_sera_m11_runtime: PASS");
-console.log("  2-of-3 progress completion / impossible-survival fail / proximity hysteresis / result+rank hooks");
+console.log("  cyclic EW / 9,000m sanctuary / enhanced M11-only SAM / base clear / HALO fail / S cap");

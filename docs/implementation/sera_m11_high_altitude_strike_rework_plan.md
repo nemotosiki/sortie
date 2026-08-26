@@ -117,30 +117,30 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
 ### Checkpoint 2 — aggregate HALO HP
 
-- [ ] Generalise the M07 objective panel without changing M07.
-- [ ] Draw a three-jammer formation silhouette for M11.
-- [ ] Sum all three current/max HP values into one green bar and numeric value.
-- [ ] Verify individual damage, one loss, Retry, and complete/fail transitions.
+- [x] Generalise the M07 objective panel without changing M07.
+- [x] Draw a three-jammer formation silhouette for M11.
+- [x] Sum all three current/max HP values into one green bar and numeric value.
+- [x] Verify individual damage, one loss, Retry, and complete/fail transitions.
 
 ### Checkpoint 3 — base strike
 
-- [ ] Replace red air TGTs with the Ver Ice Coast control-base ground TGTs.
-- [ ] Make both MiG-31 pairs optional HALO hunters at the high-altitude floor.
-- [ ] Add the 100 s jam / 18 s radar-online cycle, 35 s warning, 9,000 m safe
+- [x] Replace red air TGTs with the Ver Ice Coast control-base ground TGTs.
+- [x] Make both MiG-31 pairs optional HALO hunters at the high-altitude floor.
+- [x] Add the 100 s jam / 18 s radar-online cycle, 35 s warning, 9,000 m safe
   altitude, and radar-first permanent counterplay.
-- [ ] Apply the radar-online missile boost only to tagged M11 base SAMs and
+- [x] Apply the radar-online missile boost only to tagged M11 base SAMs and
   preserve the global 75 deg/s ceiling.
-- [ ] Complete on base destruction; fail when fewer than two HALO aircraft remain.
-- [ ] Rewrite briefing, radio, epilogue, outcome fields, and rank contract.
-- [ ] Keep LARK's F/A-18F + 4AAM canon and exclude CROWN.
+- [x] Complete on base destruction; fail when fewer than two HALO aircraft remain.
+- [x] Rewrite briefing, radio, epilogue, outcome fields, and rank contract.
+- [x] Keep LARK's F/A-18F + 4AAM canon and exclude CROWN.
 
 ### Checkpoint 4 — verification and delivery
 
-- [ ] Static payload/runtime/plan checks.
-- [ ] Node syntax and high-altitude simulation checks.
-- [ ] Browser E2E: unlock, launch, altitude envelope, aggregate HP, base clear,
+- [x] Static payload/runtime/plan checks.
+- [x] Node syntax and high-altitude simulation checks.
+- [x] Browser E2E: unlock, launch, altitude envelope, aggregate HP, base clear,
   one-loss clear, two-loss fail, Retry, and timeout.
-- [ ] Synchronise the inlined map/mission payloads into `index.html`.
-- [ ] Inspect Chrome console/page errors and gameplay screenshot.
+- [x] Synchronise the inlined map/mission payloads into `index.html`.
+- [x] Inspect Chrome console/page errors and gameplay screenshot.
 - [ ] Commit/push verified checkpoints and confirm local/remote SHA.
 - [ ] Keep the single persistent play server on port 8340 pointed at this worktree.

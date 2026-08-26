@@ -84,8 +84,10 @@ assert(
   "enemy missile still uses the near-instant smoothing acceleration"
 );
 assert(
-  indexSource.includes("acceleration: MISSILE_ACCELERATION"),
-  "enemy missile instances do not carry the shared acceleration"
+  indexSource.includes("acceleration: enhancedTuning")
+    && indexSource.includes("Number(enhancedTuning.enhancedAcceleration)")
+    && indexSource.includes(": MISSILE_ACCELERATION,"),
+  "ordinary enemy missiles must retain shared acceleration while explicit mission tuning may raise it"
 );
 
 console.log("check_missile_acceleration: PASS");

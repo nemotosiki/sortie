@@ -54,8 +54,9 @@ for (const key of ["aam4", "aam6", "aam8", "agm4"]) {
 }
 
 assert(
-  source.includes("maxSpeed: enemyMissileMaxSpeed(enemy, charge, profile)"),
-  "enemy launch path must apply the speed-floor policy"
+  source.includes("maxSpeed: enhancedTuning")
+    && source.includes(": enemyMissileMaxSpeed(enemy, charge, profile),"),
+  "ordinary enemy launch path must retain the speed-floor policy when mission tuning is absent"
 );
 assert(
   source.includes("Math.max(STANDARD_MISSILE_MAX_SPEED, authoredMax)"),

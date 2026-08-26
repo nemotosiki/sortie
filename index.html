@@ -1190,6 +1190,23 @@
       transition: fill 120ms ease, stroke 120ms ease;
     }
 
+    .recoveryAircraftEcho {
+      display: none;
+      fill: rgba(83, 255, 92, 0.11);
+      stroke: currentColor;
+      stroke-width: 0.75;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 2px currentColor);
+    }
+
+    #recoveryGauge.formation .recoveryAircraftEcho { display: block; }
+
+    #recoveryGauge.radarOnline {
+      color: #ff5b62;
+      border-color: rgba(255, 91, 98, 0.8);
+      box-shadow: inset 0 0 18px rgba(255, 45, 60, 0.15), 0 0 10px rgba(255, 45, 60, 0.2);
+    }
+
     #recoveryAircraftLabel {
       position: absolute;
       left: 0;
@@ -1339,6 +1356,48 @@
       letter-spacing: 0.2em;
       white-space: nowrap;
       transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease;
+    }
+
+    /* FROZEN EYE's AC-style mission directive. It stays above the reticle and
+       below the compass; lock/missile warnings retain the central 38% slot. */
+    #m11EwDirective {
+      position: absolute;
+      left: 50%;
+      top: 14%;
+      min-width: 300px;
+      transform: translate(-50%, -6px);
+      padding: 7px 16px 6px;
+      border: 1px solid rgba(83, 255, 92, 0.58);
+      background: rgba(0, 17, 7, 0.58);
+      color: #71ff75;
+      text-align: center;
+      font-family: "Courier New", "Lucida Console", monospace;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease, color 120ms ease,
+        border-color 120ms ease;
+    }
+
+    #m11EwDirective.visible { opacity: 1; transform: translate(-50%, 0); }
+    #m11EwDirective strong { display: block; font-size: 11px; }
+    #m11EwDirective span { display: block; margin-top: 3px; font-size: 9px; }
+    #m11EwDirective.warning {
+      color: #ffc85c;
+      border-color: rgba(255, 200, 92, 0.78);
+      background: rgba(36, 19, 0, 0.62);
+      animation: alertPulse 0.8s ease-in-out infinite alternate;
+    }
+    #m11EwDirective.danger {
+      color: #ff5962;
+      border-color: rgba(255, 89, 98, 0.9);
+      background: rgba(35, 0, 4, 0.68);
+      animation: alertPulse 0.42s ease-in-out infinite alternate;
+    }
+    #m11EwDirective.safe {
+      color: #8cff90;
+      border-color: rgba(140, 255, 144, 0.82);
     }
 
     #stallWarning {
@@ -2381,11 +2440,14 @@
     <div id="ccipMarker"><span id="ccipLabel">CCIP</span></div>
 
     <div id="missionBanner"></div>
+    <div id="m11EwDirective" aria-hidden="true"><strong>JAMMING ACTIVE</strong><span>DESCEND &amp; STRIKE</span></div>
     <div id="recoveryGauge" aria-hidden="true">
       <div id="recoveryGaugeHeader"><span id="recoveryGaugeLabel">SEALIGHT HP</span><span id="recoveryGaugeValue">980/980</span></div>
       <div id="recoveryAircraftFrame">
         <svg id="recoveryAircraft" viewBox="0 0 40 44" aria-hidden="true">
           <path id="recoveryAircraftBody" d="M20 2 L22 10 L23 18 L38 21 L38 25 L23 27 L22 36 L28 39 L28 41 L20 40 L12 41 L12 39 L18 36 L17 27 L2 25 L2 21 L17 18 L18 10 Z" />
+          <use class="recoveryAircraftEcho" href="#recoveryAircraftBody" transform="translate(-8 12) scale(.56)" />
+          <use class="recoveryAircraftEcho" href="#recoveryAircraftBody" transform="translate(26 12) scale(.56)" />
         </svg>
         <span id="recoveryAircraftLabel">SEALIGHT · SAR</span>
       </div>
@@ -4736,6 +4798,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // of the thing it came for. Nothing else in the AI changes, so a
         // mission that names no hunt is bit-for-bit the mission it was.
         hunt: entry.hunt === "air" || entry.hunt === "ship" ? entry.hunt : null,
+        // A high interceptor can be ordered to attack from its own ceiling
+        // instead of diving down onto the escorted aircraft. Null preserves
+        // every existing hunt wave.
+        huntAltitudeFloor: kind === "air" && Number.isFinite(Number(entry.huntAltitudeFloor))
+          ? Math.max(0, Number(entry.huntAltitudeFloor))
+          : null,
         radio: entry.radio ? Object.freeze(entry.radio.map(Object.freeze)) : null
       });
     }
@@ -42318,57 +42386,89 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     ); // @payload:map_verIceCoast
     applyPayload(
       function register(ctx) {
-        const { MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const {
+          MISSIONS,
+          WORLD_PRESETS,
+          AIRCRAFT_TYPES,
+          ENEMY_AI_PROFILES,
+          GROUND_TYPES
+        } = ctx.tables;
 
         const world = WORLD_PRESETS.verIceCoast;
         if (!world) throw new Error("[sera-m11] verIceCoast is not registered; load map_verIceCoast first");
         if (!MISSIONS.some((mission) => mission.key === "sera-m10" && mission.campaign === "sera")) {
           throw new Error("[sera-m11] sera-m10 predecessor is missing");
         }
-        for (const type of ["fa18", "b1b", "mig29", "mig31"]) {
+        for (const type of ["fa18", "jammer", "mig31"]) {
           if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m11] required aircraft not registered: ${type}`);
         }
-        for (const type of ["mig29", "mig31"]) {
-          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m11] required enemy profile not registered: ${type}`);
+        if (!ENEMY_AI_PROFILES.mig31) {
+          throw new Error("[sera-m11] required enemy profile not registered: mig31");
+        }
+        for (const type of ["radarSite", "bunker", "fuelTank", "samSite", "aaGun"]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m11] required ground type not registered: ${type}`);
         }
 
         const anchors = world.missionAnchors;
         for (const key of [
-          "playerStart", "strikeStart", "strikeExit", "operationLine", "battleCenter",
-          "firstIntercept", "northIntercept", "southIntercept", "diversionEntry"
+          "playerStart", "strikeStart", "strikeExit", "battleCenter",
+          "northIntercept", "southIntercept", "weatherStation"
         ]) {
           if (!Array.isArray(anchors?.[key]) || anchors[key].length !== 2) {
             throw new Error(`[sera-m11] Ver Ice Coast mission anchor is missing: ${key}`);
           }
         }
 
+        const baseMark = "m11BaseNode";
+        const hunterTag = "m11HaloHunter";
+        const operationAltitude = 9144;
+        const safeAltitude = 9000;
+        const interceptorAltitude = 10650;
+        const baseX = anchors.weatherStation[0];
+        const baseZ = anchors.weatherStation[1];
+
         const m11EscortContract = Object.freeze({
           callsign: "HALO",
-          aircraft: "b1b",
+          aircraft: "jammer",
           total: 3,
           requiredSaved: 2,
           timeLimit: 330,
-          missionTag: "m11HaloHunter",
-          operationAltitude: 5100,
-          route: Object.freeze({
-            start: Object.freeze([...anchors.strikeStart]),
-            exit: Object.freeze([...anchors.strikeExit])
+          missionTag: hunterTag,
+          operationAltitude,
+          safeAltitude,
+          interceptorAltitude,
+          base: Object.freeze({
+            mark: baseMark,
+            total: 10,
+            fireControlRole: "fireControlRadar",
+            samRole: "baseSam"
           }),
-          proximity: Object.freeze({
-            warningDistance: 4300,
-            clearDistance: 3000,
-            repeatDelay: 34,
-            banner: "RETURN TO HALO FORMATION"
+          electronicWarfare: Object.freeze({
+            jamDuration: 100,
+            radarOnlineDuration: 18,
+            warningLead: 35,
+            safeAltitude,
+            enhancedRange: 12000,
+            enhancedLockTime: 0.28,
+            enhancedFireDelayMin: 0.16,
+            enhancedFireDelayMax: 0.28,
+            enhancedMaxSpeed: 700,
+            enhancedAcceleration: 240,
+            enhancedTurnRateDeg: 75,
+            enhancedNavigationRatio: 5,
+            enhancedLife: 14
           }),
           outcomes: Object.freeze({
-            saved: "attackAircraftSaved",
-            lost: "attackAircraftLost",
-            allSafe: "allAttackAircraftSafe"
+            saved: "electronicSupportAircraftSaved",
+            lost: "electronicSupportAircraftLost",
+            allSafe: "allElectronicSupportAircraftSafe",
+            secondaryKills: "secondaryAircraftDestroyed"
           }),
           rank: Object.freeze({
-            sTime: 230,
-            aTime: 285,
+            sTime: 235,
+            aTime: 290,
             sGuardLosses: 0,
+            secondaryKillsForS: 4,
             ignoreWhiteTargets: true
           })
         });
@@ -42379,21 +42479,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           campaignOrder: 11,
           world: "verIceCoast",
           title: "FROZEN EYE",
-          jp: "セラ高高度攻撃隊HALOと合流し、高速迎撃機から作戦線到達まで護衛せよ。",
+          jp: "HALO電子支援隊の妨害窓を使い、敵基地の射撃管制網と全施設を無力化せよ。",
           act: 2,
           storyNo: 11,
-          story: "WAR DAY 121。氷海岸上空、高度五千百。CROWNのいないROOKは、セラ高高度攻撃隊HALOの進路を開く。\n速度差の大きい迎撃機が白い海岸線を横切り、短い攻撃機会を狙って編隊へ突入する。",
+          story: "WAR DAY 121。氷海岸上空、高度三万フィート。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\n妨害の切れ目には基地SAMの誘導網が復活する。ROOKは白い海岸へ降り、次の切れ目までにFROZEN EYEを潰す。",
           epilogue: [
-            "HALO攻撃隊は必要戦力を保ったまま、氷海岸の作戦線を通過した。",
-            "LARKはCROWNの空席を見ず、RAVENの反対側で編隊を支え続けた。",
-            "MERIDIANは生還した攻撃機の数を、次の攻勢に使える戦力として記録した。"
+            "射撃管制レーダーとベースステーションは沈黙し、氷海岸のミサイル網は目を失った。",
+            "HALOの妨害記録には、基地が最後に空を見た十八秒が残されていた。",
+            "LARKは残存航空戦力の数を読み上げ、RAVENと再び三万フィートへ上がった。"
           ],
           friendlies: {
             playerStart: {
               x: anchors.playerStart[0],
-              y: 5100,
+              y: operationAltitude,
               z: anchors.playerStart[1],
-              facing: { x: anchors.strikeExit[0], z: anchors.strikeExit[1] }
+              facing: { x: baseX, z: baseZ }
             },
             wingmen: [
               {
@@ -42406,157 +42506,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             ],
             transportGroups: [
               {
-                aircraft: "b1b",
+                aircraft: "jammer",
                 callsign: "HALO",
                 count: 3,
                 vulnerable: true,
-                hp: 520,
-                speed: 128,
-                altitude: 5100,
-                spacing: 310,
+                hp: 392,
+                speed: 180,
+                altitude: operationAltitude,
+                holdAtExit: true,
+                spacing: 290,
                 start: { x: anchors.strikeStart[0], z: anchors.strikeStart[1] },
                 exit: { x: anchors.strikeExit[0], z: anchors.strikeExit[1] }
               }
             ],
             guard: {
-              readout: "count",
-              label: "HALO",
+              readout: "integrity",
+              label: "HALO EW",
               lossPenalty: 550,
               hitPenalty: 0,
-              lossBanner: "HALO AIRCRAFT LOST",
-              failBanner: "STRIKE FORMATION LOST",
-              lossRadio: "HALOが一機落ちた！ 残存機を作戦線まで通せ！",
-              failRadio: "HALOの必要戦力を喪失。FROZEN EYEを中止する。",
-              safeRadio: "HALO編隊、作戦線を通過。攻撃隊は任務空域へ進む。"
+              lossBanner: "HALO JAMMER LOST",
+              failBanner: "JAMMING NETWORK COLLAPSED",
+              lossRadio: "HALOが一機落ちた！ 妨害網を残る二機で維持する。基地を急げ！",
+              failRadio: "HALO二機喪失。射撃管制網の抑圧は不可能、FROZEN EYEを中止する。",
+              safeRadio: "HALO電子支援隊、作戦空域を離脱。基地射撃管制網は沈黙した。"
             }
           },
+          groundUnits: [
+            { id: 21, type: "radarSite", label: "FIRE CONTROL RADAR WEST", x: baseX - 680, z: baseZ + 420, heading: 0.45, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
+            { id: 22, type: "radarSite", label: "FIRE CONTROL RADAR EAST", x: baseX + 670, z: baseZ + 360, heading: -0.5, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
+            { id: 23, type: "bunker", label: "BASE CONTROL STATION", x: baseX, z: baseZ, heading: Math.PI, tgt: true, mark: baseMark, missionRole: "baseStation" },
+            { id: 24, type: "fuelTank", label: "POWER PLANT NORTH", x: baseX - 360, z: baseZ - 520, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
+            { id: 25, type: "fuelTank", label: "MISSILE FUEL FARM", x: baseX + 370, z: baseZ - 560, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
+            { id: 26, type: "samSite", label: "LONG RANGE SAM WEST", x: baseX - 1180, z: baseZ - 180, heading: 1.2, tgt: true, mark: baseMark, missionRole: "baseSam" },
+            { id: 27, type: "samSite", label: "LONG RANGE SAM NORTH", x: baseX, z: baseZ + 1120, heading: Math.PI, tgt: true, mark: baseMark, missionRole: "baseSam" },
+            { id: 28, type: "samSite", label: "LONG RANGE SAM EAST", x: baseX + 1180, z: baseZ - 160, heading: -1.2, tgt: true, mark: baseMark, missionRole: "baseSam" },
+            { id: 29, type: "aaGun", label: "BASE DEFENCE GUN WEST", x: baseX - 720, z: baseZ - 850, heading: 0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" },
+            { id: 30, type: "aaGun", label: "BASE DEFENCE GUN EAST", x: baseX + 720, z: baseZ - 850, heading: -0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" }
+          ],
           sequence: [
             {
-              types: ["mig29", "mig29"],
-              tgt: true,
-              rankNeutral: false,
-              missionTag: "m11HaloHunter",
-              band: 2,
-              idBase: 400,
-              label: "FULCRUM INTERCEPT",
-              role: "line",
-              skill: "regular",
-              hunt: "air",
-              at: [...anchors.firstIntercept],
-              altitude: 5250,
+              types: ["mig31", "mig31"], tgt: false, rankNeutral: true,
+              missionTag: hunterTag, band: 3, idBase: 410,
+              label: "FOXHOUND HIGH 1", role: "line", skill: "veteran", hunt: "air",
+              huntAltitudeFloor: interceptorAltitude,
+              at: [...anchors.northIntercept], altitude: interceptorAltitude,
               facing: [...anchors.strikeStart],
-              radio: [
-                {
-                  speaker: "meridian",
-                  priority: "CRITICAL",
-                  text: "前方MiG-29A二。HALOへの進路を取っている。TGT指定、最初の迎撃波を排除せよ。",
-                  id: "m11-first-intercept"
-                }
-              ]
+              radio: [{ speaker: "meridian", priority: "URGENT", text: "高高度にMiG-31二機。HALOを狙う残存迎撃戦力、白表示だ。基地設備を優先せよ。", id: "m11-foxhound-one" }]
             },
             {
-              types: ["mig31", "mig31"],
-              tgt: true,
-              rankNeutral: false,
-              concurrent: true,
-              delay: 45,
-              missionTag: "m11HaloHunter",
-              band: 3,
-              idBase: 410,
-              label: "FOXHOUND HIGH 1",
-              role: "line",
-              skill: "veteran",
-              hunt: "air",
-              at: [...anchors.northIntercept],
-              altitude: 5900,
+              types: ["mig31", "mig31"], tgt: false, rankNeutral: true,
+              concurrent: true, delay: 92, missionTag: hunterTag, band: 3, idBase: 420,
+              label: "FOXHOUND HIGH 2", role: "line", skill: "veteran", hunt: "air",
+              huntAltitudeFloor: interceptorAltitude,
+              at: [...anchors.southIntercept], altitude: interceptorAltitude,
               facing: [...anchors.battleCenter],
-              radio: [
-                {
-                  speaker: "meridian",
-                  priority: "URGENT",
-                  text: "北方、高速反応二。MiG-31がHALOの側面へ回る。速度を合わせるな、攻撃進路を切れ。",
-                  id: "m11-foxhound-one"
-                }
-              ]
-            },
-            {
-              types: ["mig29", "mig29"],
-              tgt: false,
-              rankNeutral: true,
-              concurrent: true,
-              delay: 82,
-              missionTag: "m11Diversion",
-              band: 2,
-              idBase: 420,
-              label: "FULCRUM DIVERSION",
-              role: "line",
-              skill: "veteran",
-              at: [...anchors.diversionEntry],
-              altitude: 4750,
-              facing: [...anchors.battleCenter],
-              radio: [
-                {
-                  speaker: "lark",
-                  priority: "NORMAL",
-                  text: "下方MiG-29A二、こっちを誘ってる。白表示だ。HALOから離されるな！",
-                  id: "m11-diversion"
-                }
-              ]
-            },
-            {
-              types: ["mig31", "mig31"],
-              tgt: true,
-              rankNeutral: false,
-              concurrent: true,
-              delay: 128,
-              missionTag: "m11HaloHunter",
-              band: 3,
-              idBase: 430,
-              label: "FOXHOUND HIGH 2",
-              role: "line",
-              skill: "veteran",
-              hunt: "air",
-              at: [...anchors.southIntercept],
-              altitude: 5650,
-              facing: [...anchors.operationLine],
-              radio: [
-                {
-                  speaker: "meridian",
-                  priority: "CRITICAL",
-                  text: "南東からMiG-31二、最終迎撃波。HALOは作戦線まで残り六十秒、TGTを近づけるな。",
-                  id: "m11-foxhound-two"
-                }
-              ]
+              radio: [{ speaker: "lark", priority: "URGENT", text: "南東、高高度にもう二機。4AAMなら届く、でも赤い基地TGTを残すな！", id: "m11-foxhound-two" }]
             }
           ],
           m11EscortContract,
           fixedRadio: [
-            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、VER ICE COASTへ進入。高度五千百、HALO攻撃隊と合流せよ。" },
-            { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "HALO三機を確認。CROWNの分まで、左右は私たちで埋める。" },
-            { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "作戦線到達には二機が必要だ。赤TGTはHALOを狙う。白い陽動に釣られるな。" },
-            { id: "m11-one-lost", event: "haloOneLost", speaker: "meridian", priority: "CRITICAL", text: "HALO一機喪失。残る二機のどちらも失えない。編隊防護を最優先。" },
-            { id: "m11-halfway", event: "haloHalfway", speaker: "meridian", priority: "NORMAL", text: "HALO、航程の半分を通過。作戦線まで護衛を維持せよ。" },
-            { id: "m11-near-line", event: "haloNearLine", speaker: "lark", priority: "URGENT", text: "作戦線が見えた。あと少し、HALOの後ろを空けないで！" },
-            { id: "m11-required-safe", event: "haloRequiredSafe", speaker: "meridian", priority: "CRITICAL", text: "HALO二機以上、作戦線通過を確認。FROZEN EYE達成。" }
+            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、HALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
+            { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
+            { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
+            { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
+            { id: "m11-jam-pause", event: "haloJammingPause", speaker: "halo", priority: "CRITICAL", text: "HALO、再同期開始。敵射撃管制レーダー復活——低高度機は直ちに退避。" },
+            { id: "m11-jam-resume", event: "haloJammingResume", speaker: "halo", priority: "CRITICAL", text: "妨害を再開。敵ミサイル誘導性能低下、攻撃窓を再設定する。" },
+            { id: "m11-radar-down", event: "m11FireControlDown", speaker: "meridian", priority: "CRITICAL", text: "射撃管制レーダー全基沈黙。妨害停止中も長射程誘導はできない、残る基地設備を潰せ。" },
+            { id: "m11-base-half", event: "m11BaseHalfClear", speaker: "lark", priority: "NORMAL", text: "基地機能は半分まで落ちた。ベースステーションと残存設備を仕留めよう。" },
+            { id: "m11-one-lost", event: "haloOneLost", speaker: "meridian", priority: "CRITICAL", text: "HALO一機喪失。妨害網は残る二機で維持、これ以上は失えない。" },
+            { id: "m11-base-clear", event: "m11BaseNeutralized", speaker: "meridian", priority: "CRITICAL", text: "敵基地の全設備沈黙。FROZEN EYE無力化を確認。" }
           ],
-          successRadio: {
-            speaker: "meridian",
-            priority: "CRITICAL",
-            text: "HALO必要戦力が作戦線へ到達。ROOK、護衛完了。残敵から離脱せよ。",
-            id: "m11-success"
-          },
-          failureRadio: {
-            speaker: "meridian",
-            priority: "CRITICAL",
-            text: "HALOの必要戦力を失った。高高度攻撃は中止、ROOKは帰投せよ。",
-            id: "m11-failure"
-          },
-          parTime: 230,
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "FROZEN EYE無力化。HALOは妨害を終了、ROOKは高高度へ離脱せよ。", id: "m11-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "HALO妨害網を喪失。敵基地の長射程誘導が復活した、ROOKは帰投せよ。", id: "m11-failure" },
+          parTime: 235,
           hasOutro: false,
           map: { x: 0.65, y: 0.18 },
           battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
-          battleRadius: 18500,
-          briefing: "VER ICE COAST上空、高度約5,100mでセラ高高度攻撃隊HALO 1–3を護衛する。HALO三機のうち二機以上が作戦線へ到達すれば任務達成。一機までは失っても続行できるが、Sランクには全機生還が必要だ。\n赤TGTはHALOを直接狙うMiG-29A二機とMiG-31四機。MiG-31は二機ずつ時間差で高速進入する。白表示のMiG-29A二機はRAVENを狙う陽動で、撃破は必須ではない。\n右上のHALO表示で残存数を確認し、編隊から大きく離れた場合はMERIDIANの警告に従え。酸素・エンジン管理などの追加操作はない。"
+          battleRadius: 19000,
+          briefing: "VER ICE COAST上空、高度9,144mでHALO電子支援隊と合流し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙う残存航空戦力で、撃墜は二次目標となる。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
         };
 
         ctx.addMission(mission, { after: "sera-m10" });
@@ -42606,6 +42633,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Same relay, for the wave's `hunt` field: null on every wave that is
     // flying at the player, which is every wave outside the two guard sorties.
     let spawningHunt = null;
+    let spawningHuntAltitudeFloor = null;
     // Story missions may attach a passive identifier to every contact in one
     // wave. It has no combat meaning; mission-specific runtime contracts use it
     // to find a named pass, escort or interception without relying on target ids.
@@ -43143,6 +43171,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       horizonLine: document.querySelector("#pitchLadder .horizonLine"),
       pitchViewport: document.getElementById("pitchViewport"),
       missionBanner: document.getElementById("missionBanner"),
+      m11EwDirective: document.getElementById("m11EwDirective"),
       recoveryGauge: document.getElementById("recoveryGauge"),
       recoveryGaugeLabel: document.getElementById("recoveryGaugeLabel"),
       recoveryGaugeValue: document.getElementById("recoveryGaugeValue"),
@@ -44902,12 +44931,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           worldKey: mission.world,
           elapsed: Number(missionElapsed.toFixed(2)),
           outcomePending: outcomePending.active,
-          escort: {
-            ...m11State,
-            nearestHalo: Number.isFinite(m11State.nearestHalo)
-              ? Number(m11State.nearestHalo.toFixed(1))
-              : null
-          },
+          escort: { ...m11State },
           guard: {
             active: guardState.active,
             total: guardState.total,
@@ -44935,7 +44959,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             tgt: isTgtEntry(enemy),
             hunt: enemy.hunt || null,
             charge: enemy.huntRef ? enemy.huntRef.label : null,
-            missionTag: enemy.missionTag || null
+            missionTag: enemy.missionTag || null,
+            missionRole: enemy.missionRole || null,
+            mark: enemy.mark || null,
+            missileCooldown: Number.isFinite(enemy.missileCooldown)
+              ? Number(enemy.missileCooldown.toFixed(3))
+              : null,
+            missileLockProgress: Number.isFinite(enemy.missileLockProgress)
+              ? Number(enemy.missileLockProgress.toFixed(3))
+              : 0,
+            missileLockPhase: enemy.missileLockPhase || "idle",
+            missileFireDelay: Number.isFinite(enemy.missileFireDelay)
+              ? Number(enemy.missileFireDelay.toFixed(3))
+              : null,
+            position: [
+              Number(enemy.group.position.x.toFixed(1)),
+              Number(enemy.group.position.y.toFixed(1)),
+              Number(enemy.group.position.z.toFixed(1))
+            ]
           })),
           pending: pendingWaves.map((entry) => ({
             delay: Number(entry.timer.toFixed(2)),
@@ -44943,6 +44984,30 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             tgt: entry.wave ? isTgtEntry(entry.wave) : false,
             missionTag: entry.wave?.missionTag || null
           })),
+          missiles: enemyMissiles.map((missile) => ({
+            id: missile.id,
+            ownerType: missile.ownerType,
+            radarBoosted: Boolean(missile.m11RadarBoosted),
+            lost: Boolean(missile.lost),
+            speed: Number(missile.speed.toFixed(1)),
+            maxSpeed: Number(missile.maxSpeed.toFixed(1)),
+            turnRateDeg: Number(THREE.MathUtils.radToDeg(missile.turnRate).toFixed(1)),
+            navigationRatio: missile.navigationRatio || 3
+          })),
+          directive: {
+            visible: ui.m11EwDirective.classList.contains("visible"),
+            title: ui.m11EwDirective.querySelector("strong").textContent,
+            instruction: ui.m11EwDirective.querySelector("span").textContent,
+            className: ui.m11EwDirective.className
+          },
+          recoveryGauge: {
+            visible: ui.recoveryGauge.classList.contains("visible"),
+            label: ui.recoveryGaugeLabel.textContent,
+            value: ui.recoveryGaugeValue.textContent,
+            width: ui.recoveryGaugeFill.style.width,
+            status: ui.recoveryGaugeStatus.textContent,
+            className: ui.recoveryGauge.className
+          },
           record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
         };
       },
@@ -44956,58 +45021,99 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forceSeraM11ClearTargets: () => {
         const mission = m11Mission();
         if (gameState !== STATE_PLAYING || !mission) return false;
-        for (const enemy of enemies.filter((candidate) => candidate.alive && isTgtEntry(candidate))) {
+        for (const enemy of m11BaseTargets(mission, true)) {
           damageEnemy(enemy, enemy.hp + 1, true, false);
         }
-        updateMission(0.016, 2.0);
-        return gameState === STATE_PLAYING && !outcomePending.active;
-      },
-      forceSeraM11Progress: (fraction = 0.5) => {
-        const mission = m11Mission();
-        if (gameState !== STATE_PLAYING || !mission) return false;
-        const route = mission.m11EscortContract.route;
-        const progress = THREE.MathUtils.clamp(Number(fraction) || 0, 0, 0.99);
-        const dx = route.exit[0] - route.start[0];
-        const dz = route.exit[1] - route.start[1];
-        for (const friendly of m11HaloAircraft(mission)) {
-          if (!friendly.alive || friendly.retired) continue;
-          friendly.group.position.x = route.start[0] + dx * progress;
-          friendly.group.position.z = route.start[1] + dz * progress;
-        }
         updateM11MissionThreat();
-        return m11State.progress >= progress - 0.01;
+        return outcomePending.active || gameState === STATE_COMPLETE;
       },
-      forceSeraM11PlayerFar: () => {
-        const mission = m11Mission();
-        const active = mission && m11HaloAircraft(mission).find((friendly) => friendly.alive && !friendly.retired);
-        if (gameState !== STATE_PLAYING || !active) return false;
-        const distance = Number(mission.m11EscortContract.proximity.warningDistance) + 700;
-        player.position.copy(active.group.position);
-        player.position.x += distance;
-        updateM11MissionThreat();
-        return m11State.proximityOutside;
-      },
-      forceSeraM11PlayerNear: () => {
-        const mission = m11Mission();
-        const active = mission && m11HaloAircraft(mission).find((friendly) => friendly.alive && !friendly.retired);
-        if (gameState !== STATE_PLAYING || !active) return false;
-        player.position.copy(active.group.position);
-        player.position.x += 250;
-        updateM11MissionThreat();
-        return !m11State.proximityOutside;
-      },
-      forceSeraM11Save: (count = 1) => {
+      forceSeraM11ClearRadar: () => {
         const mission = m11Mission();
         if (gameState !== STATE_PLAYING || !mission) return 0;
-        let saved = 0;
-        for (const friendly of m11HaloAircraft(mission)) {
-          if (saved >= Math.max(0, Number(count) || 0)) break;
-          if (!friendly.alive || friendly.retired) continue;
-          retireFriendly(friendly);
-          saved += 1;
+        const radars = m11FireControlRadars(mission).filter((enemy) => enemy.alive);
+        for (const enemy of radars) damageEnemy(enemy, enemy.hp + 1, true, false);
+        updateM11MissionThreat();
+        updateHud();
+        return radars.length;
+      },
+      forceSeraM11SetPlayerAltitude: (altitude = 9000) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        player.position.y = Math.max(4, Number(altitude) || 4);
+        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+        updateM11MissionThreat();
+        updateHud();
+        return m11State.playerSafe;
+      },
+      forceSeraM11SetPlayerNearBase: (altitude = 1500, horizontalRange = 2500) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return null;
+        const sam = m11BaseTargets(mission, true).find((enemy) => (
+          enemy.missionRole === mission.m11EscortContract.base?.samRole
+        ));
+        if (!sam) return null;
+        player.position.set(
+          sam.group.position.x + Math.max(100, Number(horizontalRange) || 2500),
+          Math.max(4, Number(altitude) || 1500),
+          sam.group.position.z
+        );
+        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+        updateM11MissionThreat();
+        updateHud();
+        return {
+          samId: sam.id,
+          distance: Number(player.position.distanceTo(sam.group.position).toFixed(1)),
+          altitude: player.position.y
+        };
+      },
+      forceSeraM11AdvanceJamming: (seconds = 1) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return null;
+        missionElapsed += Math.max(0, Number(seconds) || 0);
+        updateM11MissionThreat();
+        updateHud();
+        return {
+          phase: m11State.jammingPhase,
+          active: m11State.jammingActive,
+          remaining: m11State.jammingRemaining
+        };
+      },
+      forceSeraM11SetJammingActive: (active) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission || m11State.fireControlDisabled) return false;
+        const ew = mission.m11EscortContract.electronicWarfare;
+        m11State.jammingActive = Boolean(active);
+        m11State.jammingPhase = m11State.jammingActive ? "jamming" : "radar-online";
+        m11State.jammingRemaining = m11State.jammingActive
+          ? Math.max(1, Number(ew.jamDuration) || 100)
+          : Math.max(1, Number(ew.radarOnlineDuration) || 18);
+        m11State.jammingWarningFired = false;
+        m11State.lastUpdateElapsed = missionElapsed;
+        updateM11MissionThreat();
+        updateHud();
+        return m11State.jammingActive === Boolean(active);
+      },
+      forceSeraM11DamageHalo: (index = 0, damage = 98) => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const friendly = m11HaloAircraft(mission)[Math.max(0, Math.floor(Number(index) || 0))];
+        if (!friendly || !friendly.alive) return false;
+        damageFriendly(friendly, Math.max(0, Number(damage) || 0));
+        if (gameState === STATE_PLAYING) updateM11MissionThreat();
+        updateHud();
+        return true;
+      },
+      forceSeraM11ClearSecondary: () => {
+        const mission = m11Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const targets = enemies.filter((enemy) => (
+          enemy.alive && enemy.missionTag === mission.m11EscortContract.missionTag
+        ));
+        for (const enemy of targets) {
+          damageEnemy(enemy, enemy.hp + 1, true, false);
         }
         updateM11MissionThreat();
-        return saved;
+        return targets.length;
       },
       forceSeraM11Lose: (count = 1) => {
         const mission = m11Mission();
@@ -49587,6 +49693,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // moving the player afterwards would put the fleet somewhere else than
       // the friendly placement was chosen against.
       applyFriendlyPlayerStart(MISSIONS[currentMissionIndex]);
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
       playerModel.group.visible = cameraMode !== "cockpit";
       timeScale = 1;
       killCam.active = false;
@@ -49659,6 +49766,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningTgt = true;
       spawningRankNeutral = false;
       spawningHunt = null;
+      spawningHuntAltitudeFloor = null;
       spawningMissionTag = null;
       // Invalidated here and re-taken by captureMissionAnchor at the bottom of
       // this function, so a wave can never be laid out around the LAST
@@ -51375,7 +51483,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // Stage 1, shared by every hostile missile platform. Target changes cannot
     // inherit dwell or trigger delay from the previous contact.
-    function advanceEnemyMissileLock(enemy, target, dt) {
+    function advanceEnemyMissileLock(
+      enemy,
+      target,
+      dt,
+      lockTime = ENEMY_MISSILE_LOCK_TIME
+    ) {
       if (!enemy || !target) return false;
       if (enemy.missileLockTarget !== target) {
         enemy.missileLockTarget = target;
@@ -51385,7 +51498,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       enemy.missileLockProgress = Math.min(
         1,
-        (enemy.missileLockProgress || 0) + Math.max(0, dt) / ENEMY_MISSILE_LOCK_TIME
+        (enemy.missileLockProgress || 0) + Math.max(0, dt) /
+          Math.max(0.001, Number(lockTime) || ENEMY_MISSILE_LOCK_TIME)
       );
       const locked = enemy.missileLockProgress >= 1;
       if (locked) enemy.missileLockPhase = "locked";
@@ -51395,21 +51509,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Stage 2. Completing acquisition arms, but never consumes, the reaction
     // delay on that same frame. Only later frames count it down, guaranteeing a
     // visible locked interval before stage 3 reports launch-ready.
-    function advanceEnemyMissileLaunchSequence(enemy, target, dt, fixedFireDelay = null) {
+    function advanceEnemyMissileLaunchSequence(
+      enemy,
+      target,
+      dt,
+      fixedFireDelay = null,
+      tuning = null
+    ) {
       const wasLocked = enemy?.missileLockTarget === target
         && (enemy.missileLockProgress || 0) >= 1;
-      if (!advanceEnemyMissileLock(enemy, target, dt)) return false;
+      const lockTime = Number(tuning?.enhancedLockTime) || ENEMY_MISSILE_LOCK_TIME;
+      if (!advanceEnemyMissileLock(enemy, target, dt, lockTime)) return false;
 
       if (!wasLocked || !Number.isFinite(enemy.missileFireDelay)) {
+        const fireDelayMin = Math.max(
+          0.01,
+          Number(tuning?.enhancedFireDelayMin) || ENEMY_MISSILE_FIRE_DELAY_MIN
+        );
+        const fireDelayMax = Math.max(
+          fireDelayMin,
+          Number(tuning?.enhancedFireDelayMax) || ENEMY_MISSILE_FIRE_DELAY_MAX
+        );
         enemy.missileFireDelay = Number.isFinite(fixedFireDelay)
           ? THREE.MathUtils.clamp(
               fixedFireDelay,
-              ENEMY_MISSILE_FIRE_DELAY_MIN,
-              ENEMY_MISSILE_FIRE_DELAY_MAX
+              fireDelayMin,
+              fireDelayMax
             )
           : THREE.MathUtils.lerp(
-              ENEMY_MISSILE_FIRE_DELAY_MIN,
-              ENEMY_MISSILE_FIRE_DELAY_MAX,
+              fireDelayMin,
+              fireDelayMax,
               Math.random()
             );
         enemy.missileLockPhase = "locked";
@@ -51442,6 +51571,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         resetEnemyMissileLock(enemy);
         return false;
       }
+      const enhancedTuning = m11EnhancedSamTuning(enemy);
+      if (
+        enhancedTuning && !charge &&
+        player.position.y >= Math.max(0, Number(enhancedTuning.safeAltitude) || 9000)
+      ) {
+        resetEnemyMissileLock(enemy);
+        return false;
+      }
 
       // What the round is aimed at. Everything below is written against this
       // point rather than against the player, which is the whole of what makes
@@ -51457,7 +51594,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const launchDot = profile.launchDot * (enemy.spec.missileLaunchDotScale || 1);
       tmpV1.copy(aimAt).sub(enemy.group.position);
       const distance = tmpV1.length();
-      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profile.range * envelope) {
+      const profileRange = enhancedTuning
+        ? Math.max(profile.range, Number(enhancedTuning.enhancedRange) || profile.range)
+        : profile.range;
+      if (!Number.isFinite(distance) || distance < profile.minRange || distance > profileRange * envelope) {
         resetEnemyMissileLock(enemy);
         return false;
       }
@@ -51473,7 +51613,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // after the delay expires may the spawned missile take over with
       // MISSILE ALERT.
       const lockTarget = charge || player;
-      if (!advanceEnemyMissileLaunchSequence(enemy, lockTarget, dt)) return false;
+      if (!advanceEnemyMissileLaunchSequence(enemy, lockTarget, dt, null, enhancedTuning)) return false;
 
       rightOf(enemy.group, tmpV3);
       upOf(enemy.group, tmpV4);
@@ -51605,6 +51745,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       const shipSamClearance = usesShipSamClearance(enemy, charge);
       const launchSpeed = missileLaunchSpeedFor(enemy, profile.speed);
+      const enhancedTurnRate = enhancedTuning
+        ? THREE.MathUtils.degToRad(
+            Math.min(
+              MAX_MISSILE_TURN_RATE_DEG,
+              Number(enhancedTuning.enhancedTurnRateDeg) || MAX_MISSILE_TURN_RATE_DEG
+            )
+          )
+        : null;
       enemyMissiles.push({
         id: enemyMissileSerial,
         mesh: root,
@@ -51612,13 +51760,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ownerType: enemy.type,
         speed: launchSpeed,
         launchSpeed,
-        maxSpeed: enemyMissileMaxSpeed(enemy, charge, profile),
-        acceleration: MISSILE_ACCELERATION,
+        maxSpeed: enhancedTuning
+          ? Math.max(
+              enemyMissileMaxSpeed(enemy, charge, profile),
+              Number(enhancedTuning.enhancedMaxSpeed) || 0
+            )
+          : enemyMissileMaxSpeed(enemy, charge, profile),
+        acceleration: enhancedTuning
+          ? Math.max(MISSILE_ACCELERATION, Number(enhancedTuning.enhancedAcceleration) || 0)
+          : MISSILE_ACCELERATION,
         turnRate: cappedMissileTurnRate(
-          shipSamClearance ? MISSILE_TURN_RATE : profile.turnRate
+          enhancedTurnRate ?? (shipSamClearance ? MISSILE_TURN_RATE : profile.turnRate)
         ),
         damage: profile.damage,
-        lifeLimit: shipSamClearance ? MISSILE_LIFE : profile.life,
+        lifeLimit: enhancedTuning
+          ? Math.max(profile.life, Number(enhancedTuning.enhancedLife) || 0)
+          : (shipSamClearance ? MISSILE_LIFE : profile.life),
         life: 0,
         trailTimer: 0,
         // Overshoot state, on the same terms as a player round. A normal hostile
@@ -51639,6 +51796,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         guidanceAge: 0,
         guidanceTargetRef: null,
         achievedLateralAcceleration: new THREE.Vector3(),
+        navigationRatio: enhancedTuning
+          ? Math.max(3, Number(enhancedTuning.enhancedNavigationRatio) || 3)
+          : undefined,
         terminalCommitted: false,
         terminalCommittedPass: 0,
         terminalCommitPoint: new THREE.Vector3(),
@@ -51648,6 +51808,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         launchCaptureAngleDeg: shipSamClearance ? 90 : 0,
         launchClosingSpeed: 0,
         shipSamClearance,
+        m11RadarBoosted: Boolean(enhancedTuning),
+        m11SafeAltitude: enhancedTuning
+          ? Math.max(0, Number(enhancedTuning.safeAltitude) || 9000)
+          : null,
+        // The legacy hostile-round cull is 1.8 km because every ordinary
+        // enemy profile launches inside 1.5 km. FROZEN EYE can restore a
+        // 12 km fire-control solution; retain those rounds for the authored
+        // envelope instead of deleting them on the frame after launch.
+        cullDistance: enhancedTuning
+          ? Math.max(1800, profileRange * envelope + 400)
+          : 1800,
         clearanceActive: false,
         // The friendly this round is chasing, or null for every round in the
         // game that is chasing the player. Read by updateEnemyMissiles for
@@ -51757,6 +51928,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           missile.acceleration ?? MISSILE_ACCELERATION,
           dt
         );
+
+        // FROZEN EYE's radar-online SAM is a ground fire-control weapon, not a
+        // magic round with infinite vertical coverage. Crossing the authored
+        // 9,000m sanctuary breaks the restored radar track; the missile keeps
+        // its ballistic tangent but leaves MISSILE ALERT immediately.
+        if (
+          missile.m11RadarBoosted && !missile.targetFriendly && !missile.lost &&
+          player.position.y >= Math.max(0, Number(missile.m11SafeAltitude) || 9000)
+        ) {
+          missile.lost = true;
+          missile.airGuidancePhase = "altitude-sanctuary";
+          for (let puff = 0; puff < 3; puff += 1) {
+            tmpV3.set(
+              (Math.random() - 0.5) * 6,
+              (Math.random() - 0.5) * 6,
+              (Math.random() - 0.5) * 6
+            );
+            smokeParticlePool.spawn(missile.mesh.position, tmpV3, 0.5, 0xb9c2c9, -0.1, 0.5);
+          }
+        }
 
         // A round launched at a friendly flies its own guidance: no decoy (the
         // flare was never in front of it), a bigger proximity radius for a
@@ -52054,8 +52245,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           missile.trailTimer += 0.045;
         }
 
+        const cullDistance = Math.max(1800, Number(missile.cullDistance) || 1800);
         if (missile.life > missile.lifeLimit || missile.mesh.position.y < 0 ||
-            missile.mesh.position.distanceToSquared(player.position) > 1800 * 1800 ||
+            missile.mesh.position.distanceToSquared(player.position) > cullDistance * cullDistance ||
             gameState !== STATE_PLAYING) {
           createImpactBurst(missile.mesh.position, 0xff684e, 0.48);
           removeEnemyMissile(i);
@@ -53269,24 +53461,32 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     // SERA M11 RUNTIME CONTRACT
     //
-    // FROZEN EYE is won by formation progress rather than by clearing the red
-    // board. The generic guard host still owns HP, enemy-only damage, losses,
-    // retirement, and the count HUD; this layer only decides whether enough
-    // HALO aircraft can still cross the operation line and keeps the ordinary
-    // all-target completion path from ending the escort early.
+    // FROZEN EYE is a cyclic-jamming base strike. The generic guard host owns
+    // HALO HP and losses; this layer owns the fire-control radar cycle, the
+    // 9,000m sanctuary, the red base-node completion rule and the optional
+    // high MiG-31 secondary objective.
     const m11State = {
       active: false,
       completed: false,
       failed: false,
-      halfwayFired: false,
-      nearLineFired: false,
+      baseHalfFired: false,
       oneLostFired: false,
-      requiredSafeFired: false,
-      proximityOutside: false,
-      proximityWarnings: 0,
-      nextProximityWarningAt: 0,
+      baseClearFired: false,
+      radarDownFired: false,
+      jammingWarningFired: false,
+      jammingActive: true,
+      jammingPhase: "inactive",
+      jammingRemaining: 0,
+      jammingCycle: 0,
+      lastUpdateElapsed: 0,
+      fireControlRadarsAlive: 0,
+      fireControlDisabled: false,
+      safeAltitude: 9000,
+      playerSafe: true,
+      baseRemaining: 0,
+      baseDestroyed: 0,
+      secondaryKills: 0,
       progress: 0,
-      nearestHalo: null,
       finalSaved: 0,
       finalLost: 0
     };
@@ -53297,18 +53497,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function resetM11State(mission) {
-      m11State.active = Boolean(mission && mission.m11EscortContract);
+      const contract = mission && mission.m11EscortContract;
+      const ew = contract && contract.electronicWarfare;
+      m11State.active = Boolean(contract);
       m11State.completed = false;
       m11State.failed = false;
-      m11State.halfwayFired = false;
-      m11State.nearLineFired = false;
+      m11State.baseHalfFired = false;
       m11State.oneLostFired = false;
-      m11State.requiredSafeFired = false;
-      m11State.proximityOutside = false;
-      m11State.proximityWarnings = 0;
-      m11State.nextProximityWarningAt = 0;
+      m11State.baseClearFired = false;
+      m11State.radarDownFired = false;
+      m11State.jammingWarningFired = false;
+      m11State.jammingActive = Boolean(contract);
+      m11State.jammingPhase = contract ? "jamming" : "inactive";
+      m11State.jammingRemaining = Math.max(1, Number(ew?.jamDuration) || 100);
+      m11State.jammingCycle = 1;
+      m11State.lastUpdateElapsed = 0;
+      m11State.fireControlRadarsAlive = 0;
+      m11State.fireControlDisabled = false;
+      m11State.safeAltitude = Math.max(0, Number(ew?.safeAltitude ?? contract?.safeAltitude) || 9000);
+      m11State.playerSafe = true;
+      m11State.baseRemaining = Math.max(0, Number(contract?.base?.total) || 0);
+      m11State.baseDestroyed = 0;
+      m11State.secondaryKills = 0;
       m11State.progress = 0;
-      m11State.nearestHalo = null;
       m11State.finalSaved = 0;
       m11State.finalLost = 0;
     }
@@ -53323,6 +53534,123 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         && typeof friendly.label === "string"
         && friendly.label.startsWith(callsign)
       ));
+    }
+
+    function m11BaseTargets(mission = m11Mission(), aliveOnly = false) {
+      const mark = mission?.m11EscortContract?.base?.mark;
+      if (!mark) return [];
+      return enemies.filter((enemy) => (
+        enemy.ground && enemy.mark === mark && (!aliveOnly || enemy.alive)
+      ));
+    }
+
+    function m11SecondaryKills(mission = m11Mission()) {
+      const tag = mission?.m11EscortContract?.missionTag;
+      if (!tag) return 0;
+      let total = 0;
+      for (const wave of mission.waves || []) {
+        if (wave.missionTag === tag) total += waveSizeOf(wave);
+      }
+      const live = enemies.filter((enemy) => enemy.alive && enemy.missionTag === tag).length;
+      let pending = 0;
+      for (const queued of pendingWaves) {
+        if (queued.wave?.missionTag === tag) pending += waveSizeOf(queued.wave);
+      }
+      return Math.max(0, total - live - pending);
+    }
+
+    function m11FireControlRadars(mission = m11Mission()) {
+      const role = mission?.m11EscortContract?.base?.fireControlRole;
+      if (!role) return [];
+      return enemies.filter((enemy) => enemy.ground && enemy.missionRole === role);
+    }
+
+    function m11EnhancedSamTuning(enemy) {
+      const mission = m11Mission();
+      const contract = mission?.m11EscortContract;
+      const ew = contract?.electronicWarfare;
+      if (
+        gameState !== STATE_PLAYING || !m11State.active || !ew ||
+        m11State.fireControlDisabled || m11State.jammingActive ||
+        !enemy?.ground || enemy.missionRole !== contract.base?.samRole
+      ) return null;
+      return ew;
+    }
+
+    function updateM11ElectronicWarfare(mission) {
+      const contract = mission.m11EscortContract;
+      const ew = contract.electronicWarfare || {};
+      const radars = m11FireControlRadars(mission);
+      const aliveRadars = radars.filter((enemy) => enemy.alive).length;
+      m11State.fireControlRadarsAlive = aliveRadars;
+      m11State.safeAltitude = Math.max(0, Number(ew.safeAltitude ?? contract.safeAltitude) || 9000);
+      m11State.playerSafe = player.position.y >= m11State.safeAltitude;
+
+      if (radars.length > 0 && aliveRadars === 0) {
+        m11State.fireControlDisabled = true;
+        m11State.jammingActive = true;
+        m11State.jammingPhase = "fire-control-destroyed";
+        m11State.jammingRemaining = 0;
+        if (!m11State.radarDownFired) {
+          m11State.radarDownFired = true;
+          fireFixedRadioEvent("m11FireControlDown");
+          showBanner("FIRE CONTROL RADAR DESTROYED", 2.2, "success");
+        }
+        for (const enemy of enemies) {
+          if (enemy.ground && enemy.missionRole === contract.base?.samRole) {
+            resetEnemyMissileLock(enemy);
+          }
+        }
+        return;
+      }
+
+      const elapsed = Math.max(0, missionElapsed - m11State.lastUpdateElapsed);
+      m11State.lastUpdateElapsed = missionElapsed;
+      m11State.jammingRemaining -= elapsed;
+      const jamDuration = Math.max(1, Number(ew.jamDuration) || 100);
+      const onlineDuration = Math.max(1, Number(ew.radarOnlineDuration) || 18);
+      let transitions = 0;
+      while (m11State.jammingRemaining <= 0 && transitions < 8) {
+        transitions += 1;
+        if (m11State.jammingActive) {
+          m11State.jammingActive = false;
+          m11State.jammingPhase = "radar-online";
+          m11State.jammingRemaining += onlineDuration;
+          m11State.jammingWarningFired = false;
+          fireFixedRadioEvent("haloJammingPause");
+          showBanner("ENEMY FIRE CONTROL ONLINE", 2.2, "danger");
+        } else {
+          m11State.jammingActive = true;
+          m11State.jammingPhase = "jamming";
+          m11State.jammingRemaining += jamDuration;
+          m11State.jammingCycle += 1;
+          fireFixedRadioEvent("haloJammingResume");
+          showBanner("HALO JAMMING RESTORED", 2.0, "success");
+          for (const enemy of enemies) {
+            if (enemy.ground && enemy.missionRole === contract.base?.samRole) {
+              resetEnemyMissileLock(enemy);
+            }
+          }
+        }
+      }
+
+      const warningLead = Math.max(1, Number(ew.warningLead) || 35);
+      if (
+        m11State.jammingActive && !m11State.jammingWarningFired &&
+        m11State.jammingRemaining <= warningLead
+      ) {
+        m11State.jammingWarningFired = true;
+        fireFixedRadioEvent("haloJammingWarning");
+        showBanner("CLIMB ABOVE ALT 9000", 2.0, "warn");
+      }
+
+      if (!m11State.jammingActive && m11State.playerSafe) {
+        for (const enemy of enemies) {
+          if (enemy.ground && enemy.missionRole === contract.base?.samRole) {
+            resetEnemyMissileLock(enemy);
+          }
+        }
+      }
     }
 
     function m11FormationProgress(mission = m11Mission()) {
@@ -53388,7 +53716,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function failM11Mission(mission, banner) {
       if (!mission || !m11State.active || m11State.failed || m11State.completed) return false;
       m11State.failed = true;
-      m11State.finalSaved = guardState.saved;
+      m11State.finalSaved = guardState.saved +
+        m11HaloAircraft(mission).filter((friendly) => friendly.alive && !friendly.retired).length;
       m11State.finalLost = guardState.lost;
       missionFailureRadioOverride = mission.failureRadio || null;
       if (banner) showBanner(banner, 2.1, "danger");
@@ -53404,35 +53733,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const required = Math.max(1, Number(contract.requiredSaved) || 2);
       const active = m11HaloAircraft(mission).filter((friendly) => friendly.alive && !friendly.retired).length;
       const capable = guardState.saved + active;
+      updateM11ElectronicWarfare(mission);
 
-      m11State.progress = m11FormationProgress(mission);
-      updateM11Proximity(mission);
-      if (!m11State.halfwayFired && m11State.progress >= 0.5) {
-        m11State.halfwayFired = true;
-        fireFixedRadioEvent("haloHalfway");
-      }
-      if (!m11State.nearLineFired && m11State.progress >= 0.82) {
-        m11State.nearLineFired = true;
-        fireFixedRadioEvent("haloNearLine");
+      const baseTargets = m11BaseTargets(mission);
+      const total = Math.max(1, Number(contract.base?.total) || baseTargets.length || 1);
+      m11State.baseRemaining = baseTargets.filter((enemy) => enemy.alive).length;
+      m11State.baseDestroyed = Math.max(0, total - m11State.baseRemaining);
+      m11State.progress = THREE.MathUtils.clamp(m11State.baseDestroyed / total, 0, 1);
+      m11State.secondaryKills = m11SecondaryKills(mission);
+      if (!m11State.baseHalfFired && m11State.progress >= 0.5) {
+        m11State.baseHalfFired = true;
+        fireFixedRadioEvent("m11BaseHalfClear");
       }
       if (!m11State.oneLostFired && guardState.lost > 0) {
         m11State.oneLostFired = true;
         fireFixedRadioEvent("haloOneLost");
       }
 
-      if (guardState.saved >= required) {
+      if (m11State.baseRemaining === 0 && baseTargets.length > 0) {
         m11State.completed = true;
-        m11State.finalSaved = guardState.saved;
+        m11State.finalSaved = capable;
         m11State.finalLost = guardState.lost;
-        if (!m11State.requiredSafeFired) {
-          m11State.requiredSafeFired = true;
-          fireFixedRadioEvent("haloRequiredSafe");
+        if (!m11State.baseClearFired) {
+          m11State.baseClearFired = true;
+          fireFixedRadioEvent("m11BaseNeutralized");
         }
         completeMission(true);
         return true;
       }
       if (capable < required) {
-        failM11Mission(mission, "HALO REQUIRED STRENGTH LOST");
+        failM11Mission(mission, "JAMMING NETWORK COLLAPSED");
         return true;
       }
       const limit = Number(contract.timeLimit) || 330;
@@ -53456,7 +53786,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return {
         [fields.saved || "attackAircraftSaved"]: saved,
         [fields.lost || "attackAircraftLost"]: lost,
-        [fields.allSafe || "allAttackAircraftSafe"]: saved >= Number(contract.total || 3) && lost === 0
+        [fields.allSafe || "allAttackAircraftSafe"]: saved >= Number(contract.total || 3) && lost === 0,
+        [fields.secondaryKills || "secondaryAircraftDestroyed"]: m11State.secondaryKills
       };
     }
 
@@ -53465,7 +53796,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (!contract || !m11State.active) return null;
       const saved = m11State.finalSaved || guardState.saved;
       const allSafe = saved >= Number(contract.total || 3) && (m11State.finalLost || guardState.lost) === 0;
-      return allSafe ? null : "A";
+      const secondaryRequired = Math.max(0, Number(contract.rank?.secondaryKillsForS) || 0);
+      const secondaryComplete = m11State.secondaryKills >= secondaryRequired;
+      return allSafe && secondaryComplete ? null : "A";
     }
 
     function m03CommandFacility(mission = m03Mission()) {
@@ -54617,6 +54950,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // aircraft in the campaign outside the two guard sorties, and null
         // means the AI it always had.
         hunt: spawningHunt,
+        huntAltitudeFloor: spawningHuntAltitudeFloor,
         huntRef: null,
         isAce,
         // The profile itself, so the engage and death calls speak in this
@@ -56137,6 +56471,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           altitude,
           exit,
           speed: config.speed || FRIENDLY_TRANSPORT_SPEC.speed,
+          holdAtExit: Boolean(config.holdAtExit),
           seed: Math.random() * Math.PI * 2,
           hitFlash: 0,
           damageSmokeTimer: 0,
@@ -56761,6 +57096,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (friendly.m07AutoRecoveryActive && remaining < (friendly.m07ArriveRadius || 540)) {
         // SEALIGHT waits on station while the mission-owned rescue clock runs.
         // It must remain visible, vulnerable and targetable during this hold.
+        friendly.speed = 0;
+        return;
+      }
+      if (
+        !friendly.m07AutoRecoveryActive && friendly.holdAtExit &&
+        remaining < FRIENDLY_TRANSPORT_SPEC.arriveRadius
+      ) {
         friendly.speed = 0;
         return;
       }
@@ -57658,6 +58000,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // What this wave came for. Read by spawnEnemy the same way spawningTgt
       // is, and cleared with it at the bottom of this call.
       spawningHunt = wave.hunt || null;
+      spawningHuntAltitudeFloor = Number.isFinite(wave.huntAltitudeFloor)
+        ? wave.huntAltitudeFloor
+        : null;
       spawningMissionTag = wave.missionTag || null;
       spawningFacilityIndex = Number.isInteger(wave.facilityIndex) ? wave.facilityIndex : null;
       // Presets keep their historic id block; an inline wave takes the next
@@ -57796,6 +58141,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningTgt = true;
       spawningRankNeutral = false;
       spawningHunt = null;
+      spawningHuntAltitudeFloor = null;
       spawningMissionTag = null;
       spawningFacilityIndex = null;
     }
@@ -58249,7 +58595,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // pass rather than a ram.
             forwardOf(enemy.huntRef.group, tmpV3);
             targetPoint.addScaledVector(tmpV3, -(spec.pursuitBack || 60));
-            targetPoint.y += 16;
+            targetPoint.y = Math.max(
+              targetPoint.y + 16,
+              Number.isFinite(enemy.huntAltitudeFloor)
+                ? enemy.huntAltitudeFloor
+                : -Infinity
+            );
           }
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
@@ -61980,9 +62331,45 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function updateM07RecoveryReadout() {
       const mission = MISSIONS[currentMissionIndex];
+      const m11Contract = mission && mission.m11EscortContract;
+      if (gameState === STATE_PLAYING && m11State.active && m11Contract) {
+        const halo = m11HaloAircraft(mission);
+        const maxHp = Math.max(1, halo.reduce(
+          (sum, unit) => sum + Math.max(0, Number(unit.maxHp) || 0),
+          0
+        ));
+        const hp = halo.reduce(
+          (sum, unit) => sum + (unit.alive ? Math.max(0, Number(unit.hp) || 0) : 0),
+          0
+        );
+        const ratio = THREE.MathUtils.clamp(hp / maxHp, 0, 1);
+        const variant = AIRCRAFT_TYPES[m11Contract.aircraft]?.theme?.variant;
+        const silhouette = SILHOUETTE_PATHS[variant] || SILHOUETTE_DEFAULT;
+        if (ui.recoveryAircraftBody.getAttribute("d") !== silhouette) {
+          ui.recoveryAircraftBody.setAttribute("d", silhouette);
+        }
+        const seconds = Math.max(0, Math.ceil(m11State.jammingRemaining));
+        ui.recoveryAircraftLabel.textContent = "HALO · ELECTRONIC SUPPORT x3";
+        ui.recoveryGaugeLabel.textContent = "HALO TOTAL HP";
+        ui.recoveryGaugeValue.textContent = `${Math.ceil(hp)}/${Math.ceil(maxHp)}`;
+        ui.recoveryGaugeFill.style.width = `${(ratio * 100).toFixed(1)}%`;
+        ui.recoveryGaugeStatus.textContent = m11State.fireControlDisabled
+          ? "FIRE CONTROL DOWN · STRIKE"
+          : (m11State.jammingActive
+            ? `JAMMING ACTIVE · ${seconds}S`
+            : `RADAR ONLINE · ${seconds}S`);
+        ui.recoveryGauge.classList.toggle("invalid", halo.length === 0 || hp <= 0);
+        ui.recoveryGauge.classList.toggle("active", ratio <= 0.35);
+        ui.recoveryGauge.classList.toggle("complete", m11State.completed);
+        ui.recoveryGauge.classList.toggle("radarOnline", !m11State.jammingActive && !m11State.fireControlDisabled);
+        ui.recoveryGauge.classList.add("formation", "visible");
+        return;
+      }
       const contract = mission && mission.m07RecoveryContract;
       if (gameState !== STATE_PLAYING || !m07State.active || !contract) {
-        ui.recoveryGauge.classList.remove("visible", "invalid", "active", "complete");
+        ui.recoveryGauge.classList.remove(
+          "visible", "invalid", "active", "complete", "formation", "radarOnline"
+        );
         return;
       }
 
@@ -62006,7 +62393,42 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.recoveryGauge.classList.toggle("invalid", !unit || !unit.alive);
       ui.recoveryGauge.classList.toggle("active", Boolean(unit && unit.alive) && ratio <= 0.35);
       ui.recoveryGauge.classList.toggle("complete", m07State.recoveryComplete);
+      ui.recoveryGauge.classList.remove("formation", "radarOnline");
       ui.recoveryGauge.classList.add("visible");
+    }
+
+    function updateM11EwDirective() {
+      const mission = MISSIONS[currentMissionIndex];
+      const contract = mission && mission.m11EscortContract;
+      const panel = ui.m11EwDirective;
+      panel.classList.remove("visible", "warning", "danger", "safe");
+      if (gameState !== STATE_PLAYING || !m11State.active || !contract) return;
+
+      const title = panel.querySelector("strong");
+      const instruction = panel.querySelector("span");
+      const seconds = Math.max(0, Math.ceil(m11State.jammingRemaining));
+      const warningLead = Math.max(1, Number(contract.electronicWarfare?.warningLead) || 35);
+      if (m11State.fireControlDisabled) {
+        title.textContent = "FIRE CONTROL RADAR DESTROYED";
+        instruction.textContent = "DESCEND & DESTROY REMAINING BASE TGT";
+        panel.classList.add("safe");
+      } else if (m11State.jammingActive && m11State.jammingRemaining > warningLead) {
+        title.textContent = `JAMMING ACTIVE · ${seconds}S`;
+        instruction.textContent = "DESCEND & STRIKE BASE TGT";
+      } else if (m11State.jammingActive) {
+        title.textContent = `JAMMING ENDS · ${seconds}S`;
+        instruction.textContent = `CLIMB ABOVE ALT ${Math.round(m11State.safeAltitude)}`;
+        panel.classList.add("warning");
+      } else if (m11State.playerSafe) {
+        title.textContent = `SAFE ALTITUDE · ${Math.round(player.position.y)}M`;
+        instruction.textContent = `HOLD ABOVE ${Math.round(m11State.safeAltitude)} · JAMMING IN ${seconds}S`;
+        panel.classList.add("safe");
+      } else {
+        title.textContent = `FIRE CONTROL ONLINE · ${seconds}S`;
+        instruction.textContent = `CLIMB ABOVE ALT ${Math.round(m11State.safeAltitude)}`;
+        panel.classList.add("danger");
+      }
+      panel.classList.add("visible");
     }
 
     function formatMissionTime(seconds) {
@@ -62039,6 +62461,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.tgtRemainRow.classList.toggle("cleared", remaining === 0);
       updateGuardReadout();
       updateM07RecoveryReadout();
+      updateM11EwDirective();
       const speedKph = Math.round(playerSpeed * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
