@@ -65,7 +65,7 @@ assert(host.includes("Math.min(\n              MAX_MISSILE_TURN_RATE_DEG"),
   "enhanced SAM does not retain the global turn-rate clamp");
 
 for (const token of [
-  "jamDuration: 100", "radarOnlineDuration: 18", "warningLead: 35",
+  "jamDuration: 60", "radarOnlineDuration: 18", "warningLead: 35",
   "safeAltitude,", "enhancedRange: 12000", "radarOnlineMissileMaxSpeed = 4000 / 3.6",
   "enhancedTurnRateDeg: 75", "enhancedNavigationRatio: 8", "enhancedMaxLateralG: 150",
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',

@@ -69,7 +69,7 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 - The ordinary compact guard row may show percentage integrity; it must not be
   the only indication of HALO health.
 - The same panel reports the current electronic-warfare phase and countdown.
-- HALO jams for 100 seconds, pauses for an 18-second resynchronisation window,
+- HALO jams for 60 seconds, pauses for an 18-second resynchronisation window,
   then resumes automatically. A 35-second warning gives a low player enough
   time to climb rather than receiving an untelegraphed lethal shot.
 - While jamming is active, the base SAM batteries retain their ordinary local
@@ -130,7 +130,7 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
 - [x] Replace red air TGTs with the Ver Ice Coast control-base ground TGTs.
 - [x] Make both MiG-31 pairs optional HALO hunters at the high-altitude floor.
-- [x] Add the 100 s jam / 18 s radar-online cycle, 35 s warning, 9,000 m safe
+- [x] Add the 60 s jam / 18 s radar-online cycle, 35 s warning, 9,000 m safe
   altitude, and radar-first permanent counterplay.
 - [x] Apply the radar-online missile boost only to tagged M11 base SAMs and
   preserve the global 75 deg/s ceiling (4,000 km/h, N=8, 150G authority).

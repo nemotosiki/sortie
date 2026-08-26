@@ -71,7 +71,7 @@ export default function register(ctx) {
       samRole: "baseSam"
     }),
     electronicWarfare: Object.freeze({
-      jamDuration: 100,
+      jamDuration: 60,
       radarOnlineDuration: 18,
       warningLead: 35,
       safeAltitude,
@@ -214,7 +214,7 @@ export default function register(ctx) {
     map: { x: 0.65, y: 0.18 },
     battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
     battleRadius: 19000,
-    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙って10,650m帯に張り付く残存航空戦力で、撃墜は二次目標となる。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は100秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙って10,650m帯に張り付く残存航空戦力で、撃墜は二次目標となる。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
   };
 
   ctx.addMission(mission, { after: "sera-m10" });

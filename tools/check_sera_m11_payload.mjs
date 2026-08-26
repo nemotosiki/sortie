@@ -16,7 +16,7 @@ for (const token of [
   'key: "sera-m11"', 'title: "FROZEN EYE"', 'world: "verIceCoast"',
   'aircraft: "jammer"', 'spw: "aam4"', 'playerStartAltitude = 9144',
   'operationAltitude = 10500',
-  'safeAltitude = 9000', 'interceptorAltitude = 10650', 'jamDuration: 100',
+  'safeAltitude = 9000', 'interceptorAltitude = 10650', 'jamDuration: 60',
   'radarOnlineDuration: 18', 'warningLead: 35', 'enhancedTurnRateDeg: 75',
   'radarOnlineMissileMaxSpeed = 4000 / 3.6', 'enhancedNavigationRatio: 8',
   'enhancedMaxLateralG: 150', 'enhancedLife: 18',
@@ -115,7 +115,7 @@ try {
     "MiG-31 must remain in HALO's high-altitude band while hunting it");
 
   console.log("check_sera_m11_payload: PASS");
-  console.log("  HALO EW x3 / base TGT x10 / 100s jam + 18s online / white MiG-31 x4");
+  console.log("  HALO EW x3 / base TGT x10 / 60s jam + 18s online / white MiG-31 x4");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

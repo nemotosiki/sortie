@@ -133,7 +133,7 @@ try {
     assert(probe.recoveryGauge.value === "1078/1176" && parseFloat(probe.recoveryGauge.width) < 92,
       "aggregate HP did not sum individual damage", probe.recoveryGauge);
 
-    const warning = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(65));
+    const warning = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(25));
     assert(warning.active && warning.remaining <= 35, "35-second jam warning did not arm", warning);
     probe = await page.evaluate(() => window.__game.seraM11Probe());
     assert(probe.directive.className.includes("warning") && probe.directive.instruction.includes("9000"),
