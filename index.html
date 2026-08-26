@@ -41348,6 +41348,675 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m09"
     ); // @payload:mission_sera_m09
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.desertBasin;
+        if (!base) throw new Error("[norIndustrialDusk] desertBasin base preset is missing");
+
+        const railRoute = Object.freeze([
+          Object.freeze([-5200, -4200]),
+          Object.freeze([-4050, -3500]),
+          Object.freeze([-2920, -2720]),
+          Object.freeze([-1800, -1900]),
+          Object.freeze([-780, -920]),
+          Object.freeze([40, 120]),
+          Object.freeze([780, 1120]),
+          Object.freeze([1420, 1900]),
+          Object.freeze([2360, 2780]),
+          Object.freeze([3450, 3580]),
+          Object.freeze([4750, 4320])
+        ]);
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([-6100, -5600]),
+          battleCenter: Object.freeze([-150, 350]),
+          freightYard: Object.freeze([-4300, -3400]),
+          industrialCore: Object.freeze([-1200, -900]),
+          riverCrossing: Object.freeze([1120, 1580]),
+          bridgeTarget: Object.freeze([1210, 1660]),
+          aradTransfer: Object.freeze([4750, 4320]),
+          airEntrySouth: Object.freeze([8600, -6200]),
+          airEntryNorth: Object.freeze([-7600, 7800]),
+          railRoute
+        });
+
+        ctx.addWorldPreset("norIndustrialDusk", {
+          ...base,
+          label: "NOR INDUSTRIAL — DUSK",
+          regionId: "nor_industrial",
+          sectorIds: Object.freeze(["south_freight_yard", "river_bridge", "arad_transfer_line"]),
+          variant: "industrial_dusk",
+          sceneryOrigin: [-150, 350],
+          previewFocus: [200, 650],
+          previewSheets: Object.freeze({
+            surfaceQa: Object.freeze([
+              Object.freeze({ label: "FREIGHT YARD", position: [-5600, 520, -4600], target: [-4100, 20, -3300] }),
+              Object.freeze({ label: "INDUSTRIAL CORE", position: [-3300, 720, -1200], target: [-1000, 80, -650] }),
+              Object.freeze({ label: "RAIL BRIDGE", position: [-900, 480, 3300], target: [1120, 45, 1580] }),
+              Object.freeze({ label: "FULL CORRIDOR", position: [0, 3600, -1000], target: [0, 0, 400] })
+            ])
+          }),
+          missionAnchors,
+          clearColor: 0x6f6d70,
+          sky: [
+            [0, "#202938"],
+            [0.3, "#4d5060"],
+            [0.5, "#8c665b"],
+            [0.7, "#d4865b"],
+            [1, "#625759"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x4e4f5201,
+            noise: 0.035,
+            haze: 0.22,
+            thinClouds: 18,
+            cloudOpacity: 0.09,
+            cloudBand: [0.38, 0.7],
+            cloudTint: 0xc6a69d
+          },
+          fog: { color: 0x898080, near: 2700, far: 17000 },
+          sun: {
+            position: [-6200, 900, -5200],
+            color: 0xffa164,
+            radius: 118,
+            glare: [
+              { scale: 1950, color: 0xd66f4b, opacity: 0.42 },
+              { scale: 520, color: 0xffc58e, opacity: 0.82 }
+            ]
+          },
+          moon: null,
+          stars: null,
+          sunRoad: null,
+          ocean: {
+            ...base.ocean,
+            base: "#4d4a43",
+            bright: "105, 98, 82",
+            dark: "42, 43, 40",
+            repeat: 30,
+            roughness: 0.98,
+            metalness: 0,
+            textureProfile: "sand",
+            normalRepeat: 28,
+            normalScale: [0.09, 0.12],
+            normalSpeed: [0, 0],
+            normalSeed: 0x4e4f5202
+          },
+          terrain: {
+            ...base.terrain,
+            seed: 0x4e4f5203,
+            sand: 0x5c5547,
+            grass: 0x4d5741,
+            rock: 0x555459,
+            peak: 0x68656a,
+            snow: 0xd8d4d2,
+            textureProfile: "rocky",
+            fineRepeat: 30,
+            macroRepeat: 5.4,
+            normalRepeat: 28,
+            normalStrength: 0.14,
+            islandNormalStrength: 0.1,
+            normalFade: [260, 2600],
+            rockSlope: [0.56, 0.9],
+            shoreHeight: 0.1,
+            snowSoftness: 0.06
+          },
+          lights: {
+            hemi: { sky: 0xa6a2aa, ground: 0x302f2c, intensity: 1.58 },
+            key: { color: 0xff9f66, intensity: 2.42, position: [-4300, 920, -3600] },
+            fill: { color: 0x657da0, intensity: 0.56, position: [3600, 620, 2900] }
+          },
+          mountains: {
+            ...base.mountains,
+            count: 18,
+            radius: [320, 760],
+            height: [90, 280],
+            distance: [11200, 15700],
+            snowyAbove: 9999,
+            palette: {
+              low: 0x44483f,
+              mid: 0x50504b,
+              rock: 0x5a575a,
+              peak: 0x68656a,
+              snow: 0xd8d4d2
+            },
+            corridor: null,
+            plateau: null
+          },
+          islands: { count: 0, stone: 0x555459, green: 0x4d5741 },
+          clouds: {
+            ...base.clouds,
+            scale: 1.08,
+            hero: false,
+            color: 0xc8b9b4,
+            opacity: 0.64,
+            cirrusColor: 0x9d8e91,
+            cirrusOpacity: 0.3,
+            texture: { seed: 0x4e4f5204, contrast: 1.1, underside: 0.62, softness: 0.96 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x4e4f5205,
+            keepClear: [{ x: -150, z: 350, r: 9800 }],
+            extraIslands: { count: 8, radius: [180, 420], height: [24, 86], distance: [11800, 15300] },
+            shore: null,
+            trees: null,
+            rocks: { count: 12, color: 0x4f4c49, scale: [7, 18] },
+            city: null,
+            extraClouds: null
+          }
+        });
+
+        ctx.addWorldDecorator("norIndustrialWorks", {
+          worlds: ["norIndustrialDusk"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt, classicDepthBuffer = false }) {
+            const root = new THREE.Group();
+            root.name = "norIndustrialWorks";
+            addRoot(root);
+
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const planeGeo = keepGeometry(new THREE.PlaneGeometry(1, 1));
+            const mats = new Map();
+            const material = (color, roughness = 0.88, metalness = 0.04, emissive = 0, opacity = 1) => {
+              const key = `${color}:${roughness}:${metalness}:${emissive}:${opacity}`;
+              if (!mats.has(key)) {
+                mats.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness,
+                  metalness,
+                  emissive,
+                  emissiveIntensity: emissive ? 0.9 : 0,
+                  transparent: opacity < 1,
+                  opacity
+                })));
+              }
+              return mats.get(key);
+            };
+            const surfaceMats = new Map();
+            const surfaceMaterial = (color, layer, roughness = 0.95, metalness = 0.01) => {
+              const key = `${color}:${layer}:${roughness}:${metalness}`;
+              if (!surfaceMats.has(key)) {
+                surfaceMats.set(key, keepMaterial(new THREE.MeshStandardMaterial({
+                  color,
+                  roughness,
+                  metalness,
+                  polygonOffset: classicDepthBuffer,
+                  polygonOffsetFactor: classicDepthBuffer ? -layer : 0,
+                  polygonOffsetUnits: classicDepthBuffer ? -layer : 0
+                })));
+              }
+              return surfaceMats.get(key);
+            };
+            const groundY = (x, z) => surfaceHeightAt(x, z) + 0.45;
+            const box = (name, x, y, z, sx, sy, sz, color, ry = 0, options = {}) => {
+              const mesh = new THREE.Mesh(boxGeo, material(
+                color,
+                options.roughness ?? 0.88,
+                options.metalness ?? 0.04,
+                options.emissive ?? 0,
+                options.opacity ?? 1
+              ));
+              mesh.name = name;
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.y = ry;
+              root.add(mesh);
+              return mesh;
+            };
+            const cylinder = (name, x, y, z, radius, height, color, options = {}) => {
+              const mesh = new THREE.Mesh(cylGeo, material(
+                color,
+                options.roughness ?? 0.82,
+                options.metalness ?? 0.08,
+                options.emissive ?? 0,
+                options.opacity ?? 1
+              ));
+              mesh.name = name;
+              mesh.position.set(x, y + height * 0.5, z);
+              mesh.scale.set(radius, height, radius);
+              root.add(mesh);
+              return mesh;
+            };
+            const surface = (name, x, z, width, depth, color, layer = 1, rotation = 0, roughness = 0.95, metalness = 0.01) => {
+              const mesh = new THREE.Mesh(planeGeo, surfaceMaterial(color, layer, roughness, metalness));
+              mesh.name = name;
+              mesh.position.set(x, surfaceHeightAt(x, z) + 0.54 + layer * 0.035, z);
+              mesh.scale.set(width, depth, 1);
+              mesh.rotateX(-Math.PI / 2);
+              if (rotation) mesh.rotateZ(rotation);
+              mesh.renderOrder = layer;
+              mesh.userData.surfaceQa = { layer, width, depth, rotation };
+              root.add(mesh);
+              return mesh;
+            };
+            const beam = (name, a, b, width, height, color, yOffset = 0) => {
+              const dx = b[0] - a[0];
+              const dz = b[1] - a[1];
+              const length = Math.hypot(dx, dz);
+              const x = (a[0] + b[0]) * 0.5;
+              const z = (a[1] + b[1]) * 0.5;
+              const y = groundY(x, z) + yOffset + height * 0.5;
+              return box(name, x, y, z, width, height, length, color, Math.atan2(dx, dz), { roughness: 0.72, metalness: 0.12 });
+            };
+
+            // Asphalt and contaminated river water establish the large-scale read.
+            surface("nor-river", 0, 1580, 16800, 520, 0x34454b, 2, 0, 0.42, 0.08);
+            surface("nor-south-yard", -4050, -3350, 3300, 2100, 0x3c3d3c, 1);
+            surface("nor-industrial-core", -900, -620, 4300, 3000, 0x42413e, 1);
+            surface("nor-north-logistics", 3150, 3450, 3500, 2200, 0x46443e, 1);
+
+            // The mission's one destructible bridge target stands at this crossing.
+            // Geometry is split into named deck/pier groups so the runtime can hide
+            // the centre span and reveal the broken abutments after destruction.
+            const bridgeA = [870, 1250];
+            const bridgeB = [1510, 1970];
+            beam("nor-rail-bridge-deck", bridgeA, bridgeB, 34, 7, 0x55595d, 20);
+            beam("nor-rail-bridge-rails", bridgeA, bridgeB, 9, 2, 0x2b2d30, 25);
+            for (const [index, t] of [0.18, 0.42, 0.66, 0.86].entries()) {
+              const x = bridgeA[0] + (bridgeB[0] - bridgeA[0]) * t;
+              const z = bridgeA[1] + (bridgeB[1] - bridgeA[1]) * t;
+              cylinder(`nor-rail-bridge-pier-${index}`, x, groundY(x, z), z, 16, 24, 0x666568);
+            }
+            box("nor-bridge-west-abutment", 840, groundY(840, 1220) + 13, 1220, 90, 26, 100, 0x5f5d5b, 0.72);
+            box("nor-bridge-east-abutment", 1540, groundY(1540, 2000) + 13, 2000, 90, 26, 100, 0x5f5d5b, 0.72);
+
+            // Freight yard tracks are visual parallel spurs; the moving rail line is
+            // laid by the mission host and shares the missionAnchors route.
+            for (let lane = -2; lane <= 2; lane += 1) {
+              beam(`nor-yard-track-${lane}`, [-5250 + lane * 30, -4050 - lane * 24], [-2850 + lane * 30, -2550 - lane * 24], 5, 0.55, 0x24272a, 0.8);
+            }
+            for (let index = 0; index < 9; index += 1) {
+              box(`nor-yard-crate-${index}`, -4740 + (index % 3) * 240, groundY(-4740, -3240) + 12, -3240 + Math.floor(index / 3) * 150, 150, 24, 72, 0x674e3c, 0.08);
+            }
+            box("nor-freight-station", -3550, groundY(-3550, -2940) + 28, -2940, 520, 56, 130, 0x615a52, 0.6);
+            box("nor-freight-platform", -3650, groundY(-3650, -3100) + 2.5, -3100, 760, 5, 70, 0x77736c, 0.6);
+
+            const factory = (id, x, z, width, depth, height, heading = 0) => {
+              const y = groundY(x, z);
+              box(`${id}-hall`, x, y + height * 0.5, z, width, height, depth, 0x57575a, heading, { roughness: 0.86, metalness: 0.08 });
+              box(`${id}-roof`, x, y + height + 2.5, z, width + 8, 5, depth + 8, 0x35383c, heading, { roughness: 0.74, metalness: 0.14 });
+              for (const side of [-1, 1]) {
+                box(`${id}-window-${side}`, x + Math.cos(heading) * side * width * 0.42, y + height * 0.62, z - Math.sin(heading) * side * width * 0.42, 5, height * 0.2, depth * 0.65, 0x3d322d, heading, { emissive: 0xe67b3f });
+              }
+            };
+            factory("nor-foundry", -1650, -950, 680, 420, 96, 0.12);
+            factory("nor-rolling-mill", -460, -520, 980, 360, 82, -0.08);
+            factory("nor-machine-works", 720, -140, 620, 520, 72, 0.04);
+            factory("nor-north-depot", 2960, 3300, 760, 430, 66, 0.08);
+
+            // Chimneys are the long-distance silhouette; dim orange caps survive the
+            // industrial haze without turning the scene into a night map.
+            const chimneys = [
+              [-1900, -780, 18, 210], [-1450, -620, 15, 165], [-620, -280, 17, 235],
+              [540, -20, 13, 145], [2580, 3180, 14, 178], [3340, 3520, 16, 205]
+            ];
+            for (const [index, [x, z, radius, height]] of chimneys.entries()) {
+              cylinder(`nor-chimney-${index}`, x, groundY(x, z), z, radius, height, 0x4d4b4c, { roughness: 0.78, metalness: 0.08 });
+              cylinder(`nor-chimney-cap-${index}`, x, groundY(x, z) + height - 8, z, radius + 2, 9, 0x7a3724, { emissive: 0xa84522 });
+            }
+
+            // Substation and utility corridor foreshadow the KEREN power cars.
+            surface("nor-substation-yard", 1680, 320, 920, 640, 0x4a4947, 3);
+            for (let row = 0; row < 3; row += 1) {
+              for (let col = 0; col < 5; col += 1) {
+                const x = 1380 + col * 140;
+                const z = 100 + row * 190;
+                cylinder(`nor-substation-insulator-${row}-${col}`, x, groundY(x, z), z, 5, 34, 0x777b80, { metalness: 0.35 });
+                box(`nor-substation-bus-${row}-${col}`, x, groundY(x, z) + 31, z, 62, 3, 4, 0xb07444, 0, { metalness: 0.45 });
+              }
+            }
+            box("nor-substation-control", 2160, groundY(2160, 430) + 24, 430, 210, 48, 110, 0x5d5b56);
+
+            // Workers' housing and service roads keep the bridge choice visibly civil.
+            const housing = [
+              [-3100, 500], [-2780, 520], [-2460, 540], [-3100, 840], [-2780, 860], [-2460, 880],
+              [2250, 2150], [2570, 2180], [2890, 2210], [2250, 2490], [2570, 2520], [2890, 2550]
+            ];
+            for (const [index, [x, z]] of housing.entries()) {
+              const y = groundY(x, z);
+              box(`nor-housing-${index}`, x, y + 26, z, 180, 52, 110, index % 2 ? 0x6c625a : 0x625d59, (index % 3 - 1) * 0.03);
+              box(`nor-housing-roof-${index}`, x, y + 54, z, 188, 5, 118, 0x3d3b3c, (index % 3 - 1) * 0.03);
+            }
+            surface("nor-workers-road-west", -2780, 700, 1100, 74, 0x333537, 5);
+            surface("nor-workers-road-east", 2570, 2350, 1150, 74, 0x333537, 5);
+
+            // Sparse orange industrial lamps trace the corridor at dusk.
+            const lamps = [
+              [-4850, -3800], [-4000, -3240], [-3100, -2600], [-2050, -1750],
+              [-980, -760], [180, 300], [970, 1300], [1550, 2070], [2600, 3000], [3800, 3820]
+            ];
+            for (const [index, [x, z]] of lamps.entries()) {
+              const y = groundY(x, z);
+              cylinder(`nor-lamp-post-${index}`, x, y, z, 2.2, 28, 0x47494d, { metalness: 0.3 });
+              box(`nor-lamp-head-${index}`, x, y + 29, z, 11, 4, 7, 0xffa05c, 0, { emissive: 0xff7b35 });
+            }
+          }
+        });
+      },
+      "map_norIndustrial"
+    ); // @payload:map_norIndustrial
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, GROUND_TYPES
+        } = ctx.tables;
+
+        const world = WORLD_PRESETS.norIndustrialDusk;
+        if (!world) {
+          throw new Error("[sera-m10] norIndustrialDusk is not registered; load map_norIndustrial first");
+        }
+        if (!MISSIONS.some((mission) => mission.key === "sera-m09" && mission.campaign === "sera")) {
+          throw new Error("[sera-m10] sera-m09 predecessor is missing");
+        }
+        for (const type of ["fa18", "su34", "mig29"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m10] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["su34", "mig29"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m10] required enemy profile not registered: ${type}`);
+        }
+        for (const type of ["trainLoco", "trainFlak", "trainCar", "spaag"]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m10] required ground type not registered: ${type}`);
+        }
+
+        const railRoute = world.missionAnchors?.railRoute;
+        if (!Array.isArray(railRoute) || railRoute.length < 4) {
+          throw new Error("[sera-m10] Nor Industrial rail route is missing");
+        }
+
+        ctx.addGroundType("trainPower", {
+          ...GROUND_TYPES.trainCar,
+          key: "trainPower",
+          label: "POWER CAR",
+          role: "KEREN Mobile Power Car",
+          hp: 118,
+          radarColor: "#edf7ff"
+        });
+
+        ctx.addGroundModel("trainPower", {
+          build(env) {
+            const { geometry, add, dark, steel, light } = env;
+            // Rail chassis and armoured equipment box.
+            add(geometry.panel, dark, 0, 1.05, 0, 6.2, 1.0, 17.2);
+            add(geometry.panel, steel, 0, 2.55, 0, 5.8, 2.2, 15.4);
+            add(geometry.panel, light, 0, 4.05, 0, 5.4, 0.65, 14.8);
+            // Twin transformer banks are the readable identity from above.
+            for (const z of [-4.3, 4.3]) {
+              add(geometry.panel, dark, 0, 4.65, z, 4.5, 1.1, 4.4);
+              for (const x of [-1.55, -0.52, 0.52, 1.55]) {
+                add(geometry.shipCylinder, steel, x, 5.55, z, 0.32, 1.05, 0.32);
+              }
+            }
+            // Couplers and wheel bogies keep the custom body aligned with stock cars.
+            for (const z of [-8.9, 8.9]) add(geometry.panel, dark, 0, 0.9, z, 1.0, 0.65, 1.2);
+            for (const z of [-5.8, 5.8]) {
+              add(geometry.panel, dark, -2.6, 0.65, z, 0.7, 1.3, 3.2);
+              add(geometry.panel, dark, 2.6, 0.65, z, 0.7, 1.3, 3.2);
+            }
+          }
+        });
+
+        ctx.addGroundType("railBridgeControl", {
+          ...GROUND_TYPES.trainCar,
+          key: "railBridgeControl",
+          label: "RAIL BRIDGE",
+          role: "Strategic Rail Bridge Control Pier",
+          hp: 196,
+          hitRadius: 24,
+          crash: Object.freeze({ halfLen: 8, halfBeam: 7, top: 8 }),
+          hitBox: Object.freeze({ x: 15, y: 12, z: 17 }),
+          smokeHeight: 9,
+          mobile: null,
+          radarColor: "#edf7ff"
+        });
+
+        ctx.addGroundModel("railBridgeControl", {
+          build(env) {
+            const { geometry, add, dark, steel, light } = env;
+            // A reinforced control pier beside the decorator's bridge deck. Its
+            // broad concrete base gives bombs and guns an honest physical target.
+            add(geometry.panel, dark, 0, 1.4, 0, 14.5, 2.8, 16.0);
+            add(geometry.panel, steel, 0, 4.5, 0, 11.8, 3.6, 12.4);
+            add(geometry.panel, light, 0, 6.8, 0, 10.5, 1.0, 11.2);
+            for (const x of [-4.6, 4.6]) {
+              add(geometry.panel, dark, x, 8.1, 0, 1.2, 3.6, 10.0);
+            }
+            add(geometry.panel, steel, 0, 9.7, 0, 11.0, 0.8, 10.4);
+          }
+        });
+
+        const m10Contract = Object.freeze({
+          routes: Object.freeze({ bridge: "bridge", precision: "precision" }),
+          precision: Object.freeze({
+            mark: "m10Precision",
+            targetIds: Object.freeze([201, 202, 205]),
+            required: 3
+          }),
+          bridge: Object.freeze({
+            mark: "m10Bridge",
+            targetId: 290,
+            decoratorNames: Object.freeze([
+              "nor-rail-bridge-deck", "nor-rail-bridge-rails"
+            ])
+          }),
+          cargo: Object.freeze({
+            powerMark: "m10Power",
+            powerIds: Object.freeze([203, 206]),
+            materialMark: "m10Material",
+            materialIds: Object.freeze([204, 207, 208])
+          }),
+          escape: Object.freeze({
+            distanceTolerance: 18,
+            criticalMark: "m10Precision",
+            failEvent: "trainCriticalEscaped"
+          }),
+          outcomes: Object.freeze({
+            route: "route",
+            bridgeDestroyed: "bridgeDestroyed",
+            powerCarsEscaped: "powerCarsEscaped",
+            materialCarsEscaped: "materialCarsEscaped",
+            trainCarsDestroyed: "trainCarsDestroyed",
+            precisionTargetsDestroyed: "precisionTargetsDestroyed",
+            civilianRailDisruption: "civilianRailDisruption"
+          }),
+          rank: Object.freeze({
+            sTime: 620,
+            aTime: 760,
+            ignoreWhiteTargets: true,
+            bridgeRouteCap: "A"
+          })
+        });
+
+        const trainUnit = (id, type, pathOffset, mark, label, tgt) => ({
+          id,
+          type,
+          label,
+          path: railRoute,
+          pathOffset,
+          speed: 18,
+          mark,
+          missionRole: mark,
+          tgt,
+          rankNeutral: tgt === false
+        });
+
+        const mission = {
+          key: "sera-m10",
+          campaign: "sera",
+          campaignOrder: 10,
+          world: "norIndustrialDusk",
+          title: "LAST TRAIN",
+          jp: "ノル工業地帯を抜ける装甲列車を、アラド連絡線へ到達する前に停止させよ。",
+          act: 2,
+          storyNo: 10,
+          story: "WAR DAY 108。KERENの電力設備と軍需資材を積んだ最後の列車が、ノル工業地帯を北東へ走る。\n橋を落とせば確実に止まる。橋を残すなら、機関車と高射車だけを動く列車から切り取らなければならない。",
+          epilogue: [
+            "装甲列車はアラド連絡線の手前で停止した。",
+            "残った橋と貨車の数は、次の戦場でKERENが使える電力と、ノルの住民が渡れる道の数になる。",
+            "MERIDIANは撃破数ではなく、選ばれた停止方法を作戦記録へ残した。"
+          ],
+          friendlies: {
+            playerStart: {
+              x: -6100,
+              y: 1450,
+              z: -5600,
+              facing: { x: -4300, z: -3400 }
+            },
+            wingmen: [
+              {
+                type: "fa18",
+                label: "ROOK 2 LARK",
+                radioSpeaker: "lark",
+                spw: "agm4",
+                offset: { back: 115, side: 135, up: -12 }
+              }
+            ]
+          },
+          railLine: railRoute,
+          railSpeed: 18,
+          groundUnits: [
+            trainUnit(201, "trainLoco", 220, "m10Precision", "ARMOURED LOCOMOTIVE", true),
+            trainUnit(202, "trainFlak", 194, "m10Precision", "FLAK CAR 1", true),
+            trainUnit(203, "trainPower", 168, "m10Power", "KEREN POWER 1", false),
+            trainUnit(204, "trainCar", 142, "m10Material", "MATERIAL CAR 1", false),
+            trainUnit(205, "trainFlak", 116, "m10Precision", "FLAK CAR 2", true),
+            trainUnit(206, "trainPower", 90, "m10Power", "KEREN POWER 2", false),
+            trainUnit(207, "trainCar", 64, "m10Material", "MATERIAL CAR 2", false),
+            trainUnit(208, "trainCar", 38, "m10Material", "MATERIAL CAR 3", false),
+            {
+              id: 290,
+              type: "railBridgeControl",
+              label: "RAIL BRIDGE",
+              x: 1210,
+              z: 1660,
+              heading: 2.46,
+              tgt: false,
+              rankNeutral: true,
+              mark: "m10Bridge",
+              missionRole: "bridge"
+            },
+            {
+              id: 291,
+              type: "spaag",
+              label: "BRIDGE SPAAG 1",
+              x: 760,
+              z: 2110,
+              heading: -0.72,
+              tgt: false,
+              rankNeutral: true,
+              mark: "m10BridgeDefence"
+            },
+            {
+              id: 292,
+              type: "spaag",
+              label: "BRIDGE SPAAG 2",
+              x: 1670,
+              z: 1190,
+              heading: 2.42,
+              tgt: false,
+              rankNeutral: true,
+              mark: "m10BridgeDefence"
+            }
+          ],
+          sequence: [
+            {
+              types: ["su34", "su34"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              band: 2,
+              idBase: 300,
+              label: "FULLBACK STRIKE 1",
+              role: "line",
+              skill: "regular",
+              at: [8600, -6200],
+              altitude: 1500,
+              facing: [2300, -1000],
+              radio: [
+                {
+                  speaker: "meridian",
+                  priority: "URGENT",
+                  text: "南東よりSu-34二。列車防空の増援だ。赤TGTへの攻撃を継続せよ。",
+                  id: "m10-su34-first"
+                }
+              ]
+            },
+            {
+              types: ["su34", "su34"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              delay: 65,
+              band: 2,
+              idBase: 310,
+              label: "FULLBACK STRIKE 2",
+              role: "line",
+              skill: "regular",
+              at: [-7600, 7800],
+              altitude: 1650,
+              facing: [-900, 2400]
+            },
+            {
+              types: ["mig29", "mig29"],
+              tgt: false,
+              rankNeutral: true,
+              concurrent: true,
+              delay: 135,
+              band: 2,
+              idBase: 320,
+              label: "NOR CAP",
+              role: "line",
+              skill: "veteran",
+              at: [8100, 7200],
+              altitude: 2100,
+              facing: [1800, 1800],
+              radio: [
+                {
+                  speaker: "lark",
+                  priority: "URGENT",
+                  text: "北東、MiG-29A二！ 列車が連絡線へ近づいてる、空戦に引き込まれるな！",
+                  id: "m10-mig29-cap"
+                }
+              ]
+            }
+          ],
+          m10Contract,
+          fixedRadio: [
+            { id: "m10_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ノル工業地帯へ進入。装甲列車は北東のアラド連絡線へ移動中。" },
+            { id: "m10_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "赤は機関車と高射車二。白い貨車はKERENの電力設備と軍需資材だ。" },
+            { id: "m10_intro_03", at: 14, speaker: "meridian", priority: "CRITICAL", text: "停止方法は二つ。赤TGT三両を精密破壊、または白表示の鉄道橋を破壊せよ。" },
+            { id: "m10_bridge_warning", at: 21, speaker: "lark", priority: "NORMAL", text: "橋を落とせば早い。でもノルの輸送路も、戦後の復旧も一緒に失う。" },
+            { id: "m10_bridge_down", event: "bridgeDestroyed", speaker: "meridian", priority: "CRITICAL", text: "鉄道橋崩落。列車停止を確認。周辺の民間鉄道は長期運休となる。" },
+            { id: "m10_precision_clear", event: "precisionRoute", speaker: "lark", priority: "CRITICAL", text: "機関車と高射車、全て停止！ 橋は残った。白い貨車は追わなくていい。" },
+            { id: "m10_power_escape", event: "trainPowerEscaped", speaker: "meridian", priority: "NORMAL", text: "KEREN電力車がアラド連絡線へ通過。後方電力への影響を記録する。" },
+            { id: "m10_material_escape", event: "trainMaterialEscaped", speaker: "meridian", priority: "NORMAL", text: "軍需資材車が連絡線へ通過。残存物資として記録。" },
+            { id: "m10_critical_escape", event: "trainCriticalEscaped", speaker: "meridian", priority: "CRITICAL", text: "装甲列車の中核車両がアラド連絡線を突破。阻止任務失敗。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "装甲列車停止。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
+            id: "m10-success"
+          },
+          failureRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "列車はアラド連絡線を突破した。追撃を中止し、ノル上空から離脱せよ。",
+            id: "m10-failure"
+          },
+          parTime: 620,
+          hasOutro: false,
+          map: { x: 0.63, y: 0.42 },
+          battleCenter: { x: -150, z: 350 },
+          battleRadius: 10800,
+          briefing: "ノル工業地帯を北東へ走る八両編成の装甲列車を、アラド連絡線の手前で止めろ。\n赤TGTは機関車一、高射車二。三両を精密破壊すれば橋を残して任務完了となる。白い電力車二・資材車三は任意交戦で、撃破も逃走も任務達成を妨げない。\nもう一つの選択は、河川上の白い鉄道橋を破壊して列車を即時停止させること。ただし民間輸送と復旧へ長期の損害が残る。\nSu-34は二機ずつ二波、MiG-29A二機が後着する。全て白の任意交戦。橋周辺のSPAAG二両も任意交戦だ。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m09" });
+      },
+      "mission_sera_m10"
+    ); // @payload:mission_sera_m10
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -43606,6 +44275,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         damageEnemy(bridge, bridge.hp + 1, true, false);
         return outcomePending.active && m10State.route === mission.m10Contract.routes.bridge;
       },
+      forceSeraM10DeployPending: () => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        return pendingWaves.length === 0;
+      },
       forceSeraM10PrecisionRoute: () => {
         const mission = m10Mission();
         if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
@@ -43614,6 +44290,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ));
         for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
         return outcomePending.active && m10State.route === mission.m10Contract.routes.precision;
+      },
+      forceSeraM10CargoEscape: (kind = "power") => {
+        const mission = m10Mission();
+        if (gameState !== STATE_PLAYING || !mission || mission.key !== "sera-m10") return false;
+        const mark = kind === "material"
+          ? mission.m10Contract.cargo.materialMark
+          : mission.m10Contract.cargo.powerMark;
+        const target = enemies.find((enemy) => enemy.alive && enemy.mark === mark && enemy.route?.length);
+        if (!target) return false;
+        target.routeDistance = target.route[target.route.length - 1].d;
+        placeOnRoute(target, true);
+        return handleM10GroundRouteEnd(target);
       },
       forceSeraM10CriticalEscape: () => {
         const mission = m10Mission();

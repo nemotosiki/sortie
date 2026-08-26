@@ -24,6 +24,7 @@ for (const token of [
   "const m10Result = m10ResultSnapshot(mission);",
   "resetM10State(MISSIONS[currentMissionIndex]);",
   "forceSeraM10BridgeRoute",
+  "forceSeraM10DeployPending",
   "forceSeraM10PrecisionRoute",
   "forceSeraM10CriticalEscape",
   "forceSeraM10ResolveOutcome"
