@@ -193,9 +193,10 @@ try {
     );
     probe = await page.evaluate(() => window.__game.seraM11Probe());
     const boosted = probe.missiles.find((missile) => missile.radarBoosted);
-    assert(boosted && boosted.maxSpeed >= 700 && boosted.turnRateDeg <= 75
-        && boosted.navigationRatio === 5,
-      "radar-online SAM did not receive bounded enhanced guidance", {
+    assert(boosted && Math.abs(boosted.maxSpeed * 3.6 - 4000) <= 0.5
+        && boosted.turnRateDeg === 75 && boosted.navigationRatio === 8
+        && boosted.maxLateralG === 150,
+      "radar-online SAM did not receive the 4,000 km/h near-unavoidable guidance tune", {
         missiles: probe.missiles,
         sam: probe.contacts.find((contact) => contact.id === nearBase.samId),
         escort: probe.escort

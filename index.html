@@ -2711,11 +2711,12 @@
     import {
       DEFAULT_MISSILE_ACCELERATION,
       SEEKER_STATE,
+      STANDARD_GRAVITY,
       accelerateMissileSpeed,
       createMissileGuidance,
       sampleMissileOvershoot,
       updateSeekerState
-    } from "./src/combat/missile-guidance.js?v=20260813-launch-phases-1";
+    } from "./src/combat/missile-guidance.js?v=20260827-m11-radar-guidance-1";
     import {
       clearConcurrentMultiLock,
       createConcurrentMultiLockState,
@@ -42481,6 +42482,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const operationAltitude = 10500;
         const safeAltitude = 9000;
         const interceptorAltitude = 10650;
+        // Restored fire-control turns the tagged base SAMs into the mission's hard
+        // altitude gate. Keep the authored requirement readable in km/h even though
+        // the combat simulation stores velocity in metres per second.
+        const radarOnlineMissileMaxSpeed = 4000 / 3.6;
         const baseX = anchors.weatherStation[0];
         const baseZ = anchors.weatherStation[1];
 
@@ -42509,11 +42514,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             enhancedLockTime: 0.28,
             enhancedFireDelayMin: 0.16,
             enhancedFireDelayMax: 0.28,
-            enhancedMaxSpeed: 700,
+            enhancedMaxSpeed: radarOnlineMissileMaxSpeed,
             enhancedAcceleration: 240,
             enhancedTurnRateDeg: 75,
-            enhancedNavigationRatio: 5,
-            enhancedLife: 14
+            // N=8 deliberately saturates the mission round's available steering.
+            // 150G is just enough to retain the global 75 deg/s turn ceiling at
+            // 4,000 km/h; it does not raise that ceiling or affect ordinary rounds.
+            enhancedNavigationRatio: 8,
+            enhancedMaxLateralG: 150,
+            enhancedLife: 18
           }),
           outcomes: Object.freeze({
             saved: "electronicSupportAircraftSaved",
@@ -45049,7 +45058,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             speed: Number(missile.speed.toFixed(1)),
             maxSpeed: Number(missile.maxSpeed.toFixed(1)),
             turnRateDeg: Number(THREE.MathUtils.radToDeg(missile.turnRate).toFixed(1)),
-            navigationRatio: missile.navigationRatio || 3
+            navigationRatio: missile.navigationRatio || 3,
+            maxLateralG: Number(((missile.maxLateralAcceleration || 0) / STANDARD_GRAVITY).toFixed(1))
           })),
           directive: {
             visible: ui.m11EwDirective.classList.contains("visible"),
@@ -51855,6 +51865,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         achievedLateralAcceleration: new THREE.Vector3(),
         navigationRatio: enhancedTuning
           ? Math.max(3, Number(enhancedTuning.enhancedNavigationRatio) || 3)
+          : undefined,
+        maxLateralAcceleration: enhancedTuning
+          ? Math.max(0, Number(enhancedTuning.enhancedMaxLateralG) || 0) * STANDARD_GRAVITY
           : undefined,
         terminalCommitted: false,
         terminalCommittedPass: 0,

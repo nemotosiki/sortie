@@ -194,6 +194,18 @@ try {
     "50G did not limit a 556m/s round to about 50.5deg/s",
     fastRateDeg
   );
+  const radarOnlineMissile = {
+    speed: 4000 / 3.6,
+    turnRate: THREE.MathUtils.degToRad(75),
+    maxLateralAcceleration: 150 * guidanceModule.STANDARD_GRAVITY
+  };
+  const radarOnlineRateDeg = collisionProbe.effectiveAirTurnRateFor(radarOnlineMissile)
+    / Math.PI * 180;
+  assert(
+    Math.abs(radarOnlineRateDeg - 75) < 1e-9,
+    "M11 150G authority did not retain the 75deg/s ceiling at 4,000km/h",
+    radarOnlineRateDeg
+  );
 
   const groundAimProbe = guidanceModule.createMissileGuidance({
     THREE,

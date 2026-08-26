@@ -33,7 +33,7 @@ assert(
   "terminal first-substep range-rate sample guard missing"
 );
 assert(
-  indexSource.includes("missile-guidance.js?v=20260813-launch-phases-1"),
+  indexSource.includes("missile-guidance.js?v=20260827-m11-radar-guidance-1"),
   "browser cache-buster for air PN guidance missing"
 );
 assert(indexSource.includes("const SHIP_SAM_CLEARANCE = 55;"), "ship-SAM clearance changed");
@@ -48,7 +48,7 @@ assert(shipClearancePolicy.includes("enemy.surface && !enemy.ground"), "ship-SAM
 assert(indexSource.includes("maxPasses: 1,"), "enemy SAMs are not initialized with one pursuit pass");
 assert(indexSource.includes("reacquireDelay: 0,"), "enemy SAMs still initialize a reacquisition coast");
 assert(
-  indexSource.includes("lifeLimit: shipSamClearance ? MISSILE_LIFE : profile.life"),
+  indexSource.includes(": (shipSamClearance ? MISSILE_LIFE : profile.life)"),
   "Aegis/frigate SAM life does not match the player's standard missile"
 );
 assert(
@@ -64,7 +64,7 @@ assert(
   "player SP.W missiles do not enforce the global turn-rate ceiling"
 );
 assert(
-  guidanceSource.includes("Math.min(missile.turnRate ?? defaultTurnRate, maxTurnRate)"),
+  guidanceSource.includes("Math.min(authored, absolute, accelerationRate)"),
   "shared guidance kernel does not enforce the global turn-rate ceiling"
 );
 assert(

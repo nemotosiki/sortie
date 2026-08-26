@@ -25,6 +25,7 @@ for (const token of [
   'm11State.jammingPhase = "fire-control-destroyed"',
   "player.position.y >= m11State.safeAltitude",
   "missile.m11RadarBoosted", 'missile.airGuidancePhase = "altitude-sanctuary"',
+  "maxLateralAcceleration: enhancedTuning", "enhancedTuning.enhancedMaxLateralG",
   "cullDistance: enhancedTuning", "profileRange * envelope + 400",
   "distanceToSquared(player.position) > cullDistance * cullDistance",
   "function updateM11EwDirective()", 'id="m11EwDirective"',
@@ -65,7 +66,8 @@ assert(host.includes("Math.min(\n              MAX_MISSILE_TURN_RATE_DEG"),
 
 for (const token of [
   "jamDuration: 100", "radarOnlineDuration: 18", "warningLead: 35",
-  "safeAltitude,", "enhancedRange: 12000", "enhancedTurnRateDeg: 75",
+  "safeAltitude,", "enhancedRange: 12000", "radarOnlineMissileMaxSpeed = 4000 / 3.6",
+  "enhancedTurnRateDeg: 75", "enhancedNavigationRatio: 8", "enhancedMaxLateralG: 150",
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
   "secondaryKillsForS: 4"
 ]) assert(payload.includes(token), `payload/runtime handshake missing ${token}`);

@@ -434,12 +434,22 @@ export function createMissileGuidance({
     );
   }
 
+  function lateralAccelerationLimitFor(missile) {
+    // Fifty G remains the ordinary round's physical limit. A mission may pass
+    // a higher explicit limit for a bespoke threat, but maxTurnRate still caps
+    // its angular steering so this cannot bypass the global 75 deg/s rule.
+    const authored = Number(missile?.maxLateralAcceleration);
+    return Number.isFinite(authored) && authored > 0
+      ? authored
+      : AIR_MISSILE_MAX_LATERAL_ACCELERATION;
+  }
+
   function effectiveAirTurnRateFor(missile) {
     const authored = Math.max(0, Number(missile.turnRate ?? defaultTurnRate) || 0);
     const absolute = Math.max(0, Number(maxTurnRate));
     const speed = Math.max(0, Number(missile.speed) || 0);
     const accelerationRate = speed > 1e-6
-      ? AIR_MISSILE_MAX_LATERAL_ACCELERATION / speed
+      ? lateralAccelerationLimitFor(missile) / speed
       : Infinity;
     return Math.min(authored, absolute, accelerationRate);
   }
@@ -458,8 +468,9 @@ export function createMissileGuidance({
     // component.  A missile cannot use the PN channel as extra thrust, so strip
     // it every slice before enforcing the airframe acceleration limit.
     achieved.addScaledVector(missileForward, -achieved.dot(missileForward));
-    if (achieved.lengthSq() > AIR_MISSILE_MAX_LATERAL_ACCELERATION ** 2) {
-      achieved.setLength(AIR_MISSILE_MAX_LATERAL_ACCELERATION);
+    const accelerationLimit = lateralAccelerationLimitFor(missile);
+    if (achieved.lengthSq() > accelerationLimit ** 2) {
+      achieved.setLength(accelerationLimit);
     }
     return achieved;
   }
@@ -502,7 +513,7 @@ export function createMissileGuidance({
       headingError / VLS_CAPTURE_RESPONSE_TIME
     );
     const requestedAcceleration = Math.min(
-      AIR_MISSILE_MAX_LATERAL_ACCELERATION,
+      lateralAccelerationLimitFor(missile),
       requestedRate * Math.max(0, Number(missile.speed) || 0)
     );
     return out.setLength(requestedAcceleration);
@@ -623,8 +634,9 @@ export function createMissileGuidance({
       missile.launchPhase = launchPhase;
       missile.launchPhaseAge = launchPhaseAge;
     }
-    if (commandedAcceleration.lengthSq() > AIR_MISSILE_MAX_LATERAL_ACCELERATION ** 2) {
-      commandedAcceleration.setLength(AIR_MISSILE_MAX_LATERAL_ACCELERATION);
+    const accelerationLimit = lateralAccelerationLimitFor(missile);
+    if (commandedAcceleration.lengthSq() > accelerationLimit ** 2) {
+      commandedAcceleration.setLength(accelerationLimit);
     }
     const achieved = updateAirMissileAutopilot(
       missile,

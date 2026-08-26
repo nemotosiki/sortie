@@ -38,8 +38,12 @@ assert(
   "air-to-air 50G lateral-acceleration cap missing"
 );
 assert(
-  guidanceSource.includes("AIR_MISSILE_MAX_LATERAL_ACCELERATION / speed"),
-  "air guidance does not convert its 50G cap into a speed-dependent turn rate"
+  guidanceSource.includes("lateralAccelerationLimitFor(missile) / speed"),
+  "air guidance does not convert its acceleration cap into a speed-dependent turn rate"
+);
+assert(
+  guidanceSource.includes(": AIR_MISSILE_MAX_LATERAL_ACCELERATION;"),
+  "ordinary air guidance no longer defaults to the 50G cap"
 );
 assert(
   guidanceSource.includes("Math.min(authored, absolute, accelerationRate)"),
@@ -84,4 +88,4 @@ console.log("check_missile_turn_cap: PASS");
 console.log(`  player/enemy guided-missile maximum = ${cap} deg/s`);
 console.log(`  authored SP.W max = ${Math.max(...spwRates)} deg/s`);
 console.log(`  authored hostile-profile max = ${Math.max(...enemyRates)} deg/s`);
-console.log("  air-to-air lateral acceleration maximum = 50G");
+console.log("  ordinary air-to-air lateral acceleration maximum = 50G");

@@ -18,6 +18,8 @@ for (const token of [
   'operationAltitude = 10500',
   'safeAltitude = 9000', 'interceptorAltitude = 10650', 'jamDuration: 100',
   'radarOnlineDuration: 18', 'warningLead: 35', 'enhancedTurnRateDeg: 75',
+  'radarOnlineMissileMaxSpeed = 4000 / 3.6', 'enhancedNavigationRatio: 8',
+  'enhancedMaxLateralG: 150', 'enhancedLife: 18',
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
   'ctx.addMission(mission, { after: "sera-m10" })'
 ]) assert(source.includes(token), `missing source contract ${token}`);
@@ -100,6 +102,12 @@ try {
     "base/secondary result contract changed");
   assert(contract.electronicWarfare.enhancedTurnRateDeg <= 75,
     "M11 SAM boost bypasses the global turn ceiling");
+  assert(Math.abs(contract.electronicWarfare.enhancedMaxSpeed * 3.6 - 4000) < 1e-9,
+    "radar-online SAM maximum speed must be exactly 4,000 km/h");
+  assert(contract.electronicWarfare.enhancedNavigationRatio === 8
+      && contract.electronicWarfare.enhancedMaxLateralG === 150
+      && contract.electronicWarfare.enhancedLife === 18,
+    "radar-online SAM near-unavoidable guidance contract changed");
   assert(10650 - mission.friendlies.playerStart.y > 1200
       && 10650 - mission.friendlies.playerStart.y < 2000,
     "MiG-31 vertical separation must exceed MSL and fit 4AAM range");

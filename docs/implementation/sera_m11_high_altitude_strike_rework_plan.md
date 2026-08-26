@@ -75,9 +75,10 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 - While jamming is active, the base SAM batteries retain their ordinary local
   envelope and ordinary missile. While jamming is paused and a fire-control
   radar survives, those batteries receive a mission-only long-range track,
-  quicker fire-control sequence, 75 deg/s turn ceiling, higher PN gain, speed,
-  acceleration, and life. This does not alter any other mission or bypass the
-  global 75 deg/s missile-turn ceiling.
+  quicker fire-control sequence, 4,000 km/h maximum speed, N=8 PN guidance,
+  and enough lateral authority to retain the 75 deg/s turn ceiling at that
+  speed. This does not alter any other mission. The global 75 deg/s
+  missile-turn ceiling remains intact.
 - The radar-restored threat may engage below 9,000 m. At or above 9,000 m the
   player is outside its mission envelope and an enhanced round loses guidance.
   The resulting loop is: descend and strike while HALO jams, climb before the
@@ -132,7 +133,7 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 - [x] Add the 100 s jam / 18 s radar-online cycle, 35 s warning, 9,000 m safe
   altitude, and radar-first permanent counterplay.
 - [x] Apply the radar-online missile boost only to tagged M11 base SAMs and
-  preserve the global 75 deg/s ceiling.
+  preserve the global 75 deg/s ceiling (4,000 km/h, N=8, 150G authority).
 - [x] Complete on base destruction; fail when fewer than two HALO aircraft remain.
 - [x] Rewrite briefing, radio, epilogue, outcome fields, and rank contract.
 - [x] Keep LARK's F/A-18F + 4AAM canon and exclude CROWN.

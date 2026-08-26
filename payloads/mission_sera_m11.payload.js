@@ -47,6 +47,10 @@ export default function register(ctx) {
   const operationAltitude = 10500;
   const safeAltitude = 9000;
   const interceptorAltitude = 10650;
+  // Restored fire-control turns the tagged base SAMs into the mission's hard
+  // altitude gate. Keep the authored requirement readable in km/h even though
+  // the combat simulation stores velocity in metres per second.
+  const radarOnlineMissileMaxSpeed = 4000 / 3.6;
   const baseX = anchors.weatherStation[0];
   const baseZ = anchors.weatherStation[1];
 
@@ -75,11 +79,15 @@ export default function register(ctx) {
       enhancedLockTime: 0.28,
       enhancedFireDelayMin: 0.16,
       enhancedFireDelayMax: 0.28,
-      enhancedMaxSpeed: 700,
+      enhancedMaxSpeed: radarOnlineMissileMaxSpeed,
       enhancedAcceleration: 240,
       enhancedTurnRateDeg: 75,
-      enhancedNavigationRatio: 5,
-      enhancedLife: 14
+      // N=8 deliberately saturates the mission round's available steering.
+      // 150G is just enough to retain the global 75 deg/s turn ceiling at
+      // 4,000 km/h; it does not raise that ceiling or affect ordinary rounds.
+      enhancedNavigationRatio: 8,
+      enhancedMaxLateralG: 150,
+      enhancedLife: 18
     }),
     outcomes: Object.freeze({
       saved: "electronicSupportAircraftSaved",
