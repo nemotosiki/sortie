@@ -163,9 +163,9 @@ ESCORT／CAP／TOP COVERはさらに守備対象側へ割り込み、遠距離�
 全PASSした。M04〜M06は専用payload検査と横断watchdogで確認し、全20
 payload検査、`registry_gate`（19 tables、loss 0）、20 payloadのinline同期、
 radio canon（20 missions／311 strings）、`git diff --check`もPASSした。
-8340番の配信ファイルとローカル`index.html`は4,082,620 bytes、SHA-256
-`92048d3838ce496b0cdf0daf77cd7b8374798009958c1d41e79f6c262a671825`で一致した。
+8340番の配信ファイルとローカル`index.html`は4,085,535 bytes、SHA-256
+`2bf1646aafd91cc6239f282e0f2f2dae480ed279f000fa2498f4047c6045d274`で一致した。
 
 watchdogへAI更新時間も追加した。headless Chrome／SwiftShaderで各ミッション
-180フレームを同期実行した最悪値はM12の固定翼25機で61.1ms（1フレーム平均
-約0.34ms）だった。広域索敵・目標選択によるフリーズ級の計算量増加はない。
+180フレームを同期実行した最悪値はM20の固定翼24機で59.3ms（1フレーム平均
+約0.33ms）だった。広域索敵・目標選択によるフリーズ級の計算量増加はない。
