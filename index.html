@@ -43502,6 +43502,345 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m12"
     ); // @payload:mission_sera_m12
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.archipelagoDay;
+        if (!base) throw new Error("[hadorIslands] archipelagoDay base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([-900, 9200]),
+          convoyStart: Object.freeze([0, 8200]),
+          convoyExit: Object.freeze([0, -12600]),
+          battleCenter: Object.freeze([0, -2200]),
+          awacsStation: Object.freeze([9300, -2600]),
+          eastIntercept: Object.freeze([9000, 5400]),
+          westIntercept: Object.freeze([-9200, 1200]),
+          northIntercept: Object.freeze([2200, 12400]),
+          southIntercept: Object.freeze([-1800, -14800]),
+          eastMissileBoats: Object.freeze([4700, -2800]),
+          westMissileBoats: Object.freeze([-4800, -5200])
+        });
+
+        ctx.addWorldPreset("hadorIslands", {
+          ...base,
+          label: "HADOR ISLANDS — NORTH ROUTE",
+          regionId: "hador_islands",
+          sectorIds: Object.freeze(["north_airlift_gate", "twin_channel", "south_relief_route"]),
+          variant: "clear_midday_airlift",
+          sceneryOrigin: [0, -2200],
+          previewFocus: [0, -2200],
+          missionAnchors,
+          clearColor: 0x76b8e7,
+          sky: [
+            [0, "#2f86ca"],
+            [0.34, "#6ab6e8"],
+            [0.52, "#b9dcf2"],
+            [0.72, "#e5eef3"],
+            [1, "#8bc5e2"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x48414431,
+            noise: 0.018,
+            haze: 0.095,
+            thinClouds: 14,
+            cloudOpacity: 0.055,
+            cloudBand: [0.36, 0.7],
+            cloudTint: 0xe4edf3
+          },
+          fog: { color: 0xa8cfdf, near: 5200, far: 23800 },
+          sun: {
+            position: [-6800, 7200, -4800],
+            color: 0xfff3d0,
+            radius: 106,
+            glare: [
+              { scale: 1800, color: 0xffdca0, opacity: 0.28 },
+              { scale: 470, color: 0xfff7df, opacity: 0.76 }
+            ]
+          },
+          moon: null,
+          stars: null,
+          ocean: {
+            ...base.ocean,
+            base: "#276e91",
+            bright: "94, 181, 211",
+            dark: "20, 75, 105",
+            repeat: 36,
+            roughness: 0.58,
+            metalness: 0.05,
+            textureProfile: "ocean",
+            normalRepeat: 40,
+            normalScale: [0.17, 0.25],
+            normalSpeed: [0.022, 0.014],
+            normalSeed: 0x48414432
+          },
+          lights: {
+            hemi: { sky: 0xc4e6ff, ground: 0x315c54, intensity: 1.75 },
+            key: { color: 0xfff0c9, intensity: 2.55, position: [-6200, 7600, -4300] },
+            fill: { color: 0x78b7d8, intensity: 0.68, position: [5200, 1600, 3600] }
+          },
+          islands: { count: 12, stone: 0x667873, green: 0x4f8663 },
+          mountains: {
+            ...base.mountains,
+            count: 20,
+            distance: [13200, 19800],
+            radius: [260, 760],
+            height: [100, 420],
+            snowyAbove: 9999,
+            corridor: { x: 0, halfWidth: 3100 },
+            plateau: null
+          },
+          clouds: {
+            ...base.clouds,
+            scale: 1.0,
+            hero: true,
+            color: 0xf2f5f4,
+            opacity: 0.72,
+            cirrusColor: 0xd7e3e8,
+            cirrusOpacity: 0.28,
+            texture: { seed: 0x48414433, contrast: 0.92, underside: 0.34, softness: 1.08 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x48414434,
+            keepClear: [{ box: { x: 3100, z0: -13600, z1: 9200 } }],
+            extraIslands: { count: 14, radius: [180, 540], height: [26, 130], distance: [4800, 13600] },
+            shore: { sand: 0xd6d0ad, shallow: 0x54b6c4, opacity: 0.74, width: 1.3 },
+            trees: { count: 170, color: 0x3e7651, trunk: 0x655341, scale: [0.7, 1.3] },
+            rocks: { count: 34, color: 0x65726e, scale: [7, 24] },
+            city: null,
+            extraClouds: { towers: 5, towerSize: [90, 150], towerBase: 1250, stratus: 5, stratusSize: [260, 430], stratusBase: 2100, distance: [6200, 12800] }
+          }
+        });
+
+        ctx.addWorldDecorator("hadorNorthernSettlements", {
+          worlds: ["hadorIslands"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "hadorNorthernSettlements";
+            addRoot(root);
+
+            const islandGeo = keepGeometry(new THREE.CylinderGeometry(1, 1.12, 1, 28));
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const material = (color, roughness = 0.9, metalness = 0.02, emissive = 0) => keepMaterial(
+              new THREE.MeshStandardMaterial({
+                color, roughness, metalness, emissive,
+                emissiveIntensity: emissive ? 0.72 : 0
+              })
+            );
+            const rock = material(0x667873, 0.96);
+            const grass = material(0x4f8663, 0.94);
+            const concrete = material(0x9a9d95, 0.9);
+            const roof = material(0x55616b, 0.82, 0.08);
+            const beacon = material(0xffe3a0, 0.5, 0.04, 0xffb84a);
+            const steel = material(0x6d7478, 0.7, 0.25);
+
+            const island = (name, x, z, rx, rz, height) => {
+              const baseY = surfaceHeightAt(x, z) - 3;
+              const body = new THREE.Mesh(islandGeo, rock);
+              body.name = `${name}-rock`;
+              body.position.set(x, baseY + height * 0.5, z);
+              body.scale.set(rx, height, rz);
+              root.add(body);
+              const top = new THREE.Mesh(islandGeo, grass);
+              top.name = `${name}-green`;
+              top.position.set(x, baseY + height + 1.4, z);
+              top.scale.set(rx * 0.88, 3, rz * 0.88);
+              root.add(top);
+              return baseY + height + 3;
+            };
+            const box = (name, x, y, z, sx, sy, sz, mat, rotation = 0) => {
+              const mesh = new THREE.Mesh(boxGeo, mat);
+              mesh.name = name;
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.y = rotation;
+              root.add(mesh);
+              return mesh;
+            };
+            const tower = (name, x, z, ground, height) => {
+              const mast = new THREE.Mesh(cylGeo, steel);
+              mast.name = `${name}-mast`;
+              mast.position.set(x, ground + height * 0.5, z);
+              mast.scale.set(2.2, height, 2.2);
+              root.add(mast);
+              box(`${name}-beacon`, x, ground + height + 2, z, 10, 4, 10, beacon);
+            };
+
+            const landmarks = [
+              ["hador-west-north", -5200, 5400, 1080, 760, 82],
+              ["hador-east-north", 4950, 3300, 1320, 900, 106],
+              ["hador-west-mid", -4700, -900, 1450, 980, 122],
+              ["hador-east-mid", 5200, -3400, 1180, 760, 88],
+              ["hador-west-south", -5000, -7600, 980, 680, 74],
+              ["hador-east-south", 4600, -9800, 1360, 880, 112]
+            ];
+            for (const [name, x, z, rx, rz, height] of landmarks) {
+              const ground = island(name, x, z, rx, rz, height);
+              for (let i = 0; i < 7; i += 1) {
+                const px = x - 220 + (i % 4) * 145;
+                const pz = z - 120 + Math.floor(i / 4) * 180;
+                box(`${name}-house-${i}`, px, ground + 13, pz, 78, 26, 54, concrete, (i % 3 - 1) * 0.08);
+                box(`${name}-roof-${i}`, px, ground + 28, pz, 84, 4, 60, roof, (i % 3 - 1) * 0.08);
+              }
+              tower(`${name}-nav`, x + rx * 0.52, z - rz * 0.42, ground, 42);
+            }
+          }
+        });
+      },
+      "map_hadorIslands"
+    ); // @payload:map_hadorIslands
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES
+        } = ctx.tables;
+        const world = WORLD_PRESETS.hadorIslands;
+        if (!world) throw new Error("[sera-m13] hadorIslands is not registered; load map_hadorIslands first");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m12" && mission.campaign === "sera")) {
+          throw new Error("[sera-m13] sera-m12 predecessor is missing");
+        }
+        for (const type of ["c17", "tanker", "fa18", "mig29", "mig31", "a100"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m13] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["mig29", "mig31", "a100"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m13] required enemy profile not registered: ${type}`);
+        }
+        if (!SHIP_TYPES.missileBoat) throw new Error("[sera-m13] missileBoat ship type is missing");
+        const anchors = world.missionAnchors;
+        const m13EscortContract = Object.freeze({
+          callsign: "LIFELINE",
+          total: 4,
+          requiredSaved: 1,
+          awacs: Object.freeze({ missionTag: "m13Awacs", reinforcementDelay: 45 }),
+          reinforcementTag: "m13Reinforcement",
+          outcomes: Object.freeze({
+            saved: "lifelineAircraftSaved",
+            lost: "lifelineAircraftLost",
+            allSafe: "allLifelineAircraftSafe",
+            awacsDestroyed: "enemyAwacsDestroyed",
+            reinforcementsDelayed: "reinforcementsDelayed"
+          })
+        });
+
+        const mission = {
+          key: "sera-m13",
+          campaign: "sera",
+          campaignOrder: 13,
+          world: "hadorIslands",
+          title: "LIFELINE",
+          jp: "ハドール北航路を通過する輸送機三機と給油機一機を護衛せよ。",
+          act: 3,
+          storyNo: 13,
+          story: "WAR DAY 20。弾薬、医薬品、航空燃料を積んだ四機がハドール北航路へ入る。\n敵AWACSを落とせば後続迎撃は遅れる。だが、そのレーダー機は輸送隊の進路から遠く離れている。",
+          epilogue: [
+            "LIFELINEはハドール北航路を抜け、前線へ積荷を渡した。",
+            "守れた機体の数だけ、翌朝に飛べる戦闘機と開ける手術室が増える。",
+            "MERIDIANは敵AWACSの撃破より先に、帰還した輸送機の機番号を読み上げた。"
+          ],
+          friendlies: {
+            playerStart: {
+              x: anchors.playerStart[0], y: 1450, z: anchors.playerStart[1],
+              facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] }
+            },
+            wingmen: [
+              { type: "fa18", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "aam4", offset: { back: 110, side: 135, up: -14 } }
+            ],
+            transportGroups: [
+              {
+                aircraft: "c17", callsign: "LIFELINE", count: 3, vulnerable: true,
+                hp: 520, speed: 104, altitude: 980, spacing: 230,
+                start: { x: anchors.convoyStart[0], z: anchors.convoyStart[1] },
+                exit: { x: anchors.convoyExit[0], z: anchors.convoyExit[1] }
+              },
+              {
+                aircraft: "tanker", callsign: "LIFELINE TANKER", count: 1, vulnerable: true,
+                hp: 620, speed: 104, altitude: 1060,
+                start: { x: anchors.convoyStart[0] + 360, z: anchors.convoyStart[1] + 280 },
+                exit: { x: anchors.convoyExit[0] + 360, z: anchors.convoyExit[1] + 280 }
+              }
+            ],
+            guard: {
+              readout: "integrity",
+              label: "LIFELINE",
+              lossPenalty: 1500,
+              hitPenalty: 90,
+              lossBanner: "LIFELINE AIRCRAFT LOST",
+              failBanner: "LIFELINE DESTROYED",
+              lossRadio: "LIFELINE被撃墜。残存機を守れ、RAVEN！",
+              failRadio: "輸送隊全機喪失。LIFELINE作戦失敗、ROOKは離脱せよ。",
+              safeRadio: "LIFELINE全機、南航路へ離脱。積荷は前線へ届く。"
+            }
+          },
+          sequence: [
+            {
+              types: ["mig29", "mig29"], band: 1, idBase: 1320, label: "FULCRUM HUNTER 1",
+              role: "line", skill: "regular", hunt: "air", missionTag: "m13Interceptor",
+              at: [...anchors.eastIntercept], altitude: 1900, facing: [...anchors.convoyStart],
+              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "MiG-29A二、LIFELINEへ直進。赤TGT指定、輸送隊へ到達する前に落とせ。", id: "m13-first-hunters" }]
+            },
+            {
+              types: ["a100"], tgt: false, rankNeutral: true, concurrent: true,
+              missionTag: "m13Awacs", delay: 0, band: 3, idBase: 1330, label: "MAINSTAY",
+              role: "trash", skill: "regular", at: [...anchors.awacsStation], altitude: 7200,
+              facing: [11800, -2600],
+              radio: [{ speaker: "meridian", priority: "URGENT", text: "東九千、敵A-100。白の任意目標だ。撃墜すれば増援管制を遅らせられるが、輸送隊から離れる。", id: "m13-awacs-choice" }]
+            },
+            {
+              types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
+              delay: 48, band: 2, idBase: 1340, label: "FULCRUM HUNTER 2", role: "line",
+              skill: "regular", hunt: "air", at: [...anchors.westIntercept], altitude: 2100,
+              facing: [0, -1000]
+            },
+            {
+              kind: "naval", fleet: ["missileBoat", "missileBoat"], tgt: true, concurrent: true,
+              missionTag: "m13ChannelBoats", delay: 74, idBase: 1350, label: "CHANNEL MISSILE BOATS",
+              at: [...anchors.eastMissileBoats], facing: [...anchors.westMissileBoats], spacing: 420,
+              radio: [{ speaker: "lark", priority: "URGENT", text: "航路上にミサイル艇二！ 輸送隊が横切る前に沈める！", id: "m13-boats" }]
+            },
+            {
+              types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
+              delay: 96, band: 2, idBase: 1360, label: "FULCRUM HUNTER 3", role: "line",
+              skill: "veteran", hunt: "air", at: [...anchors.northIntercept], altitude: 2400,
+              facing: [0, -3200]
+            },
+            {
+              types: ["mig31", "mig31"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
+              delay: 132, band: 3, idBase: 1370, label: "FOXHOUND LONG SHOT", role: "line",
+              skill: "veteran", hunt: "air", at: [...anchors.southIntercept], altitude: 8600,
+              facing: [0, -5400],
+              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "高高度MiG-31二、長距離攻撃態勢。輸送隊を射程へ入れるな。", id: "m13-foxhound" }]
+            },
+            {
+              types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
+              delay: 168, band: 3, idBase: 1380, label: "FULCRUM HUNTER 4", role: "line",
+              skill: "veteran", hunt: "air", at: [7600, -11000], altitude: 2300,
+              facing: [...anchors.convoyExit]
+            }
+          ],
+          m13EscortContract,
+          fixedRadio: [
+            { id: "m13_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "LIFELINE四機、ハドール北航路へ進入。右上に編隊全体のHPを表示する。" },
+            { id: "m13_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "三機のC-17と給油機一機を一本のゲージで見る。敵を追って隊列から離れすぎるな。" },
+            { id: "m13_awacs_down", event: "m13AwacsDown", speaker: "meridian", priority: "CRITICAL", text: "敵AWACS撃墜。増援管制が混乱、未到着の迎撃隊は四十五秒遅延する。" },
+            { id: "m13_one_lost", event: "m13OneLost", speaker: "lark", priority: "URGENT", text: "LIFELINE一機喪失……まだ積荷は残ってる。残りを絶対に通す！" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "敵迎撃戦力を排除。LIFELINEは南航路へ離脱、護衛成功。", id: "m13-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "LIFELINE全機喪失。補給作戦を中止、ROOKは帰投せよ。", id: "m13-failure" },
+          parTime: 390,
+          hasOutro: false,
+          map: { x: 0.7, y: 0.22 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 15100,
+          briefing: "医薬品・弾薬・航空燃料を積んだC-17三機とKC-46一機、コールサインLIFELINEをハドール北航路で護衛せよ。四機の合算HPを右上に表示する。一機を失っても任務は継続するがSランクは失い、全機喪失で失敗となる。\n赤TGTはMiG-29A八、MiG-31二、航路上のミサイル艇二。航空TGTはRAVENよりLIFELINEを優先して狙う。MiG-31は高高度から長距離攻撃を行う。\n東方遠距離のA-100は白い任意目標。撃墜すれば未到着の増援四波を45秒遅らせられるが、追撃中は低速の輸送隊から離れる。近接護衛を続けるか、増援管制を断つかを選べ。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m12" });
+      },
+      "mission_sera_m13"
+    ); // @payload:mission_sera_m13
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -43939,6 +44278,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m11Result) Object.assign(entry, m11Result);
       const m12Result = m12ResultSnapshot(mission);
       if (m12Result) Object.assign(entry, m12Result);
+      const m13Result = m13ResultSnapshot(mission);
+      if (m13Result) Object.assign(entry, m13Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -46176,6 +46517,103 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM12ResolveOutcome: () => {
         const mission = m12Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM13Probe: () => {
+        const mission = m13Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          escort: { ...m13State },
+          guard: {
+            active: guardState.active,
+            total: guardState.total,
+            saved: guardState.saved,
+            lost: guardState.lost,
+            integrity: Number(guardIntegrity().toFixed(4)),
+            readout: guardState.readout
+          },
+          lifeline: guardedFriendlies().map((friendly) => ({
+            label: friendly.label,
+            type: friendly.type,
+            alive: friendly.alive,
+            retired: friendly.retired,
+            hp: Math.max(0, Math.round(friendly.hp)),
+            maxHp: friendly.maxHp
+          })),
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            hunt: enemy.hunt || null,
+            missionTag: enemy.missionTag || null
+          })),
+          pending: pendingWaves.map((entry) => ({
+            delay: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            tgt: entry.wave ? isTgtEntry(entry.wave) : false,
+            missionTag: entry.wave?.missionTag || null
+          })),
+          recoveryGauge: {
+            visible: ui.recoveryGauge.classList.contains("visible"),
+            label: ui.recoveryGaugeLabel.textContent,
+            value: ui.recoveryGaugeValue.textContent,
+            width: ui.recoveryGaugeFill.style.width
+          },
+          radioEvents: [...fixedRadioFired],
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM13ClearAwacs: () => {
+        const mission = m13Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const awacs = m13AwacsContact(mission);
+        if (!awacs) return false;
+        if (awacs.alive) damageEnemy(awacs, awacs.hp + 1, true, false);
+        updateM13MissionState();
+        return m13State.awacsDelayApplied;
+      },
+      forceSeraM13DeployPending: () => {
+        const mission = m13Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        updateM13MissionState();
+        return pendingWaves.length === 0;
+      },
+      forceSeraM13DamageEscort: (index = 0, damage = 98) => {
+        const mission = m13Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const target = guardedFriendlies()[Math.max(0, Math.floor(Number(index) || 0))];
+        if (!target || !target.alive || target.retired) return false;
+        damageFriendly(target, Math.max(0, Number(damage) || 0));
+        if (gameState === STATE_PLAYING) updateM13MissionState();
+        updateHud();
+        return true;
+      },
+      forceSeraM13ClearDesignated: () => {
+        const mission = m13Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || !isTgtEntry(enemy)) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateMission(2, 2);
+        return cleared;
+      },
+      forceSeraM13ResolveOutcome: () => {
+        const mission = m13Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -50858,6 +51296,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM10State(MISSIONS[currentMissionIndex]);
       resetM11State(MISSIONS[currentMissionIndex]);
       resetM12State(MISSIONS[currentMissionIndex]);
+      resetM13State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -55036,6 +55475,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         [fields.reinforcementAircraftCancelled || "reinforcementAircraftCancelled"]: m12State.cancelledAircraft,
         [fields.powerSubstationsDestroyed || "powerSubstationsDestroyed"]: m12State.powerDestroyed,
         [fields.jammerDestroyed || "jammerDestroyed"]: m12State.jammerDownFired
+      };
+    }
+
+    const m13State = {
+      active: false,
+      awacsDestroyed: false,
+      awacsDelayApplied: false,
+      delayedWaves: 0,
+      delayedAircraft: 0,
+      oneLostFired: false
+    };
+
+    function m13Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m13EscortContract ? mission : null;
+    }
+
+    function resetM13State(mission) {
+      const contract = mission && mission.m13EscortContract;
+      m13State.active = Boolean(contract);
+      m13State.awacsDestroyed = false;
+      m13State.awacsDelayApplied = false;
+      m13State.delayedWaves = 0;
+      m13State.delayedAircraft = 0;
+      m13State.oneLostFired = false;
+    }
+
+    function m13AwacsContact(mission = m13Mission()) {
+      const tag = mission?.m13EscortContract?.awacs?.missionTag;
+      if (!tag) return null;
+      return enemies.find((enemy) => enemy.missionTag === tag) || null;
+    }
+
+    function updateM13MissionState() {
+      const mission = m13Mission();
+      if (!mission || !m13State.active) return false;
+      const contract = mission.m13EscortContract;
+      const awacs = m13AwacsContact(mission);
+      if (awacs && !awacs.alive && !m13State.awacsDelayApplied) {
+        const delay = Math.max(0, Number(contract.awacs?.reinforcementDelay) || 0);
+        const tag = contract.reinforcementTag;
+        for (const queued of pendingWaves) {
+          if (queued.wave?.missionTag !== tag) continue;
+          queued.timer += delay;
+          m13State.delayedWaves += 1;
+          m13State.delayedAircraft += waveSizeOf(queued.wave);
+        }
+        m13State.awacsDestroyed = true;
+        m13State.awacsDelayApplied = true;
+        fireFixedRadioEvent("m13AwacsDown");
+        showBanner("ENEMY REINFORCEMENTS DELAYED", 2.1, "success");
+      }
+      if (guardState.lost > 0 && !m13State.oneLostFired) {
+        m13State.oneLostFired = true;
+        fireFixedRadioEvent("m13OneLost");
+      }
+      // Guard failure remains the shared destroyFriendly path and mission
+      // completion remains the ordinary red-TGT resolver. M13 only modifies
+      // the still-pending clocks and records the choice.
+      return false;
+    }
+
+    function m13ResultSnapshot(mission) {
+      const contract = mission && mission.m13EscortContract;
+      if (!contract || !m13State.active) return null;
+      const fields = contract.outcomes || {};
+      const activeSaved = guardedFriendlies().filter((friendly) => (
+        friendly.alive && !friendly.retired
+      )).length;
+      const saved = Math.min(Number(contract.total) || guardState.total,
+        guardState.saved + activeSaved);
+      const lost = guardState.lost;
+      return {
+        [fields.saved || "lifelineAircraftSaved"]: saved,
+        [fields.lost || "lifelineAircraftLost"]: lost,
+        [fields.allSafe || "allLifelineAircraftSafe"]: lost === 0 && saved >= Number(contract.total || 4),
+        [fields.awacsDestroyed || "enemyAwacsDestroyed"]: m13State.awacsDestroyed,
+        [fields.reinforcementsDelayed || "reinforcementsDelayed"]: m13State.delayedAircraft
       };
     }
 
@@ -61797,6 +62314,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM10MissionThreat()) return;
       if (updateM11MissionThreat()) return;
       if (updateM12MissionThreat()) return;
+      if (updateM13MissionState()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -63805,6 +64323,38 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ui.recoveryGauge.classList.toggle("active", ratio <= 0.35);
         ui.recoveryGauge.classList.toggle("complete", m11State.completed);
         ui.recoveryGauge.classList.toggle("radarOnline", !m11State.jammingActive && !m11State.fireControlDisabled);
+        ui.recoveryGauge.classList.add("formation", "visible");
+        return;
+      }
+      const m13Contract = mission && mission.m13EscortContract;
+      if (gameState === STATE_PLAYING && m13State.active && m13Contract) {
+        const formation = guardedFriendlies();
+        const maxHp = Math.max(1, formation.reduce(
+          (sum, unit) => sum + Math.max(0, Number(unit.maxHp) || 0),
+          0
+        ));
+        const hp = formation.reduce(
+          (sum, unit) => sum + (unit.alive ? Math.max(0, Number(unit.hp) || 0) : 0),
+          0
+        );
+        const ratio = THREE.MathUtils.clamp(hp / maxHp, 0, 1);
+        const silhouette = SILHOUETTE_PATHS[AIRCRAFT_TYPES.c17?.theme?.variant]
+          || SILHOUETTE_DEFAULT;
+        if (ui.recoveryAircraftBody.getAttribute("d") !== silhouette) {
+          ui.recoveryAircraftBody.setAttribute("d", silhouette);
+        }
+        const active = formation.filter((unit) => unit.alive && !unit.retired).length;
+        ui.recoveryAircraftLabel.textContent = "LIFELINE · C-17 x3 + KC-46 x1";
+        ui.recoveryGaugeLabel.textContent = "LIFELINE TOTAL HP";
+        ui.recoveryGaugeValue.textContent = `${Math.ceil(hp)}/${Math.ceil(maxHp)}`;
+        ui.recoveryGaugeFill.style.width = `${(ratio * 100).toFixed(1)}%`;
+        ui.recoveryGaugeStatus.textContent = active > 0
+          ? `ESCORT FORMATION · ${active}/${m13Contract.total} ACTIVE`
+          : `ROUTE CLEAR · ${guardState.saved}/${m13Contract.total} SAVED`;
+        ui.recoveryGauge.classList.toggle("invalid", formation.length === 0 || hp <= 0);
+        ui.recoveryGauge.classList.toggle("active", ratio <= 0.35);
+        ui.recoveryGauge.classList.toggle("complete", active === 0 && guardState.saved > 0);
+        ui.recoveryGauge.classList.remove("radarOnline");
         ui.recoveryGauge.classList.add("formation", "visible");
         return;
       }
