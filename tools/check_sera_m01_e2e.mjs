@@ -1,5 +1,13 @@
 #!/usr/bin/env node
-import { chromium } from "playwright";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const candidates = [process.env.SORTIE_PLAYWRIGHT, "playwright",
+  "C:/Users/user01/AppData/Roaming/npm/node_modules/@playwright/mcp/node_modules/playwright"].filter(Boolean);
+let playwright = null;
+for (const candidate of candidates) { try { playwright = require(candidate); break; } catch { /* next */ } }
+if (!playwright) throw new Error("Playwright is unavailable");
+const { chromium } = playwright;
 
 const baseUrl = process.env.SORTIE_BASE_URL || "http://127.0.0.1:8000";
 const missionUrl = `${baseUrl}/index.html`;
@@ -11,6 +19,7 @@ function assert(condition, message, details = null) {
 }
 
 const browser = await chromium.launch({
+  executablePath: process.env.SORTIE_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe",
   headless: true,
   args: ["--use-gl=swiftshader", "--disable-gpu-sandbox", "--disable-dev-shm-usage"]
 });
@@ -151,8 +160,8 @@ try {
   assert(firstBombers.length === 2, "first red bomber pair did not spawn", probe.enemies);
   assert(firstBombers.every((enemy) => enemy.disposition === "TGT" && enemy.strike),
     "first bomber pair was not red TGT strike traffic", firstBombers);
-  assert(probe.enemies.filter((enemy) => !enemy.tgt).length === 4,
-    "tutorial survivors plus first escorts did not remain white", probe.enemies);
+  assert(probe.enemies.filter((enemy) => !enemy.tgt).length === 2,
+    "tutorial survivors did not remain white before the delayed RELIEF pair", probe.enemies);
   perfect = await page.evaluate(() => window.__game.seraM01PerfectRankPreview());
   assert(perfect === "S", "clean defence lost S after the first bomber group", perfect);
 
@@ -220,8 +229,8 @@ try {
   probe = await page.evaluate(() => window.__game.seraM01Probe());
   const successRadio = await page.evaluate(() => window.__game.debug.radioProbe());
   assert(probe.outcomePending === true, "clean clear did not enter the accomplished hold", probe);
-  assert(probe.enemies.some((enemy) => enemy.tgt === false),
-    "clean clear incorrectly required every white hostile to be destroyed", probe.enemies);
+  assert(probe.enemies.every((enemy) => enemy.tgt === false),
+    "clean clear left a red TGT alive", probe.enemies);
   assert(probe.radio.speaker === "MERIDIAN", "success was not called by MERIDIAN", probe.radio);
   assert(
     successRadio.fullText.includes("レン湾上空クリア") || successRadio.fullText.includes("帰投せよ"),

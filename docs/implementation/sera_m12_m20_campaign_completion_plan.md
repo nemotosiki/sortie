@@ -154,8 +154,8 @@ mission, not from the superseded M11 outline.
 - [x] M18 KEREN subsystem boss and route outcomes, commit
 - [x] M19 escort-radius pursuit decision and CROWN return, commit
 - [x] M20 normal/GIBOR routes and CROWN/LARK final contract, commit
-- [ ] Full M01-M20 unlock-chain and campaign-select browser regression
-- [ ] Inline every new payload and leave the local 8340 server playable
+- [x] Full M01-M20 unlock-chain and campaign-select browser regression
+- [x] Inline every new payload and leave the local 8340 server playable
 
 ## Per-checkpoint gate
 
