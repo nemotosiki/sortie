@@ -49182,6 +49182,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             impact: Boolean(enemy.m16Impact),
             ownerId: enemy.m16OwnerId || null,
             target: enemy.m16TargetFriendly ? enemy.m16TargetFriendly.label : null,
+            position: enemy.m16AntiShipWeapon ? {
+              x: Number(enemy.group.position.x.toFixed(2)),
+              y: Number(enemy.group.position.y.toFixed(2)),
+              z: Number(enemy.group.position.z.toFixed(2))
+            } : null,
+            targetDistance: enemy.m16AntiShipWeapon && enemy.m16TargetFriendly
+              ? Number(enemy.group.position.distanceTo(enemy.m16TargetFriendly.group.position).toFixed(2))
+              : null,
             released: Boolean(enemy.m16WeaponReleased)
           })),
           pending: pendingWaves.map((entry) => ({
@@ -59313,7 +59321,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       forwardOf(enemy.group, tmpV2);
       enemy.group.position.addScaledVector(tmpV2, enemy.speed * dt);
-      enemy.group.position.y = THREE.MathUtils.lerp(enemy.group.position.y, 68, damping(2.2, dt));
+      // `damping(k, dt)` takes a per-second retention factor in (0, 1).
+      // Passing 2.2 made its blend negative, so every frame moved the weapon
+      // away from sea level and eventually sent its HUD range to ~1e51. Here
+      // 2.2 is the intended exponential response rate, written directly in
+      // rate form so the blend remains in [0, 1] for every non-negative dt.
+      const seaSkimBlend = 1 - Math.exp(-2.2 * Math.max(0, dt));
+      enemy.group.position.y = THREE.MathUtils.lerp(enemy.group.position.y, 68, seaSkimBlend);
       enemy.smokeTimer -= dt;
       if (enemy.smokeTimer <= 0) {
         tmpV3.copy(enemy.group.position).addScaledVector(tmpV2, -7);

@@ -73,12 +73,21 @@ try {
     "first SSGN pair did not surface");
   assert(await cleanRoute.page.evaluate(() => window.__game.forceSeraM16LaunchSsgnSalvo()) === 2,
     "first SSGN salvo did not launch");
+  await cleanRoute.page.waitForTimeout(1600);
   probe = await cleanRoute.page.evaluate(() => window.__game.seraM16Probe());
   const firstIds = probe.contacts.filter((entry) => entry.ssgn).map((entry) => entry.id).sort();
+  const firstWeapons = probe.contacts.filter((entry) => entry.antiShipWeapon && entry.alive);
   assert(firstIds.join(",") === "1601,1602"
       && probe.contacts.filter((entry) => entry.ssgn && entry.alive && !entry.submerged).length === 2
       && probe.homeFleet.weaponsLaunched === 2,
     "first surfaced window is not using two live authored hulls", probe);
+  assert(firstWeapons.length === 2
+      && firstWeapons.every((entry) => entry.position
+        && Object.values(entry.position).every(Number.isFinite)
+        && Math.abs(entry.position.y - 68) <= 12
+        && Number.isFinite(entry.targetDistance)
+        && entry.targetDistance < 20_000),
+    "anti-ship cruise weapons did not settle into a finite sea-skimming track", firstWeapons);
 
   assert(await cleanRoute.page.evaluate(() => window.__game.forceSeraM16CloseWindow()) === 2,
     "SSGNs did not submerge after the firing window");
