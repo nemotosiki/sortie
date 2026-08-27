@@ -117,18 +117,18 @@ REATTACK
 
 ## 7. 実装TODO
 
-- [ ] purposeごとのsensor／memory／commit／leash既定値を追加する。
-- [ ] payloadの任意`sensorRange`／`sensorMemory`を正規化・伝播する。
-- [ ] 共通知覚状態`search / track / engaged / memory / objective / station`を追加する。
-- [ ] 防御編隊の脅威候補にRAVEN／通常僚機／戦闘支援ARCAを加える。
-- [ ] 目標保持と編隊slot分担を追加する。
-- [ ] hunt対象の毎フレーム再選択揺れを修正する。
-- [ ] break前モードを保存して正しく復帰する。
+- [x] purposeごとのsensor／memory／commit／leash既定値を追加する。
+- [x] payloadの任意`sensorRange`／`sensorMemory`を正規化・伝播する。
+- [x] 共通知覚状態`search / track / engaged / memory / objective / station`を追加する。
+- [x] 防御編隊の脅威候補にRAVEN／通常僚機／戦闘支援ARCAを加える。
+- [x] 目標保持と編隊slot分担を追加する。
+- [x] hunt対象の毎フレーム再選択揺れを修正する。
+- [x] break前モードを保存して正しく復帰する。
 - [ ] INTERCEPTORのegress／reattackを実装する。
-- [ ] 旧purposeなしAIの索敵・離脱距離を8.5／11kmへ更新する。
+- [x] 旧purposeなしAIの索敵・離脱距離を8.5／11kmへ更新する。
 - [ ] M20の6機PINNINGを計画上の2機PAIRと4機迎撃隊へ分離する。
-- [ ] debug probeへ索敵状態、索敵距離、接触記憶、実目標、迎撃phaseを公開する。
-- [ ] 索敵・CAP・目標分担・接触喪失・break復帰・再進入のE2Eを追加する。
+- [x] debug probeへ索敵状態、索敵距離、接触記憶、実目標を公開する（迎撃phaseは次項）。
+- [ ] 索敵・CAP・目標分担・接触喪失・break復帰・再進入のE2Eを追加する（再進入以外は完了）。
 - [ ] M01〜M20既存E2E、payload同期、radio canon、`git diff --check`を通す。
 - [ ] 8340番サーバーの配信内容とローカルSHA-256一致を確認する。
 

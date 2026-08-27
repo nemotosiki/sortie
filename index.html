@@ -3146,12 +3146,44 @@
     const STATION_ENEMY_PURPOSES = Object.freeze(new Set([
       "support", "withdraw"
     ]));
+    // Sensor range is deliberately NOT the same thing as commitment range.
+    // A fleet CAP can know RAVEN is 10km out without abandoning the ships;
+    // conversely an interceptor dispatched by GCI vectors toward its assigned
+    // contact before its own radar has a firing solution.  The old AI used the
+    // airframe's 0.7-1.1km dogfight switch for both questions, which is why a
+    // large mission could contain live fighters that appeared to do nothing.
     const PURPOSE_DEFAULTS = Object.freeze({
-      screen: Object.freeze({ commitRange: 2600, leashRange: 4200 }),
-      escort: Object.freeze({ commitRange: 2600, leashRange: 4200 }),
-      cap: Object.freeze({ commitRange: 3000, leashRange: 4600 }),
-      "top-cover": Object.freeze({ commitRange: 4200, leashRange: 5600 })
+      intercept: Object.freeze({ sensorRange: 14000, sensorMemory: 24 }),
+      qra: Object.freeze({ sensorRange: 15000, sensorMemory: 24 }),
+      relief: Object.freeze({ sensorRange: 14000, sensorMemory: 22 }),
+      pinning: Object.freeze({ sensorRange: 13000, sensorMemory: 20 }),
+      interceptor: Object.freeze({ sensorRange: 16000, sensorMemory: 28 }),
+      screen: Object.freeze({ sensorRange: 12000, sensorMemory: 20, commitRange: 4500, leashRange: 7200 }),
+      escort: Object.freeze({ sensorRange: 12000, sensorMemory: 20, commitRange: 4200, leashRange: 6800 }),
+      cap: Object.freeze({ sensorRange: 11000, sensorMemory: 18, commitRange: 4800, leashRange: 7600 }),
+      "top-cover": Object.freeze({ sensorRange: 14500, sensorMemory: 24, commitRange: 6500, leashRange: 9500 }),
+      support: Object.freeze({ sensorRange: 15000, sensorMemory: 24 }),
+      strike: Object.freeze({ sensorRange: 12000, sensorMemory: 20 }),
+      hunt: Object.freeze({ sensorRange: 15000, sensorMemory: 26 }),
+      withdraw: Object.freeze({ sensorRange: 12000, sensorMemory: 18 }),
+      cas: Object.freeze({ sensorRange: 10000, sensorMemory: 18 })
     });
+    const LEGACY_ENEMY_SENSOR_RANGE = 8500;
+    const LEGACY_ENEMY_DISENGAGE_RANGE = 11000;
+    const LEGACY_ENEMY_SENSOR_MEMORY = 14;
+    const ENEMY_SENSOR_SKILL_SCALE = Object.freeze({
+      rookie: 0.88,
+      regular: 1,
+      veteran: 1.08,
+      expert: 1.15
+    });
+    const ENEMY_CONTACT_RETARGET_DELAY = Object.freeze({
+      rookie: 5.5,
+      regular: 7,
+      veteran: 8.5,
+      expert: 10
+    });
+    const ENEMY_CONTACT_SWITCH_ADVANTAGE = 0.72;
 
     // Skill is judgement, not performance. Two aircraft with the same role
     // multipliers and different tiers fly the same airframe at the same rate and
@@ -4876,6 +4908,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : null,
         leashRange: kind === "air" && Number.isFinite(Number(entry.leashRange))
           ? Math.max(300, Number(entry.leashRange))
+          : null,
+        // Awareness and tactical commitment are separate. Missions normally
+        // inherit the purpose table; these two fields exist for unusual radar,
+        // weather or datalink contracts without smuggling prose into the AI.
+        sensorRange: kind === "air" && Number.isFinite(Number(entry.sensorRange))
+          ? Math.max(1000, Number(entry.sensorRange))
+          : null,
+        sensorMemory: kind === "air" && Number.isFinite(Number(entry.sensorMemory))
+          ? THREE.MathUtils.clamp(Number(entry.sensorMemory), 2, 60)
           : null,
         purposeAltitudeFloor: kind === "air" && Number.isFinite(Number(entry.purposeAltitudeFloor))
           ? Math.max(0, Number(entry.purposeAltitudeFloor))
@@ -46391,6 +46432,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let spawningProtectTag = null;
     let spawningCommitRange = null;
     let spawningLeashRange = null;
+    let spawningSensorRange = null;
+    let spawningSensorMemory = null;
     let spawningPurposeAltitudeFloor = null;
     let spawningCasTarget = null;
     let spawningCasDamage = null;
@@ -50209,6 +50252,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           protectTag: wave.protectTag || null,
           commitRange: wave.commitRange,
           leashRange: wave.leashRange,
+          sensorRange: wave.sensorRange,
+          sensorMemory: wave.sensorMemory,
           purposeAltitudeFloor: wave.purposeAltitudeFloor,
           casTarget: wave.casTarget || null,
           casDamage: wave.casDamage,
@@ -51034,7 +51079,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             assignedTarget: enemy.assignedTarget || "player",
             mode: enemy.mode,
             aimKind: enemy.aimKind || null,
-            target: enemy.huntRef ? (enemy.huntRef.label || enemy.huntRef.kind) : "RAVEN",
+            target: enemyCombatTargetLabel(enemy.huntRef || enemy.contactRef),
+            contactState: enemy.contactState,
+            sensorRange: Number(enemy.sensorRange.toFixed(1)),
+            sensorMemory: Number(enemy.sensorMemory.toFixed(1)),
+            contactMemory: Number((enemy.contactMemory || 0).toFixed(2)),
+            contactDistance: Number.isFinite(enemy.contactDistance)
+              ? Number(enemy.contactDistance.toFixed(1))
+              : null,
+            lastKnown: enemy.contactLastPosition
+              ? [
+                  Number(enemy.contactLastPosition.x.toFixed(1)),
+                  Number(enemy.contactLastPosition.y.toFixed(1)),
+                  Number(enemy.contactLastPosition.z.toFixed(1))
+                ]
+              : null,
             commitRange: enemy.purposeCommitRange,
             leashRange: enemy.purposeLeashRange,
             altitudeFloor: enemy.purposeAltitudeFloor,
@@ -51658,6 +51717,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             updateEnemies(slice);
           }
           return count;
+        },
+        forceEnemyBreakCycle: (id, duration = 0.01) => {
+          const enemy = enemies.find((candidate) => (
+            candidate.alive && candidate.id === Number(id) && !candidate.surface && !candidate.heli
+          ));
+          if (!enemy) return false;
+          const fakeMissile = { mesh: { position: enemy.group.position.clone().add(new THREE.Vector3(120, 0, 0)) } };
+          startBreak(enemy, fakeMissile);
+          enemy.breakTimer = Math.max(0.001, Number(duration) || 0.01);
+          return true;
         },
         enemyFlightProbe: (id = null) => enemies
           .filter((enemy) =>
@@ -54806,6 +54875,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningProtectTag = null;
       spawningCommitRange = null;
       spawningLeashRange = null;
+      spawningSensorRange = null;
+      spawningSensorMemory = null;
       spawningPurposeAltitudeFloor = null;
       spawningCasTarget = null;
       spawningCasDamage = null;
@@ -61866,6 +61937,41 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const resolvedPurpose = spawningPurpose
         || (spawningHunt ? "hunt" : (strikeSpawn ? "strike" : null));
       const purposeDefaults = PURPOSE_DEFAULTS[resolvedPurpose] || {};
+      const sensorSkillScale = ENEMY_SENSOR_SKILL_SCALE[spec.skillId] || 1;
+      const sensorRange = Math.max(
+        1000,
+        Number.isFinite(spawningSensorRange)
+          ? spawningSensorRange
+          : (purposeDefaults.sensorRange || LEGACY_ENEMY_SENSOR_RANGE)
+      ) * sensorSkillScale;
+      const sensorMemory = Math.max(
+        2,
+        Number.isFinite(spawningSensorMemory)
+          ? spawningSensorMemory
+          : (purposeDefaults.sensorMemory || LEGACY_ENEMY_SENSOR_MEMORY)
+      ) * Math.sqrt(sensorSkillScale);
+      // Old payloads authored 2-3km commitment circles because that value was
+      // also the only approximation of detection.  Preserve every deliberate
+      // larger perimeter, but raise the historical small values to the new
+      // purpose floor now that awareness and commitment are distinct.
+      const defaultCommitRange = Number(purposeDefaults.commitRange) || null;
+      const authoredCommitRange = Number.isFinite(spawningCommitRange)
+        ? spawningCommitRange
+        : null;
+      const purposeCommitRange = defaultCommitRange
+        ? Math.max(defaultCommitRange, authoredCommitRange || 0)
+        : authoredCommitRange;
+      const defaultLeashRange = Number(purposeDefaults.leashRange) || null;
+      const authoredLeashRange = Number.isFinite(spawningLeashRange)
+        ? spawningLeashRange
+        : null;
+      const purposeLeashRange = (defaultLeashRange || authoredLeashRange || purposeCommitRange)
+        ? Math.max(
+            defaultLeashRange || 0,
+            authoredLeashRange || 0,
+            (purposeCommitRange || 0) + 500
+          )
+        : null;
       enemies.push({
         id,
         serial: enemySerial,
@@ -61888,12 +61994,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wingmanHunter: false,
         purpose: resolvedPurpose,
         protectTag: spawningProtectTag,
-        purposeCommitRange: Number.isFinite(spawningCommitRange)
-          ? spawningCommitRange
-          : (purposeDefaults.commitRange || null),
-        purposeLeashRange: Number.isFinite(spawningLeashRange)
-          ? Math.max(spawningLeashRange, spawningCommitRange || 0)
-          : (purposeDefaults.leashRange || null),
+        purposeCommitRange,
+        purposeLeashRange,
+        sensorRange,
+        sensorMemory,
+        contactState: resolvedPurpose === "support" || resolvedPurpose === "withdraw"
+          ? "station"
+          : (resolvedPurpose === "strike" || resolvedPurpose === "hunt" || resolvedPurpose === "cas"
+            ? "objective"
+            : "search"),
+        contactRef: null,
+        contactMemory: 0,
+        contactDistance: Infinity,
+        contactRetargetTimer: 0,
+        contactLastPosition: player.position.clone(),
         purposeAltitudeFloor: Number.isFinite(spawningPurposeAltitudeFloor)
           ? spawningPurposeAltitudeFloor
           : null,
@@ -61957,6 +62071,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // is flown along; `breakSide` fixes which way, once per break.
         breakTimer: 0,
         breakCooldown: 0,
+        breakReturnMode: "patrol",
         breakSide: 1,
         breakAxis: new THREE.Vector3(1, 0, 0),
         // How long this pilot still needs to notice the round that is already
@@ -65071,6 +65186,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningProtectTag = wave.protectTag || null;
       spawningCommitRange = Number.isFinite(wave.commitRange) ? wave.commitRange : null;
       spawningLeashRange = Number.isFinite(wave.leashRange) ? wave.leashRange : null;
+      spawningSensorRange = Number.isFinite(wave.sensorRange) ? wave.sensorRange : null;
+      spawningSensorMemory = Number.isFinite(wave.sensorMemory) ? wave.sensorMemory : null;
       spawningPurposeAltitudeFloor = Number.isFinite(wave.purposeAltitudeFloor)
         ? wave.purposeAltitudeFloor
         : null;
@@ -65219,6 +65336,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningProtectTag = null;
       spawningCommitRange = null;
       spawningLeashRange = null;
+      spawningSensorRange = null;
+      spawningSensorMemory = null;
       spawningPurposeAltitudeFloor = null;
       spawningCasTarget = null;
       spawningCasDamage = null;
@@ -65321,6 +65440,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
     function huntTargetFor(enemy) {
       if (!enemy.hunt) return null;
+      // Keep a valid assignment. Re-running nearest-first for every attacker
+      // every frame let two equally distant charges swap owners as the update
+      // order changed their crowd counts; the aircraft then twitched between
+      // bearings and repeatedly reset its missile lock. Retarget only when the
+      // charge is gone or genuinely over-subscribed.
+      const current = enemy.huntRef;
+      if (
+        current
+        && current.alive
+        && current.vulnerable
+        && !current.retired
+        && (enemy.hunt === "ship") === isFriendlyShip(current)
+        && huntersOn(current, enemy) < HUNT_TARGET_CROWD_LIMIT
+      ) return current;
       let best = null;
       let bestDistance = Infinity;
       // 定員に達した標的しか残っていない場合の逃げ場。これがあるので「標的が
@@ -65362,6 +65495,148 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ));
       if (candidates.length === 0) return null;
       return candidates[Math.abs(enemy.slot || 0) % candidates.length];
+    }
+
+    function enemyCombatTargetAlive(target) {
+      if (target === player) return gameState === STATE_PLAYING;
+      return Boolean(target && target.alive && !target.retired && target.group?.position);
+    }
+
+    function enemyCombatTargetPosition(target) {
+      if (target === player) return player.position;
+      return target?.group?.position || null;
+    }
+
+    function enemyCombatTargetLabel(target) {
+      if (target === player) return "RAVEN";
+      return target?.label || target?.name || target?.kind || null;
+    }
+
+    // Only aircraft that are meant to participate in the local air battle are
+    // autonomous CAP threats. HALO and other mission charges stay invisible to
+    // this selector unless an authored assignedTarget/hunt explicitly names
+    // them. That keeps broad sensors from silently rewriting escort missions.
+    function autonomousEnemyAirTargets() {
+      const targets = [player];
+      for (const friendly of friendlies) {
+        if (!enemyCombatTargetAlive(friendly)) continue;
+        if (friendly.kind === "wingman") targets.push(friendly);
+        else if (friendly.combatSupport && friendly.enemyTargetable) targets.push(friendly);
+      }
+      return targets;
+    }
+
+    function horizontalTargetRange(target, point) {
+      const position = enemyCombatTargetPosition(target);
+      if (!position || !point) return Infinity;
+      return Math.hypot(position.x - point.x, position.z - point.z);
+    }
+
+    function defensiveContactFor(enemy, defencePoint) {
+      const assigned = enemy.assignedTarget === "player"
+        ? player
+        : assignedFriendlyTargetFor(enemy);
+      if (assigned) return assigned;
+
+      const candidates = autonomousEnemyAirTargets()
+        .map((target) => ({ target, range: horizontalTargetRange(target, defencePoint) }))
+        .filter((entry) => Number.isFinite(entry.range))
+        .sort((a, b) => a.range - b.range);
+      if (candidates.length === 0) return null;
+
+      // Target hold is what prevents a CAP pair from changing its mind every
+      // frame as RAVEN and LARK cross. A substantially closer intruder may still
+      // win immediately; otherwise keep the existing contact until the pilot's
+      // decision timer expires.
+      const current = candidates.find((entry) => entry.target === enemy.contactRef);
+      if (
+        current
+        && current.range <= enemy.sensorRange * 1.08
+        && enemy.contactRetargetTimer > 0
+        && current.range <= candidates[0].range / ENEMY_CONTACT_SWITCH_ADVANTAGE
+      ) return current.target;
+
+      // When two intruders are in the same tactical neighbourhood, split a
+      // two-ship instead of stacking both aircraft on RAVEN. A distant HALO is
+      // not in this candidate list, so this cannot steal its authored hunters.
+      const nearCount = candidates.filter((entry) => (
+        entry.range <= candidates[0].range + Math.max(900, enemy.sensorRange * 0.18)
+      )).length;
+      return candidates[Math.abs(enemy.slot || 0) % Math.min(2, nearCount)].target;
+    }
+
+    function updateEnemyContact(enemy, dt) {
+      enemy.contactRetargetTimer = Math.max(0, (enemy.contactRetargetTimer || 0) - dt);
+
+      if (enemy.purpose === "strike" || enemy.purpose === "cas") {
+        enemy.contactState = "objective";
+        enemy.contactRef = null;
+        enemy.contactMemory = 0;
+        return;
+      }
+      if (STATION_ENEMY_PURPOSES.has(enemy.purpose)) {
+        enemy.contactState = "station";
+        enemy.contactRef = null;
+        enemy.contactMemory = 0;
+        return;
+      }
+      if (enemy.purpose === "hunt" && enemy.huntRef) {
+        enemy.contactState = "objective";
+        enemy.contactRef = enemy.huntRef;
+        enemy.contactMemory = enemy.sensorMemory;
+        const position = enemyCombatTargetPosition(enemy.huntRef);
+        if (position) enemy.contactLastPosition.copy(position);
+        return;
+      }
+
+      let defencePoint = null;
+      let candidate = null;
+      if (DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
+        defencePoint = enemyPurposeDefencePoint(enemy, enemy.purposePoint);
+        candidate = defensiveContactFor(enemy, defencePoint);
+      } else if (enemy.assignedTarget === "player") {
+        candidate = player;
+      } else {
+        candidate = assignedFriendlyTargetFor(enemy) || player;
+      }
+
+      if (!enemyCombatTargetAlive(candidate)) candidate = player;
+      const position = enemyCombatTargetPosition(candidate);
+      const distance = defencePoint
+        ? horizontalTargetRange(candidate, defencePoint)
+        : (position ? enemy.group.position.distanceTo(position) : Infinity);
+      enemy.contactDistance = distance;
+
+      // Aggressive flights were dispatched by GCI and keep a vector even past
+      // their own radar horizon. The distinction is visible in the probe and
+      // controls firing/search memory, but never makes a QRA orbit its spawn
+      // point while the battle happens 12km away.
+      const gciVector = AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)
+        || (enemy.purpose === "hunt" && !enemy.huntRef);
+      const detected = Number.isFinite(distance) && distance <= enemy.sensorRange;
+      if (detected || gciVector) {
+        const changed = enemy.contactRef !== candidate;
+        enemy.contactRef = candidate;
+        enemy.contactMemory = enemy.sensorMemory;
+        if (position) enemy.contactLastPosition.copy(position);
+        enemy.contactState = detected ? "track" : "vector";
+        if (changed) {
+          enemy.contactRetargetTimer = ENEMY_CONTACT_RETARGET_DELAY[enemy.spec.skillId] || 7;
+          resetEnemyMissileLock(enemy);
+        }
+        return;
+      }
+
+      if (enemyCombatTargetAlive(enemy.contactRef) && enemy.contactMemory > 0) {
+        enemy.contactMemory = Math.max(0, enemy.contactMemory - dt);
+        enemy.contactState = "memory";
+        return;
+      }
+
+      if (enemy.contactRef) resetEnemyMissileLock(enemy);
+      enemy.contactRef = null;
+      enemy.contactMemory = 0;
+      enemy.contactState = "search";
     }
 
     function casMissionObjectFor(enemy) {
@@ -65477,16 +65752,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // their own range, aspect and lock dwell, so this changes navigation and
       // intent rather than granting an instant shot.
       if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
-        if (enemy.mode !== "break") enemy.mode = "pursuit";
+        if (enemy.mode !== "break" && enemy.contactRef) enemy.mode = "pursuit";
         return;
       }
 
       if (DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
         const point = enemyPurposeDefencePoint(enemy, enemy.purposePoint);
-        const threatRange = Math.hypot(
-          player.position.x - point.x,
-          player.position.z - point.z
-        );
+        const contactPosition = enemy.contactState === "memory"
+          ? enemy.contactLastPosition
+          : enemyCombatTargetPosition(enemy.contactRef);
+        const threatRange = contactPosition
+          ? Math.hypot(contactPosition.x - point.x, contactPosition.z - point.z)
+          : Infinity;
+        // The remembered point drives the search path, but the authored leash
+        // is an operational order, not a radar estimate. If a still-live target
+        // has plainly left the defended perimeter, CAP returns immediately
+        // instead of spending its entire memory timer chasing old coordinates.
+        const liveThreatRange = enemy.contactRef
+          ? horizontalTargetRange(enemy.contactRef, point)
+          : threatRange;
         // A two-ship CAP does not abandon the defended asset as one blob. The
         // lead commits at the full perimeter; the second ship holds until the
         // attacker is closer, then joins. SCREEN/ESCORT elements use the same
@@ -65494,8 +65778,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const slotCommitScale = Math.abs(enemy.slot || 0) % 2 === 0 ? 1 : 0.72;
         const commitRange = Math.max(200, enemy.purposeCommitRange || 2400) * slotCommitScale;
         const leashRange = Math.max(commitRange + 300, enemy.purposeLeashRange || 4000);
-        if (enemy.mode === "patrol" && threatRange <= commitRange) enemy.mode = "pursuit";
-        if (enemy.mode === "pursuit" && threatRange > leashRange) enemy.mode = "patrol";
+        if (
+          enemy.mode === "patrol"
+          && enemy.contactState !== "memory"
+          && threatRange <= commitRange
+        ) {
+          enemy.mode = "pursuit";
+          enemy.contactState = "engaged";
+        }
+        if (enemy.mode === "pursuit" && (liveThreatRange > leashRange || !enemy.contactRef)) {
+          enemy.mode = "patrol";
+          if (enemy.contactRef && enemy.contactState !== "memory") enemy.contactState = "track";
+        } else if (enemy.mode === "pursuit" && enemy.contactState !== "memory") {
+          enemy.contactState = "engaged";
+        }
         return;
       }
 
@@ -65509,12 +65805,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
 
-      // Hunt/strike own the aim branch below. Null is the legacy contract.
-      if (enemy.purpose === "hunt" || enemy.purpose === "strike") return;
-      if (enemy.mode === "patrol" && distanceToPlayer < enemy.spec.engageRange) {
+      // A hunter with no charge reverts to the air battle instead of orbiting
+      // an empty point. Strike aircraft keep their authored run.
+      if (enemy.purpose === "strike") return;
+      if (enemy.purpose === "hunt" && enemy.huntRef) return;
+
+      // Legacy missions now use the common 8.5km sensor plus contact memory.
+      // This is deliberately not spec.engageRange: that number describes the
+      // airframe's close-fight preference, not whether its radar sees a jet.
+      if (enemy.mode === "patrol" && enemy.contactRef) {
         enemy.mode = "pursuit";
       }
-      if (enemy.mode === "pursuit" && distanceToPlayer > enemy.spec.disengageRange) {
+      if (
+        enemy.mode === "pursuit"
+        && !enemy.contactRef
+        && distanceToPlayer > LEGACY_ENEMY_DISENGAGE_RANGE
+      ) {
         enemy.mode = "patrol";
       }
     }
@@ -65769,12 +66075,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Resolved once per frame and read by both the aim point below and the
         // weapon paths in updateEnemyOrdnance, so an attacker cannot be flying
         // at the convoy while shooting at the player.
-        enemy.huntRef = enemy.hunt
-          ? huntTargetFor(enemy)
-          : assignedFriendlyTargetFor(enemy);
+        const missionHuntRef = enemy.hunt ? huntTargetFor(enemy) : null;
+        enemy.huntRef = missionHuntRef;
         enemy.casTargetRef = enemy.purpose === "cas"
           ? casMissionObjectFor(enemy)
           : null;
+        updateEnemyContact(enemy, dt);
+        // The existing friendly-attack plumbing is also the exact path a CAP
+        // needs after autonomously selecting LARK/ARCA. During contact memory
+        // it flies to the frozen last-known point and deliberately cannot fire
+        // at a live position it no longer knows.
+        if (
+          !enemy.huntRef
+          && enemy.contactState !== "memory"
+          && enemy.contactRef
+          && enemy.contactRef !== player
+        ) enemy.huntRef = enemy.contactRef;
         const priorPurposeMode = enemy.mode;
         updateEnemyPurposeMode(enemy, distanceToPlayer);
         if (priorPurposeMode !== "pursuit" && enemy.mode === "pursuit") {
@@ -65821,7 +66137,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // snap, and it ends.
           if (enemy.breakTimer <= 0) {
             enemy.breakTimer = 0;
-            enemy.mode = distanceToPlayer < spec.engageRange ? "pursuit" : "patrol";
+            // Resume the tactical state that ordered the manoeuvre. The old
+            // spec.engageRange check dropped every purpose back onto the
+            // obsolete one-kilometre switch for one or more frames, resetting
+            // locks and making a CAP appear to forget a contact after a break.
+            enemy.mode = enemy.breakReturnMode || "patrol";
+            updateEnemyPurposeMode(enemy, distanceToPlayer);
           }
         } else if (enemyBreakEnabled && enemy.breakCooldown <= 0) {
           const threat = closingPlayerMissile(enemy);
@@ -65907,9 +66228,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
           enemy.aimKind = "pursuit";
-          targetPoint = enemy.targetPoint.copy(player.position)
-            .addScaledVector(tmpV5, -spec.pursuitBack)
-            .addScaledVector(WORLD_UP, spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude);
+          const pursuitPosition = enemy.contactState === "memory"
+            ? enemy.contactLastPosition
+            : (enemyCombatTargetPosition(enemy.contactRef) || player.position);
+          targetPoint = enemy.targetPoint.copy(pursuitPosition);
+          if (enemy.contactState !== "memory") {
+            if (enemy.contactRef === player || !enemy.contactRef) {
+              targetPoint.addScaledVector(tmpV5, -spec.pursuitBack);
+            } else {
+              forwardOf(enemy.contactRef.group, tmpV3);
+              targetPoint.addScaledVector(tmpV3, -spec.pursuitBack);
+            }
+          }
+          targetPoint.addScaledVector(
+            WORLD_UP,
+            spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude
+          );
 
           if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
             // Elements bracket instead of stacking on one shortest-path point.
@@ -66217,11 +66551,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // guard opens and the aircraft falls back to the ordinary air fight.
       if (enemy.purpose === "cas" && (enemy.casTargetRef || enemy.casEgressTimer > 0)) return;
 
+      // Search and memory fly the contact geometry but do not grant weapon-grade
+      // omniscience. A GCI vector becomes shootable only when the target is back
+      // inside the aircraft's own sensor range.
+      if (enemy.contactState === "search" || enemy.contactState === "memory" || enemy.contactState === "vector") {
+        resetEnemyMissileLock(enemy);
+        return;
+      }
+
       // An aircraft shoots at exactly one thing: whatever it is flying at. A
       // hunter therefore never fires on the player while it still has a charge
       // to kill, and every non-hunting aircraft in the game takes the same two
       // calls it always did.
-      const charge = enemy.huntRef || null;
+      const charge = enemy.huntRef || (
+        enemy.contactRef && enemy.contactRef !== player ? enemy.contactRef : null
+      );
 
       enemy.fireCooldown -= dt;
       if (enemy.fireCooldown <= 0) {
@@ -66311,6 +66655,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function startBreak(enemy, missile) {
+      if (enemy.mode !== "break") enemy.breakReturnMode = enemy.mode;
       enemy.mode = "break";
       enemy.breakTimer = ENEMY_BREAK_DURATION;
       enemy.breakCooldown = ENEMY_BREAK_COOLDOWN;
@@ -70492,6 +70837,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         missileLockTarget: enemy.missileLockTarget === player
           ? "player"
           : enemy.missileLockTarget?.label || null,
+        purpose: enemy.purpose || null,
+        contactState: enemy.contactState || null,
+        contactTarget: enemyCombatTargetLabel(enemy.contactRef),
+        sensorRange: enemy.sensorRange || null,
+        contactMemory: enemy.contactMemory || 0,
         // Designated-target flag and, on the guard sorties, what this aircraft
         // is flying at instead of the player.
         tgt: isTgtEntry(enemy),
