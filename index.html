@@ -3543,12 +3543,10 @@
     const OUTRO_COMPLETE_AT = 16.0;
     const OUTRO_RETREAT_BANNER_AT = 10.8;
 
-    // Hangar order, and the only thing that decides whether an airframe can be
-    // flown at all - campaignAircraft() is this list narrowed to the campaign's
-    // allow-list, and selectAircraft() checks nothing else. The Western jets
-    // come first in their own progression, then the Northern Federation's, each
-    // running weakest to strongest so the campaign filter yields a sane order
-    // on either side.
+    // Every airframe which can persist in a player hangar. Campaign arrays below
+    // own their display/progression order; this superset is also the allow-list
+    // used while migrating old purchase saves, so a player aircraft must be
+    // present here before its payload registers later in boot.
     const AIRCRAFT_ORDER = [
       "f16", "gripen", "f2a", "fa18a", "fa18", "f15c", "f15", "f14", "su37", "rafale", "typhoon", "f35c", "mig31", "f4", "a10", "f22",
       "mig21", "mig23", "mig29", "su25", "su33", "su47", "su35", "su57"
@@ -3565,11 +3563,9 @@
     // records are isolated now, so the campaign is available from the normal
     // campaign-select flow.
     //
-    // `aircraft` is a FILTER over AIRCRAFT_ORDER, never a replacement roster:
-    // the hangar data stays one list, and a campaign only decides which of its
-    // entries the player may take up. Anything not named here is simply absent
-    // from that campaign's hangar, so adding an airframe to AIRCRAFT_ORDER
-    // without assigning it a side hides it rather than leaking it to both.
+    // `aircraft` is the campaign's player-facing roster and display order.
+    // AIRCRAFT_ORDER remains the registry/migration superset; payload aircraft
+    // join it during boot, while this list already preserves their save ids.
     const CAMPAIGNS = Object.freeze([
       Object.freeze({
         id: "usa",
@@ -3613,10 +3609,31 @@
         locked: false,
         lockNote: "",
         aircraft: Object.freeze([
-          "f16", "f4", "f15c", "gripen", "f2a", "fa18a", "fa18", "f15", "f14", "rafale", "typhoon", "f35c", "a10", "f22"
+          "f16", "f4", "f2a", "fa18", "f111f", "a10", "f15c", "f15", "f14", "f35c", "f22"
         ])
       })
     ]);
+    const SERA_MAIN_MISSION_KEYS = Object.freeze(
+      Array.from({ length: 20 }, (_, index) => `sera-m${String(index + 1).padStart(2, "0")}`)
+    );
+    // Story reboot v0.17 is the source of truth. A clear-gated aircraft becomes
+    // purchasable after the named mission; a reward aircraft is never sold and
+    // is owned directly once every required S rank exists in the save.
+    const AIRCRAFT_PROGRESSION_RULES = Object.freeze({
+      sera: Object.freeze({
+        f16: Object.freeze({ mode: "starter", requirement: "INITIAL ISSUE" }),
+        f4: Object.freeze({ mode: "clear", missionKey: "sera-m02", requirement: "M02 CLEAR" }),
+        f2a: Object.freeze({ mode: "clear", missionKey: "sera-m03", requirement: "M03 CLEAR" }),
+        fa18: Object.freeze({ mode: "clear", missionKey: "sera-m04", requirement: "M04 CLEAR" }),
+        f111f: Object.freeze({ mode: "clear", missionKey: "sera-m07", requirement: "M07 CLEAR" }),
+        a10: Object.freeze({ mode: "clear", missionKey: "sera-m08", requirement: "M08 CLEAR" }),
+        f15c: Object.freeze({ mode: "clear", missionKey: "sera-m09", requirement: "M09 CLEAR" }),
+        f15: Object.freeze({ mode: "clear", missionKey: "sera-m09", requirement: "M09 CLEAR" }),
+        f14: Object.freeze({ mode: "clear", missionKey: "sera-m10", requirement: "M10 CLEAR" }),
+        f35c: Object.freeze({ mode: "clear", missionKey: "sera-m14", requirement: "M14 CLEAR" }),
+        f22: Object.freeze({ mode: "all-s-reward", missionKeys: SERA_MAIN_MISSION_KEYS, requirement: "M01-M20 ALL S" })
+      })
+    });
     const DEFAULT_CAMPAIGN_ID = "usa";
 
     // A mission with no `campaign` field belongs to the American campaign.
@@ -4718,11 +4735,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return Boolean(campaign && (campaign.aircraft || []).includes(aircraftId));
     }
 
+    function isKnownPlayerAircraftId(aircraftId) {
+      return AIRCRAFT_ORDER.includes(aircraftId)
+        || CAMPAIGNS.some((campaign) => (campaign.aircraft || []).includes(aircraftId));
+    }
+
     function writeAircraftPurchases(purchases) {
       const campaigns = {};
       for (const campaignId of Object.keys(STARTER_AIRCRAFT)) {
         campaigns[campaignId] = [...(purchases[campaignId] || [])]
-          .filter((id) => AIRCRAFT_ORDER.includes(id) && campaignRosterHas(campaignId, id));
+          .filter((id) => isKnownPlayerAircraftId(id) && campaignRosterHas(campaignId, id));
       }
       window.localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify({
         schemaVersion: PURCHASES_SCHEMA_VERSION,
@@ -4745,7 +4767,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             window.localStorage.setItem(PURCHASES_BACKUP_KEY, rawText);
           }
           for (const id of raw) {
-            if (!AIRCRAFT_ORDER.includes(id)) continue;
+            if (!isKnownPlayerAircraftId(id)) continue;
             for (const campaignId of Object.keys(purchases)) {
               if (campaignRosterHas(campaignId, id)) purchases[campaignId].add(id);
             }
@@ -4762,7 +4784,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         for (const campaignId of Object.keys(purchases)) {
           const ids = Array.isArray(campaigns[campaignId]) ? campaigns[campaignId] : [];
           for (const id of ids) {
-            if (AIRCRAFT_ORDER.includes(id) && campaignRosterHas(campaignId, id)) {
+            if (isKnownPlayerAircraftId(id) && campaignRosterHas(campaignId, id)) {
               purchases[campaignId].add(id);
             }
           }
@@ -16795,24 +16817,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // table, so every field that exists because of the swing wing already reads
         // correctly here.
         //
-        // BALANCE TODO: placeholder. Every flight/damage/HP number below is the
-        // F-14D's, unchanged. The F-111 is not an interceptor — it should end up
-        // slower in a turn, tougher, and with a strike loadout rather than LASM —
-        // but tuning it is a separate pass with the rest of the roster in view.
-        // `spw` is a PLAYER contract (the special-weapon rack in the hangar), so it
-        // is stripped rather than inherited — the same rule payloads/support_aircraft
-        // applies to its enemy-only entries. Spreading the F-14D wholesale would
-        // otherwise hand an enemy airframe a LASM loadout it has no way to use.
-        const { spw: _playerOnlySpw, ...f14WithoutSpw } = f14;
-
         ctx.addAircraft("f111f", {
-          ...f14WithoutSpw,
+          ...f14,
           id: "f111f",
           label: "F-111F AARDVARK",
           role: "Strike Interdictor",
-          tag: "ENEMY",
-          enemyOnly: true,
-          blurb: "セラ軍の可変翼戦闘爆撃機。長い機首と並列複座を持つ低空侵攻機で、地形に張り付いて進入し、拠点や輸送列車を叩く。格闘戦の機体ではない。",
+          tag: "STRIKE",
+          enemyOnly: false,
+          blurb: "長距離・低空侵攻に特化した可変翼戦闘爆撃機。格闘戦の旋回と応答は鈍いが、高速侵入、耐久力、無誘導爆弾の搭載量に優れ、拠点や輸送列車への一撃離脱で真価を発揮する。",
+          cruiseSpeed: 285, boostSpeed: 610, brakeSpeed: 148,
+          pitchRateDeg: 31, rollRateDeg: 112, yawRateDeg: 8, maxBankAngleDeg: 44,
+          normalRollSpring: 30, rollRateLimitDeg: 108, turnRateDeg: 23,
+          rollDamping: 9.4, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.72, structuralG: 2.75,
+          gunDamage: 17, missileDamage: 98,
+          boostResponse: 0.88, brakeResponse: 0.60, cruiseResponse: 0.66,
+          missileCapacity: 20, flareCapacity: 4, maxHealth: 185,
+          spw: Object.freeze({ key: "ugb", capacity: 24 }),
           // Where the contrail leaves the airframe, in MODEL units before scale (the
           // host multiplies by theme.scale). Taken off the built geometry rather
           // than off the real aircraft's 19.2 m span: the wing pivot sits at x 1.6
@@ -16821,8 +16841,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // of 11.8 so the ribbon starts on the panel, not off its edge.
           tipSpan: 11.5, tipZ: 2.35,
           theme
-          // { order: false } — enemy-only airframe, kept out of the hangar list.
-        }, { order: false });
+        }, { after: "f14" });
 
         // ------------------------------------------------------------ 2. enemy AI
         // BALANCE TODO: placeholder. Spread from the F-14D profile; only the
@@ -52032,6 +52051,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           else if (gameState === STATE_MISSION_SELECT) updateMissionScreen();
           return true;
         },
+        hangarRoster: (campaignId = selectedCampaignId) => [...campaignAircraft(campaignId)],
+        aircraftProgression: (id, campaignId = selectedCampaignId) => {
+          if (!AIRCRAFT_TYPES[id] || !campaignAircraft(campaignId).includes(id)) return null;
+          const progression = aircraftProgressionState(id, campaignId);
+          return {
+            ...progression,
+            owned: ownsAircraft(id, campaignId),
+            canFly: canFlyAircraft(id, campaignId),
+            price: aircraftPrice(id, campaignId),
+            badge: aircraftHangarBadge(id, campaignId)
+          };
+        },
         forceConfirmMission: () => {
           confirmMissionSelection();
           // The flow gained a briefing stop after this hook was written; the
@@ -74608,14 +74639,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rebuildPlayerModel(spec.id);
     }
 
-    // The hangar the active campaign flies. One filter over AIRCRAFT_ORDER, so
-    // the order the player sees is still the hangar's own order and the
-    // airframe table is never touched. Falls back to the full list if a
-    // campaign somehow names nothing flyable, rather than showing an empty bay.
+    // The hangar the active campaign flies. The campaign plan owns the visible
+    // order; AIRCRAFT_ORDER only rejects unknown/non-player registrations.
+    // Falls back to the full list if a campaign somehow names nothing flyable,
+    // rather than showing an empty bay.
     function campaignAircraft(campaignId = selectedCampaignId) {
       const campaign = campaignById(campaignId);
-      const allowed = new Set(campaign.aircraft || []);
-      const list = AIRCRAFT_ORDER.filter((id) => allowed.has(id));
+      const list = (campaign.aircraft || []).filter((id) => AIRCRAFT_ORDER.includes(id));
       return list.length > 0 ? list : [...AIRCRAFT_ORDER];
     }
 
@@ -74644,6 +74674,38 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return STARTER_AIRCRAFT[campaignId] === id;
     }
 
+    function aircraftProgressionRule(id, campaignId = selectedCampaignId) {
+      return AIRCRAFT_PROGRESSION_RULES[campaignId]?.[id] || null;
+    }
+
+    function aircraftProgressionState(id, campaignId = selectedCampaignId) {
+      const rule = aircraftProgressionRule(id, campaignId);
+      if (!rule) {
+        return { unlocked: true, purchasable: true, reward: false, requirement: "" };
+      }
+      if (rule.mode === "starter") {
+        return { unlocked: true, purchasable: false, reward: false, requirement: rule.requirement };
+      }
+      if (rule.mode === "clear") {
+        return {
+          unlocked: Boolean(missionRecords[rule.missionKey]?.cleared),
+          purchasable: true,
+          reward: false,
+          requirement: rule.requirement
+        };
+      }
+      if (rule.mode === "all-s-reward") {
+        const earned = rule.missionKeys.every((key) => missionRecords[key]?.rank === "S");
+        return {
+          unlocked: earned,
+          purchasable: false,
+          reward: true,
+          requirement: rule.requirement
+        };
+      }
+      throw new Error(`[hangar] unknown progression mode "${rule.mode}" for ${campaignId}/${id}`);
+    }
+
     function aircraftPrice(id, campaignId = selectedCampaignId) {
       if (!campaignRosterHas(campaignId, id)) {
         throw new Error(`[hangar] aircraft "${id}" is not in campaign "${campaignId}"`);
@@ -74651,7 +74713,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // The jet the campaign hands you. Free, and priced at zero rather than
       // merely pre-owned, so a wiped purchase list can never leave a player
       // grounded with an empty wallet.
-      if (isStarterAircraft(id, campaignId)) return 0;
+      const progression = aircraftProgressionState(id, campaignId);
+      if (isStarterAircraft(id, campaignId) || progression.reward) return 0;
       const cap = PRICE_CAP[campaignId];
       if (!Number.isFinite(cap)) throw new Error(`[hangar] campaign "${campaignId}" has no price cap`);
       const raw = cap * (PRICE_FLOOR_FRACTION + (1 - PRICE_FLOOR_FRACTION) * Math.pow(aircraftPower(id), PRICE_CURVE));
@@ -74659,18 +74722,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function ownsAircraft(id, campaignId = selectedCampaignId) {
+      const progression = aircraftProgressionState(id, campaignId);
+      if (progression.reward) return progression.unlocked;
       return isStarterAircraft(id, campaignId) || purchasesFor(campaignId).has(id);
     }
 
     function aircraftProgressionUnlocked(id, campaignId = selectedCampaignId) {
-      // v0.17: the carrier Lightning is the reward for breaking the Nahar
-      // landing and first becomes usable in M15. Keep ownership and progression
-      // separate so an older profile that bought one early does not lose the
-      // purchase, but still cannot launch it before the intended campaign beat.
-      if (campaignId === "sera" && id === "f35c") {
-        return Boolean(missionRecords["sera-m14"]?.cleared);
-      }
-      return true;
+      return aircraftProgressionState(id, campaignId).unlocked;
     }
 
     function canFlyAircraft(id, campaignId = selectedCampaignId) {
@@ -74717,8 +74775,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const campaignId = selectedCampaignId;
       if (ownsAircraft(id, campaignId)) return { ok: false, reason: "owned" };
       if (!campaignAircraft(campaignId).includes(id)) return { ok: false, reason: "roster" };
-      if (!aircraftProgressionUnlocked(id, campaignId)) {
-        return { ok: false, reason: "progression", requirement: "M14 CLEAR" };
+      const progression = aircraftProgressionState(id, campaignId);
+      if (!progression.unlocked || !progression.purchasable) {
+        return { ok: false, reason: "progression", requirement: progression.requirement };
       }
       const price = aircraftPrice(id, campaignId);
       const wallet = walletFor(campaignId);
@@ -74905,6 +74964,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateHangarScreen();
     }
 
+    function aircraftHangarBadge(id, campaignId = selectedCampaignId) {
+      const progression = aircraftProgressionState(id, campaignId);
+      if (!progression.unlocked) return progression.requirement;
+      if (progression.reward) return "AWARDED";
+      return ownsAircraft(id, campaignId) ? "OWNED" : formatCredits(aircraftPrice(id, campaignId));
+    }
+
+    function aircraftLockLine(id, campaignId = selectedCampaignId) {
+      return `LOCKED · ${aircraftProgressionState(id, campaignId).requirement}`;
+    }
+
     // Called on every selection change AND right after a purchase, so a badge
     // flipping to OWNED and a jet becoming flyable are the same update.
     function updateHangarScreen() {
@@ -74919,11 +74989,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         item.setAttribute("aria-checked", String(active));
         const id = item.dataset.aircraft;
         const badge = item.querySelector('[data-role="priceBadge"]');
-        if (badge) {
-          badge.textContent = !aircraftProgressionUnlocked(id)
-            ? "M14 CLEAR"
-            : (ownsAircraft(id) ? "OWNED" : formatCredits(aircraftPrice(id)));
-        }
+        if (badge) badge.textContent = aircraftHangarBadge(id);
       }
       ui.hangarWallet.textContent = formatCredits(walletFor());
       renderHangarPurchaseLine();
@@ -74976,7 +75042,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
       if (!aircraftProgressionUnlocked(selectedAircraftId)) {
-        line.textContent = "LOCKED · CLEAR M14";
+        line.textContent = aircraftLockLine(selectedAircraftId);
         line.classList.add("warn");
         line.classList.remove("hidden");
         return;
@@ -75019,7 +75085,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
         renderHangarPurchaseLine(`NEED ${formatCredits(result.short)} MORE`, true);
       } else if (result.reason === "progression") {
-        renderHangarPurchaseLine("LOCKED · CLEAR M14", true);
+        renderHangarPurchaseLine(`LOCKED · ${result.requirement}`, true);
       } else {
         renderHangarPurchaseLine();
       }
@@ -75031,7 +75097,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function notifyHangarLocked(id) {
       if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
       renderHangarPurchaseLine(
-        aircraftProgressionUnlocked(id) ? `PURCHASE (${formatCredits(aircraftPrice(id))})?` : "LOCKED · CLEAR M14",
+        aircraftProgressionUnlocked(id)
+          ? `PURCHASE (${formatCredits(aircraftPrice(id))})?`
+          : aircraftLockLine(id),
         true
       );
     }

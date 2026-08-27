@@ -4,9 +4,8 @@
 // profile, 3D airframe and HUD silhouette. Nothing here touches index.html,
 // CAMPAIGNS, AIRCRAFT_ORDER or any existing table entry.
 //
-// Everything numeric on the flight model and the AI is inherited from the
-// closest existing template and left alone — see the BALANCE TODO notes. The
-// work in this file is the SHAPE.
+// The flight model starts from the nearest variable-geometry template, then is
+// deliberately retuned as the campaign's heavy strike/interdiction purchase.
 export default function register(ctx) {
   const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ENEMY_MISSILE_PROFILES } = ctx.tables;
 
@@ -48,24 +47,22 @@ export default function register(ctx) {
   // table, so every field that exists because of the swing wing already reads
   // correctly here.
   //
-  // BALANCE TODO: placeholder. Every flight/damage/HP number below is the
-  // F-14D's, unchanged. The F-111 is not an interceptor — it should end up
-  // slower in a turn, tougher, and with a strike loadout rather than LASM —
-  // but tuning it is a separate pass with the rest of the roster in view.
-  // `spw` is a PLAYER contract (the special-weapon rack in the hangar), so it
-  // is stripped rather than inherited — the same rule payloads/support_aircraft
-  // applies to its enemy-only entries. Spreading the F-14D wholesale would
-  // otherwise hand an enemy airframe a LASM loadout it has no way to use.
-  const { spw: _playerOnlySpw, ...f14WithoutSpw } = f14;
-
   ctx.addAircraft("f111f", {
-    ...f14WithoutSpw,
+    ...f14,
     id: "f111f",
     label: "F-111F AARDVARK",
     role: "Strike Interdictor",
-    tag: "ENEMY",
-    enemyOnly: true,
-    blurb: "セラ軍の可変翼戦闘爆撃機。長い機首と並列複座を持つ低空侵攻機で、地形に張り付いて進入し、拠点や輸送列車を叩く。格闘戦の機体ではない。",
+    tag: "STRIKE",
+    enemyOnly: false,
+    blurb: "長距離・低空侵攻に特化した可変翼戦闘爆撃機。格闘戦の旋回と応答は鈍いが、高速侵入、耐久力、無誘導爆弾の搭載量に優れ、拠点や輸送列車への一撃離脱で真価を発揮する。",
+    cruiseSpeed: 285, boostSpeed: 610, brakeSpeed: 148,
+    pitchRateDeg: 31, rollRateDeg: 112, yawRateDeg: 8, maxBankAngleDeg: 44,
+    normalRollSpring: 30, rollRateLimitDeg: 108, turnRateDeg: 23,
+    rollDamping: 9.4, stallWarnSpeed: 100, stallEntrySpeed: 88, stallAuthorityLoss: 0.72, structuralG: 2.75,
+    gunDamage: 17, missileDamage: 98,
+    boostResponse: 0.88, brakeResponse: 0.60, cruiseResponse: 0.66,
+    missileCapacity: 20, flareCapacity: 4, maxHealth: 185,
+    spw: Object.freeze({ key: "ugb", capacity: 24 }),
     // Where the contrail leaves the airframe, in MODEL units before scale (the
     // host multiplies by theme.scale). Taken off the built geometry rather
     // than off the real aircraft's 19.2 m span: the wing pivot sits at x 1.6
@@ -74,8 +71,7 @@ export default function register(ctx) {
     // of 11.8 so the ribbon starts on the panel, not off its edge.
     tipSpan: 11.5, tipZ: 2.35,
     theme
-    // { order: false } — enemy-only airframe, kept out of the hangar list.
-  }, { order: false });
+  }, { after: "f14" });
 
   // ------------------------------------------------------------ 2. enemy AI
   // BALANCE TODO: placeholder. Spread from the F-14D profile; only the

@@ -21,7 +21,8 @@ for (const token of [
   'function spawnM14LandedArmor(mission, ship, slot)',
   'function updateM14MissionThreat()', 'function m14ResultSnapshot(mission)',
   'function aircraftProgressionUnlocked(id, campaignId = selectedCampaignId)',
-  'missionRecords["sera-m14"]?.cleared', 'resetM14State(MISSIONS[currentMissionIndex])'
+  'f35c: Object.freeze({ mode: "clear", missionKey: "sera-m14", requirement: "M14 CLEAR" })',
+  'resetM14State(MISSIONS[currentMissionIndex])'
 ]) assert(`${map}\n${host}`.includes(token), `integrated contract missing: ${token}`);
 assert(unlock.includes("F-35Cは**M14クリア後に購入許可、M15から使用可能**"),
   "v0.17 F-35C unlock source changed");
