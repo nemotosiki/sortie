@@ -149,7 +149,7 @@ mission, not from the superseded M11 outline.
 - [x] M13 map, escort loop, HP gauge, checks, browser clear, commit
 - [x] M14 coastal landing phases, hospital ship safety, F-35 gate, commit
 - [x] M15 city defence, persistent white-ARCA ledger, commit
-- [ ] M16 fleet/SSGN/anti-ship defence, commit
+- [x] M16 fleet/SSGN/anti-ship defence, commit
 - [ ] M17 long approach and HELIX optional encounter, commit
 - [ ] M18 KEREN subsystem boss and route outcomes, commit
 - [ ] M19 escort-radius pursuit decision and CROWN return, commit

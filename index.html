@@ -44460,6 +44460,270 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m15"
     ); // @payload:mission_sera_m15
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.sunsetOcean;
+        if (!base) throw new Error("[hadorDeepSea] sunsetOcean base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([-1800, 7200]),
+          battleCenter: Object.freeze([0, -1600]),
+          fleetCenter: Object.freeze([0, -1800]),
+          fleetCourse: Object.freeze([0, -10800]),
+          westSsgn: Object.freeze([-7200, -900]),
+          eastSsgn: Object.freeze([7600, -3200]),
+          bomberEntry: Object.freeze([0, 14200]),
+          northCap: Object.freeze([-8600, 9800]),
+          southCap: Object.freeze([9200, -11600]),
+          reconStation: Object.freeze([9600, 5200])
+        });
+
+        ctx.addWorldPreset("hadorDeepSea", {
+          ...base,
+          label: "HADOR DEEP SEA — WESTERN ANCHORAGE",
+          regionId: "hador_deep_sea",
+          sectorIds: Object.freeze(["epoch_anchorage", "west_ssgn_lane", "deep_water_approach"]),
+          variant: "cold_afternoon_low_cloud",
+          sceneryOrigin: [0, -1600],
+          previewFocus: [0, -1600],
+          missionAnchors,
+          clearColor: 0x526a79,
+          sky: [
+            [0, "#1a2d42"], [0.3, "#3d586b"], [0.49, "#718796"],
+            [0.58, "#9aa6aa"], [0.76, "#687987"], [1, "#344a5d"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x48414436,
+            noise: 0.024,
+            haze: 0.16,
+            thinClouds: 20,
+            cloudOpacity: 0.11,
+            cloudBand: [0.29, 0.63],
+            cloudTint: 0xc4cdd1
+          },
+          fog: { color: 0x6f818b, near: 5600, far: 24800 },
+          sun: {
+            position: [-6100, 1750, -9400], color: 0xffd4a0, radius: 76,
+            glare: [
+              { scale: 1150, color: 0xffc78f, opacity: 0.2 },
+              { scale: 340, color: 0xffead0, opacity: 0.54 }
+            ]
+          },
+          sunRoad: { color: 0xd6b38a, opacity: 0.17, width: 720, length: 5200, rotationY: -0.5, position: [-1500, 0.4, -3100] },
+          ocean: {
+            ...base.ocean,
+            base: "#173b4d",
+            bright: "126, 162, 178",
+            dark: "10, 35, 49",
+            repeat: 44,
+            roughness: 0.63,
+            metalness: 0.1,
+            textureProfile: "ocean",
+            normalRepeat: 54,
+            normalScale: [0.27, 0.36],
+            normalSpeed: [0.028, 0.013],
+            normalSeed: 0x48414437
+          },
+          lights: {
+            hemi: { sky: 0xb7ccda, ground: 0x172b35, intensity: 1.42 },
+            key: { color: 0xffd3a6, intensity: 1.85, position: [-6400, 2600, -7200] },
+            fill: { color: 0x7198af, intensity: 0.58, position: [5400, 900, 2800] }
+          },
+          mountains: { ...base.mountains, count: 0, corridor: null, plateau: null },
+          islands: { count: 0, stone: 0x3b4a50, green: 0x43544e },
+          clouds: {
+            ...base.clouds,
+            scale: 1.5,
+            hero: true,
+            color: 0xc9d0d2,
+            opacity: 0.86,
+            cirrusColor: 0xaeb9c0,
+            cirrusOpacity: 0.31,
+            texture: { seed: 0x48414438, contrast: 1.12, underside: 0.58, softness: 1.05 }
+          },
+          decor: {
+            seed: 0x48414439,
+            keepClear: [{ x: 0, z: -1600, r: 15000 }],
+            extraIslands: { count: 0, radius: [1, 1], height: [1, 1], distance: [1, 1] },
+            shore: null,
+            trees: null,
+            rocks: null,
+            extraClouds: { towers: 3, towerSize: [120, 210], towerBase: 760, stratus: 14, stratusSize: [300, 560], stratusBase: 1250, distance: [4600, 13800] }
+          }
+        });
+
+        ctx.addWorldDecorator("hadorDeepSeaNavigation", {
+          worlds: ["hadorDeepSea"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial }) {
+            const root = new THREE.Group();
+            root.name = "hadorDeepSeaNavigation";
+            addRoot(root);
+            const cylinder = keepGeometry(new THREE.CylinderGeometry(1, 1.15, 1, 10));
+            const cap = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const steel = keepMaterial(new THREE.MeshStandardMaterial({ color: 0x4d5960, roughness: 0.72, metalness: 0.28 }));
+            const amber = keepMaterial(new THREE.MeshStandardMaterial({ color: 0xffc15d, emissive: 0xff8a28, emissiveIntensity: 1.35, roughness: 0.42 }));
+            const positions = [[-3900, 1800], [3900, 1800], [-4700, -5600], [4700, -5600], [0, -8900]];
+            positions.forEach(([x, z], index) => {
+              const body = new THREE.Mesh(cylinder, steel);
+              body.name = `deep-water-buoy-${index + 1}`;
+              body.position.set(x, 4.8, z);
+              body.scale.set(4.2, 9.6, 4.2);
+              root.add(body);
+              const lamp = new THREE.Mesh(cap, amber);
+              lamp.name = `deep-water-beacon-${index + 1}`;
+              lamp.position.set(x, 11.4, z);
+              lamp.scale.set(3.6, 3.2, 3.6);
+              root.add(lamp);
+            });
+          }
+        });
+      },
+      "map_hadorDeepSea"
+    ); // @payload:map_hadorDeepSea
+    applyPayload(
+      function register(ctx) {
+        const { MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, SHIP_TYPES } = ctx.tables;
+        const world = WORLD_PRESETS.hadorDeepSea;
+        if (!world) throw new Error("[sera-m16] hadorDeepSea is not registered");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m15" && mission.campaign === "sera")) {
+          throw new Error("[sera-m16] sera-m15 predecessor is missing");
+        }
+        for (const type of ["fa18", "tu22m3", "su33", "awacs", "cruiseWeapon"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m16] required aircraft is missing: ${type}`);
+        }
+        for (const type of ["tu22m3", "su33", "awacs", "cruiseWeapon"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m16] enemy profile is missing: ${type}`);
+        }
+        for (const type of ["carrier", "cruiser", "frigate", "ssgn"]) {
+          if (!SHIP_TYPES[type]) throw new Error(`[sera-m16] required hull is missing: ${type}`);
+        }
+        const anchors = world.missionAnchors;
+        const m16FleetContract = Object.freeze({
+          fleetLabel: "HOME FLEET",
+          epochLabel: "CVN EPOCH",
+          ssgnType: "ssgn",
+          ssgnIds: Object.freeze([1601, 1602]),
+          ssgnTag: "m16Ssgn",
+          ssgnAnchors: Object.freeze([anchors.westSsgn, anchors.eastSsgn]),
+          ssgnWindowSeconds: 18,
+          firstSurfaceAt: 7,
+          reconFastInterval: 28,
+          reconSlowInterval: 46,
+          permanentSurfaceAfter: 3,
+          reconTag: "m16Recon",
+          bomberTag: "m16Bomber",
+          fighterTag: "m16SeaFlanker",
+          weaponTag: "m16AntiShipWeapon",
+          weaponType: "cruiseWeapon",
+          weaponIdBase: 1680,
+          weaponTotal: 8,
+          weaponSpeed: 245,
+          weaponDamage: 480,
+          bomberReleaseRadius: 5200,
+          outcomes: Object.freeze({
+            fleetIntegrity: "homeFleetIntegrity",
+            fleetSurvived: "homeFleetShipsSurvived",
+            epochSurvived: "epochSurvived",
+            missilesLaunched: "antiShipWeaponsLaunched",
+            missilesIntercepted: "antiShipWeaponsIntercepted",
+            missileImpacts: "antiShipWeaponImpacts",
+            ssgnDestroyed: "ssgnDestroyed",
+            reconDestroyed: "reconDestroyed",
+            supportStrength: "m20FleetSupportStrength"
+          })
+        });
+
+        const mission = {
+          key: "sera-m16",
+          campaign: "sera",
+          campaignOrder: 16,
+          world: "hadorDeepSea",
+          title: "HOME FLEET",
+          jp: "CVN EPOCHと護衛艦隊を対艦ミサイル攻撃から守り、浮上するSSGNと低空爆撃隊を排除せよ。",
+          act: 4,
+          storyNo: 16,
+          story: `WAR DAY 24。EPOCHはハドール西方の深海泊地で補給中。
+      ミガルへ向かう爆撃隊を追えば、この甲板は無防備になる。RAVENは帰る場所の上空へ残る。`,
+          epilogue: [
+            "EPOCHは艦首を風上へ向けたまま、最後の対艦警報を解除した。",
+            "生き残った護衛艦と甲板要員は、その戦果を権限ではなく一人のパイロットの異名で呼んだ。",
+            "HOME FLEETの残存戦力は、ミガル最終防衛へ回される。"
+          ],
+          friendlies: {
+            playerStart: { x: anchors.playerStart[0], y: 1450, z: anchors.playerStart[1], facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] } },
+            wingmen: [
+              { type: "fa18", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "4aam", offset: { back: 120, side: 145, up: -14 } }
+            ],
+            carrier: { x: anchors.fleetCenter[0], z: anchors.fleetCenter[1], heading: 0, label: "CVN EPOCH", vulnerable: true, hp: 4200 },
+            shipGroups: [
+              { callsign: "EPOCH CRUISER", hull: "cruiser", count: 1, vulnerable: true, hp: 1280, start: { x: -650, z: -1250 }, exit: { x: -650, z: -9300 }, spacing: 360 },
+              { callsign: "EPOCH FRIGATE", hull: "frigate", count: 2, vulnerable: true, hp: 880, start: { x: 700, z: -1150 }, exit: { x: 700, z: -9200 }, spacing: 760 }
+            ],
+            supportFlights: [
+              { callsign: "EPOCH CAP", aircraft: "fa18", count: 4, vulnerable: false, enemyTargetable: true, combatSupport: true, combatTargetTypes: ["su33", "cruiseWeapon"], start: { x: -900, z: -2300 }, exit: { x: 0, z: -7600 }, altitude: 1800, speed: 260, spacing: 240, holdAtExit: true, radioSpeaker: "epoch" }
+            ],
+            guard: {
+              readout: "integrity", label: "HOME FLEET", lossPenalty: 500, hitPenalty: 80,
+              lossBanner: "HOME FLEET SHIP LOST", failBanner: "EPOCH LOST",
+              lossRadio: "護衛艦喪失。残存艦をEPOCHの防空圏へ寄せる！",
+              failRadio: "EPOCH沈没。HOME FLEET防衛任務を中止する。",
+              asmRadio: "対艦ミサイル接近！ HOME FLEETへ向かっている——白い小型反応を迎撃せよ！"
+            }
+          },
+          sequence: [
+            {
+              types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, band: 1, idBase: 1610,
+              label: "BACKFIRE SEA STRIKE", missionTag: "m16Bomber", hunt: "ship", role: "line", skill: "regular",
+              at: [...anchors.bomberEntry], altitude: 680, facing: [...anchors.fleetCenter],
+              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "低空にTu-22M3四。SSGNと挟撃する対艦打撃隊だ。HOME FLEETへ到達させるな。", id: "m16-bomber-contact" }]
+            },
+            {
+              types: ["awacs"], tgt: false, concurrent: true, delay: 0, rankNeutral: false, band: 1, idBase: 1630,
+              label: "OCEAN EYE", missionTag: "m16Recon", role: "support", skill: "regular",
+              at: [...anchors.reconStation], altitude: 5200, facing: [...anchors.fleetCenter]
+            },
+            {
+              types: ["su33", "su33"], tgt: false, concurrent: true, delay: 18, band: 1, idBase: 1640,
+              label: "SEA FLANKER 1", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+              at: [...anchors.northCap], altitude: 2300, facing: [...anchors.fleetCenter]
+            },
+            {
+              types: ["su33", "su33"], tgt: false, concurrent: true, delay: 48, band: 2, idBase: 1650,
+              label: "SEA FLANKER 2", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+              at: [...anchors.southCap], altitude: 2500, facing: [...anchors.fleetCenter]
+            },
+            {
+              types: ["su33", "su33"], tgt: false, concurrent: true, delay: 86, band: 3, idBase: 1660,
+              label: "SEA FLANKER 3", missionTag: "m16SeaFlanker", role: "line", skill: "veteran",
+              at: [-9800, -7600], altitude: 2800, facing: [...anchors.fleetCenter]
+            }
+          ],
+          m16FleetContract,
+          fixedRadio: [
+            { id: "m16_intro_01", at: 2, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。RAVEN、よく戻った。HOME FLEET全艦を一つのHPゲージで送る。" },
+            { id: "m16_intro_02", at: 6, speaker: "meridian", priority: "CRITICAL", text: "潜水艦発射警報。SSGNは発射時だけ浮上する。水上反応が出た短い間に叩け。" },
+            { id: "m16_surface", event: "m16SsgnSurface", speaker: "lark", priority: "URGENT", text: "SSGN浮上！ ハッチが開いた——今だけ赤TGTだ！" },
+            { id: "m16_recon_down", event: "m16ReconDown", speaker: "meridian", priority: "NORMAL", text: "敵偵察機撃墜。次の潜水艦発射解を遅らせた。" },
+            { id: "m16_weapon_launch", event: "m16WeaponLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦巡航兵器を探知。海面上の小型白反応、接触前に撃ち落とせ！" },
+            { id: "m16_first_intercept", event: "m16FirstIntercept", speaker: "lark", priority: "NORMAL", text: "巡航兵器一発破壊！ 同じ高度に残りが来る！" },
+            { id: "m16_gibor", event: "m16GiborPraise", speaker: "epoch", priority: "NORMAL", text: "甲板員が君をGIBORと呼んでいる。王でも権限でもない——帰る場所を守ったエースへの呼び名だ。" },
+            { id: "m16_ssgn_clear", event: "m16SsgnClear", speaker: "meridian", priority: "CRITICAL", text: "SSGN二隻撃沈。残る赤TGTは低空対艦打撃隊。" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "SSGNと対艦打撃隊を排除。EPOCH生存、HOME FLEET防衛成功。", id: "m16-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "CVN EPOCH喪失。HOME FLEET防衛任務失敗。", id: "m16-failure" },
+          parTime: 540,
+          hasOutro: false,
+          map: { x: 0.64, y: 0.17 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 19000,
+          briefing: "CVN EPOCH、防空巡洋艦一、フリゲート二を対艦攻撃から防衛せよ。四隻の合計耐久力をHOME FLEETゲージへ表示する。EPOCH喪失で即時MISSION FAILED。\nSSGN二隻は巡航兵器発射時だけ浮上し、その間だけ赤TGTとして攻撃可能。敵偵察機OCEAN EYEを撃墜すれば次の発射解が遅れる。潜水艦とTu-22M3から最大八発の海面追随巡航兵器が発射される。巡航兵器は爆撃機・潜水艦撃破後も独立した白い小型航空反応として残り、通常ミサイルで迎撃可能。\nSu-33六は護衛戦力で非TGT。全SSGNとTu-22M3四を排除し、EPOCHを生存させれば任務達成。艦隊残存戦力はM20の補給・増援へ反映される。"
+        };
+        ctx.addMission(mission, { after: "sera-m15" });
+      },
+      "mission_sera_m16"
+    ); // @payload:mission_sera_m16
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -44903,6 +45167,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m14Result) Object.assign(entry, m14Result);
       const m15Result = m15ResultSnapshot(mission);
       if (m15Result) Object.assign(entry, m15Result);
+      const m16Result = m16ResultSnapshot(mission);
+      if (m16Result) Object.assign(entry, m16Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -47468,6 +47734,184 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM15ResolveOutcome: () => {
         const mission = m15Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM16Probe: () => {
+        const mission = m16Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          fleet: {
+            active: guardState.active,
+            label: guardState.label,
+            integrity: Number(guardIntegrity().toFixed(4)),
+            lost: guardState.lost,
+            units: m16Fleet().map((friendly) => ({
+              label: friendly.label,
+              kind: friendly.kind,
+              type: friendly.type,
+              alive: friendly.alive,
+              hp: Math.max(0, Math.round(friendly.hp)),
+              maxHp: friendly.maxHp
+            }))
+          },
+          homeFleet: {
+            active: m16State.active,
+            completed: m16State.completed,
+            failed: m16State.failed,
+            surfaceWindow: m16State.surfaceWindow,
+            windowOpen: m16State.windowOpen,
+            permanentSurface: m16State.permanentSurface,
+            nextSurfaceAt: Number.isFinite(m16State.nextSurfaceAt)
+              ? Number(m16State.nextSurfaceAt.toFixed(2))
+              : null,
+            ssgnDestroyed: m16State.ssgnDestroyed.size,
+            weaponsLaunched: m16State.weaponsLaunched,
+            weaponsIntercepted: m16State.weaponsIntercepted,
+            weaponImpacts: m16State.weaponImpacts,
+            reconDestroyed: m16State.reconDestroyed,
+            praiseFired: m16State.praiseFired
+          },
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            visible: enemy.group.visible,
+            tgt: isTgtEntry(enemy),
+            missionTag: enemy.missionTag || null,
+            submerged: Boolean(enemy.m16Submerged),
+            ssgn: Boolean(enemy.m16Ssgn),
+            antiShipWeapon: Boolean(enemy.m16AntiShipWeapon),
+            impact: Boolean(enemy.m16Impact),
+            ownerId: enemy.m16OwnerId || null,
+            target: enemy.m16TargetFriendly ? enemy.m16TargetFriendly.label : null,
+            released: Boolean(enemy.m16WeaponReleased)
+          })),
+          pending: pendingWaves.map((entry) => ({
+            timer: Number(entry.timer.toFixed(2)),
+            missionTag: entry.wave?.missionTag || null,
+            count: entry.wave?.types?.length || 0
+          })),
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM16DeployPending: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(0.016);
+        updateM16MissionThreat();
+        return true;
+      },
+      forceSeraM16SurfaceWindow: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        spawnM16Ssgns(mission);
+        if (m16State.windowOpen) return m16State.ssgnRefs.filter((ship) => ship.alive).length;
+        missionElapsed = Math.max(missionElapsed, m16State.nextSurfaceAt);
+        return openM16SsgnWindow(mission);
+      },
+      forceSeraM16LaunchSsgnSalvo: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        if (!m16State.windowOpen) openM16SsgnWindow(mission);
+        m16State.windowStartedAt = missionElapsed - 20;
+        return releaseM16SsgnWeapons(mission);
+      },
+      forceSeraM16CloseWindow: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission || !m16State.windowOpen) return 0;
+        m16State.permanentSurface = false;
+        missionElapsed = Math.max(missionElapsed, m16State.windowEndsAt + 0.1);
+        return closeM16SsgnWindow(mission);
+      },
+      forceSeraM16NextSurface: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        if (m16State.windowOpen && !m16State.permanentSurface) closeM16SsgnWindow(mission);
+        missionElapsed = Math.max(missionElapsed, m16State.nextSurfaceAt);
+        return openM16SsgnWindow(mission);
+      },
+      forceSeraM16ReleaseBombers: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const contract = mission.m16FleetContract;
+        for (const enemy of enemies) {
+          if (!enemy.alive || enemy.missionTag !== contract.bomberTag || enemy.m16WeaponReleased) continue;
+          const target = m16NearestFleetTarget(enemy.group.position);
+          if (!target) continue;
+          tmpV1.copy(enemy.group.position).setY(0).sub(tmpV2.copy(target.group.position).setY(0));
+          if (tmpV1.lengthSq() < 1) tmpV1.set(0, 0, 1);
+          tmpV1.normalize().multiplyScalar(Number(contract.bomberReleaseRadius) - 150);
+          enemy.group.position.set(target.group.position.x + tmpV1.x, 680, target.group.position.z + tmpV1.z);
+        }
+        return releaseM16BomberWeapons(mission);
+      },
+      forceSeraM16InterceptWeapons: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || !enemy.m16AntiShipWeapon) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM16MissionThreat();
+        return cleared;
+      },
+      forceSeraM16ClearSsgns: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        spawnM16Ssgns(mission);
+        if (!m16State.windowOpen) openM16SsgnWindow(mission, true);
+        let cleared = 0;
+        for (const ship of m16State.ssgnRefs) {
+          if (!ship.alive || ship.m16Destroyed) continue;
+          damageEnemy(ship, ship.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM16MissionThreat();
+        return cleared;
+      },
+      forceSeraM16ClearBombers: () => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const tag = mission.m16FleetContract.bomberTag;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || enemy.missionTag !== tag) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM16MissionThreat();
+        return cleared;
+      },
+      forceSeraM16DamageFleet: (index = 0, amount = 480) => {
+        const mission = m16Mission();
+        if (gameState !== STATE_PLAYING || !mission) return null;
+        const target = m16Fleet()[Math.max(0, Math.floor(Number(index) || 0))];
+        if (!target || !target.alive) return null;
+        damageFriendly(target, Math.max(1, Number(amount) || 480));
+        updateM16MissionThreat();
+        return { label: target.label, alive: target.alive, hp: Math.max(0, target.hp) };
+      },
+      forceSeraM16LoseEpoch: () => {
+        const mission = m16Mission();
+        const epoch = m16Epoch();
+        if (gameState !== STATE_PLAYING || !mission || !epoch) return false;
+        damageFriendly(epoch, epoch.hp + 1);
+        updateM16MissionThreat();
+        return gameState === STATE_GAMEOVER;
+      },
+      forceSeraM16ResolveOutcome: () => {
+        const mission = m16Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -52153,6 +52597,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM13State(MISSIONS[currentMissionIndex]);
       resetM14State(MISSIONS[currentMissionIndex]);
       resetM15State(MISSIONS[currentMissionIndex]);
+      resetM16State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -56781,6 +57226,408 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       };
     }
 
+    // SERA M16 HOME FLEET ---------------------------------------------------
+    // Two launchers repeatedly expose the SAME hulls. The sea-skimming rounds
+    // are lockable contacts of their own, so sinking a launcher never erases a
+    // weapon that is already inbound and the fleet fight remains readable.
+    const m16State = {
+      active: false,
+      completed: false,
+      failed: false,
+      ssgnSpawned: false,
+      ssgnRefs: [],
+      ssgnDestroyed: new Set(),
+      surfaceWindow: 0,
+      windowOpen: false,
+      windowStartedAt: 0,
+      windowEndsAt: 0,
+      nextSurfaceAt: Infinity,
+      permanentSurface: false,
+      weaponSerial: 0,
+      weaponsLaunched: 0,
+      weaponsIntercepted: 0,
+      weaponImpacts: 0,
+      reconDestroyed: false,
+      praiseFired: false,
+      ssgnClearFired: false
+    };
+
+    function m16Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m16FleetContract ? mission : null;
+    }
+
+    function resetM16State(mission) {
+      const contract = mission && mission.m16FleetContract;
+      m16State.active = Boolean(contract);
+      m16State.completed = false;
+      m16State.failed = false;
+      m16State.ssgnSpawned = false;
+      m16State.ssgnRefs.length = 0;
+      m16State.ssgnDestroyed.clear();
+      m16State.surfaceWindow = 0;
+      m16State.windowOpen = false;
+      m16State.windowStartedAt = 0;
+      m16State.windowEndsAt = 0;
+      m16State.nextSurfaceAt = contract ? Number(contract.firstSurfaceAt) || 7 : Infinity;
+      m16State.permanentSurface = false;
+      m16State.weaponSerial = 0;
+      m16State.weaponsLaunched = 0;
+      m16State.weaponsIntercepted = 0;
+      m16State.weaponImpacts = 0;
+      m16State.reconDestroyed = false;
+      m16State.praiseFired = false;
+      m16State.ssgnClearFired = false;
+    }
+
+    function m16Fleet() {
+      return guardedFriendlies().filter((friendly) => isFriendlyShip(friendly));
+    }
+
+    function m16Epoch() {
+      const mission = m16Mission();
+      const label = mission?.m16FleetContract?.epochLabel;
+      return m16Fleet().find((friendly) => friendly.label === label || friendly.kind === "carrier") || null;
+    }
+
+    function setM16SsgnSubmerged(ship, submerged) {
+      if (!ship || ship.m16Destroyed) return;
+      ship.m16Submerged = submerged;
+      ship.alive = !submerged;
+      ship.group.visible = !submerged;
+      ship.hitbox.visible = !submerged;
+      ship.deadTimer = submerged ? Number.POSITIVE_INFINITY : 0;
+      ship.speed = 0;
+      ship.targetSpeed = 0;
+      for (const sub of ship.subsystems || []) {
+        if (sub.m16Submerged || sub.alive) {
+          sub.m16Submerged = submerged;
+          sub.alive = !submerged;
+          sub.group.visible = !submerged;
+          sub.hitbox.visible = !submerged;
+          sub.deadTimer = submerged ? Number.POSITIVE_INFINITY : 0;
+        }
+      }
+      if (submerged) {
+        if (lock.targetId === ship.id) resetLock();
+        if (preferredTargetId === ship.id) preferredTargetId = null;
+      }
+    }
+
+    function spawnM16Ssgns(mission) {
+      if (!mission || m16State.ssgnSpawned) return m16State.ssgnRefs;
+      const contract = mission.m16FleetContract;
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      const oldTag = spawningMissionTag;
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawningMissionTag = contract.ssgnTag;
+      try {
+        for (let i = 0; i < contract.ssgnIds.length; i += 1) {
+          const id = contract.ssgnIds[i];
+          const at = contract.ssgnAnchors[i];
+          tmpV1.set(at[0], 0, at[1]);
+          tmpV2.set(mission.battleCenter.x - at[0], 0, mission.battleCenter.z - at[1]);
+          const heading = Math.atan2(-tmpV2.x, -tmpV2.z);
+          const ship = spawnShip(tmpV1, heading, 0, contract.ssgnType, id - 1);
+          if (!ship) continue;
+          ship.m16Ssgn = true;
+          ship.m16Destroyed = false;
+          ship.m16WeaponsRemaining = 2;
+          ship.m16WindowFired = false;
+          ship.authoredCourse = true;
+          ship.missileCooldown = Number.POSITIVE_INFINITY;
+          ship.aaCooldown = Number.POSITIVE_INFINITY;
+          m16State.ssgnRefs.push(ship);
+          setM16SsgnSubmerged(ship, true);
+        }
+      } finally {
+        spawningTgt = oldTgt;
+        spawningRankNeutral = oldNeutral;
+        spawningMissionTag = oldTag;
+      }
+      m16State.ssgnSpawned = true;
+      return m16State.ssgnRefs;
+    }
+
+    function m16ReconAlive(mission = m16Mission()) {
+      const tag = mission?.m16FleetContract?.reconTag;
+      return Boolean(tag && enemies.some((enemy) => enemy.alive && enemy.missionTag === tag));
+    }
+
+    function openM16SsgnWindow(mission, forcePermanent = false) {
+      const contract = mission.m16FleetContract;
+      spawnM16Ssgns(mission);
+      m16State.surfaceWindow += 1;
+      m16State.windowOpen = true;
+      m16State.windowStartedAt = missionElapsed;
+      m16State.windowEndsAt = missionElapsed + (Number(contract.ssgnWindowSeconds) || 18);
+      m16State.permanentSurface = forcePermanent
+        || m16State.surfaceWindow >= (Number(contract.permanentSurfaceAfter) || 3);
+      let surfaced = 0;
+      for (const ship of m16State.ssgnRefs) {
+        if (ship.m16Destroyed) continue;
+        ship.m16WindowFired = false;
+        setM16SsgnSubmerged(ship, false);
+        surfaced += 1;
+      }
+      if (surfaced > 0) {
+        fireFixedRadioEvent("m16SsgnSurface");
+        showBanner(m16State.permanentSurface ? "SSGN FINAL SURFACE" : "SSGN SURFACED · ATTACK WINDOW", 2.0, "danger");
+      }
+      return surfaced;
+    }
+
+    function closeM16SsgnWindow(mission) {
+      if (!m16State.windowOpen || m16State.permanentSurface) return 0;
+      let submerged = 0;
+      for (const ship of m16State.ssgnRefs) {
+        if (ship.m16Destroyed) continue;
+        setM16SsgnSubmerged(ship, true);
+        submerged += 1;
+      }
+      m16State.windowOpen = false;
+      const contract = mission.m16FleetContract;
+      m16State.nextSurfaceAt = missionElapsed + (
+        m16ReconAlive(mission)
+          ? Number(contract.reconFastInterval) || 28
+          : Number(contract.reconSlowInterval) || 46
+      );
+      if (submerged > 0) showBanner("SSGN SUBMERGED · HOLD FOR NEXT CONTACT", 1.7, "warn");
+      return submerged;
+    }
+
+    function m16NearestFleetTarget(position) {
+      let best = null;
+      let distance = Infinity;
+      for (const friendly of m16Fleet()) {
+        if (!friendly.alive || friendly.retired) continue;
+        const current = position.distanceToSquared(friendly.group.position);
+        if (current < distance) {
+          distance = current;
+          best = friendly;
+        }
+      }
+      return best;
+    }
+
+    function spawnM16AntiShipWeapon(origin, target, owner = null) {
+      const mission = m16Mission();
+      if (!mission || !target || !target.alive) return null;
+      const contract = mission.m16FleetContract;
+      if (m16State.weaponsLaunched >= Number(contract.weaponTotal)) return null;
+      const idBase = Number(contract.weaponIdBase) + m16State.weaponSerial;
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      const oldHunt = spawningHunt;
+      const oldTag = spawningMissionTag;
+      const oldForward = spawningForward;
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawningHunt = null;
+      spawningMissionTag = contract.weaponTag;
+      spawningForward = null;
+      tmpV1.copy(origin);
+      tmpV1.y = THREE.MathUtils.clamp(Number(origin.y) || 80, 64, 240);
+      try {
+        spawnEnemy(tmpV1, 3, 0, contract.weaponType, null, idBase, "line", "regular", null);
+      } finally {
+        spawningTgt = oldTgt;
+        spawningRankNeutral = oldNeutral;
+        spawningHunt = oldHunt;
+        spawningMissionTag = oldTag;
+        spawningForward = oldForward;
+      }
+      const weapon = enemies.find((enemy) => enemy.id === idBase + 1);
+      if (!weapon) return null;
+      weapon.m16AntiShipWeapon = true;
+      weapon.m16Impact = false;
+      weapon.m16TargetFriendly = target;
+      weapon.m16OwnerId = owner ? owner.id : null;
+      weapon.speed = Number(contract.weaponSpeed) || 245;
+      weapon.targetSpeed = weapon.speed;
+      weapon.missileCooldown = Number.POSITIVE_INFINITY;
+      weapon.fireCooldown = Number.POSITIVE_INFINITY;
+      tmpV2.copy(target.group.position).setY(72).sub(weapon.group.position);
+      if (tmpV2.lengthSq() > 0.001) weapon.group.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV2.normalize());
+      m16State.weaponSerial += 1;
+      m16State.weaponsLaunched += 1;
+      if (m16State.weaponsLaunched === 1) fireFixedRadioEvent("m16WeaponLaunch");
+      return weapon;
+    }
+
+    function updateM16AntiShipWeapon(enemy, dt) {
+      if (!enemy || !enemy.alive || !enemy.m16AntiShipWeapon) return false;
+      const mission = m16Mission();
+      const contract = mission?.m16FleetContract;
+      if (!contract) return false;
+      let target = enemy.m16TargetFriendly;
+      if (!target || !target.alive || target.retired) {
+        target = m16NearestFleetTarget(enemy.group.position);
+        enemy.m16TargetFriendly = target;
+      }
+      if (!target) {
+        damageEnemy(enemy, enemy.hp + 1, true, true);
+        return true;
+      }
+      tmpV1.copy(target.group.position).setY(68).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      if (distance <= 118) {
+        enemy.m16Impact = true;
+        m16State.weaponImpacts += 1;
+        damageFriendly(target, Number(contract.weaponDamage) || 480);
+        damageEnemy(enemy, enemy.hp + 1, true, true);
+        return true;
+      }
+      if (distance > 0.001) {
+        tmpV1.multiplyScalar(1 / distance);
+        tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+        enemy.group.quaternion.rotateTowards(tmpQ1, THREE.MathUtils.degToRad(24) * dt);
+        enemy.group.quaternion.normalize();
+      }
+      forwardOf(enemy.group, tmpV2);
+      enemy.group.position.addScaledVector(tmpV2, enemy.speed * dt);
+      enemy.group.position.y = THREE.MathUtils.lerp(enemy.group.position.y, 68, damping(2.2, dt));
+      enemy.smokeTimer -= dt;
+      if (enemy.smokeTimer <= 0) {
+        tmpV3.copy(enemy.group.position).addScaledVector(tmpV2, -7);
+        smokeParticlePool.spawn(tmpV3, tmpV2.clone().multiplyScalar(-9), 0.72, 0xd1d7da, -0.16, 0.52);
+        enemy.smokeTimer += 0.06;
+      }
+      updateEnemyOrdnance(enemy, dt, performance.now() * 0.001);
+      return true;
+    }
+
+    function releaseM16SsgnWeapons(mission) {
+      if (!m16State.windowOpen) return 0;
+      const elapsed = missionElapsed - m16State.windowStartedAt;
+      const releaseAt = m16ReconAlive(mission) ? 2.2 : 4.8;
+      let launched = 0;
+      for (let i = 0; i < m16State.ssgnRefs.length; i += 1) {
+        const ship = m16State.ssgnRefs[i];
+        if (!ship.alive || ship.m16Destroyed || ship.m16WindowFired || ship.m16WeaponsRemaining <= 0) continue;
+        if (elapsed < releaseAt + i * 1.4) continue;
+        const target = m16NearestFleetTarget(ship.group.position);
+        if (!target) continue;
+        tmpV1.copy(ship.group.position).setY(82);
+        if (spawnM16AntiShipWeapon(tmpV1, target, ship)) {
+          ship.m16WindowFired = true;
+          ship.m16WeaponsRemaining -= 1;
+          launched += 1;
+        }
+      }
+      return launched;
+    }
+
+    function releaseM16BomberWeapons(mission) {
+      const contract = mission.m16FleetContract;
+      let launched = 0;
+      for (const enemy of enemies) {
+        if (!enemy.alive || enemy.missionTag !== contract.bomberTag || enemy.m16WeaponReleased) continue;
+        enemy.missileCooldown = Number.POSITIVE_INFINITY;
+        const target = m16NearestFleetTarget(enemy.group.position);
+        if (!target) continue;
+        const dx = enemy.group.position.x - target.group.position.x;
+        const dz = enemy.group.position.z - target.group.position.z;
+        if (Math.hypot(dx, dz) > Number(contract.bomberReleaseRadius)) continue;
+        enemy.m16WeaponReleased = true;
+        if (spawnM16AntiShipWeapon(enemy.group.position, target, enemy)) launched += 1;
+      }
+      return launched;
+    }
+
+    function fireM16Praise() {
+      if (m16State.praiseFired) return;
+      m16State.praiseFired = true;
+      fireFixedRadioEvent("m16GiborPraise");
+    }
+
+    function handleM16EnemyDestroyed(enemy) {
+      if (!m16State.active || !enemy) return;
+      const mission = m16Mission();
+      const contract = mission?.m16FleetContract;
+      if (!contract) return;
+      if (enemy.m16AntiShipWeapon && !enemy.m16Impact) {
+        m16State.weaponsIntercepted += 1;
+        if (m16State.weaponsIntercepted === 1) fireFixedRadioEvent("m16FirstIntercept");
+        if (m16State.weaponsIntercepted >= 2) fireM16Praise();
+      }
+      if (enemy.m16Ssgn) {
+        enemy.m16Destroyed = true;
+        enemy.m16Submerged = false;
+        m16State.ssgnDestroyed.add(enemy.id);
+        fireM16Praise();
+        if (m16State.ssgnDestroyed.size >= contract.ssgnIds.length && !m16State.ssgnClearFired) {
+          m16State.ssgnClearFired = true;
+          fireFixedRadioEvent("m16SsgnClear");
+        }
+      }
+      if (enemy.missionTag === contract.reconTag && !m16State.reconDestroyed) {
+        m16State.reconDestroyed = true;
+        fireFixedRadioEvent("m16ReconDown");
+      }
+    }
+
+    function updateM16MissionThreat() {
+      const mission = m16Mission();
+      if (!mission || !m16State.active) return false;
+      if (m16State.failed || m16State.completed) return true;
+      const contract = mission.m16FleetContract;
+      const epoch = m16Epoch();
+      if (!epoch || !epoch.alive) {
+        m16State.failed = true;
+        missionFailureRadioOverride = mission.failureRadio || null;
+        completeMission(false);
+        return true;
+      }
+
+      spawnM16Ssgns(mission);
+      if (!m16State.windowOpen && missionElapsed >= m16State.nextSurfaceAt
+          && m16State.ssgnDestroyed.size < contract.ssgnIds.length) {
+        openM16SsgnWindow(mission);
+      }
+      if (m16State.windowOpen) {
+        releaseM16SsgnWeapons(mission);
+        if (!m16State.permanentSurface && missionElapsed >= m16State.windowEndsAt) {
+          closeM16SsgnWindow(mission);
+        }
+      }
+      releaseM16BomberWeapons(mission);
+
+      const bomberAlive = enemies.some((enemy) => enemy.alive && enemy.missionTag === contract.bomberTag);
+      const weaponsAlive = enemies.some((enemy) => enemy.alive && enemy.m16AntiShipWeapon);
+      const bombersPending = pendingWaves.some((entry) => entry.wave?.missionTag === contract.bomberTag)
+        || mission.waves.slice(missionWaveIndex).some((wave) => wave.missionTag === contract.bomberTag);
+      if (!bomberAlive && !bombersPending
+          && m16State.ssgnDestroyed.size >= contract.ssgnIds.length && !weaponsAlive) {
+        m16State.completed = true;
+        completeMission(true);
+      }
+      return true;
+    }
+
+    function m16ResultSnapshot(mission) {
+      const contract = mission && mission.m16FleetContract;
+      if (!contract || !m16State.active || !m16State.completed) return null;
+      const fleet = m16Fleet();
+      const survived = fleet.filter((friendly) => friendly.alive).length;
+      const integrity = Number(guardIntegrity().toFixed(4));
+      const epoch = m16Epoch();
+      const fields = contract.outcomes || {};
+      return {
+        [fields.fleetIntegrity || "homeFleetIntegrity"]: integrity,
+        [fields.fleetSurvived || "homeFleetShipsSurvived"]: survived,
+        [fields.epochSurvived || "epochSurvived"]: Boolean(epoch && epoch.alive),
+        [fields.missilesLaunched || "antiShipWeaponsLaunched"]: m16State.weaponsLaunched,
+        [fields.missilesIntercepted || "antiShipWeaponsIntercepted"]: m16State.weaponsIntercepted,
+        [fields.missileImpacts || "antiShipWeaponImpacts"]: m16State.weaponImpacts,
+        [fields.ssgnDestroyed || "ssgnDestroyed"]: m16State.ssgnDestroyed.size,
+        [fields.reconDestroyed || "reconDestroyed"]: m16State.reconDestroyed,
+        [fields.supportStrength || "m20FleetSupportStrength"]: Math.max(0, Math.min(4, Math.round(survived * integrity)))
+      };
+    }
+
     function m03CommandFacility(mission = m03Mission()) {
       if (!mission || !mission.landingContract) return null;
       const id = mission.landingContract.commandFacilityId;
@@ -58105,6 +58952,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         behavior: "fleet",
         tgt: spawningTgt,
         rankNeutral: spawningRankNeutral,
+        missionTag: spawningMissionTag,
         surface: true,
         isAce: false,
         aceEngageLineFired: true,
@@ -59630,6 +60478,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (deployment.airbase && !mission.friendlyBase) spawnFriendlyBase(deployment.airbase);
       if (deployment.carrier) spawnFriendlyCarrier(deployment.carrier);
       if (deployment.ships) spawnFriendlyShips(deployment.ships);
+      if (Array.isArray(deployment.shipGroups)) {
+        for (const group of deployment.shipGroups) spawnFriendlyShips(group);
+      }
       if (Array.isArray(deployment.transportGroups)) {
         for (const group of deployment.transportGroups) spawnFriendlyTransports(group);
       }
@@ -61499,6 +62350,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
+        // HOME FLEET retains its SSGNs while they are below the surface. They
+        // disappear from every live-contact query, but the same damaged hull
+        // has to return in the next firing window instead of becoming a wreck.
+        if (enemy.m16Submerged) continue;
         if (!enemy.alive) {
           enemy.deadTimer -= dt;
           if (enemy.subsystem) updateSubsystemWreck(enemy, dt);
@@ -61569,6 +62424,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // contacts, but not aircraft. Their straight district-bound flight
         // owns the frame and deliberately bypasses fighter pursuit/stall AI.
         if (updateM15CruiseWeapon(enemy, dt)) continue;
+        // HOME FLEET uses the same lockable miniature contact for a weapon
+        // flying at a friendly hull rather than a city district.
+        if (updateM16AntiShipWeapon(enemy, dt)) continue;
 
         updateEnemyAerodynamicState(enemy, dt);
 
@@ -63090,6 +63948,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.alive = false;
       enemy.hitbox.visible = false;
       handleM15EnemyDestroyed(enemy, byWingman);
+      handleM16EnemyDestroyed(enemy, byWingman);
       if (enemy.m04RedFleet) {
         const destroyed = (sortieMarks.m04RedFleetDestroyed || 0) + 1;
         sortieMarks.m04RedFleetDestroyed = destroyed;
@@ -63537,6 +64396,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // M15 must claim bomber release at the 3.3km cruise-weapon line before
       // the legacy facility handler can turn the same run into a direct hit.
       if (updateM15MissionThreat()) return;
+      if (updateM16MissionThreat()) return;
       if (updateStrikeThreat()) return;
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
