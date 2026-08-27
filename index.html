@@ -51760,6 +51760,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             Number(forwardDot)
           )
         ),
+        pursuitLeadProbe: (range, targetSpeed, pursuitBack = 80) => (
+          enemyPursuitLongitudinalOffset(
+            Math.max(0, Number(range) || 0),
+            Math.max(0, Number(targetSpeed) || 0),
+            Math.max(0, Number(pursuitBack) || 0)
+          )
+        ),
         enemyFlightProbe: (id = null) => enemies
           .filter((enemy) =>
             enemy.alive && !enemy.surface && !enemy.heli && !enemy.subsystem &&
@@ -65753,6 +65760,71 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       enemy.interceptorPreviousRange = range;
     }
 
+    function enemyContactSpeed(target) {
+      if (target === player) return playerSpeed;
+      return Math.max(0, Number(target?.wingSpeed ?? target?.speed) || 0);
+    }
+
+    function enemyPursuitLongitudinalOffset(range, targetSpeed, pursuitBack) {
+      const interceptBlend = THREE.MathUtils.clamp((range - 600) / 2800, 0, 1);
+      const leadDistance = Math.min(520, Math.max(0, targetSpeed) * 0.72 + range * 0.025);
+      return THREE.MathUtils.lerp(-Math.max(0, pursuitBack || 0), leadDistance, interceptBlend);
+    }
+
+    // Far away, pure pursuit wastes kilometres following the target's old
+    // position. At the merge, pure lead overshoots and never settles on the
+    // six. Blend continuously between a modest intercept lead outside 3.4km
+    // and the existing astern point inside 600m. The airframe's constrained
+    // turn remains the final authority; this changes judgement, not physics.
+    function setEnemyPursuitAim(enemy, time, out) {
+      const spec = enemy.spec;
+      const remembered = enemy.contactState === "memory";
+      const target = enemy.contactRef || player;
+      const targetPosition = remembered
+        ? enemy.contactLastPosition
+        : (enemyCombatTargetPosition(target) || player.position);
+      out.copy(targetPosition);
+
+      const range = enemy.group.position.distanceTo(targetPosition);
+      const interceptBlend = remembered
+        ? 0
+        : THREE.MathUtils.clamp((range - 600) / 2800, 0, 1);
+      if (!remembered) {
+        if (target === player) forwardOf(player, tmpV3);
+        else forwardOf(target.group, tmpV3);
+        const longitudinal = enemyPursuitLongitudinalOffset(
+          range,
+          enemyContactSpeed(target),
+          spec.pursuitBack || 60
+        );
+        out.addScaledVector(tmpV3, longitudinal);
+      }
+
+      if (DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose) && interceptBlend > 0) {
+        const defence = enemyPurposeDefencePoint(enemy, enemy.purposePoint);
+        tmpV4.copy(defence).sub(targetPosition);
+        tmpV4.y = 0;
+        if (tmpV4.lengthSq() > 1) {
+          tmpV4.normalize();
+          const barrier = enemy.purpose === "screen"
+            ? 900
+            : (enemy.purpose === "escort"
+              ? 620
+              : (enemy.purpose === "top-cover" ? 480 : 300));
+          out.addScaledVector(tmpV4, barrier * interceptBlend);
+        }
+        enemy.aimKind = `${enemy.purpose}-intercept`;
+      } else {
+        enemy.aimKind = remembered ? "contact-search" : "pursuit";
+      }
+
+      out.addScaledVector(
+        WORLD_UP,
+        spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude
+      );
+      return out;
+    }
+
     function casMissionObjectFor(enemy) {
       if (!enemy || enemy.purpose !== "cas" || !enemy.casTarget) return null;
       if (enemy.casTarget === "protected-facility") {
@@ -66327,7 +66399,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             terrainFloorAt(enemy.casTargetRef.group.position) + 260
           );
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus * 0.35);
-        } else if (enemy.huntRef) {
+        } else if (enemy.hunt && enemy.huntRef) {
           enemy.aimKind = "hunt";
           // The hunt run. Above pursuit in this chain on purpose: an aircraft
           // that came for the convoy does not care where the player is, and
@@ -66358,23 +66430,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
-          enemy.aimKind = "pursuit";
-          const pursuitPosition = enemy.contactState === "memory"
-            ? enemy.contactLastPosition
-            : (enemyCombatTargetPosition(enemy.contactRef) || player.position);
-          targetPoint = enemy.targetPoint.copy(pursuitPosition);
-          if (enemy.contactState !== "memory") {
-            if (enemy.contactRef === player || !enemy.contactRef) {
-              targetPoint.addScaledVector(tmpV5, -spec.pursuitBack);
-            } else {
-              forwardOf(enemy.contactRef.group, tmpV3);
-              targetPoint.addScaledVector(tmpV3, -spec.pursuitBack);
-            }
-          }
-          targetPoint.addScaledVector(
-            WORLD_UP,
-            spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude
-          );
+          targetPoint = setEnemyPursuitAim(enemy, time, enemy.targetPoint);
 
           if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
             // Elements bracket instead of stacking on one shortest-path point.

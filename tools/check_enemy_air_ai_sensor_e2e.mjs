@@ -66,6 +66,7 @@ async function openMission(key, deployHook = null) {
     && window.__game?.debug?.enemyObjectiveProbe
     && window.__game?.debug?.forceEnemyBreakCycle
     && window.__game?.debug?.forceInterceptorEgress
+    && window.__game?.debug?.pursuitLeadProbe
   ), null, { timeout: 120_000 });
   assert(await page.evaluate((missionKey) => window.__game.forceStartMissionByKey(missionKey, "f16"), key),
     `${key} could not start`);
@@ -88,6 +89,13 @@ try {
   const cap = state.find((enemy) => enemy.purpose === "cap" && enemy.defencePoint);
   assert(cap && cap.sensorRange >= 11000 && cap.commitRange >= 4800 && cap.leashRange >= 7600,
     "fleet CAP did not receive the broad sensor / bounded commitment contract", cap);
+  const leadBlend = await opened.page.evaluate(() => ({
+    close: window.__game.debug.pursuitLeadProbe(350, 280, 80),
+    medium: window.__game.debug.pursuitLeadProbe(1800, 280, 80),
+    far: window.__game.debug.pursuitLeadProbe(8000, 280, 80)
+  }));
+  assert(leadBlend.close < 0 && leadBlend.medium > leadBlend.close && leadBlend.far > 250,
+    "pursuit aim does not blend from astern to predictive lead", leadBlend);
 
   await opened.page.evaluate(([id, point]) => {
     window.__game.debug.forceTeleport(point[0] + 7000, point[1] + 180, point[2]);
@@ -104,7 +112,8 @@ try {
   }, cap.defencePoint);
   state = await objectives(opened.page);
   probe = state.find((enemy) => enemy.id === cap.id);
-  assert(probe.mode === "pursuit" && probe.contactState === "engaged",
+  assert(probe.mode === "pursuit" && probe.contactState === "engaged"
+      && probe.aimKind === "cap-intercept",
     "CAP did not commit inside the defended perimeter", probe);
 
   assert(await opened.page.evaluate((id) => window.__game.debug.forceEnemyBreakCycle(id), cap.id),
