@@ -878,6 +878,22 @@
       visibility: visible;
     }
 
+    /* M12 jammer ghosts are presentation-only radar returns. They deliberately
+       have no enemy id, label or lock diamond, so target cycling and seekers
+       can never mistake electronic noise for a combat object. */
+    .enemyMarker.jammerGhost {
+      width: 18px;
+      height: 18px;
+      border-style: dashed;
+      border-color: rgba(255, 79, 96, 0.78);
+      color: #ff6475;
+      filter: drop-shadow(0 0 4px rgba(255, 55, 76, 0.42));
+      transition: none;
+    }
+
+    .enemyMarker.jammerGhost.active { opacity: 0.48; }
+    .enemyMarker.jammerGhost::before { display: none; }
+
     /* A ship's mount is a smaller frame than a contact: it reads as a part of
        the thing behind it rather than another thing to fly at. */
     .enemyMarker.subsystem {
@@ -41690,9 +41706,75 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
         });
 
+        // M12 returns to exactly the same rail/river/factory geography two nights
+        // later. Keep the coordinates and decorator ownership shared with M10; only
+        // the atmosphere and lighting change, so the player can recognise the city
+        // whose bridge and power cars they dealt with in LAST TRAIN.
+        ctx.addWorldPreset("norIndustrialBlackout", {
+          ...WORLD_PRESETS.norIndustrialDusk,
+          label: "NOR INDUSTRIAL — BLACKOUT",
+          sectorIds: Object.freeze(["south_freight_yard", "blackout_factory_grid", "workers_heating_grid"]),
+          variant: "industrial_blackout_snow",
+          clearColor: 0x060d18,
+          sky: [
+            [0, "#020713"],
+            [0.34, "#071426"],
+            [0.58, "#10233a"],
+            [0.78, "#182b3c"],
+            [1, "#0b111b"]
+          ],
+          atmosphere: {
+            ...WORLD_PRESETS.norIndustrialDusk.atmosphere,
+            seed: 0x4e4f5211,
+            noise: 0.055,
+            haze: 0.3,
+            thinClouds: 28,
+            cloudOpacity: 0.16,
+            cloudBand: [0.28, 0.68],
+            cloudTint: 0xa8bed1
+          },
+          fog: { color: 0x172638, near: 2200, far: 15400 },
+          sun: null,
+          moon: {
+            position: [-5600, 7200, -4200],
+            color: 0xc9dcff,
+            radius: 74,
+            glare: [
+              { scale: 1050, color: 0x6e91c6, opacity: 0.2 },
+              { scale: 310, color: 0xd9e7ff, opacity: 0.65 }
+            ]
+          },
+          stars: {
+            count: 320,
+            radius: 7200,
+            size: 2.1,
+            seed: 0x4e4f5212,
+            color: 0xc8dcff,
+            warm: 0xffd6b0
+          },
+          lights: {
+            hemi: { sky: 0x506b91, ground: 0x06080d, intensity: 0.72 },
+            key: { color: 0x9fbded, intensity: 1.28, position: [-4200, 6800, -3600] },
+            fill: { color: 0x142c4d, intensity: 0.34, position: [3900, 900, 3100] }
+          },
+          clouds: {
+            ...WORLD_PRESETS.norIndustrialDusk.clouds,
+            color: 0x718398,
+            opacity: 0.72,
+            cirrusColor: 0x53657b,
+            cirrusOpacity: 0.36,
+            texture: { seed: 0x4e4f5213, contrast: 1.16, underside: 0.48, softness: 0.94 }
+          },
+          decor: {
+            ...WORLD_PRESETS.norIndustrialDusk.decor,
+            seed: 0x4e4f5214
+          }
+        });
+
         ctx.addWorldDecorator("norIndustrialWorks", {
-          worlds: ["norIndustrialDusk"],
-          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt, classicDepthBuffer = false }) {
+          worlds: ["norIndustrialDusk", "norIndustrialBlackout"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt, classicDepthBuffer = false, worldKey }) {
+            const blackout = worldKey === "norIndustrialBlackout";
             const root = new THREE.Group();
             root.name = "norIndustrialWorks";
             addRoot(root);
@@ -41820,7 +41902,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               box(`${id}-hall`, x, y + height * 0.5, z, width, height, depth, 0x57575a, heading, { roughness: 0.86, metalness: 0.08 });
               box(`${id}-roof`, x, y + height + 2.5, z, width + 8, 5, depth + 8, 0x35383c, heading, { roughness: 0.74, metalness: 0.14 });
               for (const side of [-1, 1]) {
-                box(`${id}-window-${side}`, x + Math.cos(heading) * side * width * 0.42, y + height * 0.62, z - Math.sin(heading) * side * width * 0.42, 5, height * 0.2, depth * 0.65, 0x3d322d, heading, { emissive: 0xe67b3f });
+                box(`${id}-window-${side}`, x + Math.cos(heading) * side * width * 0.42, y + height * 0.62, z - Math.sin(heading) * side * width * 0.42, 5, height * 0.2, depth * 0.65, blackout ? 0x101923 : 0x3d322d, heading, { emissive: blackout ? 0x18334f : 0xe67b3f });
               }
             };
             factory("nor-foundry", -1650, -950, 680, 420, 96, 0.12);
@@ -41872,7 +41954,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             for (const [index, [x, z]] of lamps.entries()) {
               const y = groundY(x, z);
               cylinder(`nor-lamp-post-${index}`, x, y, z, 2.2, 28, 0x47494d, { metalness: 0.3 });
-              box(`nor-lamp-head-${index}`, x, y + 29, z, 11, 4, 7, 0xffa05c, 0, { emissive: 0xff7b35 });
+              box(`nor-lamp-head-${index}`, x, y + 29, z, 11, 4, 7, blackout ? 0x182538 : 0xffa05c, 0, { emissive: blackout ? 0x1b3858 : 0xff7b35 });
             }
           }
         });
@@ -43211,6 +43293,215 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m11"
     ); // @payload:mission_sera_m11
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, GROUND_TYPES
+        } = ctx.tables;
+
+        if (!WORLD_PRESETS.norIndustrialBlackout) {
+          throw new Error("[sera-m12] norIndustrialBlackout is not registered; load map_norIndustrial first");
+        }
+        if (!MISSIONS.some((mission) => mission.key === "sera-m11" && mission.campaign === "sera")) {
+          throw new Error("[sera-m12] sera-m11 predecessor is missing");
+        }
+        for (const type of ["jammer", "s70", "uav", "mig29", "su35", "fa18"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m12] required aircraft not registered: ${type}`);
+        }
+        for (const type of ["jammer", "s70", "uav", "mig29", "su35"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m12] required enemy profile not registered: ${type}`);
+        }
+        if (!GROUND_TYPES.substation) {
+          throw new Error("[sera-m12] required ground type not registered: substation");
+        }
+
+        const m12SwarmContract = Object.freeze({
+          designatedTag: "m12Swarm",
+          replenishmentTag: "m12Replenishment",
+          power: Object.freeze({ mark: "m12Power", required: 2 }),
+          jammer: Object.freeze({ missionRole: "m12Jammer", falseContacts: 6 }),
+          outcomes: Object.freeze({
+            gridCut: "gridCut",
+            civilianHeatingInterrupted: "civilianHeatingInterrupted",
+            reinforcementAircraftCancelled: "reinforcementAircraftCancelled",
+            powerSubstationsDestroyed: "powerSubstationsDestroyed",
+            jammerDestroyed: "jammerDestroyed"
+          })
+        });
+
+        const wave = (types, options = {}) => ({
+          types,
+          tgt: options.tgt ?? true,
+          rankNeutral: options.rankNeutral ?? false,
+          concurrent: options.concurrent ?? true,
+          missionTag: options.missionTag || m12SwarmContract.designatedTag,
+          band: options.band || 1,
+          idBase: options.idBase,
+          label: options.label,
+          role: options.role || "line",
+          skill: options.skill || "regular",
+          delay: options.delay || 0,
+          at: options.at,
+          altitude: options.altitude,
+          facing: options.facing,
+          radio: options.radio,
+          missionRole: options.missionRole
+        });
+
+        const mission = {
+          key: "sera-m12",
+          campaign: "sera",
+          campaignOrder: 12,
+          world: "norIndustrialBlackout",
+          title: "GLASS SWARM",
+          jp: "ノル無人工業区へ侵入し、電子妨害中継機と無人戦闘群を排除せよ。",
+          act: 2,
+          storyNo: 12,
+          story: "WAR DAY 17。停電したノルの工場街から、座席のない戦闘機だけが途切れず離陸している。\n無人機を一機ずつ落とせば住宅の暖房網は残る。白表示の送電所を二つ落とせば補充は止まるが、街の窓も同時に消える。",
+          epilogue: [
+            "ノル上空の無人戦闘群は沈黙した。通信に悲鳴も降伏も残らなかった。",
+            "MERIDIANは撃墜数の横に、共有送電網が生きているかどうかを記録した。",
+            "戦場から人を除いても、命令の結果まで無人になるわけではなかった。"
+          ],
+          friendlies: {
+            playerStart: {
+              x: -6100,
+              y: 1850,
+              z: -5600,
+              facing: { x: -900, z: -620 }
+            },
+            wingmen: [
+              {
+                type: "fa18",
+                label: "ROOK 2 LARK",
+                radioSpeaker: "lark",
+                spw: "aam4",
+                offset: { back: 130, side: 145, up: -16 }
+              }
+            ]
+          },
+          groundUnits: [
+            {
+              id: 1201,
+              type: "substation",
+              label: "HEATING GRID WEST",
+              x: 1680,
+              z: 320,
+              heading: 0.08,
+              tgt: false,
+              rankNeutral: true,
+              mark: "m12Power",
+              missionRole: "sharedHeatingGrid"
+            },
+            {
+              id: 1202,
+              type: "substation",
+              label: "HEATING GRID NORTH",
+              x: 3420,
+              z: 2820,
+              heading: -0.12,
+              tgt: false,
+              rankNeutral: true,
+              mark: "m12Power",
+              missionRole: "sharedHeatingGrid"
+            }
+          ],
+          sequence: [
+            wave(["jammer"], {
+              concurrent: false,
+              idBase: 1210,
+              label: "GLASS RELAY",
+              missionRole: "m12Jammer",
+              at: [6200, 5200],
+              altitude: 4100,
+              facing: [-900, -620],
+              radio: [
+                { speaker: "meridian", priority: "CRITICAL", text: "妨害中継機を赤TGTに指定。偽反応は追うな、発信源を落とせ。", id: "m12-jammer-contact" }
+              ]
+            }),
+            wave(["s70", "s70"], {
+              delay: 10, idBase: 1220, label: "GLASS HEAVY 1", band: 1,
+              at: [7100, -4800], altitude: 2500, facing: [-700, -300]
+            }),
+            wave(["uav", "uav", "uav", "uav"], {
+              delay: 18, idBase: 1230, label: "GLASS LIGHT 1", band: 1,
+              at: [-5600, 7200], altitude: 2100, facing: [-300, 200]
+            }),
+            wave(["mig29", "mig29"], {
+              tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 36,
+              idBase: 1240, label: "NOR CAP 1", band: 2, skill: "regular",
+              at: [8400, 6800], altitude: 2800, facing: [800, 600],
+              radio: [
+                { speaker: "lark", priority: "URGENT", text: "有人機も来る、MiG-29A二！ 白表示だ、無人機の赤TGTを優先して！", id: "m12-mig29-first" }
+              ]
+            }),
+            wave(["s70", "s70"], {
+              delay: 58, idBase: 1250, label: "GLASS HEAVY 2", band: 2,
+              at: [-7600, -5000], altitude: 2700, facing: [-500, -400]
+            }),
+            wave(["uav", "uav", "uav"], {
+              delay: 72, idBase: 1260, label: "GLASS LIGHT 2", band: 2,
+              at: [7600, -1200], altitude: 2300, facing: [200, 100]
+            }),
+            wave(["mig29", "mig29"], {
+              tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 82,
+              idBase: 1270, label: "NOR CAP 2", band: 2, skill: "veteran",
+              at: [-8200, 3000], altitude: 3000, facing: [-200, 400]
+            }),
+            wave(["s70", "s70"], {
+              missionTag: "m12Replenishment", delay: 118, idBase: 1280,
+              label: "GLASS REPLENISH HEAVY", band: 3,
+              at: [8800, 500], altitude: 2900, facing: [400, 400],
+              radio: [
+                { speaker: "meridian", priority: "URGENT", text: "工場から重UCAVの補充。送電所が生きている限り、予定された増援は上がる。", id: "m12-replenishment-heavy" }
+              ]
+            }),
+            wave(["uav", "uav", "uav"], {
+              missionTag: "m12Replenishment", delay: 140, idBase: 1290,
+              label: "GLASS REPLENISH LIGHT", band: 3,
+              at: [-6400, 8200], altitude: 2400, facing: [0, 500]
+            }),
+            wave(["mig29", "mig29"], {
+              tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 126,
+              idBase: 1300, label: "NOR CAP 3", band: 3, skill: "veteran",
+              at: [5200, 8600], altitude: 3200, facing: [600, 1000]
+            }),
+            wave(["su35", "su35"], {
+              tgt: false, rankNeutral: true, missionTag: "m12EliteCover", delay: 168,
+              idBase: 1310, label: "FLANKER E", band: 3, skill: "ace",
+              at: [-9000, -1200], altitude: 3500, facing: [-800, -200],
+              radio: [
+                { speaker: "meridian", priority: "URGENT", text: "北西からSu-35二。白表示の有人援護だ。交戦は任意、赤TGT掃討を継続せよ。", id: "m12-su35-optional" }
+              ]
+            })
+          ],
+          m12SwarmContract,
+          fixedRadio: [
+            { id: "m12_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ノル無人工業区へ進入。HUDは妨害を受けている。" },
+            { id: "m12_intro_02", at: 7, speaker: "lark", priority: "URGENT", text: "同じ動きの反応が増えてる……偽物だ。まず中継機を落とそう。" },
+            { id: "m12_power_choice", at: 24, speaker: "meridian", priority: "CRITICAL", text: "白表示の送電所二基は無人機工場と住宅暖房の共有網だ。破壊すれば未発進の補充を停止できる。" },
+            { id: "m12_jammer_down", event: "m12JammerDown", speaker: "lark", priority: "CRITICAL", text: "中継機撃墜、偽反応が消えた！ 本物の赤TGTだけを追う！" },
+            { id: "m12_one_power", event: "m12OnePowerDown", speaker: "meridian", priority: "NORMAL", text: "送電所一基停止。補充線は冗長化されている、もう一基が生きている。" },
+            { id: "m12_grid_cut", event: "m12GridCut", speaker: "meridian", priority: "CRITICAL", text: "共有送電網停止。未発進の無人機補充をキャンセル。住宅暖房の停止も作戦記録へ残す。" }
+          ],
+          successRadio: {
+            speaker: "meridian",
+            priority: "CRITICAL",
+            text: "無人戦闘群の反応消失。ノル南部上空を確保。送電網の結果を記録し、帰投せよ。",
+            id: "m12-success"
+          },
+          parTime: 440,
+          hasOutro: false,
+          map: { x: 0.66, y: 0.35 },
+          battleCenter: { x: -150, z: 350 },
+          battleRadius: 11800,
+          briefing: "夜間のノル無人工業区へ侵入し、妨害中継機と無人戦闘群を排除せよ。中継機が生きている間、HUDにはロック不能の偽目標が混入する。\n赤TGTは中継機、S-70六、MQ-99十。MiG-29A六とSu-35二は有人の白表示援護で、任務達成には不要だ。\n白表示の送電所二基は工場と住宅暖房の共有網である。両方を破壊すると、すでに発進した機体は残るが、未到着のS-70二・MQ-99三の補充波を停止できる。送電網を残して全波と戦うことも可能だ。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m11" });
+      },
+      "mission_sera_m12"
+    ); // @payload:mission_sera_m12
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -43646,6 +43937,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m10Result) Object.assign(entry, m10Result);
       const m11Result = m11ResultSnapshot(mission);
       if (m11Result) Object.assign(entry, m11Result);
+      const m12Result = m12ResultSnapshot(mission);
+      if (m12Result) Object.assign(entry, m12Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -44159,6 +44452,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // Relay from deployWave to spawnEnemy, parallel to spawningTgt/hunt.
     let spawningFacilityIndex = null;
     const enemyMarkerElements = new Map();
+    const m12GhostMarkerElements = [];
     const enemyMarkerScreenState = [];
     // Friendly markers keep their own map, keyed by array index. They share no
     // id space with the enemy markers because they share no id space at all -
@@ -45804,6 +46098,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM11ResolveOutcome: () => {
         const mission = m11Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM12Probe: () => {
+        const mission = m12Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          swarm: { ...m12State },
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            label: enemy.label,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            missionTag: enemy.missionTag || null,
+            missionRole: enemy.missionRole || null,
+            mark: enemy.mark || null
+          })),
+          pending: pendingWaves.map((entry) => ({
+            delay: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            tgt: entry.wave ? isTgtEntry(entry.wave) : false,
+            missionTag: entry.wave?.missionTag || null
+          })),
+          ghostMarkers: m12GhostMarkerElements.length,
+          radioEvents: [...fixedRadioFired],
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM12CutGrid: () => {
+        const mission = m12Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const enemy of m12PowerTargets(mission)) {
+          if (enemy.alive) damageEnemy(enemy, enemy.hp + 1, true, false);
+        }
+        updateM12MissionThreat();
+        return m12State.gridCut;
+      },
+      forceSeraM12ClearJammer: () => {
+        const mission = m12Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const jammer = enemies.find((enemy) => enemy.alive && enemy.type === "jammer");
+        if (!jammer) return m12State.jammerDownFired;
+        damageEnemy(jammer, jammer.hp + 1, true, false);
+        updateM12MissionThreat();
+        updateEnemyHudMarkers(0);
+        return m12State.jammerDownFired;
+      },
+      forceSeraM12DeployPending: () => {
+        const mission = m12Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        updateM12MissionThreat();
+        return pendingWaves.length === 0;
+      },
+      forceSeraM12ClearDesignated: () => {
+        const mission = m12Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || !isTgtEntry(enemy)) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM12MissionThreat();
+        return cleared;
+      },
+      forceSeraM12ResolveOutcome: () => {
+        const mission = m12Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -50485,6 +50857,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM09State(MISSIONS[currentMissionIndex]);
       resetM10State(MISSIONS[currentMissionIndex]);
       resetM11State(MISSIONS[currentMissionIndex]);
+      resetM12State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -54549,6 +54922,121 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const secondaryRequired = Math.max(0, Number(contract.rank?.secondaryKillsForS) || 0);
       const secondaryComplete = m11State.secondaryKills >= secondaryRequired;
       return allSafe && secondaryComplete ? null : "A";
+    }
+
+    const m12State = {
+      active: false,
+      completed: false,
+      gridCut: false,
+      gridCutFired: false,
+      onePowerFired: false,
+      jammerDownFired: false,
+      cancelledAircraft: 0,
+      powerTotal: 0,
+      powerDestroyed: 0,
+      designatedRemaining: 0
+    };
+
+    function m12Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m12SwarmContract ? mission : null;
+    }
+
+    function resetM12State(mission) {
+      const contract = mission && mission.m12SwarmContract;
+      m12State.active = Boolean(contract);
+      m12State.completed = false;
+      m12State.gridCut = false;
+      m12State.gridCutFired = false;
+      m12State.onePowerFired = false;
+      m12State.jammerDownFired = false;
+      m12State.cancelledAircraft = 0;
+      m12State.powerTotal = Math.max(0, Number(contract?.power?.required) || 0);
+      m12State.powerDestroyed = 0;
+      m12State.designatedRemaining = 0;
+      clearM12GhostHudMarkers();
+    }
+
+    function m12PowerTargets(mission = m12Mission()) {
+      const mark = mission?.m12SwarmContract?.power?.mark;
+      if (!mark) return [];
+      return enemies.filter((enemy) => enemy.ground && enemy.mark === mark);
+    }
+
+    function cancelM12Replenishments(mission) {
+      const tag = mission.m12SwarmContract.replenishmentTag;
+      let cancelled = 0;
+      for (let i = pendingWaves.length - 1; i >= 0; i -= 1) {
+        const queued = pendingWaves[i];
+        if (queued.wave?.missionTag !== tag) continue;
+        cancelled += waveSizeOf(queued.wave);
+        pendingWaves.splice(i, 1);
+      }
+      return cancelled;
+    }
+
+    function updateM12MissionThreat() {
+      const mission = m12Mission();
+      if (!mission || !m12State.active) return false;
+      if (m12State.completed) return true;
+      const contract = mission.m12SwarmContract;
+
+      const powerTargets = m12PowerTargets(mission);
+      const requiredPower = Math.max(1, Number(contract.power?.required) || powerTargets.length || 1);
+      m12State.powerTotal = requiredPower;
+      m12State.powerDestroyed = powerTargets.filter((enemy) => !enemy.alive).length;
+      if (m12State.powerDestroyed >= 1 && !m12State.onePowerFired) {
+        m12State.onePowerFired = true;
+        fireFixedRadioEvent("m12OnePowerDown");
+      }
+      if (!m12State.gridCut && m12State.powerDestroyed >= requiredPower) {
+        m12State.gridCut = true;
+        m12State.cancelledAircraft += cancelM12Replenishments(mission);
+        if (!m12State.gridCutFired) {
+          m12State.gridCutFired = true;
+          fireFixedRadioEvent("m12GridCut");
+          showBanner("UAV REPLENISHMENT CUT", 2.2, "success");
+        }
+      }
+
+      const jammerAlive = enemies.some((enemy) => (
+        enemy.alive && enemy.type === "jammer"
+        && enemy.missionTag === contract.designatedTag
+      ));
+      if (!jammerAlive && !m12State.jammerDownFired) {
+        m12State.jammerDownFired = true;
+        fireFixedRadioEvent("m12JammerDown");
+        showBanner("FALSE CONTACTS CLEARED", 1.8, "success");
+        clearM12GhostHudMarkers();
+      }
+
+      const liveDesignated = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy)).length;
+      const pendingDesignated = pendingWaves.reduce((sum, queued) => (
+        sum + (queued.wave && isTgtEntry(queued.wave) ? waveSizeOf(queued.wave) : 0)
+      ), 0);
+      m12State.designatedRemaining = liveDesignated + pendingDesignated;
+      if (m12State.designatedRemaining === 0) {
+        m12State.completed = true;
+        completeMission(true);
+      }
+
+      // M12 owns completion because cancelling an authored replenishment makes
+      // the static mission.totalTargets intentionally larger than the route the
+      // player actually flew. Pending waves still deploy before this function.
+      return true;
+    }
+
+    function m12ResultSnapshot(mission) {
+      const contract = mission && mission.m12SwarmContract;
+      if (!contract || !m12State.active || !m12State.completed) return null;
+      const fields = contract.outcomes || {};
+      return {
+        [fields.gridCut || "gridCut"]: m12State.gridCut,
+        [fields.civilianHeatingInterrupted || "civilianHeatingInterrupted"]: m12State.gridCut,
+        [fields.reinforcementAircraftCancelled || "reinforcementAircraftCancelled"]: m12State.cancelledAircraft,
+        [fields.powerSubstationsDestroyed || "powerSubstationsDestroyed"]: m12State.powerDestroyed,
+        [fields.jammerDestroyed || "jammerDestroyed"]: m12State.jammerDownFired
+      };
     }
 
     function m03CommandFacility(mission = m03Mission()) {
@@ -61308,6 +61796,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM09MissionThreat(dt)) return;
       if (updateM10MissionThreat()) return;
       if (updateM11MissionThreat()) return;
+      if (updateM12MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -62703,6 +63192,52 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return marker;
     }
 
+    function clearM12GhostHudMarkers() {
+      for (const marker of m12GhostMarkerElements) marker.remove();
+      m12GhostMarkerElements.length = 0;
+    }
+
+    function updateM12GhostHudMarkers() {
+      const mission = m12Mission();
+      const jammerAlive = Boolean(
+        mission && m12State.active && enemies.some((enemy) => (
+          enemy.alive && enemy.type === "jammer"
+          && enemy.missionTag === mission.m12SwarmContract.designatedTag
+        ))
+      );
+      if (!jammerAlive) {
+        clearM12GhostHudMarkers();
+        return;
+      }
+
+      const count = Math.max(0, Math.min(10,
+        Number(mission.m12SwarmContract.jammer?.falseContacts) || 0));
+      while (m12GhostMarkerElements.length < count) {
+        const marker = document.createElement("div");
+        marker.className = "enemyMarker jammerGhost active";
+        marker.setAttribute("aria-hidden", "true");
+        ui.enemyMarkers.appendChild(marker);
+        m12GhostMarkerElements.push(marker);
+      }
+      while (m12GhostMarkerElements.length > count) {
+        m12GhostMarkerElements.pop().remove();
+      }
+
+      // Stable, smoothly drifting noise rather than random per-frame jumps.
+      // Every ghost stays inside the useful HUD area and periodically fades,
+      // which reads as an unstable return without creating DOM churn.
+      for (let i = 0; i < m12GhostMarkerElements.length; i += 1) {
+        const marker = m12GhostMarkerElements[i];
+        const phase = missionElapsed * (0.36 + i * 0.017) + i * 1.913;
+        const x = window.innerWidth * (0.5 + 0.36 * Math.sin(phase * 1.17));
+        const y = window.innerHeight * (0.48 + 0.29 * Math.cos(phase * 0.83 + i * 0.47));
+        marker.style.left = `${x.toFixed(1)}px`;
+        marker.style.top = `${y.toFixed(1)}px`;
+        marker.style.visibility = "visible";
+        marker.style.opacity = String(0.26 + 0.24 * (0.5 + 0.5 * Math.sin(phase * 2.7)));
+      }
+    }
+
     function isHudProjectionVisible(projected, cameraSpace, limit = 1.04) {
       return cameraSpace.z < -0.1 &&
         projected.z > -1 && projected.z < 1 &&
@@ -63025,6 +63560,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         updateGunsight(0);
         for (const marker of enemyMarkerElements.values()) marker.remove();
         enemyMarkerElements.clear();
+        clearM12GhostHudMarkers();
         return;
       }
 
@@ -63104,6 +63640,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemyMarkerElements.delete(id);
       }
 
+      updateM12GhostHudMarkers();
       updateGunsight(dt);
     }
 
@@ -64255,6 +64792,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       for (const marker of enemyMarkerElements.values()) marker.remove();
       enemyMarkerElements.clear();
+      clearM12GhostHudMarkers();
       enemyMarkerScreenState.length = 0;
       resetLock();
     }

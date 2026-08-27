@@ -163,9 +163,75 @@ export default function register(ctx) {
     }
   });
 
+  // M12 returns to exactly the same rail/river/factory geography two nights
+  // later. Keep the coordinates and decorator ownership shared with M10; only
+  // the atmosphere and lighting change, so the player can recognise the city
+  // whose bridge and power cars they dealt with in LAST TRAIN.
+  ctx.addWorldPreset("norIndustrialBlackout", {
+    ...WORLD_PRESETS.norIndustrialDusk,
+    label: "NOR INDUSTRIAL — BLACKOUT",
+    sectorIds: Object.freeze(["south_freight_yard", "blackout_factory_grid", "workers_heating_grid"]),
+    variant: "industrial_blackout_snow",
+    clearColor: 0x060d18,
+    sky: [
+      [0, "#020713"],
+      [0.34, "#071426"],
+      [0.58, "#10233a"],
+      [0.78, "#182b3c"],
+      [1, "#0b111b"]
+    ],
+    atmosphere: {
+      ...WORLD_PRESETS.norIndustrialDusk.atmosphere,
+      seed: 0x4e4f5211,
+      noise: 0.055,
+      haze: 0.3,
+      thinClouds: 28,
+      cloudOpacity: 0.16,
+      cloudBand: [0.28, 0.68],
+      cloudTint: 0xa8bed1
+    },
+    fog: { color: 0x172638, near: 2200, far: 15400 },
+    sun: null,
+    moon: {
+      position: [-5600, 7200, -4200],
+      color: 0xc9dcff,
+      radius: 74,
+      glare: [
+        { scale: 1050, color: 0x6e91c6, opacity: 0.2 },
+        { scale: 310, color: 0xd9e7ff, opacity: 0.65 }
+      ]
+    },
+    stars: {
+      count: 320,
+      radius: 7200,
+      size: 2.1,
+      seed: 0x4e4f5212,
+      color: 0xc8dcff,
+      warm: 0xffd6b0
+    },
+    lights: {
+      hemi: { sky: 0x506b91, ground: 0x06080d, intensity: 0.72 },
+      key: { color: 0x9fbded, intensity: 1.28, position: [-4200, 6800, -3600] },
+      fill: { color: 0x142c4d, intensity: 0.34, position: [3900, 900, 3100] }
+    },
+    clouds: {
+      ...WORLD_PRESETS.norIndustrialDusk.clouds,
+      color: 0x718398,
+      opacity: 0.72,
+      cirrusColor: 0x53657b,
+      cirrusOpacity: 0.36,
+      texture: { seed: 0x4e4f5213, contrast: 1.16, underside: 0.48, softness: 0.94 }
+    },
+    decor: {
+      ...WORLD_PRESETS.norIndustrialDusk.decor,
+      seed: 0x4e4f5214
+    }
+  });
+
   ctx.addWorldDecorator("norIndustrialWorks", {
-    worlds: ["norIndustrialDusk"],
-    build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt, classicDepthBuffer = false }) {
+    worlds: ["norIndustrialDusk", "norIndustrialBlackout"],
+    build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt, classicDepthBuffer = false, worldKey }) {
+      const blackout = worldKey === "norIndustrialBlackout";
       const root = new THREE.Group();
       root.name = "norIndustrialWorks";
       addRoot(root);
@@ -293,7 +359,7 @@ export default function register(ctx) {
         box(`${id}-hall`, x, y + height * 0.5, z, width, height, depth, 0x57575a, heading, { roughness: 0.86, metalness: 0.08 });
         box(`${id}-roof`, x, y + height + 2.5, z, width + 8, 5, depth + 8, 0x35383c, heading, { roughness: 0.74, metalness: 0.14 });
         for (const side of [-1, 1]) {
-          box(`${id}-window-${side}`, x + Math.cos(heading) * side * width * 0.42, y + height * 0.62, z - Math.sin(heading) * side * width * 0.42, 5, height * 0.2, depth * 0.65, 0x3d322d, heading, { emissive: 0xe67b3f });
+          box(`${id}-window-${side}`, x + Math.cos(heading) * side * width * 0.42, y + height * 0.62, z - Math.sin(heading) * side * width * 0.42, 5, height * 0.2, depth * 0.65, blackout ? 0x101923 : 0x3d322d, heading, { emissive: blackout ? 0x18334f : 0xe67b3f });
         }
       };
       factory("nor-foundry", -1650, -950, 680, 420, 96, 0.12);
@@ -345,7 +411,7 @@ export default function register(ctx) {
       for (const [index, [x, z]] of lamps.entries()) {
         const y = groundY(x, z);
         cylinder(`nor-lamp-post-${index}`, x, y, z, 2.2, 28, 0x47494d, { metalness: 0.3 });
-        box(`nor-lamp-head-${index}`, x, y + 29, z, 11, 4, 7, 0xffa05c, 0, { emissive: 0xff7b35 });
+        box(`nor-lamp-head-${index}`, x, y + 29, z, 11, 4, 7, blackout ? 0x182538 : 0xffa05c, 0, { emissive: blackout ? 0x1b3858 : 0xff7b35 });
       }
     }
   });

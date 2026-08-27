@@ -113,6 +113,8 @@ function assertClean(opened, label) {
 }
 
 try {
+  // Future Sera missions may be appended after M11. This regression owns the
+  // prefix through M11, not the eventual campaign length.
   const seraKeys = Array.from({ length: 11 }, (_, index) => `sera-m${String(index + 1).padStart(2, "0")}`);
   const clearedThrough = (last) => Object.fromEntries(
     seraKeys.slice(0, last).map((key) => [key, { cleared: true, rank: "A" }])
@@ -141,8 +143,8 @@ try {
     name: document.getElementById("missionInfoName")?.textContent,
     disabled: document.getElementById("missionConfirmBtn")?.disabled
   }));
-  assert(JSON.stringify(lockedM10.keys) === JSON.stringify(seraKeys),
-    "Sera campaign order is not M01-M11", lockedM10.keys);
+  assert(JSON.stringify(lockedM10.keys.slice(0, seraKeys.length)) === JSON.stringify(seraKeys),
+    "Sera campaign prefix is not M01-M11", lockedM10.keys);
   assert(lockedM10.name === "?????" && lockedM10.disabled === true,
     "M10 unlocked without an M09 clear", lockedM10);
   assertClean(lockedShell, "M10 locked campaign shell");
