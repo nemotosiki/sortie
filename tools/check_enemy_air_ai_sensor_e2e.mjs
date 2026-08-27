@@ -97,10 +97,16 @@ try {
   assert(leadBlend.close < 0 && leadBlend.medium > leadBlend.close && leadBlend.far > 250,
     "pursuit aim does not blend from astern to predictive lead", leadBlend);
 
-  await opened.page.evaluate(([id, point]) => {
-    window.__game.debug.forceTeleport(point[0] + 7000, point[1] + 180, point[2]);
+  const trackRange = Math.min(cap.sensorRange - 600, cap.commitRange + 600);
+  assert(trackRange > cap.commitRange && trackRange < cap.sensorRange,
+    "CAP test could not place a track outside commitment but inside sensor range", {
+      trackRange,
+      cap
+    });
+  await opened.page.evaluate(([id, point, range]) => {
+    window.__game.debug.forceTeleport(point[0] + range, point[1] + 180, point[2]);
     window.__game.debug.forceEnemyFlightFrames(4);
-  }, [cap.id, cap.defencePoint]);
+  }, [cap.id, cap.defencePoint, trackRange]);
   state = await objectives(opened.page);
   let probe = state.find((enemy) => enemy.id === cap.id);
   assert(probe.mode === "patrol" && probe.contactState === "track",
@@ -124,10 +130,11 @@ try {
   assert(probe.mode === "pursuit",
     "missile break returned CAP to the obsolete close-range patrol state", probe);
 
-  await opened.page.evaluate((point) => {
-    window.__game.debug.forceTeleport(point[0] + 13000, point[1] + 180, point[2]);
+  const returnRange = cap.leashRange + 600;
+  await opened.page.evaluate(([point, range]) => {
+    window.__game.debug.forceTeleport(point[0] + range, point[1] + 180, point[2]);
     window.__game.debug.forceEnemyFlightFrames(4);
-  }, cap.defencePoint);
+  }, [cap.defencePoint, returnRange]);
   state = await objectives(opened.page);
   probe = state.find((enemy) => enemy.id === cap.id);
   assert(probe.mode === "patrol" && probe.contactState === "memory" && probe.contactMemory > 0,
@@ -154,11 +161,36 @@ try {
   const interceptor = state.find((enemy) => enemy.purpose === "interceptor");
   assert(interceptor && interceptor.interceptorPhase === "inbound",
     "M20 interceptor did not enter the pass state machine", interceptor);
-  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(720, 0.05));
-  state = await objectives(opened.page);
-  const naturalPass = state.find((enemy) => enemy.id === interceptor.id);
+  const interceptorTrajectory = [];
+  let naturalPass = interceptor;
+  for (let sample = 0; sample < 30 && naturalPass.interceptorPasses < 1; sample += 1) {
+    await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(60, 0.05));
+    state = await objectives(opened.page);
+    naturalPass = state.find((enemy) => enemy.id === interceptor.id);
+    interceptorTrajectory.push({
+      elapsed: (sample + 1) * 3,
+      range: naturalPass?.contactDistance,
+      altitude: naturalPass?.altitude,
+      speed: naturalPass?.speed,
+      stall: naturalPass?.stallSeverity,
+      aoa: naturalPass?.angleOfAttack,
+      phase: naturalPass?.interceptorPhase,
+      aim: naturalPass?.aimKind
+    });
+  }
   assert(naturalPass.interceptorPasses >= 1,
-    "interceptor never produced a natural overshoot/egress in 36 seconds", naturalPass);
+    "interceptor never produced a natural overshoot/egress in 90 seconds", {
+      naturalPass,
+      interceptorTrajectory
+    });
+  const peakApproachStall = Math.max(...interceptorTrajectory.map((entry) => entry.stall || 0));
+  const peakApproachAoa = Math.max(...interceptorTrajectory.map((entry) => entry.aoa || 0));
+  assert(peakApproachStall < 0.18 && peakApproachAoa < 13.5,
+    "interceptor used a prolonged stall instead of a coordinated approach", {
+      peakApproachStall,
+      peakApproachAoa,
+      interceptorTrajectory
+    });
   const overshootCases = await opened.page.evaluate(() => ({
     passed: window.__game.debug.interceptorOvershootProbe(650, 200, 540, -0.4),
     neverMerged: window.__game.debug.interceptorOvershootProbe(650, 600, 540, -0.4),
@@ -202,6 +234,7 @@ try {
 
   console.log("check_enemy_air_ai_sensor_e2e: PASS");
   console.log("  long-range track / bounded CAP / break resume / M11 target split / interceptor reattack / hunt stability");
+  console.log(`  coordinated interceptor pass=${interceptorTrajectory.at(-1).elapsed}s peakAoA=${peakApproachAoa.toFixed(1)}deg peakStall=${peakApproachStall.toFixed(3)}`);
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

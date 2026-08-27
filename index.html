@@ -2707,6 +2707,7 @@
   <script type="module">
     import * as THREE from "three";
     import { loadPayloadModules } from "./src/registry/payload-loader.js";
+    import { frameStepPlan } from "./src/core/frame-step.js?v=20260828-frame-step-1";
     import { createRegistrySnapshot, shapeOf as shapeOfTable } from "./src/registry/registry-snapshot.js";
     import {
       KILL_CALLOUTS,
@@ -2748,6 +2749,7 @@
       updateStallTranslationState
     } from "./src/flight/stall-translation.js?v=20260828-stall-recovery-1";
     import {
+      FLIGHT_AOA_ONSET_DEG,
       neutralThrottleForEnvelope,
       resetFlightDynamicsState,
       updateFlightDynamicsState
@@ -47333,6 +47335,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const stallRecoveryTarget = new THREE.Vector3();
     const stallRecoveryAxis = new THREE.Vector3();
     const stallRecoveryQ = new THREE.Quaternion();
+    // Fixed-wing AI attitude control.  These never alias weapon or HUD
+    // scratch: every enemy now banks the lift vector to turn its WORLD-space
+    // velocity instead of rotating that velocity toward the nose by fiat.
+    const enemyControlPath = new THREE.Vector3();
+    const enemyControlAim = new THREE.Vector3();
+    const enemyControlForward = new THREE.Vector3();
+    const enemyControlRight = new THREE.Vector3();
+    const enemyControlUp = new THREE.Vector3();
+    const enemyControlBack = new THREE.Vector3();
+    const enemyControlQuaternion = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
     const keys = new Set();
@@ -51214,6 +51226,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             contactDistance: Number.isFinite(enemy.contactDistance)
               ? Number(enemy.contactDistance.toFixed(1))
               : null,
+            altitude: Number(enemy.group.position.y.toFixed(1)),
+            speed: Number((enemy.flightDynamics?.airspeed || enemy.speed || 0).toFixed(1)),
+            stallSeverity: Number((enemy.stallSeverity || 0).toFixed(3)),
+            angleOfAttack: Number((enemy.flightDynamics?.angleOfAttackDeg || 0).toFixed(1)),
             interceptorPhase: enemy.interceptorPhase,
             interceptorPasses: enemy.interceptorPasses,
             interceptorEgressElapsed: Number((enemy.interceptorEgressElapsed || 0).toFixed(2)),
@@ -53799,7 +53815,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function animate() {
       requestAnimationFrame(animate);
-      const rawDt = Math.min(clock.getDelta(), 0.05);
+      const rawDt = Math.min(clock.getDelta(), 0.25);
       updateKillCam(rawDt);
       const dt = rawDt * timeScale;
 
@@ -53809,34 +53825,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateHoldInputs();
 
       if (gameState === STATE_PLAYING) {
-        // The clock stops the instant the sortie is decided, so the debrief and
-        // the rank see the time the player actually flew - not the extra 2.8s
-        // spent under the ACCOMPLISHED band.
-        if (!outcomePending.active) missionElapsed += dt;
-        playerHitCooldown = Math.max(0, playerHitCooldown - dt);
-        updatePlayer(dt);
-        // After updatePlayer so the wingman is chasing this frame's station
-        // rather than last frame's, and before everything else because the
-        // friendlies feed no mechanic - they are never read by the lock, the
-        // weapons, the wave logic or the enemy AI, so nothing downstream
-        // depends on when in the frame they moved.
-        updateFriendlies(dt);
-        if (gameState === STATE_PLAYING) updateEnemies(dt);
-        if (gameState === STATE_PLAYING) {
-          updateLock(dt);
-          updateMissileReload(dt);
-          updateSpwReload(dt);
-          updateMissiles(dt);
-          updateBombs(dt);
-          updateEnemyMissiles(dt);
-          updateBattleArea(dt);
+        const stepPlan = frameStepPlan(rawDt, timeScale);
+        for (let step = 0; step < stepPlan.steps && gameState === STATE_PLAYING; step += 1) {
+          const simStep = stepPlan.simulatedStep;
+          const wallStep = stepPlan.rawStep;
+          // The clock stops the instant the sortie is decided, so the debrief
+          // sees actual flown simulation time, not the ACCOMPLISHED hold.
+          if (!outcomePending.active) missionElapsed += simStep;
+          playerHitCooldown = Math.max(0, playerHitCooldown - simStep);
+          updatePlayer(simStep);
+          updateFriendlies(simStep);
+          if (gameState === STATE_PLAYING) updateEnemies(simStep);
+          if (gameState === STATE_PLAYING) {
+            updateLock(simStep);
+            updateMissileReload(simStep);
+            updateSpwReload(simStep);
+            updateMissiles(simStep);
+            updateBombs(simStep);
+            updateEnemyMissiles(simStep);
+            updateBattleArea(simStep);
+          }
+          if (gameState === STATE_PLAYING) updateMission(simStep, wallStep);
+          if (gameState === STATE_PLAYING) updateOutcomePending(wallStep);
         }
-        // After updateBattleArea, so a boundary washout this frame takes the
-        // sortie before the wave logic can hand out a completion.
-        if (gameState === STATE_PLAYING) updateMission(dt, rawDt);
-        // rawDt, not dt: the band above it fades on wall-clock time, so a
-        // kill-cam slowdown at the buzzer must not desync the two.
-        if (gameState === STATE_PLAYING) updateOutcomePending(rawDt);
       } else {
         animateIdle(dt);
         if (gameState === STATE_MISSION_SELECT) {
@@ -66444,6 +66455,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return enemy.turnLimit;
     }
 
+    function enemyCoordinatedAttitude(enemy, desiredDirection, out) {
+      const dynamics = enemy.flightDynamics;
+      enemyControlPath.set(
+        Number(dynamics?.x) || 0,
+        Number(dynamics?.y) || 0,
+        Number(dynamics?.z) || 0
+      );
+      if (enemyControlPath.lengthSq() < 1) forwardOf(enemy.group, enemyControlPath);
+      else enemyControlPath.normalize();
+
+      enemyControlAim.copy(desiredDirection);
+      if (enemyControlAim.lengthSq() < 1e-8) enemyControlAim.copy(enemyControlPath);
+      else enemyControlAim.normalize();
+
+      // Pitch and yaw are deliberately solved differently.  Pitch may command
+      // a small angle between the nose and the flight path.  Heading changes
+      // come from banked lift, so a fighter cannot swivel its nose sideways
+      // and acquire a free velocity turn (the pre-unification AI did exactly
+      // that).  Staying below the critical-AOA onset is an AI control law, not
+      // extra lift or immunity from a player-induced stall.
+      const pathElevation = Math.asin(THREE.MathUtils.clamp(enemyControlPath.y, -1, 1));
+      const aimElevation = Math.asin(THREE.MathUtils.clamp(enemyControlAim.y, -1, 1));
+      const alphaLimit = THREE.MathUtils.degToRad(FLIGHT_AOA_ONSET_DEG * 0.58) *
+        THREE.MathUtils.lerp(0.42, 1, 1 - (enemy.stallSeverity || 0));
+      const commandElevation = pathElevation + THREE.MathUtils.clamp(
+        aimElevation - pathElevation,
+        -alphaLimit,
+        alphaLimit
+      );
+      const horizontalPath = Math.hypot(enemyControlPath.x, enemyControlPath.z);
+      if (horizontalPath > 1e-5) {
+        const horizontalScale = Math.cos(commandElevation) / horizontalPath;
+        enemyControlForward.set(
+          enemyControlPath.x * horizontalScale,
+          Math.sin(commandElevation),
+          enemyControlPath.z * horizontalScale
+        ).normalize();
+      } else {
+        enemyControlForward.copy(enemyControlPath);
+      }
+
+      const pathHorizontal = Math.hypot(enemyControlPath.x, enemyControlPath.z);
+      const aimHorizontal = Math.hypot(enemyControlAim.x, enemyControlAim.z);
+      let signedHeadingError = 0;
+      if (pathHorizontal > 1e-5 && aimHorizontal > 1e-5) {
+        const pathX = enemyControlPath.x / pathHorizontal;
+        const pathZ = enemyControlPath.z / pathHorizontal;
+        const aimX = enemyControlAim.x / aimHorizontal;
+        const aimZ = enemyControlAim.z / aimHorizontal;
+        signedHeadingError = Math.atan2(
+          -(pathZ * aimX - pathX * aimZ),
+          THREE.MathUtils.clamp(pathX * aimX + pathZ * aimZ, -1, 1)
+        );
+      }
+      const structuralBank = THREE.MathUtils.degToRad(
+        THREE.MathUtils.clamp(38 + enemy.spec.structuralG * 9, 48, 74)
+      );
+      const stallBankScale = THREE.MathUtils.lerp(0.18, 1, 1 - (enemy.stallSeverity || 0));
+      const commandedBank = THREE.MathUtils.clamp(
+        signedHeadingError * 1.35,
+        -structuralBank,
+        structuralBank
+      ) * stallBankScale;
+
+      enemyControlUp.copy(WORLD_UP)
+        .addScaledVector(enemyControlForward, -WORLD_UP.dot(enemyControlForward));
+      if (enemyControlUp.lengthSq() < 1e-6) {
+        upOf(enemy.group, enemyControlUp)
+          .addScaledVector(enemyControlForward, -enemyControlUp.dot(enemyControlForward));
+      }
+      enemyControlUp.normalize().applyAxisAngle(enemyControlForward, commandedBank);
+      enemyControlRight.crossVectors(enemyControlForward, enemyControlUp).normalize();
+      enemyControlUp.crossVectors(enemyControlRight, enemyControlForward).normalize();
+      enemyControlBack.copy(enemyControlForward).multiplyScalar(-1);
+      tmpM1.makeBasis(enemyControlRight, enemyControlUp, enemyControlBack);
+      return out.setFromRotationMatrix(tmpM1).normalize();
+    }
+
     function applyEnemyStallNoseDrop(enemy, dt) {
       const dynamics = enemy.flightDynamics;
       const lowEnergyDeparture = dynamics.airspeed < dynamics.telemetry.supportSpeed * 0.92;
@@ -67027,7 +67116,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.pitchCommand = THREE.MathUtils.clamp((tmpV4.y - tmpV8.y) * 2, -1, 1);
           enemy.headingError = tmpV8.angleTo(tmpV4);
           applyEnemyEnergyManagement(enemy, enemy.headingError);
-           tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
           // The target-point algorithm asks for a turn; the airframe now grants
           // only what its current speed, structural G and stall state permit.
           // At corner speed this reaches the old pursuit maximum, while a fast
@@ -67036,7 +67124,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             ? spec.patrolTurn
             : spec.pursuitTurn;
           const turnRate = enemyConstrainedTurn(enemy, requestedRate);
-           enemy.group.quaternion.rotateTowards(tmpQ1, turnRate * dt);
+          enemyCoordinatedAttitude(enemy, tmpV4, enemyControlQuaternion);
+           enemy.group.quaternion.rotateTowards(enemyControlQuaternion, turnRate * dt);
            enemy.group.quaternion.normalize();
          }
         applyEnemyStallNoseDrop(enemy, dt);
