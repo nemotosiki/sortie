@@ -2746,7 +2746,7 @@
       neutralThrottleForEnvelope,
       resetFlightDynamicsState,
       updateFlightDynamicsState
-    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-2";
+    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-4";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -55782,7 +55782,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       player.quaternion.copy(playerFlightFrame).multiply(tmpQ1).normalize();
     }
 
-    function rotateForwardTowardFlightPath(quaternion, path, maxAngle, recoveryBias = 0) {
+    function rotateForwardTowardFlightPath(quaternion, path, maxAngle) {
       const limit = Math.max(0, Number(maxAngle) || 0);
       if (limit <= 0) return false;
       stallRecoveryForward.copy(LOCAL_FORWARD).applyQuaternion(quaternion).normalize();
@@ -55793,14 +55793,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
       if (stallRecoveryTarget.lengthSq() < 1) stallRecoveryTarget.copy(WORLD_DOWN);
       else stallRecoveryTarget.normalize();
-      // A stall is recovered by unloading and lowering the nose through the
-      // flight path, not by merely matching a descending path from above.  The
-      // modest WORLD-down bias fades with separation and prevents the old
-      // zero-input recovery from handing the jet back in an artificial climb.
-      stallRecoveryTarget.addScaledVector(
-        WORLD_DOWN,
-        THREE.MathUtils.clamp(Number(recoveryBias) || 0, 0, 0.45)
-      ).normalize();
+      // Static stability acts against angle of attack: it aligns the airframe
+      // with the relative wind. It does not know which way WORLD down is and
+      // must never manufacture a dive. Gravity bends the real flight path
+      // downward; this aerodynamic pitching moment can only follow that path.
       const dot = THREE.MathUtils.clamp(
         stallRecoveryForward.dot(stallRecoveryTarget),
         -1,
@@ -55832,7 +55828,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Let stability oppose that overshoot while preserving the pilot's input.
       if (pitchInput > 0.05) return;
       const passiveRecoveryRate = STALL_NOSE_DROP_RATE *
-        (0.72 + PLAYER_STABILITY * 0.56);
+        (0.72 + PLAYER_STABILITY * 0.56) *
+        (0.25 + playerFlightDynamics.controlAuthority.pitchDown * 0.75);
       const commandedRecoveryRate = pitchInput < -0.05
         ? Math.abs(playerPitchRate) * 1.12
         : 0;
@@ -55843,8 +55840,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       rotateForwardTowardFlightPath(
         orientation,
         playerFlightDynamics,
-        recoveryRate * Math.max(0.35, severity) * dt,
-        severity * 0.16
+        recoveryRate * Math.max(0.35, severity) * dt
       );
     }
 
@@ -55939,6 +55935,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const yawStepRate = yawAngularStep / Math.max(1e-6, dt);
       let pathYawRate = 0;
       let pathPitchRate = 0;
+      let pathYawAssistBlend;
+      let pathPitchAxis;
 
       if (controlMode === CONTROL_NORMAL) {
         const targetBank = rollInput * MAX_BANK_ANGLE;
@@ -55963,10 +55961,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           0,
           Number(playerFlightDynamics.telemetry.requestedLiftG) || 0
         );
-        const maneuverTurnRate = Math.sqrt(Math.max(
-          0,
-          availableLiftG * availableLiftG - requestedSupportG * requestedSupportG
-        )) * FLIGHT_GRAVITY_MPS2 / Math.max(1, actualFlightSpeed);
         const bankSine = Math.sin(playerBank);
         const bankCosine = Math.max(0.08, Math.cos(playerBank));
         const bankLiftG = Math.min(
@@ -55975,19 +55969,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         );
         const naturalBankTurnRate = bankSine * bankLiftG *
           FLIGHT_GRAVITY_MPS2 / Math.max(1, actualFlightSpeed);
-        const physicalTurnRate = Math.max(
-          Math.abs(naturalBankTurnRate),
-          maneuverTurnRate
+        // Below the thin-air layer, retain Sortie's authored corner-speed
+        // handling: slowing toward corner speed makes the aircraft turn better.
+        // In the high-altitude layer that arcade surplus fades continuously,
+        // leaving only the heading rate the banked lift can really bend. This
+        // is the physical causal chain the mission needs: thin air reduces
+        // available lift/turn rate and increases sink; banking itself never
+        // fabricates AOA or directly flips a STALL flag.
+        const aerodynamicTurnRate = Math.sign(authoredTurnRate) * Math.min(
+          Math.abs(authoredTurnRate),
+          Math.abs(naturalBankTurnRate)
         );
-        // Normal mode is a coordinated-turn assist, so its visible nose must
-        // not yaw faster than the wing can bend the actual path. Near the
-        // ceiling the result is a slow descending turn rather than an
-        // artificial sideslip/AOA stall; at normal energy the authored AC-style
-        // turn remains available up to the same structural-load envelope.
-        const turnRate = THREE.MathUtils.clamp(
+        const turnRate = THREE.MathUtils.lerp(
           authoredTurnRate,
-          -physicalTurnRate,
-          physicalTurnRate
+          aerodynamicTurnRate,
+          playerHighAltitudeEnvelope.thinAir
         );
         const assistedPathTurnRate = Math.sign(turnRate) === Math.sign(naturalBankTurnRate)
           ? Math.sign(turnRate) * Math.max(
@@ -56020,8 +56016,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // where both forces independently applied the full heading rate.
         pathYawRate = (assistedPathTurnRate + yawStepRate) * 1.08;
         pathPitchRate = pitchStepRate * 1.08;
+        pathYawAssistBlend = 1;
 
         applyPlayerStallNoseRecovery(dt, pitchInput);
+        tmpV8.copy(LOCAL_RIGHT).applyQuaternion(playerFlightFrame).normalize();
+        pathPitchAxis = { x: tmpV8.x, y: tmpV8.y, z: tmpV8.z };
         syncPlayerOrientation();
       } else {
         const targetRollRate = rollInput * EXPERT_ROLL_RATE * rollControlAuthority;
@@ -56072,6 +56071,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         pitchInput,
         pathYawRate,
         pathPitchRate,
+        pathYawAssistBlend,
+        pathPitchAxis,
         pathTurnRate: Math.max(
           PITCH_RATE * 1.05,
           COORDINATED_TURN_RATE * Math.max(1, rawTurnFactor)
@@ -66614,12 +66615,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (dynamics.separatedFlow <= 0.05 && !lowEnergyDeparture) return;
       const severity = Math.max(enemy.stallSeverity, dynamics.separatedFlow || 0);
       const recoveryRate = STALL_NOSE_DROP_RATE *
-        (0.72 + Math.max(0, Math.min(1, Number(enemy.spec.stability) || 0)) * 0.56);
+        (0.72 + Math.max(0, Math.min(1, Number(enemy.spec.stability) || 0)) * 0.56) *
+        (0.25 + dynamics.controlAuthority.pitchDown * 0.75);
       rotateForwardTowardFlightPath(
         enemy.group.quaternion,
         dynamics,
-        recoveryRate * severity * dt,
-        severity * 0.16
+        recoveryRate * severity * dt
       );
     }
 
@@ -71346,6 +71347,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         brake: keys.has("ControlLeft") || keys.has("ControlRight") || gamepadInput.brake
       };
       hook.flight.dynamics = {
+        structuralG: STRUCTURAL_G,
         airspeed: playerFlightDynamics.airspeed,
         angleOfAttackDeg: playerFlightDynamics.angleOfAttackDeg,
         flowMisalignmentDeg: playerFlightDynamics.flowMisalignmentDeg,

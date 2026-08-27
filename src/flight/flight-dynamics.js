@@ -13,6 +13,8 @@ export const FLIGHT_AOA_ONSET_DEG = 14;
 // attached flow at 14 degrees and is fully separated by 22; low energy by
 // itself is a mush/sink condition and does not redefine the critical AOA.
 export const FLIGHT_AOA_FULL_DEG = 22;
+export const FLIGHT_PATH_ASSIST_ONSET_RATIO = 1.02;
+export const FLIGHT_PATH_ASSIST_FULL_RATIO = 1.35;
 
 const EPSILON = 1e-9;
 
@@ -23,6 +25,16 @@ function clamp(value, min, max) {
 function smoothstep01(value) {
   const x = clamp(value, 0, 1);
   return x * x * (3 - 2 * x);
+}
+
+export function controlledFlightPathBlend(speed, supportSpeed, separatedFlow = 0) {
+  const energyRatio = Math.max(0, finite(speed)) /
+    Math.max(EPSILON, finite(supportSpeed, 1));
+  const energyBlend = smoothstep01(
+    (energyRatio - FLIGHT_PATH_ASSIST_ONSET_RATIO) /
+      (FLIGHT_PATH_ASSIST_FULL_RATIO - FLIGHT_PATH_ASSIST_ONSET_RATIO)
+  );
+  return energyBlend * (1 - clamp(finite(separatedFlow), 0, 1));
 }
 
 function finite(value, fallback = 0) {
@@ -143,6 +155,8 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
     supportDeficit: 0,
     dynamicPressureRatio: 0,
     pathCommandLoadG: 0,
+    pathAssistLoadG: 0,
+    controlledPathBlend: 0,
     engineAuthority: 1,
     thrustLapse: 1,
     dragAcceleration: 0,
@@ -246,6 +260,13 @@ function stepFlightDynamics(state, input, dt) {
   let controlAccelerationY = 0;
   let controlAccelerationZ = 0;
   let pathCommandLoadG = 0;
+  let aerodynamicPathLoadG = 0;
+  let pathAssistLoadG = 0;
+  let controlledPathBlend = controlledFlightPathBlend(
+    speed,
+    supportSpeed,
+    separatedFlow
+  );
   if (requestedPathRate > EPSILON && speed > EPSILON) {
     const beforeX = state.x;
     const beforeY = state.y;
@@ -261,8 +282,40 @@ function stepFlightDynamics(state, input, dt) {
       availableLiftG * availableLiftG - requestedSupportG * requestedSupportG
     ));
     const physicalTurnRate = maneuverLoadG * FLIGHT_GRAVITY_MPS2 / speed;
-    const steeringTurnRate = Math.min(requestedPathRate * pathAuthority, physicalTurnRate);
-    const steeringScale = steeringTurnRate / requestedPathRate;
+    const commandedYawRate = requestedPathYawRate * pathAuthority;
+    const commandedPitchRate = requestedPathPitchRate * pathAuthority;
+    const commandedTurnRate = Math.hypot(commandedYawRate, commandedPitchRate) ||
+      fallbackPathSteeringRate * pathAuthority;
+    const aerodynamicScale = Math.min(
+      1,
+      physicalTurnRate / Math.max(EPSILON, commandedTurnRate)
+    );
+    // Sortie's authored controls intentionally peak around corner speed. Keep
+    // that AC-style flight-path response while there is a healthy margin above
+    // the 1g support speed; fade it out before the wing reaches stall energy.
+    // This avoids both extremes: a normal pull no longer creates false AOA,
+    // while a genuinely slow/high-altitude jet still cannot rotate velocity for
+    // free and must lower the nose to recover.
+    const yawAssistBlend = clamp(
+      finite(input.pathYawAssistBlend, controlledPathBlend),
+      0,
+      1
+    );
+    const pitchAssistBlend = clamp(
+      finite(input.pathPitchAssistBlend, controlledPathBlend),
+      0,
+      1
+    );
+    const actualYawRate = commandedYawRate * (
+      aerodynamicScale + (1 - aerodynamicScale) * yawAssistBlend
+    );
+    const actualPitchRate = commandedPitchRate * (
+      aerodynamicScale + (1 - aerodynamicScale) * pitchAssistBlend
+    );
+    const steeringTurnRate = Math.hypot(actualYawRate, actualPitchRate) ||
+      Math.min(commandedTurnRate, physicalTurnRate) +
+        (commandedTurnRate - Math.min(commandedTurnRate, physicalTurnRate)) *
+          controlledPathBlend;
     let steered;
     if (Math.abs(requestedPathYawRate) > EPSILON ||
         Math.abs(requestedPathPitchRate) > EPSILON) {
@@ -274,17 +327,19 @@ function stepFlightDynamics(state, input, dt) {
       const yawed = rotateAroundAxis(
         { x: state.x, y: state.y, z: state.z },
         { x: 0, y: 1, z: 0 },
-        requestedPathYawRate * steeringScale * dt
+        actualYawRate * dt
       );
-      const right = normalized({
-        x: forward.y * bodyUp.z - forward.z * bodyUp.y,
-        y: forward.z * bodyUp.x - forward.x * bodyUp.z,
-        z: forward.x * bodyUp.y - forward.y * bodyUp.x
-      }, { x: 1, y: 0, z: 0 });
+      const right = input.pathPitchAxis
+        ? normalized(input.pathPitchAxis, { x: 1, y: 0, z: 0 })
+        : normalized({
+          x: forward.y * bodyUp.z - forward.z * bodyUp.y,
+          y: forward.z * bodyUp.x - forward.x * bodyUp.z,
+          z: forward.x * bodyUp.y - forward.y * bodyUp.x
+        }, { x: 1, y: 0, z: 0 });
       steered = rotateAroundAxis(
         yawed,
         right,
-        requestedPathPitchRate * steeringScale * dt
+        actualPitchRate * dt
       );
       steered.angle = Math.acos(clamp(
         (beforeX * steered.x + beforeY * steered.y + beforeZ * steered.z) /
@@ -309,6 +364,8 @@ function stepFlightDynamics(state, input, dt) {
     controlAccelerationZ = (state.z - beforeZ) / dt;
     pathCommandLoadG = steered.angle / Math.max(dt, EPSILON) * speed /
       FLIGHT_GRAVITY_MPS2;
+    aerodynamicPathLoadG = Math.min(pathCommandLoadG, maneuverLoadG);
+    pathAssistLoadG = Math.max(0, pathCommandLoadG - aerodynamicPathLoadG);
     speed = length(state.x, state.y, state.z);
     direction = speed > EPSILON
       ? { x: state.x / speed, y: state.y / speed, z: state.z / speed }
@@ -339,6 +396,11 @@ function stepFlightDynamics(state, input, dt) {
     rollAuthority = clamp(0.18 + baseAuthority * 0.82, 0.18, 1);
     yawAuthority = clamp(0.12 + baseAuthority * 0.88, 0.12, 1);
     pathAuthority = clamp(0.045 + baseAuthority * 0.955, 0.045, 1);
+    controlledPathBlend = controlledFlightPathBlend(
+      speed,
+      supportSpeed,
+      separatedFlow
+    );
     requestedSupportG = Math.sqrt(Math.max(0, 1 - direction.y * direction.y));
     availableLiftG = Math.min(
       maximumLoadG,
@@ -365,7 +427,7 @@ function stepFlightDynamics(state, input, dt) {
   // its axial speed instead.
   const availableBodyLiftG = Math.sqrt(Math.max(
     0,
-    availableLiftG * availableLiftG - pathCommandLoadG * pathCommandLoadG
+    availableLiftG * availableLiftG - aerodynamicPathLoadG * aerodynamicPathLoadG
   ));
   const trimLiftG = supportAlignment > 0.08
     ? Math.min(maximumLoadG, requestedSupportG / supportAlignment)
@@ -408,7 +470,13 @@ function stepFlightDynamics(state, input, dt) {
 
   const engineAcceleration = 8 + baseMaxSpeed * 0.055;
   const thrustLapse = densityRatio * speedRetention * speedRetention;
-  const engineAuthority = 1 - separatedFlow * 0.74;
+  // Wing separation does not switch a jet engine off. High AOA already makes
+  // thrust inefficient because it remains aligned with the body while the
+  // flight path diverges, and separated-flow drag rises below. A blanket 74%
+  // thrust cut made ordinary-altitude recovery impossible even with full
+  // afterburner, so engine output itself remains available; altitude lapse and
+  // vector geometry provide the real penalties.
+  const engineAuthority = 1;
   const thrustAcceleration = engineAcceleration * thrustLapse * throttle * engineAuthority;
   const dynamicDrag = engineAcceleration * densityRatio *
     Math.pow(speed / baseMaxSpeed, 2);
@@ -493,9 +561,11 @@ function stepFlightDynamics(state, input, dt) {
   state.telemetry.loadFactorG = Math.hypot(
     bodyLiftG,
     generatedAssistG,
-    pathCommandLoadG
+    aerodynamicPathLoadG
   );
   state.telemetry.pathCommandLoadG = pathCommandLoadG;
+  state.telemetry.pathAssistLoadG = pathAssistLoadG;
+  state.telemetry.controlledPathBlend = controlledPathBlend;
   state.telemetry.supportDeficit = supportDeficit;
   // q / q_ref with q_ref taken at the airframe's sea-level stall speed.
   // The 1/2 and reference density cancel, leaving a compact dimensionless

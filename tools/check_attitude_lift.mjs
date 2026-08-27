@@ -88,7 +88,7 @@ assert(capped.state.verticalSpeed === -ATTITUDE_LIFT_MAX_SINK_SPEED,
   "attitude sink exceeded its arcade safety cap", capped);
 
 for (const required of [
-  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-2"',
+  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-4"',
   "FLIGHT_GRAVITY_MPS2,",
   "PLAYER_STABILITY = aircraftStabilityRating(spec);",
   "const playerFlightDynamics = resetFlightDynamicsState({});",

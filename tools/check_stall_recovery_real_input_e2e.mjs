@@ -47,6 +47,8 @@ const aircraftId = process.env.SORTIE_STALL_AIRCRAFT || "f16";
 const expertMode = process.env.SORTIE_STALL_EXPERT === "1";
 const verbose = process.env.SORTIE_STALL_VERBOSE === "1";
 const scenario = process.env.SORTIE_STALL_SCENARIO || "stall";
+const scenarioSeconds = Math.max(1, Number(process.env.SORTIE_STALL_SECONDS) || 8);
+const startAltitude = Number(process.env.SORTIE_STALL_START_ALTITUDE);
 const holdRecoveryInput = process.env.SORTIE_STALL_HOLD_RECOVERY === "1";
 await context.addInitScript((aircraft) => {
   navigator.getGamepads = () => [];
@@ -55,9 +57,11 @@ await context.addInitScript((aircraft) => {
     campaigns: { usa: [], rus: [], sera: ["f16", aircraft] }
   }));
   // The debug mission launcher intentionally honours hangar progression. Give
-  // this isolated browser profile the F-35C's real M14 prerequisite so M11 can
-  // be reproduced with the same aircraft reported by the player.
+  // this isolated browser profile the real early/mid/late prerequisites used
+  // by representative legacy, attack and advanced-aircraft probes.
   localStorage.setItem("sortieMissionRecords", JSON.stringify({
+    "sera-m02": { cleared: true, rank: "C", scores: [1] },
+    "sera-m08": { cleared: true, rank: "C", scores: [1] },
     "sera-m14": { cleared: true, rank: "C", scores: [1] }
   }));
 }, aircraftId);
@@ -98,11 +102,23 @@ const read = async (phase, elapsed) => page.evaluate(({ phase, elapsed }) => {
     separated: Number(flight.dynamics.separatedFlow.toFixed(3)),
     stall: Number(flight.stallSeverity.toFixed(3)),
     supportSpeed: Number(flight.dynamics.telemetry.supportSpeed.toFixed(2)),
+    structuralG: Number(flight.dynamics.structuralG.toFixed(2)),
+    cornerSpeed: Number((
+      flight.dynamics.telemetry.supportSpeed * Math.sqrt(flight.dynamics.structuralG)
+    ).toFixed(2)),
+    densityRatio: Number(flight.highAltitude.densityRatio.toFixed(3)),
+    thrustLapse: Number(flight.dynamics.telemetry.thrustLapse.toFixed(3)),
+    engineAuthority: Number(flight.dynamics.telemetry.engineAuthority.toFixed(3)),
+    availableLiftG: Number(flight.dynamics.telemetry.availableLiftG.toFixed(2)),
+    pathAssistBlend: Number((flight.dynamics.telemetry.controlledPathBlend || 0).toFixed(3)),
     thrustY: Number(flight.dynamics.forces.thrust.y.toFixed(2)),
     accelerationY: Number(flight.dynamics.forces.acceleration.y.toFixed(2)),
+    pathTurnRate: Number(flight.dynamics.telemetry.pathTurnDegPerSec.toFixed(2)),
     authority: { ...flight.dynamics.controlAuthority },
     input: { ...flight.input },
-    warning: document.getElementById("stallWarning")?.textContent || ""
+    warning: document.getElementById("stallWarning")?.classList.contains("active")
+      ? document.getElementById("stallWarning")?.textContent || ""
+      : ""
   };
 }, { phase, elapsed });
 
@@ -137,20 +153,45 @@ try {
     throw new Error(`${missionKey} ${aircraftId} launch failed`);
   }
   await page.waitForFunction(() => window.__game.state === "playing", null, { timeout: 20_000 });
+  if (Number.isFinite(startAltitude)) {
+    const altitudeSet = await page.evaluate((altitude) => {
+      if (!window.__game.forceSeraM11SetPlayerAltitude) return null;
+      window.__game.forceSeraM11SetPlayerAltitude(altitude);
+      return window.__game.flight.altitudeM;
+    }, startAltitude);
+    assert(altitudeSet !== null, "requested start altitude could not be applied", {
+      missionKey,
+      startAltitude
+    });
+  }
   if (expertMode) await page.keyboard.press("m");
   await page.waitForTimeout(1000);
 
   let stalled = null;
   let recovered = null;
-  if (scenario === "turn") {
-    // Ordinary AC-style flight: firewall the throttle and hold one bank input.
-    // This must not create a sideslip/critical-AOA stall merely because the old
-    // visual heading rate outruns the new WORLD velocity.
-    await page.keyboard.down("Shift");
+  const turnScenario = scenario === "turn" || scenario === "coast-turn" ||
+    scenario === "brake-turn" || scenario === "pull-turn";
+  if (turnScenario) {
+    // Exercise the controls players actually use. `turn` is the old
+    // afterburner-only probe, `coast-turn` is a plain bank at the normal
+    // throttle schedule, and `brake-turn` verifies the corner-speed benefit.
+    const turnStart = await read(scenario, 0);
+    if (scenario === "turn") await page.keyboard.down("Shift");
+    if (scenario === "brake-turn") await page.keyboard.down("Control");
+    if (scenario === "pull-turn") await page.keyboard.down("s");
     await page.keyboard.down("a");
-    recovered = await sampleFor("ordinary-turn", 8, () => false);
+    recovered = await sampleFor(scenario, scenarioSeconds, (sample) => (
+      scenario === "brake-turn"
+        && sample.elapsed >= 1
+        && sample.speed <= sample.cornerSpeed * 1.02
+    ));
     await page.keyboard.up("a");
+    await page.keyboard.up("s");
     await page.keyboard.up("Shift");
+    await page.keyboard.up("Control");
+    const headingDelta = ((recovered.velocityHeading - turnStart.velocityHeading + 540) % 360) - 180;
+    recovered.headingDelta = Number(headingDelta.toFixed(2));
+    recovered.startSpeed = turnStart.speed;
     await page.screenshot({ path: recoveryShot });
   } else {
     // Real keyboard events and the real requestAnimationFrame loop.  Pull to a
@@ -186,16 +227,27 @@ try {
     await page.screenshot({ path: recoveryShot });
   }
 
-  const recoveredSuccessfully = scenario === "turn"
-    ? recovered.stall < 0.12 && recovered.aoa < 12
+  const recoveredSuccessfully = turnScenario
+    ? recovered.stall < 0.12 && recovered.separated < 0.35 && recovered.aoa < 18
     : stalled.stall >= 0.5
       && stalled.separated >= 0.5
       && recovered.stall < 0.08
       && recovered.aoa < 10
       && recovered.speed > recovered.supportSpeed * 1.05;
-  assert(recoveredSuccessfully, scenario === "turn"
+  assert(recoveredSuccessfully, turnScenario
     ? "ordinary real-input turn created a false stall"
     : "real-input stall entry or recovery did not complete", { stalled, recovered });
+  if (!turnScenario) {
+    assert(stalled.engineAuthority === 1 && recovered.engineAuthority === 1,
+      "stall state incorrectly reduced engine output", { stalled, recovered });
+    if (missionKey === "sera-m11" && aircraftId === "f35c") {
+      assert(recovered.thrustLapse < 0.4
+          && stalled.altitude - recovered.altitude > 100
+          && recovered.elapsed > 3,
+        "high-altitude recovery did not require thin-air descent/energy recovery",
+        { stalled, recovered });
+    }
+  }
   assert(errors.length === 0, "browser errors", errors);
   console.log("check_stall_recovery_real_input_e2e: PASS");
   console.log(JSON.stringify({

@@ -69,6 +69,41 @@ assert(highAoa.angleOfAttackDeg > 20
     && highAoa.stallRatio > 0.8,
   "critical AOA did not produce separated flow and a real stall", highAoa);
 
+// A separated wing is not a flameout. At the same altitude/throttle the
+// engine keeps the same thrust magnitude; the stall hurts through AOA vector
+// mismatch and separated-flow drag instead. This protects the exact recovery
+// regression that made afterburner ineffective at ordinary altitude.
+const attachedThrust = resetFlightDynamicsState({}, { x: 0, y: 0, z: -120 });
+const stalledThrust = resetFlightDynamicsState({}, { x: 0, y: 0, z: -120 });
+updateFlightDynamicsState(attachedThrust, { ...base, throttle: 1 }, 1 / 60);
+updateFlightDynamicsState(stalledThrust, {
+  ...base,
+  ...noseUp30,
+  throttle: 1
+}, 1 / 60);
+const thrustMagnitude = (state) => Math.hypot(
+  state.forces.thrust.x,
+  state.forces.thrust.y,
+  state.forces.thrust.z
+);
+near(thrustMagnitude(stalledThrust), thrustMagnitude(attachedThrust), 1e-9,
+  "separated flow reduced engine thrust");
+near(stalledThrust.telemetry.engineAuthority, 1, 1e-12,
+  "stall engine authority");
+
+const thinAir = highAltitudeEnvelopeAt(9144, 70, 540);
+const highAltitudeThrust = resetFlightDynamicsState({}, { x: 0, y: 0, z: -120 });
+updateFlightDynamicsState(highAltitudeThrust, {
+  ...base,
+  throttle: 1,
+  envelope: thinAir
+}, 1 / 60);
+assert(thrustMagnitude(highAltitudeThrust) < thrustMagnitude(attachedThrust) * 0.4,
+  "thin air did not reduce available thrust", {
+    normal: thrustMagnitude(attachedThrust),
+    highAltitude: thrustMagnitude(highAltitudeThrust)
+  });
+
 const noseDown = resetFlightDynamicsState({}, { x: 0, y: 0, z: -70 });
 const noseUp = resetFlightDynamicsState({}, { x: 0, y: 0, z: -70 });
 const downDirection = { x: 0, y: -0.5, z: -Math.sqrt(0.75) };

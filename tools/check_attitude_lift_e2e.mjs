@@ -175,7 +175,12 @@ try {
   for (const sample of [results.verticalStall, results.knifeEdgeStall, results.invertedStall]) {
     assert(sample.firstDy <= 0.05,
       `${sample.name} body attitude manufactured upward inertia`, sample);
-    assert(sample.finalDy < -120 && sample.after.velocity.y < -10,
+    // A stalled wing does not turn the engine off. In the nose-up case the
+    // still-running jet opposes part of gravity, so displacement alone is not
+    // allowed to preserve the old artificial 74% thrust loss. Require an
+    // unequivocal WORLD-down trajectory and downward speed instead.
+    assert(sample.finalDy < -50 && sample.after.velocity.y < -10
+        && sample.maxY <= sample.before.position.y + 0.05,
       `${sample.name} stall did not produce a sustained WORLD-down fall`, sample);
   }
   assert(pageErrors.length === 0, "pageerror during attitude-lift check", pageErrors);
