@@ -2746,7 +2746,7 @@
     import {
       resetStallTranslationState,
       updateStallTranslationState
-    } from "./src/flight/stall-translation.js?v=20260828-world-path-1";
+    } from "./src/flight/stall-translation.js?v=20260828-world-path-2";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -2781,6 +2781,7 @@
     const LOCAL_UP = new THREE.Vector3(0, 1, 0);
     const LOCAL_RIGHT = new THREE.Vector3(1, 0, 0);
     const WORLD_UP = new THREE.Vector3(0, 1, 0);
+    const WORLD_DOWN = new THREE.Vector3(0, -1, 0);
 
     let PLAYER_MISSILE_CAPACITY = 10;
     let CRUISE_SPEED = 170;
@@ -47279,6 +47280,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const tmpAiA = new THREE.Vector3();
     const tmpAiB = new THREE.Vector3();
     const tmpQ1 = new THREE.Quaternion();
+    // Dedicated stall-recovery scratch.  The flight path is WORLD-space and
+    // must never borrow a temporary vector from guidance or HUD projection.
+    const stallRecoveryForward = new THREE.Vector3();
+    const stallRecoveryTarget = new THREE.Vector3();
+    const stallRecoveryAxis = new THREE.Vector3();
+    const stallRecoveryQ = new THREE.Quaternion();
     const tmpM1 = new THREE.Matrix4();
 
     const keys = new Set();
@@ -47467,13 +47474,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function playerEffectiveVerticalSpeed() {
-      if (!playerStallTranslation.active) return playerAttitudeLift.verticalSpeed;
+      if (!playerStallTranslation.initialized) return playerAttitudeLift.verticalSpeed;
       playerNoseFlightVelocity(tmpV11, 0);
       return playerStallTranslation.y - tmpV11.y;
     }
 
     function playerKinematicVelocity(out) {
-      if (playerStallTranslation.active) {
+      if (playerStallTranslation.initialized) {
         return out.set(
           playerStallTranslation.x,
           playerStallTranslation.y,
@@ -47483,8 +47490,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return playerNoseFlightVelocity(out, playerAttitudeLift.verticalSpeed);
     }
 
+    function playerActualFlightSpeed() {
+      return playerStallTranslation.initialized
+        ? Math.hypot(
+          playerStallTranslation.x,
+          playerStallTranslation.y,
+          playerStallTranslation.z
+        )
+        : playerSpeed;
+    }
+
     function updatePlayerStallTranslation(dt) {
-      playerNoseFlightVelocity(tmpV11, 0);
+      playerNoseFlightVelocity(tmpV11, playerAttitudeLift.verticalSpeed);
       updateStallTranslationState(
         playerStallTranslation,
         tmpV11,
@@ -51330,7 +51347,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           stallTimer = forcedSeverity;
           stallSeverity = forcedSeverity;
           stalling = forcedSeverity > 0.24;
-          resetStallTranslationState(playerStallTranslation);
           return { speedMps: playerSpeed, stallSeverity, stalling };
         },
         // Runs only the production player-flight step. Browser checks use this
@@ -51353,6 +51369,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
           playerKinematicVelocity(tmpV10);
           const kinematicSpeedMps = tmpV10.length();
+          forwardOf(player, tmpV9);
           return {
             frames: count,
             step: slice,
@@ -51361,9 +51378,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             hudSpeedKph: Math.round(kinematicSpeedMps * 3.6),
             kinematicSpeedMps,
             velocity: { x: tmpV10.x, y: tmpV10.y, z: tmpV10.z },
+            attitudeForward: { x: tmpV9.x, y: tmpV9.y, z: tmpV9.z },
             stability: PLAYER_STABILITY,
             attitudeLift: { ...playerAttitudeLift },
-            effectiveVerticalSpeed: playerEffectiveVerticalSpeed()
+            effectiveVerticalSpeed: playerEffectiveVerticalSpeed(),
+            flightPath: { ...playerStallTranslation },
+            stallSeverity
           };
         },
         // What the pitch ladder actually DREW, alongside independently computed
@@ -51840,6 +51860,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             attitudeLiftLoss: enemy.attitudeLift.severity,
             aerodynamicVerticalSpeed: enemy.attitudeLift.verticalSpeed,
              effectiveVerticalSpeed: enemyEffectiveVerticalSpeed(enemy),
+             flightPath: { ...enemy.stallTranslation },
              highAltitude: {
                densityRatio: enemy.highAltitudeEnvelope?.densityRatio ?? 1,
                stallSpeedMultiplier: enemy.highAltitudeEnvelope?.stallSpeedMultiplier ?? 1,
@@ -55581,6 +55602,61 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       player.quaternion.copy(playerFlightFrame).multiply(tmpQ1).normalize();
     }
 
+    function rotateForwardTowardFlightPath(quaternion, path, maxAngle, recoveryBias = 0) {
+      const limit = Math.max(0, Number(maxAngle) || 0);
+      if (limit <= 0) return false;
+      stallRecoveryForward.copy(LOCAL_FORWARD).applyQuaternion(quaternion).normalize();
+      stallRecoveryTarget.set(
+        Number(path?.x) || 0,
+        Number(path?.y) || 0,
+        Number(path?.z) || 0
+      );
+      if (stallRecoveryTarget.lengthSq() < 1) stallRecoveryTarget.copy(WORLD_DOWN);
+      else stallRecoveryTarget.normalize();
+      // A stall is recovered by unloading and lowering the nose through the
+      // flight path, not by merely matching a descending path from above.  The
+      // modest WORLD-down bias fades with separation and prevents the old
+      // zero-input recovery from handing the jet back in an artificial climb.
+      stallRecoveryTarget.addScaledVector(
+        WORLD_DOWN,
+        THREE.MathUtils.clamp(Number(recoveryBias) || 0, 0, 0.45)
+      ).normalize();
+      const dot = THREE.MathUtils.clamp(
+        stallRecoveryForward.dot(stallRecoveryTarget),
+        -1,
+        1
+      );
+      const angle = Math.acos(dot);
+      if (angle <= 1e-6) return false;
+      stallRecoveryAxis.crossVectors(stallRecoveryForward, stallRecoveryTarget);
+      if (stallRecoveryAxis.lengthSq() < 1e-10) {
+        // Exactly nose-up versus WORLD-down has no unique turn plane.  The
+        // aircraft's real right wing supplies the physically continuous one.
+        stallRecoveryAxis.copy(LOCAL_RIGHT).applyQuaternion(quaternion);
+      }
+      stallRecoveryAxis.normalize();
+      stallRecoveryQ.setFromAxisAngle(stallRecoveryAxis, Math.min(angle, limit));
+      quaternion.premultiply(stallRecoveryQ).normalize();
+      return true;
+    }
+
+    function applyPlayerStallNoseRecovery(dt) {
+      if (!playerStallTranslation.active && stallSeverity <= 0.005) return;
+      const recoveryRate = STALL_NOSE_DROP_RATE * (0.72 + PLAYER_STABILITY * 0.56);
+      const severity = Math.max(
+        stallSeverity,
+        Number(playerStallTranslation.pathLoss) || 0
+      );
+      const orientation = controlMode === CONTROL_NORMAL
+        ? playerFlightFrame : player.quaternion;
+      rotateForwardTowardFlightPath(
+        orientation,
+        playerStallTranslation,
+        recoveryRate * severity * dt,
+        severity * 0.34
+      );
+    }
+
     function updatePlayer(dt) {
       const keyboardPitch = (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
         (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0);
@@ -55636,32 +55712,37 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         STALL_ENTRY_SPEED,
         playerHighAltitudeEnvelope
       );
+      // Stall and recovery are functions of the aircraft's real WORLD-space
+      // air path, not the separate engine-command scalar.  The old scalar rose
+      // toward cruise while the jet was still falling and released the stall
+      // into whatever direction the nose happened to face.
+      const actualFlightSpeed = playerActualFlightSpeed();
       const lowSpeedRatio = THREE.MathUtils.clamp(
-        (effectiveStallEntrySpeed - playerSpeed) /
+        (effectiveStallEntrySpeed - actualFlightSpeed) /
           Math.max(1, effectiveStallEntrySpeed - effectiveDeepStallSpeed),
         0,
         1
       );
       const pitchDemand = Math.abs(pitchInput);
       const noseHighDemand = Math.max(0, tmpV9.y - 0.18);
-      if (playerSpeed < effectiveStallEntrySpeed) {
+      if (actualFlightSpeed < effectiveStallEntrySpeed) {
         const buildRate = 0.28 + lowSpeedRatio * 1.35 + pitchDemand * 0.42 + noseHighDemand * 0.32;
         stallTimer += dt * buildRate;
       } else {
-        const recoveryRate = playerSpeed > effectiveRecoverySpeed ? 1.9 : 0.78;
+        const recoveryRate = actualFlightSpeed > effectiveRecoverySpeed ? 1.9 : 0.78;
         stallTimer -= dt * recoveryRate;
       }
       stallTimer = THREE.MathUtils.clamp(stallTimer, 0, 1);
       const targetSeverity = THREE.MathUtils.smoothstep(stallTimer, 0.18, 0.88);
       stallSeverity = THREE.MathUtils.lerp(stallSeverity, targetSeverity, damping(0.025, dt));
-      if (playerSpeed > effectiveRecoverySpeed && stallTimer <= 0.02) {
+      if (actualFlightSpeed > effectiveRecoverySpeed && stallTimer <= 0.02) {
         stallSeverity = Math.max(0, stallSeverity - dt * 1.4);
       }
       stallSeverity = THREE.MathUtils.clamp(stallSeverity, 0, 1);
       stalling = stallSeverity > 0.24;
 
       const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
-        playerSpeed,
+        actualFlightSpeed,
         playerHighAltitudeEnvelope
       );
       playerControlAuthority = THREE.MathUtils.clamp(
@@ -55671,7 +55752,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
       const rawTurnFactor = THREE.MathUtils.clamp(
         cornerTurnGain(
-          playerSpeed,
+          actualFlightSpeed,
           effectiveStallEntrySpeed,
           CRUISE_SPEED * highAltitudeSpeedFactor
         ),
@@ -55747,10 +55828,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           playerFlightFrame.multiply(tmpQ1).normalize();
         }
 
-        if (stallSeverity > 0.005) {
-          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, -STALL_NOSE_DROP_RATE * stallSeverity * dt);
-          playerFlightFrame.multiply(tmpQ1).normalize();
-        }
+        applyPlayerStallNoseRecovery(dt);
         syncPlayerOrientation();
       } else {
         const targetRollRate = rollInput * EXPERT_ROLL_RATE * playerControlAuthority;
@@ -55764,7 +55842,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (Math.abs(playerPitchRate) > 0.00001) player.rotateX(playerPitchRate * dt);
         if (Math.abs(playerYawRate) > 0.00001) player.rotateY(playerYawRate * dt);
         if (Math.abs(expertRollRate) > 0.00001) player.rotateZ(expertRollRate * dt);
-        if (stallSeverity > 0.005) player.rotateX(-STALL_NOSE_DROP_RATE * stallSeverity * dt);
+        applyPlayerStallNoseRecovery(dt);
         player.quaternion.normalize();
         playerFlightFrame.copy(player.quaternion);
         playerBank = 0;
@@ -66097,7 +66175,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function enemyEffectiveVerticalSpeed(enemy) {
-      if (!enemy.stallTranslation.active) return enemy.attitudeLift.verticalSpeed;
+      if (!enemy.stallTranslation.initialized) return enemy.attitudeLift.verticalSpeed;
       enemyNoseFlightVelocity(enemy, tmpV11, 0);
       return enemy.stallTranslation.y - tmpV11.y;
     }
@@ -66110,8 +66188,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.spec.maxSpeed
       );
       forwardOf(enemy.group, tmpV8);
+      const actualFlightSpeed = enemy.stallTranslation.initialized
+        ? Math.hypot(
+          enemy.stallTranslation.x,
+          enemy.stallTranslation.y,
+          enemy.stallTranslation.z
+        )
+        : enemy.speed;
       updateAerodynamicStallState(enemy.stallState, {
-        speed: enemy.speed,
+        speed: actualFlightSpeed,
         stallEntrySpeed: enemy.highAltitudeEnvelope.minimumControlledSpeed,
         deepStallSpeed: altitudeAdjustedStallThreshold(
           STALL_DEEP_SPEED,
@@ -66146,7 +66231,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
       const baseRate = Math.max(0.00001, spec.patrolTurn);
       const result = constrainedAircraftTurn({
-        speed: enemy.speed,
+        speed: enemy.stallTranslation.initialized
+          ? Math.hypot(
+            enemy.stallTranslation.x,
+            enemy.stallTranslation.y,
+            enemy.stallTranslation.z
+          )
+          : enemy.speed,
         referenceSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
         stallEntrySpeed: envelope.minimumControlledSpeed,
         structuralG: spec.structuralG,
@@ -66167,9 +66258,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function applyEnemyStallNoseDrop(enemy, dt) {
-      if (enemy.stallSeverity <= 0.005) return;
-      enemy.group.rotateX(-STALL_NOSE_DROP_RATE * enemy.stallSeverity * dt);
-      enemy.group.quaternion.normalize();
+      if (!enemy.stallTranslation.active && enemy.stallSeverity <= 0.005) return;
+      const severity = Math.max(
+        enemy.stallSeverity,
+        Number(enemy.stallTranslation.pathLoss) || 0
+      );
+      const recoveryRate = STALL_NOSE_DROP_RATE *
+        (0.72 + Math.max(0, Math.min(1, Number(enemy.spec.stability) || 0)) * 0.56);
+      rotateForwardTowardFlightPath(
+        enemy.group.quaternion,
+        enemy.stallTranslation,
+        recoveryRate * severity * dt,
+        severity * 0.34
+      );
     }
 
     function moveEnemyFixedWing(enemy, dt) {
@@ -66189,14 +66290,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.highAltitudeEnvelope,
         dt
       );
-      enemyNoseFlightVelocity(enemy, tmpV8, 0);
+      enemyNoseFlightVelocity(enemy, tmpV8, enemy.attitudeLift.verticalSpeed);
       updateStallTranslationState(
         enemy.stallTranslation,
         tmpV8,
         enemy.stallSeverity,
         dt
       );
-      if (enemy.stallTranslation.active) {
+      if (enemy.stallTranslation.initialized) {
         enemy.velocity.set(
           enemy.stallTranslation.x,
           enemy.stallTranslation.y,
@@ -70661,7 +70762,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         STALL_ENTRY_SPEED,
         playerHighAltitudeEnvelope
       );
-      const lowSpeed = inFlight && playerSpeed < effectiveStallWarningSpeed;
+      const lowSpeed = inFlight && playerActualFlightSpeed() < effectiveStallWarningSpeed;
       const stallLit = inFlight && stalling;
       const highAltitudeCaution = inFlight && playerHighAltitudeEnvelope.thinAir >= 0.85;
       ui.stallWarning.classList.toggle("active", lowSpeed || stallLit || highAltitudeCaution);

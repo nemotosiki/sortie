@@ -85,7 +85,7 @@ try {
       debug.forceTeleport(0, 1800, 0);
       debug.forceResetAttitudeLift();
       debug.forceAttitude(0, 0, bankDeg);
-      const before = window.__game.player.position.y;
+      const before = debug.forceFlightFrames(0, 1 / 60).position.y;
       const result = debug.forceFlightFrames(Math.round(seconds * 60), 1 / 60);
       return {
         aircraft,
@@ -108,38 +108,49 @@ try {
     debug.forceAttitude(0, 0, 0);
     const recovered = debug.forceFlightFrames(60, 1 / 60);
 
-    // Persistent nose-up deep stall: keep this above the ordinary F-16 ceiling
-    // so its engine cannot immediately fly out of the forced stall. Entry
-    // inertia may carry it upward briefly, but WORLD gravity must create a peak
-    // and a descending velocity instead of letting the nose redirect the fall.
-    debug.forceLoadout("f16");
-    debug.forceTeleport(0, 10000, 0);
-    debug.forceResetAttitudeLift();
-    debug.forceAttitude(0, 90, 0);
-    debug.forceFlightEnergy(70, 1);
-    const verticalBefore = debug.forceFlightFrames(0, 1 / 60);
-    const verticalFirst = debug.forceFlightFrames(1, 1 / 60);
-    const verticalSamples = [verticalBefore, verticalFirst];
-    for (let second = 0; second < 8; second += 1) {
-      verticalSamples.push(debug.forceFlightFrames(60, 1 / 60));
-    }
-    const verticalAfter = verticalSamples[verticalSamples.length - 1];
-    const peakY = Math.max(...verticalSamples.map((sample) => sample.position.y));
-    const verticalStall = {
-      firstDy: verticalFirst.position.y - verticalBefore.position.y,
-      dx: verticalAfter.position.x - verticalBefore.position.x,
-      dz: verticalAfter.position.z - verticalBefore.position.z,
-      finalY: verticalAfter.position.y,
-      peakY,
-      after: verticalAfter
+    // The old regression forced the jet above its ceiling and pinned severity.
+    // That hid the production bug: at ordinary altitude automatic engine
+    // recovery released the stall and rebuilt velocity from an upward nose.
+    // Prime a real horizontal WORLD-space path first, then rotate only the body.
+    const deepStall = (name, pitchDeg, bankDeg) => {
+      debug.forceLoadout("f16");
+      debug.forceTeleport(0, 2000, 0);
+      debug.forceResetAttitudeLift();
+      debug.forceAttitude(0, 0, 0);
+      debug.forceFlightEnergy(70, 0);
+      debug.forceFlightFrames(1, 1 / 60);
+      const before = debug.forceFlightFrames(0, 1 / 60);
+      debug.forceAttitude(0, pitchDeg, bankDeg);
+      debug.forceFlightEnergy(70, 1);
+      const first = debug.forceFlightFrames(1, 1 / 60);
+      const samples = [before, first];
+      for (let second = 0; second < 10; second += 1) {
+        samples.push(debug.forceFlightFrames(60, 1 / 60));
+      }
+      const after = samples[samples.length - 1];
+      return {
+        name,
+        firstDy: first.position.y - before.position.y,
+        finalDy: after.position.y - before.position.y,
+        minY: Math.min(...samples.map((sample) => sample.position.y)),
+        maxY: Math.max(...samples.map((sample) => sample.position.y)),
+        before,
+        first,
+        after
+      };
     };
+    const verticalStall = deepStall("nose-up", 90, 0);
+    const knifeEdgeStall = deepStall("knife-edge", 0, 90);
+    const invertedStall = deepStall("inverted", 0, 180);
     return {
       ordinary,
       knifeEdge,
       f16,
       f22,
       recovery: { inverted, recovered },
-      verticalStall
+      verticalStall,
+      knifeEdgeStall,
+      invertedStall
     };
   });
 
@@ -148,24 +159,25 @@ try {
   // beside the 31m knife-edge/inverted cases this gate separates.
   assert(Math.abs(results.ordinary.drop) < 0.1,
     "ordinary 60-degree bank lost altitude", results.ordinary);
-  assert(results.knifeEdge.drop > 30 && results.knifeEdge.drop < 34,
+  assert(results.knifeEdge.drop > 27 && results.knifeEdge.drop < 31,
     "knife-edge did not lose altitude under WORLD gravity", results.knifeEdge);
-  assert(results.f16.drop > 30 && results.f16.drop < 34,
+  assert(results.f16.drop > 27 && results.f16.drop < 31,
     "F-16 inverted drop left the production tuning window", results.f16);
-  assert(results.f22.drop > 14 && results.f22.drop < 18 && results.f22.drop < results.f16.drop,
+  assert(results.f22.drop > 13 && results.f22.drop < 16 && results.f22.drop < results.f16.drop,
     "F-22 STABILITY did not reduce, or wrongly removed, inverted drop", results.f22);
   assert(results.f16.probe.stability === 0.45 && results.f22.probe.stability === 1,
     "flight did not use the same STABILITY values as the hangar", results);
   assert(Math.abs(results.recovery.recovered.effectiveVerticalSpeed) <
       Math.abs(results.recovery.inverted.effectiveVerticalSpeed) * 0.25,
     "upright recovery did not arrest inverted sink", results.recovery);
-  assert(results.verticalStall.firstDy > 0,
-    "nose-up stall lost its physically valid entry inertia", results.verticalStall);
-  assert(results.verticalStall.after.velocity.y < -10
-      && results.verticalStall.finalY < results.verticalStall.peakY - 20,
-    "nose-up deep stall never crossed its peak into WORLD-down fall", results.verticalStall);
-  assert(Math.hypot(results.verticalStall.dx, results.verticalStall.dz) < 5,
-    "deep-stalled flight path rotated sideways with the aircraft nose", results.verticalStall);
+  for (const sample of [results.verticalStall, results.knifeEdgeStall, results.invertedStall]) {
+    assert(sample.firstDy <= 0.05,
+      `${sample.name} body attitude manufactured upward inertia`, sample);
+    assert(sample.finalDy < -120 && sample.after.velocity.y < -10,
+      `${sample.name} stall did not produce a sustained WORLD-down fall`, sample);
+    assert(sample.after.stallSeverity < 0.05,
+      `${sample.name} stall could not recover after gaining dive airspeed`, sample);
+  }
   assert(pageErrors.length === 0, "pageerror during attitude-lift check", pageErrors);
   assert(consoleErrors.length === 0, "console error during attitude-lift check", consoleErrors);
 
@@ -178,10 +190,12 @@ try {
     recoveryVerticalSpeed: results.recovery.recovered.effectiveVerticalSpeed,
     verticalStall: {
       firstDy: results.verticalStall.firstDy,
-      peakY: results.verticalStall.peakY,
-      finalY: results.verticalStall.finalY,
+      finalDy: results.verticalStall.finalDy,
+      minY: results.verticalStall.minY,
       finalVy: results.verticalStall.after.velocity.y
-    }
+    },
+    knifeEdgeFinalDy: results.knifeEdgeStall.finalDy,
+    invertedFinalDy: results.invertedStall.finalDy
   }, null, 2));
 } finally {
   await context.close();

@@ -114,7 +114,10 @@ try {
       const probe = debug.enemyFlightProbe(id)[0];
       if (!peakStall || probe.stallSeverity > peakStall.stallSeverity) peakStall = probe;
     }
-    for (let frame = 0; frame < 150; frame += 1) {
+    // Recovery now follows real WORLD velocity rather than the engine-command
+    // scalar. Give the aircraft time to lower its nose, accelerate through the
+    // descending flight path and then shed the stall hysteresis.
+    for (let frame = 0; frame < 480; frame += 1) {
       debug.forceEnemyFlightFrames(1, 1 / 60);
     }
     const recovered = debug.enemyFlightProbe(id)[0];
