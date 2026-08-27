@@ -23,6 +23,7 @@ for (const token of [
   'ctx.addGroundType("m11FireControlRadar"', 'ctx.addGroundModel("m11FireControlRadar"',
   'ctx.addGroundType("m11ControlStation"', 'ctx.addGroundType("m11PowerPlant"',
   'ctx.addGroundType("m11FuelFarm"', 'ctx.addAceProfile("granite"',
+  'ctx.addGroundType("m11Shorad"', 'ctx.addEnemyMissileProfile("m11Shorad"',
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
   'callsign: "ARCA POLAR WATCH"', 'speaker: "pax"',
   'ctx.addMission(mission, { after: "sera-m10" })'
@@ -48,8 +49,9 @@ try {
   const MISSIONS = [{ key: "sera-m10", campaign: "sera", campaignOrder: 10 }];
   const GROUND_TYPES = {
     radarSite: { hp: 70 }, bunker: { hp: 120 }, fuelTank: { hp: 50 },
-    samSite: { hp: 90 }, aaGun: { hp: 60 }, adTank: { hp: 128 }
+    samSite: { hp: 90 }, aaGun: { hp: 60 }, mobileSam: { hp: 72 }
   };
+  const ENEMY_MISSILE_PROFILES = { mobileSam: { range: 1080, maxSpeed: 468 } };
   const ACE_PROFILES = { longbow: { behavior: "armored", theme: { scale: 1 } } };
   const groundModels = new Map();
   let mission = null;
@@ -60,6 +62,7 @@ try {
       WORLD_PRESETS: { verIceCoast: { missionAnchors: anchors } },
       AIRCRAFT_TYPES: { fa18: {}, jammer: {}, mig29: {}, mig31: {}, typhoon: {} },
       ENEMY_AI_PROFILES: { mig29: {}, mig31: {} },
+      ENEMY_MISSILE_PROFILES,
       ACE_PROFILES,
       GROUND_TYPES
     },
@@ -76,6 +79,11 @@ try {
     addAceProfile(id, def) {
       assert(!ACE_PROFILES[id], `duplicate ace profile ${id}`);
       ACE_PROFILES[id] = def;
+      return def;
+    },
+    addEnemyMissileProfile(id, def) {
+      assert(!ENEMY_MISSILE_PROFILES[id], `duplicate missile profile ${id}`);
+      ENEMY_MISSILE_PROFILES[id] = def;
       return def;
     },
     addMission(def, options) {
@@ -110,7 +118,9 @@ try {
       && arca.vulnerable === false && arca.altitude === 9800,
     "blue ARCA observer flight is malformed");
 
-  for (const id of ["m11FireControlRadar", "m11ControlStation", "m11PowerPlant", "m11FuelFarm"]) {
+  for (const id of [
+    "m11FireControlRadar", "m11ControlStation", "m11PowerPlant", "m11FuelFarm", "m11Shorad"
+  ]) {
     assert(GROUND_TYPES[id]?.key === id && typeof groundModels.get(id)?.build === "function",
       `custom target type/model is missing: ${id}`);
   }
@@ -133,9 +143,12 @@ try {
   assert(perimeter.length === 6 && perimeter.every((unit) => (
     unit.tgt === false && unit.rankNeutral && unit.missionRole === "perimeterDefence"
   )), "white perimeter-defence set is malformed");
-  assert(perimeter.filter((unit) => unit.type === "adTank").length === 2
+  assert(perimeter.filter((unit) => unit.type === "m11Shorad").length === 2
       && perimeter.filter((unit) => unit.type === "aaGun").length === 4,
     "perimeter mix must be SHORAD x2 + AAA x4");
+  assert(ENEMY_MISSILE_PROFILES.m11Shorad?.range === ENEMY_MISSILE_PROFILES.mobileSam.range
+      && ENEMY_MISSILE_PROFILES.m11Shorad?.maxSpeed === ENEMY_MISSILE_PROFILES.mobileSam.maxSpeed,
+    "perimeter SHORAD did not preserve the ordinary mobile-SAM missile profile");
   assert(perimeter.every((unit) => unit.missionRole !== "baseSam" && unit.mark !== "m11BaseNode"),
     "white perimeter defence can inherit the enhanced base-SAM contract");
 

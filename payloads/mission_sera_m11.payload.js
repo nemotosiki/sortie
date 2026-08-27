@@ -10,6 +10,7 @@ export default function register(ctx) {
     WORLD_PRESETS,
     AIRCRAFT_TYPES,
     ENEMY_AI_PROFILES,
+    ENEMY_MISSILE_PROFILES,
     ACE_PROFILES,
     GROUND_TYPES
   } = ctx.tables;
@@ -28,8 +29,11 @@ export default function register(ctx) {
     }
   }
   if (!ACE_PROFILES.longbow) throw new Error("[sera-m11] LONG BOW ace template is missing");
-  for (const type of ["radarSite", "bunker", "fuelTank", "samSite", "aaGun", "adTank"]) {
+  for (const type of ["radarSite", "bunker", "fuelTank", "samSite", "aaGun", "mobileSam"]) {
     if (!GROUND_TYPES[type]) throw new Error(`[sera-m11] required ground type not registered: ${type}`);
+  }
+  if (!ENEMY_MISSILE_PROFILES.mobileSam) {
+    throw new Error("[sera-m11] required mobileSam missile profile is missing");
   }
 
   const anchors = world.missionAnchors;
@@ -156,6 +160,51 @@ export default function register(ctx) {
       }
       add(geometry.panel, dark, 0, 1.9, -12.0, 24, 2.0, 1.6);
       add(geometry.panel, dark, 0, 1.9, 13.0, 24, 2.0, 1.6);
+    }
+  });
+
+  // The stock AD TANK is an autocannon vehicle only. M11's two outer pickets
+  // are genuine SHORAD launchers, so they receive the ordinary short-range
+  // mobile-SAM round under their own type key. Their perimeterDefence role is
+  // intentionally not baseSam; radar-online enhancement cannot match them.
+  ctx.addGroundType("m11Shorad", {
+    ...GROUND_TYPES.mobileSam,
+    key: "m11Shorad",
+    label: "PERIMETER SHORAD",
+    role: "Frozen Eye Short-Range Mobile SAM",
+    hp: 76,
+    hitRadius: 20,
+    crash: Object.freeze({ halfLen: 6.5, halfBeam: 4, top: 5.2 }),
+    hitBox: Object.freeze({ x: 10, y: 8, z: 14 }),
+    smokeHeight: 5,
+    dishSpin: 0.82
+  });
+  ctx.addEnemyMissileProfile("m11Shorad", {
+    ...ENEMY_MISSILE_PROFILES.mobileSam
+  });
+  ctx.addGroundModel("m11Shorad", {
+    build(env) {
+      const { THREE, geometry, add, addRoot, dark, steel, olive, light } = env;
+      // Tracked chassis, compact turret and two twin canister packs.
+      add(geometry.panel, dark, -3.4, 1.0, 0, 1.7, 2.0, 12.5);
+      add(geometry.panel, dark, 3.4, 1.0, 0, 1.7, 2.0, 12.5);
+      add(geometry.panel, olive, 0, 2.0, 0, 7.4, 2.2, 12.0);
+      add(geometry.panel, steel, 0, 4.0, 0.8, 6.2, 2.0, 5.8);
+      for (const side of [-1, 1]) {
+        for (const level of [0, 1]) {
+          add(geometry.panel, level ? steel : dark,
+            side * 2.0, 5.1 + level * 1.15, -1.8,
+            1.45, 0.95, 6.8, -0.22);
+        }
+      }
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 6.0, 3.0);
+      const plate = new THREE.Mesh(geometry.shipOctPlate, light);
+      plate.scale.set(2.2, 0.3, 2.2);
+      plate.rotation.x = -0.7;
+      pivot.add(plate);
+      addRoot(pivot);
+      return { dish: pivot };
     }
   });
 
@@ -340,8 +389,8 @@ export default function register(ctx) {
       { id: 30, type: "aaGun", label: "BASE DEFENCE GUN EAST", x: baseX + 720, z: baseZ - 850, heading: -0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" },
       // Perimeter contacts remain white and optional. The AD tanks use their
       // ordinary SHORAD profile and never inherit the tagged base-SAM boost.
-      { id: 31, type: "adTank", label: "PERIMETER SHORAD WEST", x: baseX - 1450, z: baseZ + 560, heading: 1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
-      { id: 32, type: "adTank", label: "PERIMETER SHORAD EAST", x: baseX + 1450, z: baseZ + 520, heading: -1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 31, type: "m11Shorad", label: "PERIMETER SHORAD WEST", x: baseX - 1450, z: baseZ + 560, heading: 1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 32, type: "m11Shorad", label: "PERIMETER SHORAD EAST", x: baseX + 1450, z: baseZ + 520, heading: -1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
       { id: 33, type: "aaGun", label: "PERIMETER AAA SOUTHWEST", x: baseX - 1200, z: baseZ - 900, heading: 0.45, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
       { id: 34, type: "aaGun", label: "PERIMETER AAA SOUTHEAST", x: baseX + 1200, z: baseZ - 900, heading: -0.45, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
       { id: 35, type: "aaGun", label: "PERIMETER AAA NORTHWEST", x: baseX - 520, z: baseZ + 1370, heading: 2.7, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },

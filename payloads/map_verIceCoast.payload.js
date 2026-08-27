@@ -34,7 +34,7 @@ export default function register(ctx) {
     sectorIds: Object.freeze(["western_ice_approach", "ver_shelf", "operation_line"]),
     variant: "polar_morning_high_altitude",
     sceneryOrigin: [0, 0],
-    previewFocus: [0, 0],
+    previewFocus: [4300, -2500],
     missionAnchors,
     clearColor: 0xa7c2d1,
     sky: [
@@ -193,6 +193,65 @@ export default function register(ctx) {
         root.add(mesh);
         return mesh;
       };
+      // The base has dozens of repeated berms, pads, roofs, service vehicles
+      // and masts. Queue those transforms by shared geometry/material and emit
+      // one InstancedMesh per batch; the older harbour/floe landmarks keep
+      // their individually named meshes because they are few and some are
+      // mutated after construction.
+      const baseInstanceBatches = new Map();
+      const queueBaseInstance = (geometry, instanceMaterial, name, position, scale, rotation) => {
+        let byMaterial = baseInstanceBatches.get(geometry);
+        if (!byMaterial) {
+          byMaterial = new Map();
+          baseInstanceBatches.set(geometry, byMaterial);
+        }
+        let batch = byMaterial.get(instanceMaterial);
+        if (!batch) {
+          batch = { geometry, material: instanceMaterial, instances: [] };
+          byMaterial.set(instanceMaterial, batch);
+        }
+        batch.instances.push({ name, position, scale, rotation });
+      };
+      const baseBox = (name, x, y, z, sx, sy, sz, color, rotation = 0, options = {}) => {
+        queueBaseInstance(
+          boxGeometry, material(color, options), name,
+          [x, y, z], [sx, sy, sz], [0, rotation, 0]
+        );
+      };
+      const baseCylinder = (name, x, y, z, radius, height, color, options = {}) => {
+        queueBaseInstance(
+          cylinderGeometry, material(color, options), name,
+          [x, y, z], [radius, height, radius], [0, 0, 0]
+        );
+      };
+      const flushBaseInstances = () => {
+        const position = new THREE.Vector3();
+        const scale = new THREE.Vector3();
+        const rotation = new THREE.Euler();
+        const quaternion = new THREE.Quaternion();
+        const matrix = new THREE.Matrix4();
+        let batchIndex = 0;
+        for (const byMaterial of baseInstanceBatches.values()) {
+          for (const batch of byMaterial.values()) {
+            const mesh = new THREE.InstancedMesh(
+              batch.geometry, batch.material, batch.instances.length
+            );
+            batchIndex += 1;
+            mesh.name = `verFrozenEyeBatch${batchIndex}`;
+            mesh.userData.instanceNames = batch.instances.map((entry) => entry.name);
+            batch.instances.forEach((entry, index) => {
+              position.fromArray(entry.position);
+              scale.fromArray(entry.scale);
+              rotation.fromArray(entry.rotation);
+              quaternion.setFromEuler(rotation);
+              matrix.compose(position, quaternion, scale);
+              mesh.setMatrixAt(index, matrix);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            root.add(mesh);
+          }
+        }
+      };
 
       const flatPolygon = (name, points, y, color, options = {}) => {
         const shape = new THREE.Shape();
@@ -294,37 +353,49 @@ export default function register(ctx) {
         ["GunWest", -720, -850, 82, 82], ["GunEast", 720, -850, 82, 82]
       ];
       const revetment = (name, x, z, width, depth) => {
-        box(`verBase${name}Pad`, x, 1.62, z, width, 0.5, depth, apron);
+        baseBox(`verBase${name}Pad`, x, 1.62, z, width, 0.5, depth, apron);
         const gap = 22;
         const wall = 5;
-        const sideDepth = Math.max(12, (depth - gap) * 0.5);
-        box(`verBase${name}BermW`, x - width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
-        box(`verBase${name}BermE`, x + width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
-        box(`verBase${name}BermN1`, x - (width + gap) * 0.25, 4.4, z + depth * 0.52,
+        const sideWidth = Math.max(12, (width - gap) * 0.5);
+        baseBox(`verBase${name}BermW`, x - width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
+        baseBox(`verBase${name}BermE`, x + width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
+        baseBox(`verBase${name}BermN1`, x - (width + gap) * 0.25, 4.4, z + depth * 0.52,
           (width - gap) * 0.5, 5.2, wall, snowWear);
-        box(`verBase${name}BermN2`, x + (width + gap) * 0.25, 4.4, z + depth * 0.52,
+        baseBox(`verBase${name}BermN2`, x + (width + gap) * 0.25, 4.4, z + depth * 0.52,
           (width - gap) * 0.5, 5.2, wall, snowWear);
         // South is the service entrance; short returns protect it without
         // enclosing the target model inside scenery collision geometry.
-        box(`verBase${name}BermS1`, x - width * 0.37, 4.4, z - depth * 0.52,
-          sideDepth, 5.2, wall, snowWear);
-        box(`verBase${name}BermS2`, x + width * 0.37, 4.4, z - depth * 0.52,
-          sideDepth, 5.2, wall, snowWear);
+        baseBox(`verBase${name}BermS1`, x - width * 0.37, 4.4, z - depth * 0.52,
+          sideWidth, 5.2, wall, snowWear);
+        baseBox(`verBase${name}BermS2`, x + width * 0.37, 4.4, z - depth * 0.52,
+          sideWidth, 5.2, wall, snowWear);
       };
 
+      // The weather-station anchor lies seaward of the main shelf silhouette.
+      // Give the enlarged base its own wind-cut ice plateau so buildings and
+      // roads read as a coastal installation instead of floating on the ocean.
+      flatPolygon("verFrozenEyePlateau", [
+        [baseX - 1760, baseZ - 900], [baseX - 1510, baseZ - 1370],
+        [baseX - 620, baseZ - 1510], [baseX + 410, baseZ - 1420],
+        [baseX + 1490, baseZ - 1210], [baseX + 1760, baseZ - 540],
+        [baseX + 1660, baseZ + 430], [baseX + 1430, baseZ + 1250],
+        [baseX + 610, baseZ + 1460], [baseX - 570, baseZ + 1410],
+        [baseX - 1510, baseZ + 1110], [baseX - 1780, baseZ + 260]
+      ], 1.4, 0xd5e4e6, { roughness: 0.94 });
+
       // Perimeter service loop (2.8 x 2.4 km) and radial access roads.
-      box("verBaseRoadNorth", baseX, 1.48, baseZ + 1180, 2760, 0.28, 46, road);
-      box("verBaseRoadSouth", baseX, 1.48, baseZ - 1110, 2760, 0.28, 46, road);
-      box("verBaseRoadWest", baseX - 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
-      box("verBaseRoadEast", baseX + 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
-      box("verBaseRoadSpine", baseX, 1.5, baseZ, 42, 0.32, 2200, road);
-      box("verBaseRoadCross", baseX, 1.5, baseZ - 210, 2500, 0.32, 42, road);
-      box("verBaseRoadRadar", baseX, 1.51, baseZ + 430, 1550, 0.34, 34, road);
-      box("verBaseRoadLogistics", baseX, 1.51, baseZ - 650, 1800, 0.34, 34, road);
+      baseBox("verBaseRoadNorth", baseX, 1.48, baseZ + 1180, 2760, 0.28, 46, road);
+      baseBox("verBaseRoadSouth", baseX, 1.48, baseZ - 1110, 2760, 0.28, 46, road);
+      baseBox("verBaseRoadWest", baseX - 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
+      baseBox("verBaseRoadEast", baseX + 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
+      baseBox("verBaseRoadSpine", baseX, 1.5, baseZ, 42, 0.32, 2200, road);
+      baseBox("verBaseRoadCross", baseX, 1.5, baseZ - 210, 2500, 0.32, 42, road);
+      baseBox("verBaseRoadRadar", baseX, 1.51, baseZ + 430, 1550, 0.34, 34, road);
+      baseBox("verBaseRoadLogistics", baseX, 1.51, baseZ - 650, 1800, 0.34, 34, road);
 
       // A weathered central apron remains low enough for the destructible
       // control-station model to sit cleanly above it.
-      box("verBaseCentralApron", baseX, 1.54, baseZ, 610, 0.4, 470, apron);
+      baseBox("verBaseCentralApron", baseX, 1.54, baseZ, 610, 0.4, 470, apron);
       for (const [name, ox, oz, width, depth] of targetPads) {
         revetment(name, baseX + ox, baseZ + oz, width, depth);
       }
@@ -332,35 +403,35 @@ export default function register(ctx) {
       // Hardened operations wings flank rather than cover the red control TGT.
       for (const side of [-1, 1]) {
         const x = baseX + side * 205;
-        box(`verBaseOpsWing${side < 0 ? "West" : "East"}`, x, 19, baseZ + 5,
+        baseBox(`verBaseOpsWing${side < 0 ? "West" : "East"}`, x, 19, baseZ + 5,
           210, 34, 118, bunker, side * 0.035);
-        box(`verBaseOpsRoof${side < 0 ? "West" : "East"}`, x, 37, baseZ + 5,
+        baseBox(`verBaseOpsRoof${side < 0 ? "West" : "East"}`, x, 37, baseZ + 5,
           190, 4, 102, roof, side * 0.035);
-        box(`verBaseOpsLink${side < 0 ? "West" : "East"}`, baseX + side * 91, 8, baseZ,
+        baseBox(`verBaseOpsLink${side < 0 ? "West" : "East"}`, baseX + side * 91, 8, baseZ,
           54, 12, 28, utility);
       }
 
       // Logistics and maintenance belt. The gaps at x +/-360 preserve the
       // power-plant and fuel-farm target bodies and their gun hitboxes.
-      box("verBaseVehicleWorkshop", baseX, 17, baseZ - 650, 190, 30, 90, bunker);
-      box("verBaseVehicleWorkshopRoof", baseX, 33, baseZ - 650, 176, 3, 78, roof);
-      box("verBaseStoresWest", baseX - 650, 13, baseZ - 500, 150, 23, 72, utility, 0.04);
-      box("verBaseStoresEast", baseX + 660, 13, baseZ - 500, 150, 23, 72, utility, -0.04);
-      box("verBaseGeneratorAnnex", baseX - 360, 8, baseZ - 655, 94, 13, 45, bunker);
-      box("verBaseFuelPumpHouse", baseX + 370, 7, baseZ - 705, 82, 11, 42, bunker);
+      baseBox("verBaseVehicleWorkshop", baseX, 17, baseZ - 650, 190, 30, 90, bunker);
+      baseBox("verBaseVehicleWorkshopRoof", baseX, 33, baseZ - 650, 176, 3, 78, roof);
+      baseBox("verBaseStoresWest", baseX - 650, 13, baseZ - 500, 150, 23, 72, utility, 0.04);
+      baseBox("verBaseStoresEast", baseX + 660, 13, baseZ - 500, 150, 23, 72, utility, -0.04);
+      baseBox("verBaseGeneratorAnnex", baseX - 360, 8, baseZ - 655, 94, 13, 45, bunker);
+      baseBox("verBaseFuelPumpHouse", baseX + 370, 7, baseZ - 705, 82, 11, 42, bunker);
 
       // Two partly buried shelters imply underground command and missile
       // storage without introducing terrain deformation or colliders.
       for (const side of [-1, 1]) {
         const x = baseX + side * 1040;
         const z = baseZ + 620;
-        box(`verBasePortalApron${side < 0 ? "West" : "East"}`, x, 1.58, z - 95,
+        baseBox(`verBasePortalApron${side < 0 ? "West" : "East"}`, x, 1.58, z - 95,
           180, 0.45, 210, apron);
-        box(`verBasePortalMass${side < 0 ? "West" : "East"}`, x, 15, z,
+        baseBox(`verBasePortalMass${side < 0 ? "West" : "East"}`, x, 15, z,
           230, 27, 120, snowWear);
-        box(`verBasePortalMouth${side < 0 ? "West" : "East"}`, x, 13, z - 63,
+        baseBox(`verBasePortalMouth${side < 0 ? "West" : "East"}`, x, 13, z - 63,
           116, 22, 9, 0x20272b);
-        box(`verBasePortalDoor${side < 0 ? "West" : "East"}`, x, 12, z - 69,
+        baseBox(`verBasePortalDoor${side < 0 ? "West" : "East"}`, x, 12, z - 69,
           94, 19, 4, utility);
       }
 
@@ -378,10 +449,10 @@ export default function register(ctx) {
       supportProps.forEach(([ox, oz, heading, label], index) => {
         const long = label === "Trailer" || label === "Container";
         const bowser = label === "Bowser";
-        box(`verBaseSupport${index + 1}${label}`, baseX + ox, 4.1, baseZ + oz,
+        baseBox(`verBaseSupport${index + 1}${label}`, baseX + ox, 4.1, baseZ + oz,
           long ? 26 : 18, 5.2, long ? 10 : 9, label === "Tractor" ? 0xd1b24b : utility, heading);
         if (bowser) {
-          cylinder(`verBaseSupport${index + 1}Tank`, baseX + ox, 7.0, baseZ + oz,
+          baseCylinder(`verBaseSupport${index + 1}Tank`, baseX + ox, 7.0, baseZ + oz,
             4.0, 11.5, 0xa7afb0);
         }
       });
@@ -393,8 +464,8 @@ export default function register(ctx) {
         [5, -250, 850], [6, 250, 850]
       ];
       for (const [index, ox, oz] of mastSites) {
-        cylinder(`verWeatherMast${index}`, baseX + ox, 42, baseZ + oz, 3.5, 80, 0x6f7e83);
-        cylinder(`verWeatherLamp${index}`, baseX + ox, 84, baseZ + oz, 8, 5, 0xff7c5b,
+        baseCylinder(`verWeatherMast${index}`, baseX + ox, 42, baseZ + oz, 3.5, 80, 0x6f7e83);
+        baseCylinder(`verWeatherLamp${index}`, baseX + ox, 84, baseZ + oz, 8, 5, 0xff7c5b,
           { emissive: 0xff4f35, emissiveIntensity: 2.2 });
       }
 
@@ -403,9 +474,11 @@ export default function register(ctx) {
       for (let i = 0; i < 12; i += 1) {
         const x = baseX - 1130 + i * 205;
         const z = baseZ - 210 + ((i % 3) - 1) * 9;
-        box(`verBaseSnowWear${i + 1}`, x, 1.72, z, 105, 0.12, 4 + (i % 4) * 2,
+        baseBox(`verBaseSnowWear${i + 1}`, x, 1.72, z, 105, 0.12, 4 + (i % 4) * 2,
           snowWear, (i % 2 ? 1 : -1) * 0.035, { opacity: 0.72 });
       }
+
+      flushBaseInstances();
 
       root.traverse((node) => {
         if (!node.isMesh) return;

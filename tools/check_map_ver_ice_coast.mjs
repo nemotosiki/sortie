@@ -21,6 +21,7 @@ for (const token of [
   'variant: "polar_morning_high_altitude"',
   'root.name = "verIceCoastWorks"',
   'verIceShelfWest', 'verIceLeadOne', 'verHarbourQuay',
+  'previewFocus: [4300, -2500]', 'verFrozenEyePlateau',
   'verBaseRoadNorth', 'verBaseCentralApron', 'verBaseOpsWing',
   'verBasePortalMass', 'verBaseSupport', 'verWeatherMast'
 ]) assert(source.includes(token), `missing ${token}`);

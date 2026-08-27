@@ -35,6 +35,10 @@ for (const token of [
   "forceSeraM11ClearSecondary: () =>", "forceSeraM11Lose: (count = 1) =>",
   "forceSeraM11Timeout: () =>"
 ]) assert(host.includes(token), `host contract missing ${token}`);
+for (const token of [
+  'halo: { label: "HALO EW"', 'pax: { label: "PAX / ARCA"'
+]) assert(fs.readFileSync(path.join(root, "src", "ui", "radio.js"), "utf8").includes(token),
+  `radio speaker contract missing ${token}`);
 
 const transientWarningCss = host.match(
   /#stallWarning,\s*#lockWarning,\s*#missileWarning,\s*#battleAreaWarning\s*\{([\s\S]*?)\n\s*\}/
@@ -69,7 +73,8 @@ for (const token of [
   "safeAltitude,", "enhancedRange: 12000", "radarOnlineMissileMaxSpeed = 4000 / 3.6",
   "enhancedTurnRateDeg: 75", "enhancedNavigationRatio: 8", "enhancedMaxLateralG: 150",
   'missionRole: "fireControlRadar"', 'missionRole: "baseSam"',
-  "secondaryKillsForS: 4"
+  'mark: "m11PerimeterContact"', 'callsign: "ARCA POLAR WATCH"',
+  'ace: "granite"', "secondaryKillsForS: 4"
 ]) assert(payload.includes(token), `payload/runtime handshake missing ${token}`);
 
 console.log("check_sera_m11_runtime: PASS");

@@ -62,12 +62,16 @@ const screenshotPath = path.resolve(
 const pageErrors = [];
 const consoleErrors = [];
 
-async function newMissionPage() {
+async function newMissionPage(aircraft = "f16") {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addInitScript(() => {
     navigator.getGamepads = () => [];
     localStorage.setItem("sortieMissionRecords", JSON.stringify({
       "sera-m10": { cleared: true, rank: "A", scores: [1], times: [1] }
+    }));
+    localStorage.setItem("sortieHangarPurchases", JSON.stringify({
+      schemaVersion: 2,
+      campaigns: { usa: [], rus: [], sera: ["fa18"] }
     }));
   });
   const page = await context.newPage();
@@ -89,7 +93,9 @@ async function newMissionPage() {
     return { index, unlocked: window.__game.mission.unlocked[index] };
   });
   assert(unlock.index >= 0 && unlock.unlocked, "M10 clear does not unlock M11");
-  const started = await page.evaluate(() => window.__game.forceStartMissionByKey("sera-m11", "f16"));
+  const started = await page.evaluate((aircraftId) => (
+    window.__game.forceStartMissionByKey("sera-m11", aircraftId)
+  ), aircraft);
   assert(started, "production launcher could not start M11");
   await page.waitForFunction(() => window.__game?.seraM11Probe?.()?.missionKey === "sera-m11", null, {
     timeout: 60_000
@@ -113,13 +119,22 @@ try {
       "HALO guard did not arm cleanly", probe.guard);
     assert(probe.contacts.filter((contact) => contact.tgt && contact.mark === "m11BaseNode").length === 10,
       "ten red base nodes did not spawn", probe.contacts);
+    assert(probe.contacts.filter((contact) => (
+      !contact.tgt && contact.rankNeutral && contact.mark === "m11PerimeterContact"
+    )).length === 6, "six white perimeter defenders did not spawn", probe.contacts);
     assert(probe.contacts.filter((contact) => !contact.tgt && contact.type === "mig31").length === 2
-        && probe.pending.length === 1,
-      "opening MiG-31 pair/queue is malformed", probe);
+        && probe.pending.length === 5
+        && probe.pending.reduce((sum, wave) => sum + wave.types.length, 0) === 8,
+      "opening MiG-31 pair/reinforcement queue is malformed", probe);
     assert(probe.contacts.filter((contact) => contact.type === "mig31").every((contact) => (
       contact.hunt === "air" && contact.charge?.startsWith("HALO")
         && contact.position[1] >= 10400
     )), "MiG-31 did not remain in HALO's high-altitude band", probe.contacts);
+    assert(probe.arca.length === 2 && probe.arca.every((aircraft) => (
+      aircraft.type === "typhoon" && aircraft.alive && !aircraft.retired
+        && aircraft.vulnerable === false && aircraft.label.startsWith("ARCA POLAR WATCH")
+        && aircraft.position[1] >= 9770 && aircraft.position[1] <= 9830
+    )), "blue ARCA observer flight is malformed", probe.arca);
     assert(probe.recoveryGauge.visible && probe.recoveryGauge.label === "HALO TOTAL HP"
         && probe.recoveryGauge.value === "1176/1176"
         && probe.recoveryGauge.className.includes("formation"),
@@ -190,6 +205,9 @@ try {
         && warningVisual.banner.background === "rgba(0, 0, 0, 0)"
         && warningVisual.banner.borderTop === "0px",
       "transient mission banner retained a web-style panel", warningVisual.banner);
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    assert(probe.radioEvents.includes("m11-arca-watch"),
+      "PAX/ARCA monitoring report did not enter the fixed-radio ledger", probe.radioEvents);
     await page.screenshot({ path: screenshotPath, type: "png" });
 
     const online = await page.evaluate(() => window.__game.forceSeraM11AdvanceJamming(36));
@@ -232,6 +250,31 @@ try {
     const escaped = probe.missiles.find((missile) => missile.id === boosted.id);
     assert(!escaped || escaped.lost, "enhanced SAM kept guidance above sanctuary", escaped);
 
+    const shoradSetup = await page.evaluate(() => {
+      const shorad = window.__game.seraM11Probe().contacts.find((contact) => (
+        contact.alive && contact.type === "m11Shorad"
+      ));
+      if (!shorad) return null;
+      window.__game.debug.forceTeleport(shorad.position[0] + 700, 450, shorad.position[2]);
+      window.__game.forceSeraM11SetJammingActive(false);
+      return {
+        id: shorad.id,
+        ready: window.__game.debug.forceEnemyMissileReady(shorad.id)
+      };
+    });
+    assert(shoradSetup?.ready, "perimeter SHORAD could not be armed", shoradSetup);
+    assert(await page.evaluate((id) => (
+      window.__game.debug.forceGroundMissileLockFrames(id, 240, 1 / 60)
+    ), shoradSetup.id) === 1, "perimeter SHORAD did not complete its ordinary lock/fire sequence");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    const shoradMissile = probe.missiles.find((missile) => missile.ownerType === "m11Shorad");
+    assert(shoradMissile && !shoradMissile.radarBoosted
+        && shoradMissile.maxSpeed * 3.6 >= 1995
+        && shoradMissile.maxSpeed * 3.6 <= 2010
+        && shoradMissile.navigationRatio < 8,
+      "white perimeter SHORAD inherited the radar-online base-SAM boost", shoradMissile);
+    await page.evaluate(() => window.__game.debug.forceTeleport(-10000, 9000, -7000));
+
     assert(await page.evaluate(() => window.__game.forceSeraM11ClearRadar()) === 2,
       "fire-control radars could not be neutralised");
     probe = await page.evaluate(() => window.__game.seraM11Probe());
@@ -240,7 +283,32 @@ try {
       "radar-first permanent counterplay did not latch", probe);
 
     assert(await page.evaluate(() => window.__game.forceSeraM11DeployPending()),
-      "second MiG-31 pair did not deploy");
+      "M11 delayed air-defence waves did not deploy");
+    probe = await page.evaluate(() => window.__game.seraM11Probe());
+    const mig29s = probe.contacts.filter((contact) => contact.type === "mig29");
+    const mig31s = probe.contacts.filter((contact) => contact.type === "mig31");
+    const granite = mig31s.find((contact) => contact.name === "GRANITE");
+    assert(mig29s.length === 6 && mig29s.every((contact) => (
+      !contact.tgt && contact.rankNeutral && contact.hunt === null
+        && contact.missionTag === "m11BaseAirDefence"
+    )), "MiG-29A CAP/QRA deployment is malformed", mig29s);
+    assert(mig31s.length === 4 && granite && granite.hunt === null
+        && granite.rankNeutral && granite.missionTag === "m11HaloHunter"
+        && mig31s.filter((contact) => contact.hunt === "air").length === 3,
+      "MiG-31/GRANITE role split is malformed", mig31s);
+    const otherWhiteCleared = await page.evaluate(() => {
+      const probe = window.__game.seraM11Probe();
+      const contacts = probe.contacts.filter((contact) => (
+        contact.alive && !contact.tgt && contact.missionTag !== "m11HaloHunter"
+      ));
+      let cleared = 0;
+      for (const contact of contacts) {
+        if (window.__game.debug.forceDamageEnemy(contact.id, 9999)) cleared += 1;
+      }
+      return cleared;
+    });
+    assert(otherWhiteCleared === 12,
+      `full optional route did not clear perimeter x6 + MiG-29A x6: ${otherWhiteCleared}`);
     assert(await page.evaluate(() => window.__game.forceSeraM11ClearSecondary()) === 4,
       "four MiG-31 secondary contacts could not be cleared");
     probe = await page.evaluate(() => window.__game.seraM11Probe());
@@ -264,6 +332,33 @@ try {
         && result.record.secondaryAircraftDestroyed === 4,
       "all-safe EW strike record is wrong", result.record);
     assert(result.rank === "S", `full secondary/all-safe clear should retain S, got ${result.rank}`);
+    await context.close();
+  }
+
+  // Partial optional route with the canonical LARK airframe pairing: two of
+  // four MiG-31s destroyed, every HALO aircraft safe, base still clearable.
+  {
+    const { context, page } = await newMissionPage("fa18");
+    assert(await page.evaluate(() => window.__game.forceSeraM11DeployPending()),
+      "partial-route delayed waves did not deploy");
+    const partialKills = await page.evaluate(() => {
+      const ids = window.__game.seraM11Probe().contacts
+        .filter((contact) => contact.alive && contact.type === "mig31")
+        .slice(0, 2)
+        .map((contact) => contact.id);
+      return ids.filter((id) => window.__game.debug.forceDamageEnemy(id, 9999)).length;
+    });
+    assert(partialKills === 2, `partial route destroyed ${partialKills}/2 MiG-31s`);
+    assert(await page.evaluate(() => window.__game.forceSeraM11ClearTargets()),
+      "partial optional route could not clear the ten red base targets");
+    assert(await page.evaluate(() => window.__game.forceSeraM11ResolveOutcome()),
+      "partial optional route did not resolve");
+    const result = await page.evaluate(() => window.__game.seraM11Probe().record);
+    assert(result?.cleared && result.electronicSupportAircraftSaved === 3
+        && result.electronicSupportAircraftLost === 0
+        && result.secondaryAircraftDestroyed === 2,
+      "partial optional route record is wrong", result);
+    assert(result.rank !== "S", "partial two-of-four MiG-31 route incorrectly received S");
     await context.close();
   }
 
@@ -291,6 +386,13 @@ try {
   // Two losses fail immediately; Retry rebuilds HP/EW/base state, then timeout fails.
   {
     const { context, page } = await newMissionPage();
+    const resourcesBefore = await page.evaluate(() => {
+      const state = window.__game.debug.worldDecorators();
+      return {
+        roots: state.roots, geometries: state.geometries,
+        materials: state.materials, textures: state.textures
+      };
+    });
     assert(await page.evaluate(() => window.__game.forceSeraM11Lose(2)) === 2,
       "two-loss failure drive did not destroy two HALO aircraft");
     let probe = await page.evaluate(() => window.__game.seraM11Probe());
@@ -306,6 +408,15 @@ try {
     assert(probe.guard.lost === 0 && !probe.escort.failed && probe.escort.jammingActive
         && probe.escort.baseRemaining === 10 && probe.recoveryGauge.value === "1176/1176",
       "Retry retained stale EW/HP/base state", probe);
+    const resourcesAfter = await page.evaluate(() => {
+      const state = window.__game.debug.worldDecorators();
+      return {
+        roots: state.roots, geometries: state.geometries,
+        materials: state.materials, textures: state.textures
+      };
+    });
+    assert(JSON.stringify(resourcesAfter) === JSON.stringify(resourcesBefore),
+      "Retry duplicated Ver Ice Coast decorator resources", { resourcesBefore, resourcesAfter });
     assert(await page.evaluate(() => window.__game.forceSeraM11Timeout()),
       "operation-window timeout did not fail M11");
     await context.close();
@@ -314,7 +425,7 @@ try {
   assert(pageErrors.length === 0, "page errors", pageErrors);
   assert(consoleErrors.length === 0, "console errors", consoleErrors);
   console.log("check_sera_m11_e2e: PASS");
-  console.log("  unlock / HALO total HP / EW HUD / 35s climb / enhanced SAM / 9000m sanctuary / radar-first / MiG-31 secondary / base clear / Retry / timeout");
+  console.log("  unlock / HALO HP / EW HUD / enhanced SAM / sanctuary / red x10 / white x16 / ARCA / full-partial-zero optional routes / Retry / timeout");
   console.log(`  screenshot: ${screenshotPath}`);
 } finally {
   await browser.close();

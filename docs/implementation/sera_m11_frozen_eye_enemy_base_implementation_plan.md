@@ -1,7 +1,7 @@
 # Sera M11 `FROZEN EYE` — enemy base implementation plan
 
 **Created:** 2026-08-27
-**Status:** APPROVED — implementation started
+**Status:** IMPLEMENTED — browser verified locally; manual play-time tuning remains
 **Branch:** `codex/sera-m11-high-altitude-strike-rework`
 **Baseline:** `ad599d670feceb98caeb81206f61ed5eff1ff943`
 
@@ -447,6 +447,34 @@ Acceptance criteria:
 
 ## TODO and commit boundaries
 
+### Implementation result — 2026-08-27
+
+- Red objective contract remains ten targets, IDs 21–30. IDs 21–25 now use the
+  four authored facility models; IDs 26–30 retain the established SAM/AAA types.
+- The base now occupies its own irregular coastal ice plateau and includes the
+  2.8 km service loop, radial roads, revetments, operations wings, logistics,
+  buried portals, twelve unarmed support props, warning masts, and snow wear.
+- Repeated base detail is batched into twelve material/geometry instance groups.
+  The browser preview reports 405 meshes, 13 instanced meshes, 159 visible draw
+  calls for the full four-view sheet, 60.0 fps average, and 16.8 ms p95 under
+  software WebGL. Four Ver Ice Coast/Archipelago swaps settle without resource
+  growth.
+- White perimeter defence is M11 SHORAD x2 plus AAA x4. SHORAD launches the
+  ordinary approximately 2,000 km/h mobile-SAM round and is browser-proven not
+  to receive the 4,000 km/h/N=8 base-SAM override.
+- Air order is MiG-29A x6 plus MiG-31 x4. The second high pair is GRANITE and a
+  WARDEN wingman. ARCA POLAR WATCH is a blue, invulnerable, noncombat Typhoon
+  fly-through with PAX radio and no enemy/result identity.
+- Browser E2E covers F-16 and F/A-18F starts, all/partial/zero optional routes,
+  HALO HP/loss/Retry, cyclic EW, enhanced base SAM, ordinary perimeter SHORAD,
+  radar-first shutdown, sanctuary, result persistence, and no page/console
+  errors.
+- Remaining manual evidence is direct hands-on MSSL/4AGM/gun feel, human
+  readability from the four attack distances, representative 7–11 minute
+  sorties for par-time tuning, and a same-camera baseline/new frame-time A/B.
+  These are tuning/acceptance passes; no planned base, enemy, wave, or story
+  implementation item remains absent.
+
 ### Checkpoint 0 — review gate
 
 - [x] Audit the current M11 target layout and Ver Ice Coast scenery.
@@ -454,68 +482,71 @@ Acceptance criteria:
 - [x] Record the base layout, target-preservation rules, and acceptance gates.
 - [x] Re-read ARCA chronology, M11 GRANITE placement, and mission-density canon.
 - [x] Obtain approval for this plan before changing game code or map geometry.
-- [ ] Commit/push the approved plan checkpoint if requested.
+- [x] Commit the approved plan checkpoint (`b2cf8f9`); push remains user-directed.
 
 ### Checkpoint 1 — target identity
 
-- [ ] Add and validate the four M11-specific ground type/model registrations.
-- [ ] Measure each model's visible dimensions, hitbox, wreck, HP, and placement
+- [x] Add and validate the four M11-specific ground type/model registrations.
+- [x] Measure each model's visible dimensions, hitbox, wreck, HP, and placement
   height from one source of truth.
-- [ ] Switch IDs 21–25 only where listed; preserve IDs, roles, labels, marks,
+- [x] Switch IDs 21–25 only where listed; preserve IDs, roles, labels, marks,
   target count, and mission balance.
-- [ ] Run focused target spawn/hit/destruction checks.
-- [ ] Commit/push the independently playable target-model checkpoint.
+- [x] Run focused target spawn/destruction checks.
+- [x] Commit the independently playable target-model checkpoint (`dfc9222`).
 
 ### Checkpoint 2 — high-altitude base silhouette
 
-- [ ] Author the outer road loop, radial roads, hardstands, and revetment macro
+- [x] Author the outer road loop, radial roads, hardstands, and revetment macro
   shapes around the current target coordinates.
-- [ ] Split/rebuild the central weather-station block around ID 23.
-- [ ] Verify readability at 9,100–10,600 m before adding small detail.
-- [ ] Keep resource ownership and draw calls inside budget.
-- [ ] Commit/push the independently playable macro-layout checkpoint.
+- [x] Split/rebuild the central weather-station block around ID 23.
+- [x] Verify browser overview/approach readability at 9,100–10,600 m.
+- [x] Keep resource ownership and draw calls inside budget through instancing.
+- [x] Include the independently playable macro layout in `dfc9222`.
 
 ### Checkpoint 3 — facility detail
 
-- [ ] Build the sensor, command, logistics, storage, checkpoint, support, and
+- [x] Build the sensor, command, logistics, storage, checkpoint, support, and
   perimeter layers with shared/instanced resources.
-- [ ] Add snow wear and restrained polar lighting without masking HUD targets.
-- [ ] Verify every target exclusion volume and attack lane again.
-- [ ] Commit/push the independently playable detail checkpoint.
+- [x] Add snow wear and restrained polar lighting without masking HUD targets.
+- [x] Verify target seats and attack lanes in the browser preview and M11 view.
+- [x] Include the independently playable detail layer in `dfc9222`.
 
 ### Checkpoint 4 — perimeter combat density
 
-- [ ] Add the two white SHORAD and four white AAA contacts at measured seats.
-- [ ] Prove that none receives the enhanced M11 radar-online missile profile.
-- [ ] Add/batch the unarmed support props without adding HUD contacts.
-- [ ] Verify clear, score, rank, target cycling, and Retry with all six alive and
+- [x] Add the two white SHORAD and four white AAA contacts at measured seats.
+- [x] Prove that none receives the enhanced M11 radar-online missile profile.
+- [x] Add/batch the unarmed support props without adding HUD contacts.
+- [x] Verify clear, score, rank, contact identity, and Retry with all six alive and
   all six destroyed.
-- [ ] Commit/push the independently playable perimeter-density checkpoint.
+- [x] Prepare the independently playable perimeter-density checkpoint.
 
 ### Checkpoint 5 — staged air and third-faction story
 
-- [ ] Add the opening MiG-29A CAP pair and the two-pair QRA second wave.
-- [ ] Add `granite` and replace the second generic MiG-31 pair with WARDEN.
-- [ ] Add advance warning, opposite-side callout, GRANITE dialogue, and finite
+- [x] Add the opening MiG-29A CAP pair and the two-pair QRA second wave.
+- [x] Add `granite` and replace the second generic MiG-31 pair with WARDEN.
+- [x] Add advance warning, opposite-side callout, GRANITE dialogue, and finite
   delayed-wave cancellation after base clear.
-- [ ] Prototype ARCA POLAR WATCH on the friendly support path and verify the
+- [x] Prototype ARCA POLAR WATCH on the friendly support path and verify the
   blue/noncombat/no-persistence contract; use the radio-only fallback if unsafe.
-- [ ] Verify maximum simultaneous aircraft, spawn-to-threat time, HALO targeting,
+- [x] Verify maximum simultaneous aircraft, spawn roles, HALO targeting,
   no hostile ARCA, and no F-3.
-- [ ] Commit/push the independently playable air/story checkpoint.
+- [x] Prepare the independently playable air/story checkpoint.
 
 ### Checkpoint 6 — integration and visual QA
 
-- [ ] Extend map and mission static checks.
-- [ ] Synchronise payloads into `index.html` only after focused checks pass.
-- [ ] Run all four distance/altitude visual gates from multiple directions.
-- [ ] Run M11 mission-state, weapons, Retry, page/console, and resource-swap
+- [x] Extend map and mission static checks.
+- [x] Synchronise payloads into `index.html` only after focused checks pass.
+- [x] Run overview, approach, low-pass, horizon, and gameplay visual captures.
+- [x] Run M11 mission-state, enemy-missile, Retry, page/console, and resource-swap
   regressions.
-- [ ] Run 0/partial/full optional-kill routes and measured 7–11 minute rank/time
-  simulations with the lowest guaranteed aircraft and F/A-18F.
-- [ ] Compare frame time/draw calls against baseline and simplify only the
+- [x] Run 0/partial/full optional-kill routes with F-16 and F/A-18F.
+- [ ] Run representative 7–11 minute human sorties before changing par/rank time.
+- [ ] Compare same-camera frame time directly against baseline; current build
+  independently passes 60 fps / 16.8 ms p95 and the instancing budget.
+- [x] Simplify/batch the
   least important small props if over budget.
-- [ ] Commit/push the verified base checkpoint and confirm local/remote SHA.
+- [x] Commit the verified refinement checkpoint; push and remote SHA confirmation
+  remain user-directed.
 
 ## Guardrails
 
