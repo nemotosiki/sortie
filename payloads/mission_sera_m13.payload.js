@@ -128,9 +128,9 @@ export default function register(ctx) {
     ],
     m13EscortContract,
     fixedRadio: [
-      { id: "m13_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "LIFELINE四機、ハドール北航路へ進入。右上に編隊全体のHPを表示する。" },
-      { id: "m13_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "三機のC-17と給油機一機を一本のゲージで見る。敵を追って隊列から離れすぎるな。" },
-      { id: "m13_awacs_down", event: "m13AwacsDown", speaker: "meridian", priority: "CRITICAL", text: "敵AWACS撃墜。増援管制が混乱、未到着の迎撃隊は四十五秒遅延する。" },
+      { id: "m13_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "LIFELINE四機、ハドール北航路へ進入。編隊の損傷情報をデータリンクする。" },
+      { id: "m13_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "一番遅い輸送機から離れすぎないで。四機まとめて通すよ。" },
+      { id: "m13_awacs_down", event: "m13AwacsDown", speaker: "meridian", priority: "CRITICAL", text: "敵AWACS撃墜。増援管制に混乱を確認、後続の到着が遅れる。" },
       { id: "m13_one_lost", event: "m13OneLost", speaker: "lark", priority: "URGENT", text: "LIFELINE一機喪失……まだ積荷は残ってる。残りを絶対に通す！" }
     ],
     successRadio: { speaker: "meridian", priority: "CRITICAL", text: "敵迎撃戦力を排除。LIFELINEは南航路へ離脱、護衛成功。", id: "m13-success" },

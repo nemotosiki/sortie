@@ -115,14 +115,14 @@ export default function register(ctx) {
     ],
     m18KerenContract,
     fixedRadio: [
-      { id: "m18_intro_01", at: 2, speaker: "meridian", priority: "CRITICAL", text: "KEREN六砲身、電力塔三、冷却機二、照準レーダー二を確認。中枢は山腹内、現時点でロック不能。" },
+      { id: "m18_intro_01", at: 2, speaker: "meridian", priority: "CRITICAL", text: "KEREN六砲身、電力塔三、冷却機二、照準レーダー二を確認。中枢は山腹内、現時点で攻撃不能。" },
       { id: "m18_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "最初に壊した系統へ攻撃隊を合わせる。レーダー、電力、砲身——RAVENが進路を選んで。" },
       { id: "m18_route_radar", event: "m18RouteRadar", speaker: "meridian", priority: "URGENT", text: "照準系統を優先する。レーダー二基を破壊すれば中枢露出、KERENの命中率も低下する。" },
-      { id: "m18_route_power", event: "m18RoutePower", speaker: "lark", priority: "URGENT", text: "電力経路を選択。三塔停止で充電を遅らせる——ただしその線は山岳都市とも共用してる。" },
-      { id: "m18_route_direct", event: "m18RouteDirect", speaker: "meridian", priority: "URGENT", text: "砲身直接攻撃を採用。六門すべて破壊で民生電力を保ったまま中枢を引き出せる。" },
-      { id: "m18_first_fire", event: "m18FirstFire", speaker: "meridian", priority: "CRITICAL", text: "KEREN発射。戦略着弾を三回許せばミガル外環とHOME FLEETの防衛線が崩壊する。" },
-      { id: "m18_core_exposed", event: "m18CoreExposed", speaker: "lark", priority: "CRITICAL", text: "山腹が開いた！ KEREN COMMAND CORE、赤TGT！ ここで終わらせる！" },
-      { id: "m18_crown", event: "m18CrownQuestion", speaker: "crown", priority: "NORMAL", text: "RAVEN。任務が終わった時、お前はまだ地上へ降りられるか。" }
+      { id: "m18_route_power", event: "m18RoutePower", speaker: "lark", priority: "URGENT", text: "電力塔へ進入する。三塔を止めれば充電は遅れる——ただし山岳都市と同じ送電線だ。" },
+      { id: "m18_route_direct", event: "m18RouteDirect", speaker: "meridian", priority: "URGENT", text: "砲身へ直接進入。六門を破壊すれば、都市電力を残したまま中枢を露出できる。" },
+      { id: "m18_first_fire", event: "m18FirstFire", speaker: "meridian", priority: "CRITICAL", text: "KEREN発射。着弾地点はミガル外環。あと二射は防衛線が持たない。" },
+      { id: "m18_core_exposed", event: "m18CoreExposed", speaker: "lark", priority: "CRITICAL", text: "山腹開口、COMMAND COREを確認！ 中枢を破壊して！" },
+      { id: "m18_crown", event: "m18CrownQuestion", speaker: "crown", priority: "NORMAL", text: "RAVEN、砲台は止まった。出口は南だ。帰ってこい。" }
     ],
     successRadio: { speaker: "meridian", priority: "CRITICAL", text: "KEREN COMMAND CORE消失。戦略砲、全照準を停止。HORN OF HEAVEN完了。", id: "m18-success" },
     failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "KEREN戦略弾、第三着弾。ミガル外環と艦隊防衛線が崩壊、作戦中止。", id: "m18-failure" },

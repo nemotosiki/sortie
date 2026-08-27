@@ -98,13 +98,13 @@ export default function register(ctx) {
           {
             speaker: "meridian",
             priority: "NORMAL",
-            text: "ROOK、東南東に未確認機2。白表示は敵性だが非TGT。まず迎撃し、識別規則を確認せよ。",
+            text: "ROOK、方位068、距離11。戦闘機二、接近中。",
             id: "sera-m01-contact-meridian"
           },
           {
             speaker: "crown",
             priority: "NORMAL",
-            text: "RAVEN、白は撃っていい。赤が本命だ——今はこの2機で手を慣らそう。",
+            text: "RAVEN、機首が合ってから撃てばいい。",
             id: "sera-m01-contact-crown"
           }
         ]
@@ -144,7 +144,7 @@ export default function register(ctx) {
           {
             speaker: "crown",
             priority: "NORMAL",
-            text: "沿岸基地からMiG-21が2機。護衛に釣られるな、爆撃機が赤だ。通すな。",
+            text: "護衛はこっちで見る。RAVEN、爆撃機を頼む。",
             id: "sera-m01-wave-1-crown"
           }
         ]
@@ -213,7 +213,7 @@ export default function register(ctx) {
       hitRadio: {
         speaker: "meridian",
         priority: "URGENT",
-        text: "爆撃機1機が投弾。任務は続行するが完全防衛は失われた。残る赤TGTを撃墜せよ。",
+        text: "一機、投弾線を通過。残存する爆撃機を阻止せよ。",
         id: "sera-m01-bomber-breach-one"
       }
     },
@@ -257,13 +257,13 @@ export default function register(ctx) {
       {
         speaker: "meridian",
         priority: "NORMAL",
-        text: "ROOK、こちらMERIDIAN。レン湾へ進入、識別情報を送る。",
+        text: "ROOK、こちらMERIDIAN。レン湾南東に複数反応。",
         id: "sera-m01-intro-meridian"
       },
       {
         speaker: "crown",
         priority: "NORMAL",
-        text: "RAVEN、初日は俺たちの近くにいれば十分だ。手柄は赤い方に取っておけ。",
+        text: "RAVEN、初日は俺とLARKの間にいれば十分だ。",
         id: "sera-m01-intro-crown"
       },
       {

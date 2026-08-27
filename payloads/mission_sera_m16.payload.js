@@ -86,7 +86,7 @@ export default function register(ctx) {
         lossBanner: "HOME FLEET SHIP LOST", failBanner: "EPOCH LOST",
         lossRadio: "護衛艦喪失。残存艦をEPOCHの防空圏へ寄せる！",
         failRadio: "EPOCH沈没。HOME FLEET防衛任務を中止する。",
-        asmRadio: "対艦ミサイル接近！ HOME FLEETへ向かっている——白い小型反応を迎撃せよ！"
+        asmRadio: "対艦ミサイル接近！ HOME FLEETへ向かっている——海面上の小型反応を迎撃せよ！"
       }
     },
     sequence: [
@@ -119,14 +119,14 @@ export default function register(ctx) {
     ],
     m16FleetContract,
     fixedRadio: [
-      { id: "m16_intro_01", at: 2, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。RAVEN、よく戻った。HOME FLEET全艦を一つのHPゲージで送る。" },
+      { id: "m16_intro_01", at: 2, speaker: "epoch", priority: "NORMAL", text: "CVN EPOCH。RAVEN、よく戻った。HOME FLEET全艦の損傷情報をデータリンクへ送る。" },
       { id: "m16_intro_02", at: 6, speaker: "meridian", priority: "CRITICAL", text: "潜水艦発射警報。SSGNは発射時だけ浮上する。水上反応が出た短い間に叩け。" },
-      { id: "m16_surface", event: "m16SsgnSurface", speaker: "lark", priority: "URGENT", text: "SSGN浮上！ ハッチが開いた——今だけ赤TGTだ！" },
+      { id: "m16_surface", event: "m16SsgnSurface", speaker: "lark", priority: "URGENT", text: "SSGN浮上、発射筒開放！ 潜る前に叩いて！" },
       { id: "m16_recon_down", event: "m16ReconDown", speaker: "meridian", priority: "NORMAL", text: "敵偵察機撃墜。次の潜水艦発射解を遅らせた。" },
-      { id: "m16_weapon_launch", event: "m16WeaponLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦巡航兵器を探知。海面上の小型白反応、接触前に撃ち落とせ！" },
+      { id: "m16_weapon_launch", event: "m16WeaponLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦巡航兵器を探知。海面上の小型反応、接触前に撃ち落とせ！" },
       { id: "m16_first_intercept", event: "m16FirstIntercept", speaker: "lark", priority: "NORMAL", text: "巡航兵器一発破壊！ 同じ高度に残りが来る！" },
-      { id: "m16_gibor", event: "m16GiborPraise", speaker: "epoch", priority: "NORMAL", text: "甲板員が君をGIBORと呼んでいる。王でも権限でもない——帰る場所を守ったエースへの呼び名だ。" },
-      { id: "m16_ssgn_clear", event: "m16SsgnClear", speaker: "meridian", priority: "CRITICAL", text: "SSGN二隻撃沈。残る赤TGTは低空対艦打撃隊。" }
+      { id: "m16_gibor", event: "m16GiborPraise", speaker: "epoch", priority: "NORMAL", text: "甲板からRAVENへ。こちらでは今、君を“GIBOR”と呼び始めた。聞こえるか、この歓声が。" },
+      { id: "m16_ssgn_clear", event: "m16SsgnClear", speaker: "meridian", priority: "CRITICAL", text: "SSGN二隻撃沈。残る脅威は低空対艦打撃隊。" }
     ],
     successRadio: { speaker: "meridian", priority: "CRITICAL", text: "SSGNと対艦打撃隊を排除。EPOCH生存、HOME FLEET防衛成功。", id: "m16-success" },
     failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "CVN EPOCH喪失。HOME FLEET防衛任務失敗。", id: "m16-failure" },

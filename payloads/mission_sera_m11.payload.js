@@ -414,7 +414,7 @@ export default function register(ctx) {
         huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.northIntercept], altitude: interceptorAltitude,
         facing: [...anchors.strikeStart],
-        radio: [{ speaker: "meridian", priority: "URGENT", text: "高高度にMiG-31二機。HALOを狙う残存迎撃戦力、白表示だ。基地設備を優先せよ。", id: "m11-foxhound-one" }]
+        radio: [{ speaker: "meridian", priority: "URGENT", text: "高高度にMiG-31二機。HALOを狙う残存迎撃戦力だ。基地攻撃を継続しつつ接近を阻止せよ。", id: "m11-foxhound-one" }]
       },
       {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
@@ -459,16 +459,16 @@ export default function register(ctx) {
         huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.southIntercept], altitude: interceptorAltitude,
         facing: [...anchors.battleCenter],
-        radio: [{ speaker: "lark", priority: "URGENT", text: "GRANITEの僚機はHALOへ向かった。4AAMなら届く、でも赤TGTを残すな！", id: "m11-warden-wing" }]
+        radio: [{ speaker: "lark", priority: "URGENT", text: "GRANITEの僚機もHALOへ向かった。4AAMなら射程へ入る、でも基地攻撃を止めないで！", id: "m11-warden-wing" }]
       }
     ],
     m11EscortContract,
     fixedRadio: [
-      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、成層圏下端、一万二千五百の最新鋭HALO電子支援隊と合流。敵射撃管制を周期妨害中。" },
-      { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
-      { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
+      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、HALO電子支援隊と合流。高度一万二千五百。敵基地の射撃管制を周期妨害中。" },
+      { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "妨害中に降下して基地を叩く。停止警告が出たら高度九千へ退避しよう。" },
+      { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "優先目標は射撃管制レーダー、通信中枢、SAM。MiG-31はHALOへ向かう。" },
       { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間周波数の監視を継続。接近するMiG-29Aにはこちらで対処する。" },
-      { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、基地CAPと交戦。MiG-31はHALOへ直進中——高高度迎撃はROOKが止めろ。" },
+      { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、基地CAPと交戦。MiG-31はHALOへ直進中——高高度は我々の射程外だ。" },
       { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
       { id: "m11-jam-pause", event: "haloJammingPause", speaker: "halo", priority: "CRITICAL", text: "HALO、再同期開始。敵射撃管制レーダー復活——低高度機は直ちに退避。" },
       { id: "m11-jam-resume", event: "haloJammingResume", speaker: "halo", priority: "CRITICAL", text: "妨害を再開。敵ミサイル誘導性能低下、攻撃窓を再設定する。" },

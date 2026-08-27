@@ -243,10 +243,10 @@ export default function register(ctx) {
     m08ChoiceContract,
     fixedRadio: [
       { id: "m08_intro_01", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、オルム盆地西端。SABERの低空侵入を追え。" },
-      { id: "m08_intro_02", at: 10, speaker: "lark", priority: "NORMAL", text: "CROWNは後方。今夜のROOK 2は私。山の影から出ないで。" },
+      { id: "m08_intro_02", at: 10, speaker: "lark", priority: "NORMAL", text: "ROOK 2、LARK。CROWNは後方にいる。山の影から出ないで。" },
       { id: "m08_intro_03", at: 18, speaker: "strike", priority: "NORMAL", text: "SABER 1。飛行場灯を視認。燃料区へ進む。" },
       { id: "m08_intro_04", at: 23, speaker: "meridian", priority: "NORMAL", text: "SHROUD電子戦機は盆地外で待機。妨害窓は二十分、それを過ぎれば防空網が戻る。" },
-      { id: "m08_choice_01", at: 28, speaker: "meridian", priority: "URGENT", text: "白表示はシェム決済中継所。破壊すれば敵の給与・IFF認証は停止する。民間決済も同じ回線だ。" },
+      { id: "m08_choice_01", at: 28, speaker: "meridian", priority: "URGENT", text: "シェム決済中継所は攻撃任意。破壊すれば敵の給与・IFF認証は停止する。民間決済も同じ回線だ。" },
       { id: "m08_choice_02", at: 38, speaker: "lark", priority: "NORMAL", text: "燃料だけなら街の灯りは残る。敵機も残る。どっちへ行く？" }
     ],
     successRadio: {

@@ -31,8 +31,8 @@ export default function register(ctx) {
     radarColor: "#f4f7fa",
     tracerColor: 0xcfe8f4,
     radio: {
-      inbound: "白いF-3反応、HELIX 1 FORGE。ARCAはNON-TGT、赤主力を優先せよ。",
-      wingman: "HELIXは赤じゃない。撃ってくるけど、爆撃機を止めれば任務は終わる。",
+      inbound: "ARCA F-3二機、HELIX 1 FORGEを確認。交戦は任意、爆撃隊を優先せよ。",
+      wingman: "HELIXがこっちを向いた。でも任務は爆撃機を止めることだよ。",
       engage: "HELIX 1 FORGE。RAVEN、強い者ほど自分を止める理由を持つべきだ。",
       down: "FORGE被弾。SWIFT、追うな。赤主力の戦争に我々まで呑まれる。"
     }
@@ -48,7 +48,7 @@ export default function register(ctx) {
     radarColor: "#f4f7fa",
     tracerColor: 0xe6f5ff,
     radio: {
-      inbound: "HELIX 2 SWIFT、白。F-3二番機はRAVENへ進路を向けた。",
+      inbound: "HELIX 2 SWIFT。F-3二番機はRAVENへ進路を向けた。",
       wingman: "挑発に乗るな、RAVEN。ミガルへ向かってる白い航跡は八本ある。",
       engage: "エース狩りなんだろ、RAVEN？ 追いつけるなら来て。",
       down: "SWIFT、機体を捨てる。……速さだけなら、まだ負けてない。"
@@ -152,12 +152,12 @@ export default function register(ctx) {
     ],
     m17ApproachContract,
     fixedRadio: [
-      { id: "m17_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ミガル北東進入路。高高度の航跡を赤TGTへ照合する。" },
+      { id: "m17_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ミガル北東進入路。高高度の航跡を敵爆撃隊と照合中。" },
       { id: "m17_intro_02", at: 7, speaker: "lark", priority: "NORMAL", text: "Ophan防衛ノードとRaptor隊が来てる。それでも爆撃機八機は私たちが止める。" },
-      { id: "m17_jamming", at: 11, speaker: "meridian", priority: "URGENT", text: "敵AWACSとジャマーが爆撃隊の照合を妨害。両機生存中はロック時間が2.1倍になる。" },
-      { id: "m17_support_one", event: "m17SupportOneDown", speaker: "meridian", priority: "NORMAL", text: "敵電子支援一機停止。爆撃機へのロック遅延が低下した。" },
-      { id: "m17_support_clear", event: "m17SupportClear", speaker: "lark", priority: "NORMAL", text: "AWACSもジャマーも消えた！ 赤い大型機を通常ロックできる！" },
-      { id: "m17_helix_warning", event: "m17HelixSpawn", speaker: "meridian", priority: "CRITICAL", text: "HELIXは白いNON-TGT。自衛は許可するが、撃墜は任務達成条件にも評価母数にも含まれない。" }
+      { id: "m17_jamming", at: 11, speaker: "meridian", priority: "URGENT", text: "敵AWACSとジャマーが照合を妨害。支援機が生きている間、ロック確定が遅れる。" },
+      { id: "m17_support_one", event: "m17SupportOneDown", speaker: "meridian", priority: "NORMAL", text: "敵電子支援一機停止。爆撃隊の識別が安定し始めた。" },
+      { id: "m17_support_clear", event: "m17SupportClear", speaker: "lark", priority: "NORMAL", text: "AWACSもジャマーも消えた！ 爆撃隊へのロックが戻った！" },
+      { id: "m17_helix_warning", event: "m17HelixSpawn", speaker: "meridian", priority: "CRITICAL", text: "HELIXは任務目標ではない。自衛に限定し、爆撃隊を優先せよ。" }
     ],
     successRadio: { speaker: "meridian", priority: "CRITICAL", text: "赤爆撃隊と電子支援機、全機排除。ミガル北東進入路を確保した。", id: "m17-success" },
     failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "爆撃隊がミガル外環へ侵入。北東防衛線崩壊、作戦中止。", id: "m17-failure" },

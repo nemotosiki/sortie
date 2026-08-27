@@ -107,13 +107,13 @@ ROOKはRAVEN、CROWN、LARKの三機で最後の防空線へ上がる。ここ�
     ],
     m20FinalContract,
     fixedRadio: [
-      { id: "m20_intro", at: 2, speaker: "meridian", priority: "URGENT", text: "停戦発効まで、この一波を通すな。ミガル中枢防空、全赤TGTを排除せよ。" },
-      { id: "m20_crown", at: 6, speaker: "crown", priority: "NORMAL", text: "CROWN、左を取る。最後まで古いEAGLEで十分だ——RAVEN、中央を頼む。" },
-      { id: "m20_lark", at: 10, speaker: "lark", priority: "NORMAL", text: "LARK、右。爆撃機を先に切る。三機で朝まで空を残そう。" },
+      { id: "m20_intro", at: 2, speaker: "meridian", priority: "URGENT", text: "停戦発効まで、この一波を通すな。ミガル中枢へ向かう侵入機をすべて阻止せよ。" },
+      { id: "m20_crown", at: 6, speaker: "crown", priority: "NORMAL", text: "CROWN、左を取る。RAVENは中央、LARKは右を頼む。" },
+      { id: "m20_lark", at: 10, speaker: "lark", priority: "NORMAL", text: "了解。爆撃機から切る。後方は見るよ。" },
       { id: "m20_bombers", at: 20, speaker: "meridian", priority: "CRITICAL", text: "Tu-22M3四、OPHAN中枢へ進入。ジャマーを落とし、爆撃線を崩せ。" },
-      { id: "m20_felon", at: 106, speaker: "crown", priority: "URGENT", text: "高空に二機、Su-57。数で押す増援じゃない——これが最後の盾だ。" }
+      { id: "m20_felon", at: 106, speaker: "crown", priority: "URGENT", text: "高空にSu-57二機。散開する、RAVENは先頭を。" }
     ],
-    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "ミガル中枢空域クリア。停戦発効を確認——THE GUARANTOR完了、ROOK帰投せよ。", id: "m20-success" },
+    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "ミガル中枢空域クリア。停戦発効を確認。ROOK、帰投せよ。", id: "m20-success" },
     failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "ミガル中枢防空線が崩壊。停戦保証不能、残存機は離脱せよ。", id: "m20-failure" },
     parTime: 690,
     hasOutro: false,

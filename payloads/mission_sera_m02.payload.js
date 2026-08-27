@@ -167,7 +167,7 @@ export default function register(ctx) {
           {
             speaker: "crown",
             priority: "NORMAL",
-            text: "ここから先はお前が決めろ、RAVEN。攻撃機、護衛、対空網――先に危険だと思うものを落とせ。",
+            text: "攻撃機を先に切れ、RAVEN。護衛と対空網は俺たちが引き受ける。",
             id: "sera-m02-command-transfer-crown"
           }
         ]
@@ -312,7 +312,7 @@ export default function register(ctx) {
       {
         speaker: "crown",
         priority: "NORMAL",
-        text: "昨日の続きだが、同じ戦い方はするな。平原全体を見ておけ、RAVEN。",
+        text: "レン湾とは地形が違う。平原全体を見ておけ、RAVEN。",
         id: "sera-m02-intro-crown"
       },
       {

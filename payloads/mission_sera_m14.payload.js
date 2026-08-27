@@ -111,11 +111,11 @@ export default function register(ctx) {
     m14LandingContract,
     fixedRadio: [
       { id: "m14_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル西岸へ到着。上陸群は干潟水路を西進中。" },
-      { id: "m14_intro_02", at: 8, speaker: "lark", priority: "CRITICAL", text: "青表示の病院船MERCYが航路を横断する。選択もロックもできない、赤TGTだけ撃て。" },
+      { id: "m14_intro_02", at: 8, speaker: "lark", priority: "CRITICAL", text: "病院船MERCYが航路を横断中。青い船体を射線に入れないで。" },
       { id: "m14_first_beach", event: "m14FirstBeach", speaker: "meridian", priority: "URGENT", text: "LST接岸、ランプ開放。戦車とSPAAGを赤TGTへ追加、海上群への攻撃も継続せよ。" },
       { id: "m14_all_afloat_stopped", event: "m14AfloatStopped", speaker: "lark", priority: "CRITICAL", text: "海上の上陸艦は止めた！ 残る赤TGTは砂浜と艦載機だけだ。" }
     ],
-    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸群、艦載隊、接岸装甲の全赤TGT消失。BREAKWATER成功。", id: "m14-success" },
+    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸群、艦載隊、接岸装甲を排除。ナハル西岸を確保した。ROOK、帰投せよ。", id: "m14-success" },
     parTime: 480,
     hasOutro: false,
     map: { x: 0.73, y: 0.28 },

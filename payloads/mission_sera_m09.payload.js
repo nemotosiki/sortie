@@ -285,13 +285,13 @@ export default function register(ctx) {
     fixedRadio: [
       { id: "m09_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、カラン南部へ進入。ケデム戦車四、南から前進中。" },
       { id: "m09_intro_02", at: 7, speaker: "lark", priority: "NORMAL", text: "道路が二本。左が装甲、右は避難車列。上からだと速度まで同じに見える。" },
-      { id: "m09_intro_03", at: 13, speaker: "meridian", priority: "CRITICAL", text: "赤TGT、戦車八、SPAAG四、MLRS三、移動指揮車一。青車両への射撃を禁ずる。" },
+      { id: "m09_intro_03", at: 13, speaker: "meridian", priority: "CRITICAL", text: "敵戦車八、SPAAG四、MLRS三、移動指揮車一。友軍と避難車列への射撃を禁ずる。" },
       { id: "m09_mlrs_warning", event: "mlrsWarning", speaker: "lark", priority: "URGENT", text: "MLRSが味方座標を取ってる。次の斉射まで時間がない！" },
       { id: "m09_mlrs_hit", event: "mlrsVolley", speaker: "lark", priority: "URGENT", text: "ケデム戦車が一両やられた。MLRSを止めないと前線が消える！" },
       { id: "m09_command_down", event: "commandDestroyed", speaker: "meridian", priority: "CRITICAL", text: "敵指揮車沈黙。火力統制は低下——残存戦車が避難道路へ散開している。" },
-      { id: "m09_civilian_loss", event: "civilianLoss", speaker: "lark", priority: "CRITICAL", text: "青車両だ！ 窓が見えただろ、撃つな！" },
+      { id: "m09_civilian_loss", event: "civilianLoss", speaker: "lark", priority: "CRITICAL", text: "避難車両だ！ 射撃を止めて！" },
       { id: "m09_mlrs_clear", event: "mlrsClear", speaker: "meridian", priority: "NORMAL", text: "敵MLRS全滅。ケデム地上軍への長距離砲撃、停止。" },
-      { id: "m09_end_01", event: "allRedDestroyed", speaker: "lark", priority: "NORMAL", text: "味方の残存数を確認する。撃破数の報告は、そのあとでいい。" }
+      { id: "m09_end_01", event: "allRedDestroyed", speaker: "lark", priority: "NORMAL", text: "ケデム戦車隊の残存を確認。避難車列も北へ抜けてる。" }
     ],
     successRadio: {
       speaker: "meridian",

@@ -250,17 +250,17 @@ export default function register(ctx) {
     fixedRadio: [
       { id: "m07_intro_meridian", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ダマル西救難航路へ進入。視程二千九百、雲底六百。" },
       { id: "m07_intro_lark", at: 8, speaker: "lark", priority: "NORMAL", text: "SEALIGHTが第1救難地点へ向かってる。こっちは上を守ればいい。" },
-      { id: "m07_escort_meridian", at: 14, speaker: "meridian", priority: "URGENT", text: "救助と航法はSEALIGHTが行う。ROOKは機体HPを監視し、接近する敵を排除せよ。" },
+      { id: "m07_escort_meridian", at: 14, speaker: "meridian", priority: "URGENT", text: "救助と航法はSEALIGHTが行う。ROOKは損傷状況を監視し、接近する敵を排除せよ。" },
       { id: "m07_rescue_start_1", event: "rescueSite1Start", speaker: "meridian", priority: "URGENT", text: "SEALIGHT、第1救難地点へ進入。救助開始。ROOKは上空警戒を続けろ。" },
-      { id: "m07_rescue_progress_1", event: "rescueProgress1", speaker: "meridian", priority: "NORMAL", text: "第1地点の救助完了。進捗1/3。SEALIGHTは第2地点へ移動する。" },
-      { id: "m07_rescue_start_2", event: "rescueSite2Start", speaker: "meridian", priority: "URGENT", text: "SEALIGHT、第2救難地点で救助開始。進捗は1/3。" },
-      { id: "m07_rescue_progress_2", event: "rescueProgress2", speaker: "meridian", priority: "NORMAL", text: "第2地点の救助完了。進捗2/3。残る救難信号は一つ。" },
+      { id: "m07_rescue_progress_1", event: "rescueProgress1", speaker: "meridian", priority: "NORMAL", text: "第1地点の生存者を収容。SEALIGHTは次のビーコンへ移動する。" },
+      { id: "m07_rescue_start_2", event: "rescueSite2Start", speaker: "meridian", priority: "URGENT", text: "SEALIGHT、第2救難地点で救助開始。ROOKは上空警戒を維持。" },
+      { id: "m07_rescue_progress_2", event: "rescueProgress2", speaker: "meridian", priority: "NORMAL", text: "第2地点の生存者を収容。残る救難信号は一つ。" },
       { id: "m07_rescue_start_3", event: "rescueSite3Start", speaker: "meridian", priority: "URGENT", text: "SEALIGHT、最終救難地点へ進入。救助完了まで護衛を維持せよ。" },
-      { id: "m07_crown", event: "crownRecovered", speaker: "crown", priority: "URGENT", text: "……CROWN。聞こえる。RAVEN、今度はお前が先に帰れ。" },
+      { id: "m07_crown", event: "crownRecovered", speaker: "crown", priority: "URGENT", text: "……CROWNだ。聞こえる。RAVEN、SEALIGHTを守れ。" },
       { id: "m07_interference", event: "interferenceInbound", speaker: "meridian", priority: "URGENT", text: "ダマル沿岸からMiG-29A二機。RAVENを狙っている。救助完了まで増援が続く。" },
-      { id: "m07_mid_interference", event: "midInterferenceInbound", speaker: "meridian", priority: "CRITICAL", text: "第1救助完了を確認。北東からMiG-29A二機、追加接近。白表示だが練度が高い、RAVENを狙っている。" },
-      { id: "m07_red_board_clear", event: "redBoardClear", speaker: "meridian", priority: "URGENT", text: "赤TGT全機撃破。SEALIGHTの救助完了まで上空援護を継続せよ。" },
-      { id: "m07_recovery_complete", event: "recoveryComplete", speaker: "meridian", priority: "CRITICAL", text: "全三地点の救助完了。進捗3/3。残存する赤TGTを排除し、SEALIGHTと離脱せよ。" }
+      { id: "m07_mid_interference", event: "midInterferenceInbound", speaker: "meridian", priority: "CRITICAL", text: "第1救助完了を確認。北東からMiG-29A二機、追加接近。RAVENを狙っている。" },
+      { id: "m07_red_board_clear", event: "redBoardClear", speaker: "meridian", priority: "URGENT", text: "救難航路上の敵機を排除。SEALIGHTの救助完了まで上空援護を継続せよ。" },
+      { id: "m07_recovery_complete", event: "recoveryComplete", speaker: "meridian", priority: "CRITICAL", text: "全三地点の救助完了。残存する攻撃隊を排除し、SEALIGHTと離脱せよ。" }
     ],
     successRadio: {
       speaker: "meridian",

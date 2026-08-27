@@ -278,7 +278,7 @@ export default function register(ctx) {
           {
             speaker: "lark",
             priority: "NORMAL",
-            text: "海峡で艦隊を守ってた連中だ。今度はこっちを止めに来た。",
+            text: "敵の前線航空隊だ。地上軍へ近づけないで。",
             id: "m05-mig29-qra-lark"
           }
         ]

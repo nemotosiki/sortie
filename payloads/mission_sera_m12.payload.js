@@ -142,7 +142,7 @@ export default function register(ctx) {
         idBase: 1240, label: "NOR CAP 1", band: 2, skill: "regular",
         at: [8400, 6800], altitude: 2800, facing: [800, 600],
         radio: [
-          { speaker: "lark", priority: "URGENT", text: "有人機も来る、MiG-29A二！ 白表示だ、無人機の赤TGTを優先して！", id: "m12-mig29-first" }
+          { speaker: "lark", priority: "URGENT", text: "有人機も来る、MiG-29A二！ 相手をしても補充は止まらない、無人機を優先して！", id: "m12-mig29-first" }
         ]
       }),
       wave(["s70", "s70"], {
@@ -181,23 +181,23 @@ export default function register(ctx) {
         idBase: 1310, label: "FLANKER E", band: 3, skill: "ace",
         at: [-9000, -1200], altitude: 3500, facing: [-800, -200],
         radio: [
-          { speaker: "meridian", priority: "URGENT", text: "北西からSu-35二。白表示の有人援護だ。交戦は任意、赤TGT掃討を継続せよ。", id: "m12-su35-optional" }
+          { speaker: "meridian", priority: "URGENT", text: "北西からSu-35二。有人援護だ。交戦は任意、無人戦闘群の掃討を継続せよ。", id: "m12-su35-optional" }
         ]
       })
     ],
     m12SwarmContract,
     fixedRadio: [
-      { id: "m12_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ノル無人工業区へ進入。HUDは妨害を受けている。" },
+      { id: "m12_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ノル無人工業区へ進入。レーダー像に妨害を確認。" },
       { id: "m12_intro_02", at: 7, speaker: "lark", priority: "URGENT", text: "同じ動きの反応が増えてる……偽物だ。まず中継機を落とそう。" },
-      { id: "m12_power_choice", at: 24, speaker: "meridian", priority: "CRITICAL", text: "白表示の送電所二基は無人機工場と住宅暖房の共有網だ。破壊すれば未発進の補充を停止できる。" },
-      { id: "m12_jammer_down", event: "m12JammerDown", speaker: "lark", priority: "CRITICAL", text: "中継機撃墜、偽反応が消えた！ 本物の赤TGTだけを追う！" },
+      { id: "m12_power_choice", at: 24, speaker: "meridian", priority: "CRITICAL", text: "送電所二基は無人機工場と住宅暖房の共有網だ。破壊すれば未発進の補充を停止できる。" },
+      { id: "m12_jammer_down", event: "m12JammerDown", speaker: "lark", priority: "CRITICAL", text: "中継機撃墜、偽反応が消えた！ 無人戦闘群を続けて！" },
       { id: "m12_one_power", event: "m12OnePowerDown", speaker: "meridian", priority: "NORMAL", text: "送電所一基停止。補充線は冗長化されている、もう一基が生きている。" },
-      { id: "m12_grid_cut", event: "m12GridCut", speaker: "meridian", priority: "CRITICAL", text: "共有送電網停止。未発進の無人機補充をキャンセル。住宅暖房の停止も作戦記録へ残す。" }
+      { id: "m12_grid_cut", event: "m12GridCut", speaker: "meridian", priority: "CRITICAL", text: "共有送電網停止。未発進機の起動反応も消失……住宅区も停電した。" }
     ],
     successRadio: {
       speaker: "meridian",
       priority: "CRITICAL",
-      text: "無人戦闘群の反応消失。ノル南部上空を確保。送電網の結果を記録し、帰投せよ。",
+      text: "無人戦闘群の反応消失。ノル南部上空を確保。ROOK、帰投せよ。",
       id: "m12-success"
     },
     parTime: 440,

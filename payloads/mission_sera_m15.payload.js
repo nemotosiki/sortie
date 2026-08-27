@@ -149,7 +149,7 @@ export default function register(ctx) {
         at: [-7200, -11100], altitude: 3600, facing: [0, -9000], skill: "expert",
         radio: [
           { speaker: "pax", priority: "URGENT", text: "ARCA執行機よりROOK。国際管理空域への武装進入を警告する。離脱しない場合は交戦する。", id: "m15-arca-white" },
-          { speaker: "meridian", priority: "CRITICAL", text: "ROOK 1、ARCAは白NON-TGT。赤い爆撃主力を優先、追撃は任務外だ。", id: "m15-arca-priority" }
+          { speaker: "meridian", priority: "CRITICAL", text: "ROOK 1、ARCAとの交戦は任務外だ。爆撃主力を優先、追撃するな。", id: "m15-arca-priority" }
         ]
       })
     ],
@@ -157,11 +157,11 @@ export default function register(ctx) {
     fixedRadio: [
       { id: "m15-intro", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ミガル市街防空へ移行。軍事ROOT、発電区、中央医療区を同時防衛する。" },
       { id: "m15-arca-blue", at: 8, speaker: "pax", priority: "NORMAL", text: "ARCA CIVIC WATCH、避難航空路の監視を終了する。国際協定に従い作戦空域を離脱する。" },
-      { id: "m15-jammer-down", event: "m15JammerDown", speaker: "lark", priority: "CRITICAL", text: "妨害が消えた！ 三本の本物の航路が見える、数じゃなく行き先を見ろ！" },
-      { id: "m15-cruise-launch", event: "m15CruiseLaunch", speaker: "meridian", priority: "URGENT", text: "巡航弾分離！ 母機撃墜後も飛翔を継続する。小型の白い四角を迎撃せよ！" },
+      { id: "m15-jammer-down", event: "m15JammerDown", speaker: "lark", priority: "CRITICAL", text: "妨害が消えた！ 三本の進路を確認、病院へ向かう編隊がいる！" },
+      { id: "m15-cruise-launch", event: "m15CruiseLaunch", speaker: "meridian", priority: "URGENT", text: "巡航弾分離！ 低空の小型反応を迎撃せよ。母機撃墜だけでは止まらない。" },
       { id: "m15-first-intercept", event: "m15FirstCruiseIntercept", speaker: "lark", priority: "NORMAL", text: "巡航弾を一発落とした！ 爆撃機だけ見てたら街へ抜けるぞ！" }
     ],
-    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "全赤TGT消失。ミガル市街防空を達成、生存区画を集計して帰投せよ。", id: "m15-success" },
+    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "敵打撃隊の反応消失。ミガル市街防空を達成、生存区画を確認して帰投せよ。", id: "m15-success" },
     failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "三防衛区画すべて喪失。ミガル市街防空を中止する。", id: "m15-failure" },
     parTime: 520,
     hasOutro: false,

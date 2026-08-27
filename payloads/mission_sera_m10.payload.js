@@ -299,20 +299,20 @@ export default function register(ctx) {
     m10Contract,
     fixedRadio: [
       { id: "m10_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ノル工業地帯へ進入。装甲列車は北東のアラド連絡線へ移動中。" },
-      { id: "m10_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "赤は機関車と高射車二。白い貨車はKERENの電力設備と軍需資材だ。" },
-      { id: "m10_intro_03", at: 14, speaker: "meridian", priority: "CRITICAL", text: "停止方法は二つ。赤TGT三両を精密破壊、または白表示の鉄道橋を破壊せよ。" },
-      { id: "m10_bridge_warning", at: 21, speaker: "lark", priority: "NORMAL", text: "橋を落とせば早い。でもノルの輸送路も、戦後の復旧も一緒に失う。" },
-      { id: "m10_bridge_down", event: "bridgeDestroyed", speaker: "meridian", priority: "CRITICAL", text: "鉄道橋崩落。列車停止を確認。周辺の民間鉄道は長期運休となる。" },
+      { id: "m10_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "機関車と高射車二が先頭。後方はKEREN向けの電力設備と軍需資材だ。" },
+      { id: "m10_intro_03", at: 14, speaker: "meridian", priority: "CRITICAL", text: "停止方法は二つ。先頭三両を精密破壊、または前方の鉄道橋を破壊せよ。" },
+      { id: "m10_bridge_warning", at: 21, speaker: "lark", priority: "NORMAL", text: "橋はノルの民間列車も使ってる。落とせば、この路線は全部止まる。" },
+      { id: "m10_bridge_down", event: "bridgeDestroyed", speaker: "meridian", priority: "CRITICAL", text: "鉄道橋崩落。装甲列車停止。民間線も同時に寸断された。" },
       { id: "m10_precision_clear", event: "precisionRoute", speaker: "lark", priority: "CRITICAL", text: "機関車と高射車、全て停止！ 橋は残った。白い貨車は追わなくていい。" },
       { id: "m10_air_cover_remains", event: "trainStopped", speaker: "meridian", priority: "URGENT", text: "列車防空隊はなお交戦中。Su-34四、MiG-29A二を排除し、離脱路を確保せよ。" },
-      { id: "m10_power_escape", event: "trainPowerEscaped", speaker: "meridian", priority: "NORMAL", text: "KEREN電力車がアラド連絡線へ通過。後方電力への影響を記録する。" },
-      { id: "m10_material_escape", event: "trainMaterialEscaped", speaker: "meridian", priority: "NORMAL", text: "軍需資材車が連絡線へ通過。残存物資として記録。" },
+      { id: "m10_power_escape", event: "trainPowerEscaped", speaker: "meridian", priority: "NORMAL", text: "KEREN電力車、アラド連絡線へ抜けた。追跡を後方部隊へ引き継ぐ。" },
+      { id: "m10_material_escape", event: "trainMaterialEscaped", speaker: "meridian", priority: "NORMAL", text: "軍需資材車、連絡線を通過。後方部隊へ警戒情報を送る。" },
       { id: "m10_critical_escape", event: "trainCriticalEscaped", speaker: "meridian", priority: "CRITICAL", text: "装甲列車の中核車両がアラド連絡線を突破。阻止任務失敗。" }
     ],
     successRadio: {
       speaker: "meridian",
       priority: "CRITICAL",
-      text: "装甲列車停止、防空隊の排除を確認。ROOK、ノル工業地帯から離脱せよ。選択結果を作戦記録へ送る。",
+      text: "装甲列車停止、防空隊の排除を確認。ROOK、ノル工業地帯から離脱せよ。",
       id: "m10-success"
     },
     failureRadio: {

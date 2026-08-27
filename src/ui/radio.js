@@ -15,6 +15,9 @@ const RADIO_SPEAKERS = {
   crown: { label: "CROWN", toneFreq: 460, toneType: "sine" },
   lark: { label: "LARK", toneFreq: 520, toneType: "triangle" },
   halo: { label: "HALO EW", toneFreq: 540, toneType: "triangle" },
+  epoch: { label: "CVN EPOCH", toneFreq: 430, toneType: "square" },
+  hearth: { label: "HEARTH", toneFreq: 490, toneType: "triangle" },
+  strike: { label: "SABER 1", toneFreq: 505, toneType: "sine" },
   // ARCA civil-monitoring liaison heard during Sera M11. A distinct channel
   // keeps the blue observer's report from sounding like MERIDIAN issuing an
   // allied combat order, which would foreshadow the M15 split too early.
@@ -111,6 +114,76 @@ export const RADIO_FEAR_STAGES = [
   }
 ];
 
+// The stock campaigns build a performance nickname during a sortie. RAVEN
+// already has a canonical TAC name, so Sera enemy chatter reacts to that name
+// instead of inventing GHOST/DEMON/REAPER in the middle of the campaign. The
+// lines also remain operational: nobody explains the route, rank or GIBOR
+// design through combat radio.
+export const SERA_RADIO_FEAR_STAGES = [
+  {
+    minKills: 1,
+    entry: {
+      speaker: "enemy",
+      priority: RADIO_PRIORITY.NORMAL,
+      text: "一機損失。隊形を維持、作戦目標への進入を続けろ。"
+    },
+    support: null,
+    pool: [
+      "単機で追うな。二機一組を崩すな。",
+      "ROOK隊が来ている。後方警戒を続けろ。",
+      "一機やられただけだ。進路を維持しろ。"
+    ]
+  },
+  {
+    minKills: 2,
+    entry: {
+      speaker: "enemy",
+      priority: RADIO_PRIORITY.NORMAL,
+      text: "ROOK 1だ。単独で当たるな、相互援護を維持しろ。"
+    },
+    support: null,
+    pool: [
+      "RAVENを正面に置くな。側面から挟め。",
+      "隊形を戻せ。追う機体を一機に絞るな。",
+      "後衛が切られた。先頭は速度を落とすな。"
+    ]
+  },
+  {
+    minKills: 4,
+    entry: {
+      speaker: "enemy",
+      priority: RADIO_PRIORITY.URGENT,
+      text: "RAVENが編隊内へ入った！ ブレイク、相互援護へ戻れ！"
+    },
+    support: {
+      speaker: "wingman",
+      priority: RADIO_PRIORITY.NORMAL,
+      text: "敵編隊が散ってる。RAVEN、主目標への道が開いた。"
+    },
+    pool: [
+      "後ろを取られた、援護を寄越せ！",
+      "隊長機から離れるな、各個撃破されるぞ！",
+      "RAVENを追うな。進路を守れ！"
+    ]
+  },
+  {
+    minKills: 6,
+    entry: {
+      speaker: "enemy",
+      priority: RADIO_PRIORITY.URGENT,
+      text: "全機、RAVENとの空戦を避けろ。作戦目標へ進め！"
+    },
+    support: null,
+    pool: [
+      "編隊を維持できない。高度を分けて離脱する！",
+      "RAVENを引き離せ。本隊を先へ通せ！",
+      "残存機、作戦線へ急げ。ここで旋回するな！"
+    ]
+  }
+];
+
+export const RADIO_SPEAKER_IDS = Object.freeze(Object.keys(RADIO_SPEAKERS));
+
 const RADIO_QUEUE_MAX = 4;
 const RADIO_CHAR_INTERVAL = 0.03;
 const RADIO_HOLD_BASE = 1.8;
@@ -130,6 +203,7 @@ export function createRadioController({
   speakerNode,
   textNode,
   getCampaignId,
+  resolveSpeakerLabel = null,
   playTone,
   getPlayerNickname
 }) {
@@ -159,6 +233,10 @@ export function createRadioController({
   };
 
   function speakerLabel(speakerId) {
+    const resolved = typeof resolveSpeakerLabel === "function"
+      ? resolveSpeakerLabel(speakerId)
+      : null;
+    if (typeof resolved === "string" && resolved.length > 0) return resolved;
     const perCampaign = RADIO_SPEAKER_LABELS[getCampaignId()];
     const override = perCampaign && perCampaign[speakerId];
     if (override) return override;

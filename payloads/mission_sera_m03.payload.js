@@ -89,7 +89,7 @@ export default function register(ctx) {
     landingRadio: {
       speaker: "lark",
       priority: "URGENT",
-      text: "輸送ヘリが着陸、装甲車を展開してる。赤TGTが地上へ移った！",
+      text: "輸送ヘリが着陸、装甲車を降ろした。司令所へ向かってる！",
       id: "sera-m03-landing"
     },
     arrivalWarningRadio: {
@@ -335,7 +335,7 @@ export default function register(ctx) {
           {
             speaker: "crown",
             priority: "NORMAL",
-            text: "白いMiG-21が二機追加。港を捨てて追うな、指定目標を続けろ。",
+            text: "MiG-21二機追加。港を捨てて追うな、攻撃隊を優先せよ。",
             id: "sera-m03-relief-crown"
           }
         ]
@@ -369,7 +369,7 @@ export default function register(ctx) {
       {
         speaker: "meridian",
         priority: "NORMAL",
-        text: "ROOK、サルク港共同防空圏へ進入。青識別を更新する。",
+        text: "ROOK、サルク港共同防空圏へ進入。友軍識別を送る。",
         id: "sera-m03-intro-meridian"
       },
       {

@@ -55,7 +55,7 @@ export default function register(ctx) {
       scale: 1.12
     },
     radio: {
-      inbound: "高高度に単機。識別REEM 1、TACネーム『POLKA』。本交戦ではNON-TGTだ。",
+      inbound: "高高度に単機。識別REEM 1、TACネームPOLKA。こちらへ進路を取る。",
       wingman: "あれが海峡を抜いた側の一番機……谷からこっちを見てる。",
       engage: "こちらREEM 1。進路を開けろ。ここで決着をつける気はない。",
       down: "こちらREEM 1。交戦を離脱する。"
@@ -167,7 +167,7 @@ export default function register(ctx) {
           {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "谷底のEWR二基をTGT指定。VEILの支援窓内に目を潰せ。高度を上げるな。",
+            text: "谷底のEWR二基をTGT指定。VEIL支援中に破壊し、低空を維持せよ。",
             id: "m06-phase1"
           }
         ]
@@ -280,9 +280,9 @@ export default function register(ctx) {
     m06WhitePassContract,
     fixedRadio: [
       { id: "m06-intro-meridian", at: 3, speaker: "meridian", priority: "NORMAL", text: "ROOK、ホワイトパス南口。谷底を北上し、ケデム反攻路を開け。" },
-      { id: "m06-intro-crown", at: 8, speaker: "crown", priority: "NORMAL", text: "岩壁よりSAM表示を見ろ。撃てる相手じゃない、今何をしている相手かを見ろ。" },
+      { id: "m06-intro-crown", at: 8, speaker: "crown", priority: "NORMAL", text: "岩壁を追うな。SAM表示だけ見て、谷底を走れ。" },
       { id: "m06-radars-clear", event: "m06RadarsClear", speaker: "lark", priority: "NORMAL", text: "二基とも止まった。MALLETが谷へ入るよ。" },
-      { id: "m06-reem-inbound", event: "m06ReemInbound", speaker: "meridian", priority: "URGENT", text: "高高度に単機、REEM 1 POLKA。NON-TGT。SAM網を優先せよ。" },
+      { id: "m06-reem-inbound", event: "m06ReemInbound", speaker: "meridian", priority: "URGENT", text: "高高度に単機、REEM 1 POLKA。交戦不要、SAM網を優先せよ。" },
       { id: "m06-chase", event: "m06ChaseCommitted", speaker: "crown", priority: "URGENT", text: "RAVEN、上へ行くなら戻る燃料を残せ。谷の仕事は消えない。" },
       { id: "m06-sead", event: "m06SeadCommitted", speaker: "crown", priority: "NORMAL", text: "そのまま谷を開けろ。俺を守るな、後ろの攻撃隊を守れ。" },
       { id: "m06-reem-retreat", event: "m06ReemRetreat", speaker: "meridian", priority: "NORMAL", text: "REEM 1、北へ離脱。追撃不要。残存TGTへ戻れ。" },

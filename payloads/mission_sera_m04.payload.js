@@ -211,7 +211,7 @@ export default function register(ctx) {
           {
             speaker: "meridian",
             priority: "CRITICAL",
-            text: "MISSION UPDATE。ROOK、全機反転。EPOCHを防衛せよ。",
+            text: "ROOK、全機反転。EPOCHへ向かう対艦攻撃隊を迎撃せよ。",
             id: "m04_update_02"
           }
         ]
@@ -226,7 +226,7 @@ export default function register(ctx) {
       { id: "m04_intro_04", at: 20, speaker: "crown", priority: "NORMAL", text: "今日は相手が大きいな。撃った後の出口だけ決めとこう。" },
       { id: "m04_ship_01", event: "firstRedShipDestroyed", speaker: "lark", priority: "NORMAL", text: "赤艦一隻、沈没。残り三。" },
       { id: "m04_phase2_03", event: "firstRedShipCrossesBridge", speaker: "lark", priority: "URGENT", text: "イージス艦一隻、橋を越えた。突破線へ向かってる。" },
-      { id: "m04_clear_01", event: "redFleetDestroyed", speaker: "meridian", priority: "NORMAL", text: "敵主力艦、全滅。海峡内の赤TGTなし。" },
+      { id: "m04_clear_01", event: "redFleetDestroyed", speaker: "meridian", priority: "NORMAL", text: "敵主力艦、全滅。海峡内の水上脅威なし。" },
       { id: "m04_update_01", event: "strikeInbound", speaker: "epoch", priority: "CRITICAL", text: "南東に高速接近。対艦攻撃機を確認！" },
       { id: "m04_missile_01", event: "antiShipMissileLaunch", speaker: "epoch", priority: "CRITICAL", text: "対艦ミサイル発射を確認！ 迎撃開始！" },
       { id: "m04_end_01", event: "redStrikeDestroyed", speaker: "meridian", priority: "NORMAL", text: "対艦攻撃隊、全滅。EPOCHの生存を確認。" }
