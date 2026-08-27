@@ -129,8 +129,8 @@ REATTACK
 - [x] M20の6機PINNINGを計画上の2機PAIRと4機迎撃隊へ分離する。
 - [x] debug probeへ索敵状態、索敵距離、接触記憶、実目標、迎撃phaseを公開する。
 - [x] 索敵・CAP・目標分担・接触喪失・break復帰・再進入のE2Eを追加する。
-- [ ] M01〜M20既存E2E、payload同期、radio canon、`git diff --check`を通す。
-- [ ] 8340番サーバーの配信内容とローカルSHA-256一致を確認する。
+- [x] M01〜M20既存E2E、payload同期、radio canon、`git diff --check`を通す。
+- [x] 8340番サーバーの配信内容とローカルSHA-256一致を確認する。
 
 ## 8. 禁止事項
 
@@ -153,3 +153,10 @@ REATTACK
 INTERCEPTOR phaseを横断確認してPASSした。M04の艦隊CAPはRAVENが艦隊から
 約19km離れている時に正しく未探知／艦隊上空待機となり、広域索敵化が
 全戦場での透視・無限追撃にはなっていない。
+
+既存の17本のミッションE2E（M01〜M03、M07〜M20）は8340番の実配信で
+全PASSした。M04〜M06は専用payload検査と横断watchdogで確認し、全20
+payload検査、`registry_gate`（19 tables、loss 0）、20 payloadのinline同期、
+radio canon（20 missions／311 strings）、`git diff --check`もPASSした。
+8340番の配信ファイルとローカル`index.html`は4,082,620 bytes、SHA-256
+`92048d3838ce496b0cdf0daf77cd7b8374798009958c1d41e79f6c262a671825`で一致した。
