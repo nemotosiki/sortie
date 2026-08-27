@@ -13,7 +13,7 @@
 | 実装済み範囲 | [Sera実装ステータス](../implementation/sera_act1_status.md) | M01〜M10の実在・検証状態。計画書より優先 |
 | M01〜M05 | [v0.16 開戦章](./v0.16/README.md) | 各ミッションの地理、フェーズ、敵編成、無線、ランク条件 |
 | M06〜M10 / M12〜M20 | [Sera Act II](./11_sera_act2.md) | M11の旧`FROZEN EYE`草案だけはv0.15で上書き済み |
-| M11 | [M01/M11/M21任務配置訂正](./v0.15/02_m01_m11_m21_mission_correction.md) | セラ高高度攻撃機護衛。旧レーダー制圧案を実装しない |
+| M11 | [FROZEN EYE 高高度基地攻撃・妨害周期実装計画](../implementation/sera_m11_high_altitude_strike_rework_plan.md) | 2026-08-27のユーザー指定による最新版。v0.15の高高度攻撃機護衛案を上書き |
 | M07 | [BLACK CURRENT 実装計画](../implementation/sera_m07_black_current_implementation_plan.md) | Damar Sea救難護衛、SEALIGHT HP、増援、実装・検証記録 |
 | M08 | [NIGHT AUDIT 実装計画](../implementation/sera_m08_night_audit_implementation_plan.md) | 夜間基地、燃料／決済経路、VESPER |
 | M09 | [IRON HARVEST 実装計画](../implementation/sera_m09_iron_harvest_implementation_plan.md) | Karan Plain、三色IFF、Kedem護衛 |
@@ -55,8 +55,8 @@
 
 ### 次の縦切り
 
-- 次の新規ミッションはM11。M04〜M06の専用E2E不足は並行する品質負債として扱い、物語番号を巻き戻さない。
-- M11着手前にv0.15任務配置訂正、マップ接続台帳、敵戦力ドクトリン、v0.17機体解禁表を突き合わせた専用計画とpreflightを作る。
+- M01〜M20は通常起動へ接続済み。今後は、各ミッションの赤TGT／白敵／青味方、編隊purpose、戦闘密度、無線、Retryを横断監査する。
+- M11はHALO電子支援機の周期妨害下でFROZEN EYE基地を攻撃する現行実装を基準とする。旧高高度攻撃機護衛案へ戻さない。
 
 ### システム
 
