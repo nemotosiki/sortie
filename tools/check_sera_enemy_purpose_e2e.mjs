@@ -125,17 +125,23 @@ try {
     window.__game.debug.forceEnemyFlightFrames(4);
   }, capPoint);
   objectives = await opened.page.evaluate(() => window.__game.debug.enemyObjectiveProbe());
-  assert(objectives.filter((enemy) => enemy.type === "su33" && enemy.purpose === "cap")
-    .every((enemy) => enemy.mode === "pursuit"),
-  "M14 CAP did not commit when RAVEN entered the fleet perimeter", objectives);
+  const committedCap = objectives.filter((enemy) => enemy.type === "su33" && enemy.purpose === "cap");
+  const protectedHulls = [...new Set(committedCap.map((enemy) => enemy.protectedId))];
+  assert(committedCap.every((enemy) => ["patrol", "pursuit"].includes(enemy.mode))
+      && protectedHulls.every((id) => committedCap.some((enemy) => (
+        enemy.protectedId === id && enemy.mode === "pursuit"
+      )))
+      && committedCap.filter((enemy) => enemy.mode === "patrol")
+        .every((enemy) => enemy.contactState === "track"),
+  "M14 CAP did not commit one element per defended hull while its wingmen tracked", objectives);
   await opened.page.evaluate(([x, y, z]) => {
-    window.__game.debug.forceTeleport(x + 13000, y + 180, z);
+    window.__game.debug.forceTeleport(x + 18000, y + 180, z);
     window.__game.debug.forceEnemyFlightFrames(4);
   }, capPoint);
   objectives = await opened.page.evaluate(() => window.__game.debug.enemyObjectiveProbe());
   assert(objectives.filter((enemy) => enemy.type === "su33" && enemy.purpose === "cap")
-    .every((enemy) => enemy.mode === "patrol"),
-  "M14 CAP did not return when RAVEN crossed the leash", objectives);
+    .every((enemy) => enemy.target !== "RAVEN" || enemy.mode === "patrol"),
+  "M14 CAP kept pursuing RAVEN after RAVEN crossed the leash", objectives);
   clean(opened, "M14 fleet CAP");
   await opened.context.close();
 

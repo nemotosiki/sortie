@@ -117,7 +117,9 @@ try {
     reset(9144, 347, 0);
     runSeconds(15, 1 / 60, { boost: true });
     const climbSamples = [debug.forceFlightFrames(0, 1 / 60)];
-    for (let second = 0; second < 120; second += 1) {
+    // Fifteen seconds of level acceleration above plus 165 seconds of the
+    // repeated zoom command makes the authored 180-second ceiling probe.
+    for (let second = 0; second < 165; second += 1) {
       const last = climbSamples.at(-1);
       const pitch = last.attitudeForward.y < 0.30 ? 0.10 : 0;
       const next = debug.forceFlightFrames(60, 1 / 60, { boost: true, pitch });
@@ -153,6 +155,9 @@ try {
       && results.frameAfter.dynamics.forces.gravity.z === 0
       && Math.abs(results.frameAfter.dynamics.forces.gravity.y + 9.80665) < 1e-9,
     "gravity is not exactly WORLD-down", results.frameAfter.dynamics.forces.gravity);
+  assert(Number.isFinite(results.frameAfter.dynamics.telemetry.dynamicPressureRatio)
+      && results.frameAfter.dynamics.telemetry.dynamicPressureRatio > 0,
+    "runtime does not expose finite dynamic-pressure telemetry", results.frameAfter.dynamics.telemetry);
 
   const brakeSpeedDelta = results.coast.after.kinematicSpeedMps - results.brake.after.kinematicSpeedMps;
   assert(brakeSpeedDelta > 35,

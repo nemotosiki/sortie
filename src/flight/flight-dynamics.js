@@ -120,6 +120,7 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
     requestedLiftG: 0,
     loadFactorG: 0,
     supportDeficit: 0,
+    dynamicPressureRatio: 0,
     engineAuthority: 1,
     thrustLapse: 1,
     dragAcceleration: 0,
@@ -326,6 +327,11 @@ function stepFlightDynamics(state, input, dt) {
   state.telemetry.requestedLiftG = requestedSupportG;
   state.telemetry.loadFactorG = Math.hypot(bodyLiftG, generatedAssistG);
   state.telemetry.supportDeficit = supportDeficit;
+  // q / q_ref with q_ref taken at the airframe's sea-level stall speed.
+  // The 1/2 and reference density cancel, leaving a compact dimensionless
+  // number that makes altitude, speed and control-energy contradictions easy
+  // to inspect without introducing kilograms or a hidden wing area.
+  state.telemetry.dynamicPressureRatio = densityRatio * Math.pow(speed / baseStallSpeed, 2);
   state.telemetry.engineAuthority = engineAuthority;
   state.telemetry.thrustLapse = thrustLapse;
   state.telemetry.dragAcceleration = dragAcceleration;

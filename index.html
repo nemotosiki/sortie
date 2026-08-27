@@ -2741,14 +2741,6 @@
       updateConcurrentMultiLock
     } from "./src/combat/multi-lock.js?v=20260813-concurrent-lock-1";
     import {
-      resetAttitudeLiftState,
-      updateAttitudeLiftState
-    } from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1";
-    import {
-      resetStallTranslationState,
-      updateStallTranslationState
-    } from "./src/flight/stall-translation.js?v=20260828-stall-recovery-1";
-    import {
       FLIGHT_AOA_ONSET_DEG,
       neutralThrottleForEnvelope,
       resetFlightDynamicsState,
@@ -2758,8 +2750,7 @@
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
       managedCombatTurnSpeed,
-      resetAerodynamicStallState,
-      updateAerodynamicStallState
+      resetAerodynamicStallState
     } from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1";
     import {
       GAME_SERVICE_CEILING_M,
@@ -2767,7 +2758,6 @@
       altitudeAdjustedFlightVelocity,
       altitudeAdjustedResponseK,
       altitudeAdjustedStallThreshold,
-      altitudeEnergyAdjustedSpeed,
       estimatedSustainableAltitudeM,
       highAltitudeClimbAuthorityAtSpeed,
       highAltitudeControlAuthorityAtSpeed,
@@ -47736,8 +47726,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let baseDamagePenalty = 0;
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
-    const playerAttitudeLift = resetAttitudeLiftState({});
-    const playerStallTranslation = resetStallTranslationState({});
     const playerFlightDynamics = resetFlightDynamicsState({});
     let playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(0);
     let gunCooldown = 0;
@@ -51419,8 +51407,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         },
         forceResetAttitudeLift: () => {
           if (gameState !== STATE_PLAYING) return false;
-          resetAttitudeLiftState(playerAttitudeLift);
-          resetStallTranslationState(playerStallTranslation);
           resetFlightDynamicsState(playerFlightDynamics);
           return true;
         },
@@ -51891,8 +51877,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            "YXZ"
          )).normalize();
           if (resetLift) {
-            resetAttitudeLiftState(enemy.attitudeLift);
-            resetStallTranslationState(enemy.stallTranslation);
             resetFlightDynamicsState(enemy.flightDynamics);
           }
            return true;
@@ -51934,8 +51918,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
              enemy.spec.maxSpeed
            );
           enemy.turnDemand = 1;
-          resetAttitudeLiftState(enemy.attitudeLift);
-          resetStallTranslationState(enemy.stallTranslation);
           seedEnemyFlightDynamics(enemy, speed);
           enemy.fireCooldown = 999;
           enemy.missileCooldown = 999;
@@ -52215,6 +52197,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Both are GLOBAL indices over MISSIONS, unchanged by campaigns.
         missionIndexOf: (key) => MISSIONS.findIndex((mission) => mission.key === key),
         missionKeys: () => MISSIONS.map((mission) => mission.key),
+        flightEnvelopeTable: () => AIRCRAFT_ORDER
+          .map((id) => AIRCRAFT_TYPES[id])
+          .filter(Boolean)
+          .map((spec) => ({
+            id: spec.id,
+            role: spec.role,
+            stallSpeed: spec.stallEntrySpeed,
+            boostSpeed: effectiveAircraftBoostSpeed(spec),
+            estimatedCeiling: estimatedSustainableAltitudeM(
+              spec.stallEntrySpeed,
+              effectiveAircraftBoostSpeed(spec)
+            )
+          })),
         forceMissionCursor: (index) => {
           if (gameState !== STATE_MISSION_SELECT) return false;
           const wrapped = ((index % MISSIONS.length) + MISSIONS.length) % MISSIONS.length;
@@ -55771,8 +55766,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         STALL_ENTRY_SPEED,
         BOOST_SPEED
       );
-      resetAttitudeLiftState(playerAttitudeLift);
-      resetStallTranslationState(playerStallTranslation);
       resetFlightDynamicsState(playerFlightDynamics);
       syncPlayerOrientation();
     }
@@ -58400,8 +58393,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const hardFloor = terrainFloorAt(enemy.group.position) + 26;
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
-        enemy.attitudeLift.verticalSpeed = 0;
-        resetStallTranslationState(enemy.stallTranslation);
         seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, enemy.spec.stallEntrySpeed * 1.05));
       }
        return true;
@@ -60772,8 +60763,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const hardFloor = terrainFloorAt(enemy.group.position) + 26;
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
-        enemy.attitudeLift.verticalSpeed = 0;
-        resetStallTranslationState(enemy.stallTranslation);
         seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, enemy.spec.stallEntrySpeed * 1.05));
       }
       return true;
@@ -62442,8 +62431,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          turnEnvelopeGain: 1,
          turnLimit: spec.patrolTurn,
          highAltitudeEnvelope: spawnAltitudeEnvelope,
-         attitudeLift: resetAttitudeLiftState({}),
-         stallTranslation: resetStallTranslationState({}),
          flightDynamics: resetFlightDynamicsState({}),
          pitchCommand: 0,
          // What this pilot currently believes the player is doing. Seeded at
@@ -67167,8 +67154,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const hardFloor = Math.max(floorHeight, terrainFloorAt(enemy.group.position)) + 26;
         if (enemy.group.position.y < hardFloor) {
            enemy.group.position.y = hardFloor;
-          enemy.attitudeLift.verticalSpeed = 0;
-          resetStallTranslationState(enemy.stallTranslation);
           seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, spec.stallEntrySpeed * 1.05));
           forwardOf(enemy.group, tmpV4);
           if (tmpV4.y < 0) {
@@ -67470,8 +67455,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
        const hardFloor = terrainFloorAt(enemy.group.position) + 26;
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
-        enemy.attitudeLift.verticalSpeed = 0;
-        resetStallTranslationState(enemy.stallTranslation);
         seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, spec.stallEntrySpeed * 1.05));
       }
 
