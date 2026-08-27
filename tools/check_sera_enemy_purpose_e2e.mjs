@@ -118,6 +118,24 @@ try {
       && m14Cap.every((enemy) => ["cap", "relief"].includes(enemy.purpose))
       && m14Cap.filter((enemy) => enemy.purpose === "cap").every((enemy) => enemy.protectedLabel),
     "M14 carrier air is not tied to the landing fleet", m14Cap);
+  const capPoint = m14Cap.find((enemy) => enemy.purpose === "cap")?.defencePoint;
+  assert(capPoint, "M14 fleet CAP exposes no defended point", m14Cap);
+  await opened.page.evaluate(([x, y, z]) => {
+    window.__game.debug.forceTeleport(x + 120, y + 180, z);
+    window.__game.debug.forceEnemyFlightFrames(4);
+  }, capPoint);
+  objectives = await opened.page.evaluate(() => window.__game.debug.enemyObjectiveProbe());
+  assert(objectives.filter((enemy) => enemy.type === "su33" && enemy.purpose === "cap")
+    .every((enemy) => enemy.mode === "pursuit"),
+  "M14 CAP did not commit when RAVEN entered the fleet perimeter", objectives);
+  await opened.page.evaluate(([x, y, z]) => {
+    window.__game.debug.forceTeleport(x + 13000, y + 180, z);
+    window.__game.debug.forceEnemyFlightFrames(4);
+  }, capPoint);
+  objectives = await opened.page.evaluate(() => window.__game.debug.enemyObjectiveProbe());
+  assert(objectives.filter((enemy) => enemy.type === "su33" && enemy.purpose === "cap")
+    .every((enemy) => enemy.mode === "patrol"),
+  "M14 CAP did not return when RAVEN crossed the leash", objectives);
   clean(opened, "M14 fleet CAP");
   await opened.context.close();
 
@@ -137,6 +155,11 @@ try {
   assert(helix.length === 2 && helix.every((enemy) => (
     enemy.purpose === "intercept" && !enemy.tgt && enemy.rankNeutral
   )), "M17 HELIX identity or intent changed", helix);
+  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(120));
+  objectives = await opened.page.evaluate(() => window.__game.debug.enemyObjectiveProbe());
+  assert(objectives.filter((enemy) => ["awacs", "jammer"].includes(enemy.type))
+    .every((enemy) => enemy.mode === "patrol" && String(enemy.aimKind).startsWith("loiter")),
+  "M17 support aircraft left station during the manoeuvre probe", objectives);
   clean(opened, "M17 package doctrine");
   await opened.context.close();
 
@@ -157,8 +180,70 @@ try {
 
   clean(opened, "purpose audit");
   await opened.context.close();
+
+  opened = await openPage();
+  await start(opened, "sera-m03", null);
+  let cas = await opened.page.evaluate(() => window.__game.debug.casProbe());
+  const m03Helo = cas.find((enemy) => enemy.heli);
+  assert(cas.length >= 2 && m03Helo?.casTarget === "protected-facility"
+      && m03Helo.targetId && m03Helo.targetHp > 0,
+    "M03 Ka-52 has no live port-facility objective", cas);
+  assert(await opened.page.evaluate((id) => window.__game.debug.forceCasAttack(id), m03Helo.id),
+    "M03 Ka-52 CAS attack could not be forced");
+  cas = await opened.page.evaluate(() => window.__game.debug.casProbe());
+  assert(cas.find((enemy) => enemy.id === m03Helo.id)?.targetHp < m03Helo.targetHp,
+    "M03 Ka-52 did not damage its port objective", { before: m03Helo, after: cas });
+  clean(opened, "M03 CAS");
+  await opened.context.close();
+
+  opened = await openPage();
+  await start(opened, "sera-m05", null);
+  let protectedGround = await opened.page.evaluate(() => window.__game.debug.protectedGroundProbe());
+  assert(protectedGround.length === 6
+      && protectedGround.filter((unit) => unit.role === "m05FriendlyTank").length === 4
+      && protectedGround.every((unit) => unit.held),
+    "M05 joint ground column is absent or moved before SEAD clear", protectedGround);
+  assert(await opened.page.evaluate(() => window.__game.debug.forceClearGroundMark("m05Phase1")) === 5,
+    "M05 phase-one air defence could not be cleared");
+  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(8));
+  protectedGround = await opened.page.evaluate(() => window.__game.debug.protectedGroundProbe());
+  assert(protectedGround.every((unit) => !unit.held)
+      && protectedGround.some((unit) => unit.routeDistance > 0),
+    "M05 joint column did not advance after the corridor opened", protectedGround);
+  assert(await opened.page.evaluate(() => window.__game.debug.forceDeployWaveByLabel("ALLIGATOR")),
+    "M05 Ka-52 phase could not be deployed");
+  cas = await opened.page.evaluate(() => window.__game.debug.casProbe());
+  const m05Helo = cas.find((enemy) => enemy.heli);
+  assert(cas.length === 2 && m05Helo?.casTarget === "friendly-ground"
+      && Number.isInteger(m05Helo.targetId),
+    "M05 Ka-52 has no joint-column objective", cas);
+  const m05Before = protectedGround.find((unit) => unit.id === m05Helo.targetId);
+  assert(await opened.page.evaluate((id) => window.__game.debug.forceCasAttack(id), m05Helo.id),
+    "M05 Ka-52 CAS attack could not be forced");
+  protectedGround = await opened.page.evaluate(() => window.__game.debug.protectedGroundProbe());
+  assert(protectedGround.find((unit) => unit.id === m05Helo.targetId)?.hp < m05Before.hp,
+    "M05 Ka-52 did not damage the protected column", { before: m05Before, after: protectedGround });
+  clean(opened, "M05 joint advance");
+  await opened.context.close();
+
+  opened = await openPage();
+  await start(opened, "sera-m09", "forceSeraM09DeployPending");
+  cas = await opened.page.evaluate(() => window.__game.debug.casProbe());
+  const m09Frogfoot = cas.find((enemy) => enemy.type === "su25");
+  assert(cas.length === 6 && cas.every((enemy) => enemy.casTarget === "friendly-ground"
+      && String(enemy.targetLabel || "").startsWith("KEDEM")),
+    "M09 CAS selected civilians or has no friendly-armour target", cas);
+  const m09Before = m09Frogfoot.targetHp;
+  assert(await opened.page.evaluate((id) => window.__game.debug.forceCasAttack(id), m09Frogfoot.id),
+    "M09 Su-25 CAS attack could not be forced");
+  cas = await opened.page.evaluate(() => window.__game.debug.casProbe());
+  assert(cas.find((enemy) => enemy.id === m09Frogfoot.id)?.targetHp < m09Before,
+    "M09 Su-25 did not damage friendly armour", { before: m09Frogfoot, after: cas });
+  clean(opened, "M09 combined arms");
+  await opened.context.close();
+
   console.log("check_sera_enemy_purpose_e2e: PASS");
-  console.log("  M01-M20 purpose coverage / fleet CAP / bomber escort / optional ARCA / capital strike / no random hater");
+  console.log("  M01-M20 purpose / fleet CAP / bomber escort / optional ARCA / capital strike / M03-M05-M09 CAS");
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

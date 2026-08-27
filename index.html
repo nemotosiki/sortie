@@ -3144,7 +3144,7 @@
       "screen", "escort", "cap", "top-cover"
     ]));
     const STATION_ENEMY_PURPOSES = Object.freeze(new Set([
-      "support", "withdraw", "cas"
+      "support", "withdraw"
     ]));
     const PURPOSE_DEFAULTS = Object.freeze({
       screen: Object.freeze({ commitRange: 2600, leashRange: 4200 }),
@@ -4879,6 +4879,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : null,
         purposeAltitudeFloor: kind === "air" && Number.isFinite(Number(entry.purposeAltitudeFloor))
           ? Math.max(0, Number(entry.purposeAltitudeFloor))
+          : null,
+        // CAS attacks a mission object, never an object inferred from IFF or
+        // spawn order. The finite selector keeps mission prose out of the AI.
+        casTarget: kind === "air" && (
+          entry.casTarget === "protected-facility" || entry.casTarget === "friendly-ground"
+        ) ? entry.casTarget : null,
+        casDamage: kind === "air" && Number.isFinite(Number(entry.casDamage))
+          ? Math.max(1, Number(entry.casDamage))
           : null,
         // Spawns together with the wave before it instead of waiting for that
         // wave to be cleared. Escorts and CAP have to be on the board while
@@ -36581,6 +36589,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "trash",
               skill: "rookie",
               purpose: "cas",
+              casTarget: "protected-facility",
+              casDamage: 12,
               at: [4200, -200],
               altitude: 360,
               facing: [-850, -2400],
@@ -36649,6 +36659,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "trash",
               skill: "rookie",
               purpose: "cas",
+              casTarget: "protected-facility",
+              casDamage: 12,
               at: [4600, -650],
               altitude: 320,
               facing: [-650, -2650]
@@ -36684,6 +36696,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 40,
               label: "FROGFOOT",
               purpose: "cas",
+              casTarget: "protected-facility",
+              casDamage: 34,
               facilityIndex: 1,
               at: [4700, -500],
               altitude: 950,
@@ -36705,6 +36719,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 41,
               label: "FROGFOOT",
               purpose: "cas",
+              casTarget: "protected-facility",
+              casDamage: 34,
               facilityIndex: 2,
               at: [5000, 250],
               altitude: 1050,
@@ -39001,6 +39017,48 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ],
 
           groundUnits: [
+            // The joint-recapture column from the canonical M05 plan. It is visible
+            // at mission start but waits for the phase-one SAM/SPAAG corridor to be
+            // opened before advancing. Ka-52 CAS uses these protected objects as its
+            // real mission target.
+            ...[510, 511, 512, 513].map((id, slot) => ({
+              id,
+              type: "tank",
+              label: `KEDEM SPEAR ${slot + 1}`,
+              x: 900,
+              z: -2100,
+              heading: Math.PI,
+              path: [[900, -2100], [620, -2380], [250, -2700], [-120, -2920], [-80, -3700], [-80, -4280], [-700, -4050], [-1350, -3250]],
+              pathOffset: slot * 55,
+              speed: 10,
+              tgt: false,
+              rankNeutral: true,
+              friendly: true,
+              protected: true,
+              lossPenalty: 900,
+              mark: "m05FriendlyGround",
+              missionRole: "m05FriendlyTank",
+              holdUntilMarkClear: "m05Phase1"
+            })),
+            ...[514, 515].map((id, slot) => ({
+              id,
+              type: "ifv",
+              label: `KEDEM IFV ${slot + 1}`,
+              x: 900,
+              z: -2100,
+              heading: Math.PI,
+              path: [[900, -2100], [620, -2380], [250, -2700], [-120, -2920], [-80, -3700], [-80, -4280], [-700, -4050], [-1350, -3250]],
+              pathOffset: 28 + slot * 110,
+              speed: 11,
+              tgt: false,
+              rankNeutral: true,
+              friendly: true,
+              protected: true,
+              lossPenalty: 500,
+              mark: "m05FriendlyGround",
+              missionRole: "m05FriendlyIfv",
+              holdUntilMarkClear: "m05Phase1"
+            })),
             { id: 1, type: "autonomousSam", label: "MOBILE SAM", x: -700, z: -2400, phase: "m05-phase1", mark: "m05Phase1" },
             { id: 2, type: "autonomousSam", label: "MOBILE SAM", x: -1350, z: -3250, phase: "m05-phase1", mark: "m05Phase1" },
             { id: 3, type: "spaag", x: -150, z: -2950, phase: "m05-phase1", mark: "m05Phase1" },
@@ -39139,6 +39197,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "trash",
               skill: "regular",
               purpose: "cas",
+              casTarget: "friendly-ground",
+              casDamage: 14,
               at: [4500, -5500],
               altitude: 320,
               facing: [0, -3000],
@@ -39178,6 +39238,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             { id: "m05_intro_03", event: "afterPortVisible", speaker: "hearth", priority: "NORMAL", text: "使えるのは北側の橋だけだ。地上隊はそこを通す。" },
             { id: "m05_ground_01", event: "phase1Clear", speaker: "meridian", priority: "NORMAL", text: "防空回廊を確認。ケデム地上軍、前進を開始。" },
             { id: "m05_p2_02", event: "friendlyAtCentral", speaker: "lark", priority: "NORMAL", text: "味方戦車、中央交差点。敵はその西側。" },
+            { id: "m05_friendly_lost", event: "m05FriendlyTankLost", speaker: "hearth", priority: "URGENT", text: "SPEAR一両停止。残存車両は前進を継続、上空援護を頼む。" },
+            { id: "m05_friendly_critical", event: "m05FriendlyCritical", speaker: "meridian", priority: "CRITICAL", text: "ケデム戦車は残り一両。Ka-52を最優先、地上隊を全滅させるな。" },
             { id: "m05_update_01", event: "commandEscapeStarts", speaker: "lark", priority: "URGENT", text: "南倉庫から車両一、運河沿いを東へ走ってる。" },
             { id: "m05_chase_01", event: "commandAtCanalSouth", speaker: "lark", priority: "URGENT", text: "指揮車、運河南岸。補修橋へ向かってる。" },
             { id: "m05_chase_02", event: "commandRepairBridge1500", speaker: "meridian", priority: "CRITICAL", text: "TGT、補修橋まで一・五キロ。" },
@@ -39201,7 +39263,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.61, y: 0.27 },
           battleCenter: { x: 0, z: -3000 },
           battleRadius: 10500,
-          briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方地上軍前方の赤戦車六、IFV三を排除する。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
+          briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方戦車四・IFV二の前方にいる赤戦車六、IFV三を排除する。味方隊は回廊が開くまで待機し、戦車四両全滅で任務失敗。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と、味方地上隊を狙う赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
         };
 
         ctx.addMission(mission);
@@ -41669,6 +41731,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "line",
               skill: "regular",
               purpose: "cas",
+              casTarget: "friendly-ground",
+              casDamage: 14,
               at: [3800, 2500],
               altitude: 360,
               facing: [0, -600],
@@ -41692,6 +41756,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "line",
               skill: "regular",
               purpose: "cas",
+              casTarget: "friendly-ground",
+              casDamage: 28,
               at: [5600, 5200],
               altitude: 900,
               facing: [0, 600]
@@ -46326,6 +46392,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let spawningCommitRange = null;
     let spawningLeashRange = null;
     let spawningPurposeAltitudeFloor = null;
+    let spawningCasTarget = null;
+    let spawningCasDamage = null;
     // Story missions may attach a passive identifier to every contact in one
     // wave. It has no combat meaning; mission-specific runtime contracts use it
     // to find a named pass, escort or interception without relying on target ids.
@@ -46403,7 +46471,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let spawningForward = null;
     // Counts eligible non-TGT fighter spawns so every third one becomes a
     // wingman hunter - a ratio, not a dice roll, so it holds in every wave.
-    let wingmanHunterTicker = 0;
     // Course of the friendly a hunt wave was anchored on - unit XZ vector to
     // its exit point, or null when the anchor was not a moving charge. Same
     // relay pattern as spawningForward: written by waveAnchorFor, read once
@@ -46540,6 +46607,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       const m04Cap = m04RankCap(mission);
       if (m04Cap && RANK_ORDER[rank] > RANK_ORDER[m04Cap]) rank = m04Cap;
+
+      const m05Cap = m05RankCap(mission);
+      if (m05Cap && RANK_ORDER[rank] > RANK_ORDER[m05Cap]) rank = m05Cap;
 
       // NIGHT AUDIT's relay route is a complete alternative objective. Its
       // authored time bands replace the ordinary destroyed-value rank.
@@ -46711,6 +46781,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       entry.times = [...priorTimes, Math.round(missionElapsed * 100) / 100].sort((a, b) => a - b).slice(0, 3);
       const m03Result = m03ResultSnapshot(mission);
       if (m03Result) Object.assign(entry, m03Result);
+      const m05Result = m05ResultSnapshot(mission);
+      if (m05Result) Object.assign(entry, m05Result);
       const m08Result = m08ResultSnapshot(mission);
       if (m08Result) Object.assign(entry, m08Result);
       const m10Result = m10ResultSnapshot(mission);
@@ -50138,6 +50210,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           commitRange: wave.commitRange,
           leashRange: wave.leashRange,
           purposeAltitudeFloor: wave.purposeAltitudeFloor,
+          casTarget: wave.casTarget || null,
+          casDamage: wave.casDamage,
           missionTag: wave.missionTag || null,
           assignedTargets: wave.assignedTargets ? [...wave.assignedTargets] : null,
           label: wave.label
@@ -50969,9 +51043,69 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               player.position.x - defence.x,
               player.position.z - defence.z
             ).toFixed(1)) : null,
+            defencePoint: defence
+              ? [Number(defence.x.toFixed(1)), Number(defence.y.toFixed(1)), Number(defence.z.toFixed(1))]
+              : null,
             protectedLabel: enemy.purposeRef ? (enemy.purposeRef.label || enemy.purposeRef.type) : null
           };
         }),
+        casProbe: () => enemies.filter((enemy) => enemy.alive && enemy.purpose === "cas").map((enemy) => {
+          enemy.casTargetRef = casMissionObjectFor(enemy);
+          return {
+            id: enemy.id,
+            type: enemy.type,
+            heli: Boolean(enemy.heli),
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            casTarget: enemy.casTarget,
+            targetId: enemy.casTargetRef
+              ? (enemy.casTargetRef.facilityId || enemy.casTargetRef.id)
+              : null,
+            targetLabel: enemy.casTargetRef ? enemy.casTargetRef.label : null,
+            targetHp: enemy.casTargetRef ? Number(enemy.casTargetRef.hp) : null,
+            cooldown: Number((enemy.casAttackCooldown || 0).toFixed(2)),
+            egress: Number((enemy.casEgressTimer || 0).toFixed(2))
+          };
+        }),
+        forceCasAttack: (id) => {
+          const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
+          if (!enemy || enemy.purpose !== "cas") return false;
+          enemy.casTargetRef = casMissionObjectFor(enemy);
+          if (!enemy.casTargetRef) return false;
+          enemy.casAttackCooldown = 0;
+          enemy.casEgressTimer = 0;
+          enemy.group.position.x = enemy.casTargetRef.group.position.x + (enemy.heli ? 420 : 80);
+          enemy.group.position.z = enemy.casTargetRef.group.position.z;
+          return updateEnemyCasAttack(enemy, 0);
+        },
+        forceDeployWaveByLabel: (label) => {
+          const mission = MISSIONS[currentMissionIndex];
+          if (gameState !== STATE_PLAYING || !mission) return false;
+          const wave = mission.waves.find((entry) => entry.label === label);
+          if (!wave) return false;
+          deployWave(wave);
+          return true;
+        },
+        forceClearGroundMark: (mark) => {
+          if (gameState !== STATE_PLAYING || !mark) return 0;
+          const targets = enemies.filter((enemy) => enemy.alive && enemy.ground && enemy.mark === mark);
+          for (const target of targets) damageEnemy(target, target.hp + 1, true, true);
+          updateMission(0.016, 0.016);
+          return targets.length;
+        },
+        protectedGroundProbe: () => enemies.filter((enemy) => (
+          enemy.ground && enemy.friendly && enemy.protected
+        )).map((enemy) => ({
+          id: enemy.id,
+          type: enemy.type,
+          label: enemy.label,
+          role: enemy.missionRole || null,
+          alive: enemy.alive,
+          hp: Number(enemy.hp),
+          mark: enemy.mark || null,
+          held: Boolean(enemy.holdUntilMarkClear && !enemy.holdReleased),
+          routeDistance: Number(enemy.routeDistance || 0)
+        })),
         stabilityProbe: () => ({
           pitchRate: THREE.MathUtils.radToDeg(playerPitchRate),
           yawRate: THREE.MathUtils.radToDeg(playerYawRate),
@@ -54663,10 +54797,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM18State(MISSIONS[currentMissionIndex]);
       resetM19State(MISSIONS[currentMissionIndex]);
       resetM20State(MISSIONS[currentMissionIndex]);
-      // The hunter pattern is deterministic per sortie. Leaving the counter at
-      // the previous sortie's remainder made the advertised one-in-three split
-      // depend on what the player flew before this launch.
-      wingmanHunterTicker = 0;
       waveTargetsSpawned = 0;
       spawningTgt = true;
       spawningRankNeutral = false;
@@ -54677,6 +54807,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningCommitRange = null;
       spawningLeashRange = null;
       spawningPurposeAltitudeFloor = null;
+      spawningCasTarget = null;
+      spawningCasDamage = null;
       spawningMissionTag = null;
       // Invalidated here and re-taken by captureMissionAnchor at the bottom of
       // this function, so a wave can never be laid out around the LAST
@@ -58001,6 +58133,68 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       m03State.landingRadioFired = Boolean(saved.landingRadioFired);
       m03State.arrivalRadioFired = Boolean(saved.arrivalRadioFired);
       m03State.failed = Boolean(saved.failed);
+    }
+
+    // SERA M05 JOINT GROUND COLUMN
+    function m05Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m05GroundBattleContract ? mission : null;
+    }
+
+    function failM05Mission(banner) {
+      const mission = m05Mission();
+      if (!mission || gameState !== STATE_PLAYING) return false;
+      missionFailureRadioOverride = mission.failureRadio || null;
+      if (banner) showBanner(banner, 2.0, "danger");
+      completeMission(false);
+      return true;
+    }
+
+    function livingM05FriendlyTanks() {
+      return enemies.filter((enemy) => (
+        enemy.alive && enemy.missionRole === "m05FriendlyTank"
+      ));
+    }
+
+    function m05RankCap(mission) {
+      if (!mission || !mission.m05GroundBattleContract) return null;
+      const alive = livingM05FriendlyTanks().length;
+      if (alive >= 3) return null;
+      if (alive === 2) return "A";
+      return "B";
+    }
+
+    function m05ResultSnapshot(mission) {
+      if (!mission || !mission.m05GroundBattleContract) return null;
+      const tanksAlive = livingM05FriendlyTanks().length;
+      const ifvsAlive = enemies.filter((enemy) => (
+        enemy.alive && enemy.missionRole === "m05FriendlyIfv"
+      )).length;
+      return {
+        m05FriendlyTanksSaved: tanksAlive,
+        m05FriendlyIfvsSaved: ifvsAlive,
+        m05JointAdvanceSurvived: tanksAlive > 0
+      };
+    }
+
+    function handleM05ProtectedGroundDestroyed(enemy, byWingman) {
+      const mission = m05Mission();
+      if (!mission || !enemy || !enemy.ground || !enemy.protected) return null;
+      const protectedRole = enemy.missionRole === "m05FriendlyTank"
+        || enemy.missionRole === "m05FriendlyIfv";
+      if (!protectedRole) return null;
+      const tanksAlive = enemies.filter((candidate) => (
+        candidate.alive && candidate.missionRole === "m05FriendlyTank"
+      )).length;
+      if (enemy.missionRole === "m05FriendlyTank") {
+        fireFixedRadioEvent(tanksAlive <= 1 ? "m05FriendlyCritical" : "m05FriendlyTankLost");
+      }
+      return {
+        protectedLoss: true,
+        penalty: byWingman ? 0 : Math.max(0, Number(enemy.lossPenalty) || 0),
+        failBanner: tanksAlive === 0 ? "KEDEM GROUND COLUMN LOST" : null,
+        mission: "m05"
+      };
     }
 
     // SERA M09 RUNTIME CONTRACT
@@ -61422,6 +61616,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tgt: spawningTgt,
         rankNeutral: spawningRankNeutral,
         missionTag: spawningMissionTag,
+        purpose: spawningPurpose,
+        casTarget: spawningCasTarget,
+        casFacilityIndex: Number.isInteger(spawningFacilityIndex) ? spawningFacilityIndex : null,
+        casDamage: spawningCasDamage,
+        casTargetRef: null,
+        casAttackCooldown: 3.5 + slot * 1.4,
         heli: true,
         isAce: false,
         aceEngageLineFired: true,
@@ -61699,6 +61899,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           : null,
         purposeRef: null,
         purposePoint: new THREE.Vector3(),
+        casTarget: spawningCasTarget,
+        casFacilityIndex: Number.isInteger(spawningFacilityIndex) ? spawningFacilityIndex : null,
+        casDamage: spawningCasDamage,
+        casTargetRef: null,
+        casAttackCooldown: 4.5 + slot * 1.6,
+        casEgressTimer: 0,
+        casEgressPoint: new THREE.Vector3(),
         // "air" / "ship" / null. A hunting aircraft flies at the friendly it
         // came for and shoots at it instead of at the player - see
         // huntTargetFor() and the hunt branch in updateEnemies. null is every
@@ -62963,7 +63170,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // distance: the wingman flies 72m off the player's beam, so any larger
     // radius made the hater's attention flicker every time the dogfight
     // wheeled past the player.
-    const WINGMAN_HATER_YIELD = 150;
     // A kill of its own is worth one line, not a running commentary.
     const WINGMAN_KILL_RADIO_COOLDOWN = 25;
 
@@ -64440,6 +64646,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawned.protected = Boolean(unit.protected);
       spawned.lossPenalty = Math.max(0, Number(unit.lossPenalty) || 0);
       spawned.missionRole = typeof unit.missionRole === "string" ? unit.missionRole : null;
+      spawned.holdUntilMarkClear = typeof unit.holdUntilMarkClear === "string"
+        ? unit.holdUntilMarkClear
+        : null;
+      spawned.holdReleased = !spawned.holdUntilMarkClear;
       spawned.dispersePath = Array.isArray(unit.dispersePath)
         ? unit.dispersePath.map((point) => [Number(point[0]) || 0, Number(point[1]) || 0])
         : null;
@@ -64864,6 +65074,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningPurposeAltitudeFloor = Number.isFinite(wave.purposeAltitudeFloor)
         ? wave.purposeAltitudeFloor
         : null;
+      spawningCasTarget = wave.casTarget || null;
+      spawningCasDamage = Number.isFinite(wave.casDamage) ? wave.casDamage : null;
       spawningMissionTag = wave.missionTag || null;
       spawningFacilityIndex = Number.isInteger(wave.facilityIndex) ? wave.facilityIndex : null;
       // Presets keep their historic id block; an inline wave takes the next
@@ -65008,6 +65220,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningCommitRange = null;
       spawningLeashRange = null;
       spawningPurposeAltitudeFloor = null;
+      spawningCasTarget = null;
+      spawningCasDamage = null;
       spawningMissionTag = null;
       spawningFacilityIndex = null;
     }
@@ -65150,6 +65364,78 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return candidates[Math.abs(enemy.slot || 0) % candidates.length];
     }
 
+    function casMissionObjectFor(enemy) {
+      if (!enemy || enemy.purpose !== "cas" || !enemy.casTarget) return null;
+      if (enemy.casTarget === "protected-facility") {
+        const assigned = Number.isInteger(enemy.casFacilityIndex)
+          ? protectedFacilities[enemy.casFacilityIndex]
+          : null;
+        if (assigned && assigned.alive) return assigned;
+        const live = protectedFacilities.filter((facility) => facility.alive);
+        if (live.length === 0) return null;
+        return live[Math.abs(enemy.slot || 0) % live.length];
+      }
+      if (enemy.casTarget === "friendly-ground") {
+        const live = enemies.filter((candidate) => (
+          candidate !== enemy
+          && candidate.alive
+          && candidate.ground
+          && candidate.friendly
+          && candidate.protected
+          && candidate.missionRole !== "civilian"
+        ));
+        if (live.length === 0) return null;
+        live.sort((a, b) => (
+          a.group.position.distanceToSquared(enemy.group.position)
+          - b.group.position.distanceToSquared(enemy.group.position)
+        ));
+        return live[Math.abs(enemy.slot || 0) % live.length];
+      }
+      return null;
+    }
+
+    function damageCasMissionObject(enemy, target) {
+      if (!enemy || !target || !target.alive) return false;
+      const damage = Math.max(1, Number(enemy.casDamage) || (enemy.heli ? 14 : 34));
+      tmpV9.copy(target.group.position);
+      tmpV9.y += target.kind === "facility" ? 10 : Math.max(2, target.spec?.smokeHeight || 3);
+      createImpactBurst(tmpV9, enemy.heli ? 0xffc35a : 0xff9d48, enemy.heli ? 0.75 : 1.25);
+      playSfx("explosion", enemy.heli ? 0.18 : 0.3, enemy.heli ? 1.25 : 0.92);
+      if (target.kind === "facility") damageProtectedFacility(target, damage);
+      else damageEnemy(target, damage, false, true);
+      return true;
+    }
+
+    function updateEnemyCasAttack(enemy, dt) {
+      if (!enemy || enemy.purpose !== "cas") return false;
+      enemy.casAttackCooldown = Math.max(0, (enemy.casAttackCooldown || 0) - dt);
+      enemy.casEgressTimer = Math.max(0, (enemy.casEgressTimer || 0) - dt);
+      const target = enemy.casTargetRef;
+      if (!target || !target.alive) return false;
+      const range = Math.hypot(
+        enemy.group.position.x - target.group.position.x,
+        enemy.group.position.z - target.group.position.z
+      );
+      const releaseRange = enemy.heli ? 780 : 260;
+      if (range > releaseRange || enemy.casAttackCooldown > 0 || enemy.casEgressTimer > 0) return true;
+
+      if (enemy.heli) {
+        createTracer(enemy.group.position, target.group.position, 0xffc35a, 0.18, 0.72);
+        enemy.casAttackCooldown = 5.5 + Math.random() * 2.5;
+      } else {
+        tmpV8.copy(enemy.group.position).sub(target.group.position);
+        tmpV8.y = 0;
+        if (tmpV8.lengthSq() < 1) tmpV8.set(0, 0, 1);
+        tmpV8.normalize();
+        enemy.casEgressPoint.copy(enemy.group.position).addScaledVector(tmpV8, 2600);
+        enemy.casEgressPoint.y = Math.max(enemy.group.position.y, target.group.position.y + 420);
+        enemy.casEgressTimer = 7;
+        enemy.casAttackCooldown = 18 + Math.random() * 6;
+      }
+      damageCasMissionObject(enemy, target);
+      return true;
+    }
+
     function purposeProtectedAssetFor(enemy) {
       if (!enemy || !DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) return null;
       let best = null;
@@ -65215,6 +65501,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       if (STATION_ENEMY_PURPOSES.has(enemy.purpose)) {
         if (enemy.mode !== "break") enemy.mode = "patrol";
+        return;
+      }
+
+      if (enemy.purpose === "cas") {
+        if (enemy.mode !== "break") enemy.mode = enemy.casTargetRef ? "patrol" : "pursuit";
         return;
       }
 
@@ -65481,6 +65772,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.huntRef = enemy.hunt
           ? huntTargetFor(enemy)
           : assignedFriendlyTargetFor(enemy);
+        enemy.casTargetRef = enemy.purpose === "cas"
+          ? casMissionObjectFor(enemy)
+          : null;
         const priorPurposeMode = enemy.mode;
         updateEnemyPurposeMode(enemy, distanceToPlayer);
         if (priorPurposeMode !== "pursuit" && enemy.mode === "pursuit") {
@@ -65569,6 +65863,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // measured worse, not better: the extra speed turns the break into an
           // extension, which buys the round a long straight tail chase to settle
           // its aim on. The break is a turn, and only a turn.
+        } else if (enemy.casEgressTimer > 0) {
+          enemy.aimKind = "cas-egress";
+          targetPoint = enemy.targetPoint.copy(enemy.casEgressPoint);
+          enemy.targetSpeed = Math.min(spec.maxSpeed, spec.cruiseSpeed + spec.pursuitBonus * 0.5);
+        } else if (enemy.casTargetRef) {
+          enemy.aimKind = "cas";
+          targetPoint = enemy.targetPoint.copy(enemy.casTargetRef.group.position);
+          targetPoint.y = Math.max(
+            enemy.casTargetRef.group.position.y + 260,
+            terrainFloorAt(enemy.casTargetRef.group.position) + 260
+          );
+          enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus * 0.35);
         } else if (enemy.huntRef) {
           enemy.aimKind = "hunt";
           // The hunt run. Above pursuit in this chain on purpose: an aircraft
@@ -65891,6 +66197,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            }
         }
 
+        updateEnemyCasAttack(enemy, dt);
         updateEnemyOrdnance(enemy, dt, time);
       }
     }
@@ -65903,6 +66210,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const baseFlame = spec.behavior === "evasive" ? 1.18 : (spec.behavior === "armored" ? 0.82 : 1.0);
       const flamePulse = baseFlame + Math.sin(time * 12 + enemy.seed) * 0.16;
       for (const flame of enemy.model.flames) flame.scale.z = flamePulse;
+
+      // A CAS aircraft with a live mission object does not simultaneously
+      // dogfight RAVEN. Its pass and damage cadence are owned by
+      // updateEnemyCasAttack; when no valid ground objective remains this
+      // guard opens and the aircraft falls back to the ordinary air fight.
+      if (enemy.purpose === "cas" && (enemy.casTargetRef || enemy.casEgressTimer > 0)) return;
 
       // An aircraft shoots at exactly one thing: whatever it is flying at. A
       // hunter therefore never fires on the player while it still has a charge
@@ -66353,19 +66666,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // A point on a ring of radius `standoff` around the player, walking
       // slowly round it. Each machine owns its phase and its direction, so a
       // flight spreads into an encirclement instead of stacking into one blip.
+      enemy.casTargetRef = enemy.purpose === "cas"
+        ? casMissionObjectFor(enemy)
+        : null;
+      const heliObjective = enemy.casTargetRef
+        ? enemy.casTargetRef.group.position
+        : player.position;
       enemy.orbitPhase += spec.orbitRate * enemy.orbitDir * dt;
       heliDesired.set(
-        player.position.x + Math.cos(enemy.orbitPhase) * spec.standoff,
+        heliObjective.x + Math.cos(enemy.orbitPhase) * spec.standoff,
         0,
-        player.position.z + Math.sin(enemy.orbitPhase) * spec.standoff
+        heliObjective.z + Math.sin(enemy.orbitPhase) * spec.standoff
       );
       heliToStation.set(heliDesired.x - position.x, 0, heliDesired.z - position.z);
       const stationRange = heliToStation.length();
       // "Engaged" for the audio cue and the probe, on range alone - there is
       // no pursuit/patrol machine here to read.
-      heliToPlayer.copy(player.position).sub(position);
+      heliToPlayer.copy(heliObjective).sub(position);
       const playerRange = heliToPlayer.length();
-      enemy.mode = playerRange < spec.attackRange ? "pursuit" : "patrol";
+      enemy.mode = enemy.casTargetRef || playerRange < spec.attackRange ? "pursuit" : "patrol";
 
       // Dash when the station is far, ease off as it arrives, hover when it is
       // there. `accel` rather than a straight assignment is what makes it read
@@ -66437,6 +66756,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const rate = spec.rotorSpin * (1 + speedFraction * 0.12);
         for (let r = 0; r < rotors.length; r += 1) rotors[r].rotation.y += rate * dt;
       }
+
+      if (updateEnemyCasAttack(enemy, dt)) return;
 
       // --- Weapons ----------------------------------------------------------
       // Chin gun through the shared surface-AA path (the spec carries `aa`,
@@ -66732,6 +67053,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // burst's muzzle position, the missile launch point - is computed from
       // where the hull is this frame rather than where it was last frame.
       if (enemy.route) {
+        const held = enemy.holdUntilMarkClear && enemies.some((candidate) => (
+          candidate.alive && candidate.mark === enemy.holdUntilMarkClear
+        ));
+        if (!held && !enemy.holdReleased) {
+          enemy.holdReleased = true;
+          fireFixedRadioEvent("phase1Clear");
+        }
+        if (held) {
+          enemy.speed = Math.max(0, enemy.speed);
+        } else {
         const end = enemy.route[enemy.route.length - 1].d;
         if (enemy.routeDistance < end) {
           // A column shares one road and each vehicle owns its own distance
@@ -66746,6 +67077,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           else if (handleM10GroundRouteEnd(enemy)) return;
           else failEscapingGroundTarget(enemy);
           enemy.speed = 0;
+        }
+        if (enemy.missionRole === "m05FriendlyTank") {
+          if (enemy.routeDistance >= end * 0.45 && !sortieMarks.m05FriendlyAtCentralRadio) {
+            sortieMarks.m05FriendlyAtCentralRadio = 1;
+            fireFixedRadioEvent("friendlyAtCentral");
+          }
+          if (enemy.routeDistance >= end && !sortieMarks.m05FriendlyAtWestCraneRadio) {
+            sortieMarks.m05FriendlyAtWestCraneRadio = 1;
+            fireFixedRadioEvent("friendlyAtWestCrane");
+          }
+        }
         }
       }
 
@@ -67021,7 +67363,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Banked for checkpoint restores: the board rebuild must know which
       // installations this sortie already destroyed.
       if (enemy.ground) destroyedGroundIds.add(enemy.id);
-      const m09Outcome = handleM09GroundDestroyed(enemy, byWingman);
+      const protectedGroundOutcome = handleM05ProtectedGroundDestroyed(enemy, byWingman)
+        || handleM09GroundDestroyed(enemy, byWingman);
       handleM10GroundDestroyed(enemy);
       let chainBlast = null;
       if (enemy.subsystem) {
@@ -67113,8 +67456,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // crediting the wingman here would grade the player on someone else's
       // shooting - which is exactly what the whole `byWingman` flag exists to
       // prevent.
-      if (!byWingman && m09Outcome && m09Outcome.protectedLoss) {
-        const penalty = Math.max(0, Number(m09Outcome.penalty) || 0);
+      if (!byWingman && protectedGroundOutcome && protectedGroundOutcome.protectedLoss) {
+        const penalty = Math.max(0, Number(protectedGroundOutcome.penalty) || 0);
         score = Math.max(0, score - penalty);
         if (penalty > 0) showBanner(`PROTECTED VEHICLE LOST · -${penalty} PTS`, 1.8, "danger");
       } else if (!byWingman) {
@@ -67170,9 +67513,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       // Keyed off the player's running tally, which a wingman kill did not
       // move - calling it here would replay the last callout on a stale count.
-      if (!byWingman && !(m09Outcome && m09Outcome.protectedLoss)) onKillRadio(kills);
+      if (!byWingman && !(protectedGroundOutcome && protectedGroundOutcome.protectedLoss)) onKillRadio(kills);
       if (chainBlast) detonateGroundChain(enemy, chainBlast);
-      if (m09Outcome && m09Outcome.failBanner) failM09Mission(m09Outcome.failBanner);
+      if (protectedGroundOutcome && protectedGroundOutcome.failBanner) {
+        if (protectedGroundOutcome.mission === "m05") failM05Mission(protectedGroundOutcome.failBanner);
+        else failM09Mission(protectedGroundOutcome.failBanner);
+      }
       // M10's ground kill selects how the train was stopped. Completion is
       // deliberately owned by updateM10MissionThreat: the six-aircraft cover
       // remains mandatory after either route has been chosen.

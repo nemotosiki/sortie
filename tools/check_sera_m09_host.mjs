@@ -37,7 +37,9 @@ for (const token of [
   assert(html.includes(token), `missing host contract ${token}`);
 }
 assert(html.includes("score = Math.max(0, score - penalty);"), "protected-loss score penalty missing");
-assert(html.includes("if (m09Outcome && m09Outcome.failBanner) failM09Mission"), "protected-loss failure gate missing");
+assert(html.includes("protectedGroundOutcome && protectedGroundOutcome.failBanner")
+    && html.includes("else failM09Mission(protectedGroundOutcome.failBanner)"),
+  "protected-loss failure gate missing");
 
 new vm.SourceTextModule(moduleBody(html));
 console.log("check_sera_m09_host: PASS");

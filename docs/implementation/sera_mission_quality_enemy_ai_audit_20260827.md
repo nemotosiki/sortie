@@ -106,45 +106,64 @@ CAS. This is a second checkpoint after the air-purpose rework.
 
 ### A. Common purpose runtime
 
-- [ ] Normalize and retain `purpose`, protected tag, commit radius, return leash
+- [x] Normalize and retain `purpose`, protected tag, commit radius, return leash
   and optional altitude floor on air waves.
-- [ ] Default unannotated legacy missions to the old behaviour; require Sera
+- [x] Default unannotated legacy missions to the old behaviour; require Sera
   payloads to state their intent.
-- [ ] Make INTERCEPT/QRA/RELIEF/PINNING flights acquire their assigned target
+- [x] Make INTERCEPT/QRA/RELIEF/PINNING flights acquire their assigned target
   across the battle area.
-- [ ] Make SCREEN/ESCORT/CAP/TOP COVER engage around their protected point and
+- [x] Make SCREEN/ESCORT/CAP/TOP COVER engage around their protected point and
   return when dragged outside the leash.
-- [ ] Remove spawn-order-based wingman hunting. Use `assignedTargets` only.
-- [ ] Expose live purpose and protected-point state through a debug probe.
+- [x] Remove spawn-order-based wingman hunting. Use `assignedTargets` only.
+- [x] Expose live purpose and protected-point state through a debug probe.
 
 ### B. Mission data pass
 
-- [ ] Author a purpose for every Sera air wave and dynamic reinforcement.
-- [ ] Preserve ARCA blue/white transitions and prohibit ARCA TGT.
-- [ ] Add an actual M20 defended capital point and bomber breach pressure.
-- [ ] Correct invalid skill names and explicitly mark support/withdrawal assets.
+- [x] Author a purpose for every Sera air wave and dynamic reinforcement.
+- [x] Preserve ARCA blue/white transitions and prohibit ARCA TGT.
+- [x] Add an actual M20 defended capital point and bomber breach pressure.
+- [x] Correct invalid skill names and explicitly mark support/withdrawal assets.
 
 ### C. CAS and combined-arms pass
 
-- [ ] Add a bounded air-to-ground mission-object target channel.
-- [ ] Connect M03 Su-25 to surviving port defence/LZ assets.
-- [ ] Connect M05 Ka-52 and M09 Su-25/Ka-52 to the authored ground battle.
-- [ ] Make aircraft return to their air task when no valid ground objective
+- [x] Add a bounded air-to-ground mission-object target channel.
+- [x] Connect M03 Su-25 and Ka-52 to surviving port facilities.
+- [x] Connect M05 Ka-52 and M09 Su-25/Ka-52 to the authored ground battle.
+- [x] Make aircraft return to their air task when no valid ground objective
   remains rather than orbiting a dead reference.
+
+M05's `friendlyGround` contract had no host consumer. The mission now spawns
+the planned four tanks and two IFVs, holds them until the phase-one air-defence
+mark is clear, records losses, caps rank from surviving tanks and fails when
+all four tanks are lost. This adds combined-arms volume without adding another
+hostile fighter wave.
 
 ### D. Density and phase pass
 
-- [ ] Measure active contacts and quiet gaps in M01-M20 after purpose changes.
-- [ ] Add only finite two-aircraft relief/QRA elements where a phase remains
-  empty. Preserve the authored elite-aircraft limits.
-- [ ] Review M14's red-air requirement after the landing/CAP behaviour is
+- [x] Measure contact composition and effective pressure in M01-M20 after the
+  purpose change. The payload gates show no underfilled phase that needs an
+  unplanned hostile wave; the previous quietness came from range-gated AI.
+- [x] Keep the planned finite relief/QRA elements and elite-aircraft limits.
+  No extra Su-57/Su-35 spam was added. M05 instead gains six planned blue
+  ground objects and real CAS pressure.
+- [x] Review M14's red-air requirement after the landing/CAP behaviour is
   playable; do not change IFF merely to increase white-marker count.
+
+M14 remains all-red in the carrier-air package because the mission contract
+explicitly requires the embarked Su-33/Ka-52 force. Its Su-33s now defend the
+landing fleet instead of waiting near their spawn point; changing them to white
+would weaken the authored landing-force objective rather than improve variety.
 
 ### E. Verification
 
-- [ ] Static plan/payload gate for purpose, ARCA and white-rank contracts.
-- [ ] Browser probes for intercept acquisition, escort leash, CAP return,
-  support loiter and withdrawal.
-- [ ] M01-M20 objective progression, Retry and zero page/console errors.
+- [x] Static plan/payload gate for purpose, ARCA and white-rank contracts.
+- [x] Browser probes for intercept acquisition, escort attachment, CAP
+  attachment, capital strike, CAS damage and removal of random wingman hunting.
+- [x] Browser manoeuvre probes for CAP perimeter commit, leash return and
+  support loiter over 120 forced simulation frames.
+- [x] All available mission-specific E2E gates passed after this change set:
+  M01-M03 and M07-M20. M04/M06 have payload gates; M04 fleet CAP and M05 joint
+  advance/CAS are additionally covered by the new live purpose probe. All
+  runs reported zero page/console errors.
 - [ ] Manual Chrome play of at least one air defence, one escort, one CAS and
   one ARCA mission on the port-8340 server.

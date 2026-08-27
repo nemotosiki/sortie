@@ -231,6 +231,8 @@ export default function register(ctx) {
         role: "line",
         skill: "regular",
         purpose: "cas",
+        casTarget: "friendly-ground",
+        casDamage: 14,
         at: [3800, 2500],
         altitude: 360,
         facing: [0, -600],
@@ -254,6 +256,8 @@ export default function register(ctx) {
         role: "line",
         skill: "regular",
         purpose: "cas",
+        casTarget: "friendly-ground",
+        casDamage: 28,
         at: [5600, 5200],
         altitude: 900,
         facing: [0, 600]

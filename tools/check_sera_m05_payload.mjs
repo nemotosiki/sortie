@@ -52,13 +52,13 @@ try {
   assert(added?.key === "sera-m05" && added?.campaignOrder === 5, "mission identity changed");
   assert(added?.title === "PORT OF ASH", `unexpected title ${added?.title}`);
   assert(added?.totalTargets === 17, `expected 17 red TGT, got ${added?.totalTargets}`);
-  assert(added?.totalContacts === 28, `expected 28 contacts, got ${added?.totalContacts}`);
+  assert(added?.totalContacts === 34, `expected 34 contacts, got ${added?.totalContacts}`);
   const count = (type) => [
     ...added.sequence.flatMap((wave) => wave.types),
     ...(added.groundUnits || []).map((unit) => unit.type)
   ].filter((entry) => entry === type).length;
   assert(count("autonomousSam") === 2 && count("spaag") === 3, "phase 1 composition changed");
-  assert(count("tank") === 8 && count("ifv") === 3, "ground armor composition changed");
+  assert(count("tank") === 12 && count("ifv") === 5, "enemy or friendly ground armor composition changed");
   assert(count("mobileCommand") === 1 && count("ka52") === 2 && count("mig29") === 2 && count("mig21") === 4,
     "phase 3 composition changed");
   const whiteWaves = added.sequence.filter((wave) => wave.tgt === false);
@@ -71,8 +71,15 @@ try {
   assert(added.sequence.filter((wave) => wave.types.includes("mig21"))
     .every((wave) => wave.role === "trash" && wave.skill === "rookie"),
     "MiG-21 local-defence role/skill changed");
-  assert(whiteGround.length === 5 && whiteGround.every((unit) => unit.rankNeutral === true),
+  assert(whiteGround.length === 11 && whiteGround.every((unit) => unit.rankNeutral === true),
     "white ground contacts must remain rank-neutral");
+  const friendlyColumn = added.groundUnits.filter((unit) => unit.mark === "m05FriendlyGround");
+  assert(friendlyColumn.length === 6
+      && friendlyColumn.filter((unit) => unit.missionRole === "m05FriendlyTank").length === 4
+      && friendlyColumn.filter((unit) => unit.missionRole === "m05FriendlyIfv").length === 2
+      && friendlyColumn.every((unit) => unit.friendly && unit.protected
+        && unit.holdUntilMarkClear === "m05Phase1"),
+    "joint-recapture column is missing or not held behind phase-one SEAD");
   assert(added.friendlies?.wingmen?.length === 2, "CROWN/LARK wingmen missing");
   assert(added.friendlies?.playerStart?.x === -4200 && added.friendlies?.playerStart?.z === -5000,
     "local-to-world player start translation changed");
@@ -89,7 +96,7 @@ try {
     "S-rank contract changed");
   assert(added.fixedRadio?.some((line) => line.id === "m05_chase_02"), "command-distance radio missing");
   console.log("check_sera_m05_payload: PASS");
-  console.log("  red=AD5/armor9/command1/Ka52x2 white=tank2/gun3/MiG21x4/MiG29x2 routes and carry-over staged");
+  console.log("  red=AD5/armor9/command1/Ka52x2 blue=tank4/IFV2 white=tank2/gun3/MiG21x4/MiG29x2");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }

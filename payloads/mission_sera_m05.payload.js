@@ -174,6 +174,48 @@ export default function register(ctx) {
     ],
 
     groundUnits: [
+      // The joint-recapture column from the canonical M05 plan. It is visible
+      // at mission start but waits for the phase-one SAM/SPAAG corridor to be
+      // opened before advancing. Ka-52 CAS uses these protected objects as its
+      // real mission target.
+      ...[510, 511, 512, 513].map((id, slot) => ({
+        id,
+        type: "tank",
+        label: `KEDEM SPEAR ${slot + 1}`,
+        x: 900,
+        z: -2100,
+        heading: Math.PI,
+        path: [[900, -2100], [620, -2380], [250, -2700], [-120, -2920], [-80, -3700], [-80, -4280], [-700, -4050], [-1350, -3250]],
+        pathOffset: slot * 55,
+        speed: 10,
+        tgt: false,
+        rankNeutral: true,
+        friendly: true,
+        protected: true,
+        lossPenalty: 900,
+        mark: "m05FriendlyGround",
+        missionRole: "m05FriendlyTank",
+        holdUntilMarkClear: "m05Phase1"
+      })),
+      ...[514, 515].map((id, slot) => ({
+        id,
+        type: "ifv",
+        label: `KEDEM IFV ${slot + 1}`,
+        x: 900,
+        z: -2100,
+        heading: Math.PI,
+        path: [[900, -2100], [620, -2380], [250, -2700], [-120, -2920], [-80, -3700], [-80, -4280], [-700, -4050], [-1350, -3250]],
+        pathOffset: 28 + slot * 110,
+        speed: 11,
+        tgt: false,
+        rankNeutral: true,
+        friendly: true,
+        protected: true,
+        lossPenalty: 500,
+        mark: "m05FriendlyGround",
+        missionRole: "m05FriendlyIfv",
+        holdUntilMarkClear: "m05Phase1"
+      })),
       { id: 1, type: "autonomousSam", label: "MOBILE SAM", x: -700, z: -2400, phase: "m05-phase1", mark: "m05Phase1" },
       { id: 2, type: "autonomousSam", label: "MOBILE SAM", x: -1350, z: -3250, phase: "m05-phase1", mark: "m05Phase1" },
       { id: 3, type: "spaag", x: -150, z: -2950, phase: "m05-phase1", mark: "m05Phase1" },
@@ -312,6 +354,8 @@ export default function register(ctx) {
         role: "trash",
         skill: "regular",
         purpose: "cas",
+        casTarget: "friendly-ground",
+        casDamage: 14,
         at: [4500, -5500],
         altitude: 320,
         facing: [0, -3000],
@@ -351,6 +395,8 @@ export default function register(ctx) {
       { id: "m05_intro_03", event: "afterPortVisible", speaker: "hearth", priority: "NORMAL", text: "使えるのは北側の橋だけだ。地上隊はそこを通す。" },
       { id: "m05_ground_01", event: "phase1Clear", speaker: "meridian", priority: "NORMAL", text: "防空回廊を確認。ケデム地上軍、前進を開始。" },
       { id: "m05_p2_02", event: "friendlyAtCentral", speaker: "lark", priority: "NORMAL", text: "味方戦車、中央交差点。敵はその西側。" },
+      { id: "m05_friendly_lost", event: "m05FriendlyTankLost", speaker: "hearth", priority: "URGENT", text: "SPEAR一両停止。残存車両は前進を継続、上空援護を頼む。" },
+      { id: "m05_friendly_critical", event: "m05FriendlyCritical", speaker: "meridian", priority: "CRITICAL", text: "ケデム戦車は残り一両。Ka-52を最優先、地上隊を全滅させるな。" },
       { id: "m05_update_01", event: "commandEscapeStarts", speaker: "lark", priority: "URGENT", text: "南倉庫から車両一、運河沿いを東へ走ってる。" },
       { id: "m05_chase_01", event: "commandAtCanalSouth", speaker: "lark", priority: "URGENT", text: "指揮車、運河南岸。補修橋へ向かってる。" },
       { id: "m05_chase_02", event: "commandRepairBridge1500", speaker: "meridian", priority: "CRITICAL", text: "TGT、補修橋まで一・五キロ。" },
@@ -374,7 +420,7 @@ export default function register(ctx) {
     map: { x: 0.61, y: 0.27 },
     battleCenter: { x: 0, z: -3000 },
     battleRadius: 10500,
-    briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方地上軍前方の赤戦車六、IFV三を排除する。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
+    briefing: "戦災下のサルク港へケデム地上軍を通す。PHASE 1は赤い移動SAM二、SPAAG三を全滅させ、防空回廊を開け。白いMiG-21bisは地方防空隊で全滅不要。\nPHASE 2では味方戦車四・IFV二の前方にいる赤戦車六、IFV三を排除する。味方隊は回廊が開くまで待機し、戦車四両全滅で任務失敗。白い固定砲は全滅不要。内陸から来るMiG-29A二機は正規QRAだが、地上TGTから引き離されるな。\nMISSION UPDATE後は南岸を逃走する移動指揮車と、味方地上隊を狙う赤Ka-52二機を破壊する。遅れて来るMiG-21bisを追って港から離れるな。"
   };
 
   ctx.addMission(mission);
