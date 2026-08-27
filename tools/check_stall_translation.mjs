@@ -4,6 +4,11 @@ import {
   resetStallTranslationState,
   updateStallTranslationState
 } from "../src/flight/stall-translation.js";
+import {
+  GAME_SERVICE_CEILING_M,
+  altitudeAdjustedStallThreshold,
+  highAltitudeEnvelopeAt
+} from "../src/flight/high-altitude-envelope.js";
 
 function assert(condition, message, details = null) {
   if (condition) return;
@@ -16,7 +21,8 @@ function simulate({
   desired,
   severity = 1,
   seconds = 8,
-  fps = 60
+  fps = 60,
+  kernelOptions = {}
 }) {
   const state = resetStallTranslationState({});
   const dt = 1 / fps;
@@ -28,7 +34,7 @@ function simulate({
   // A nose change on the next frame must not rewrite this inertia.
   updateStallTranslationState(state, entry, 0, 0);
   for (let frame = 0; frame < Math.round(seconds * fps); frame += 1) {
-    updateStallTranslationState(state, desired, severity, dt);
+    updateStallTranslationState(state, desired, severity, dt, kernelOptions);
     x += state.x * dt;
     y += state.y * dt;
     z += state.z * dt;
@@ -76,6 +82,59 @@ assert(!recovery.active && Math.abs(Math.hypot(recovery.x, recovery.y, recovery.
 assert(noseUp.state.y >= -STALL_TERMINAL_FALL_SPEED,
   "stall fall exceeded the arcade terminal-speed cap", noseUp);
 
+// M11/F-35C reproduction: at 9,144m the shared envelope permits 426.6m/s,
+// requires 327.6m/s for control and 399.5m/s for full recovery. The old kernel
+// fell to 138.1m/s after this exact 20-degree nose-down/full-power run because
+// low-speed severity simultaneously imposed full drag and removed engine
+// thrust. AOA-separated drag must now let the real path cross recovery speed.
+const f35M11Envelope = highAltitudeEnvelopeAt(GAME_SERVICE_CEILING_M, 70, 540);
+const f35M11RecoverySpeed = altitudeAdjustedStallThreshold(
+  114,
+  70,
+  f35M11Envelope
+);
+const f35M11Target = f35M11Envelope.availableMaxSpeed;
+const f35M11Pitch = 20 * Math.PI / 180;
+const f35M11Recovery = simulate({
+  entry: { x: 0, y: 0, z: -270 },
+  desired: {
+    x: 0,
+    y: -Math.sin(f35M11Pitch) * f35M11Target,
+    z: -Math.cos(f35M11Pitch) * f35M11Target
+  },
+  seconds: 20,
+  kernelOptions: { thrustFactor: f35M11Envelope.thrustFactor }
+});
+assert(Math.hypot(
+  f35M11Recovery.state.x,
+  f35M11Recovery.state.y,
+  f35M11Recovery.state.z
+) > f35M11RecoverySpeed, "F-35C M11 nose-down recovery remains impossible", f35M11Recovery);
+assert(f35M11Recovery.position.y < -1000
+    && f35M11Recovery.state.separatedFlow < 0.05
+    && f35M11Recovery.state.engineAuthority > 0.95,
+  "F-35C recovery did not trade altitude for low-AOA acceleration", f35M11Recovery);
+
+const f35FrameRates = [30, 60, 120].map((fps) => ({
+  fps,
+  ...simulate({
+    entry: { x: 0, y: 0, z: -270 },
+    desired: {
+      x: 0,
+      y: -Math.sin(f35M11Pitch) * f35M11Target,
+      z: -Math.cos(f35M11Pitch) * f35M11Target
+    },
+    seconds: 20,
+    fps,
+    kernelOptions: { thrustFactor: f35M11Envelope.thrustFactor }
+  })
+}));
+const f35FinalSpeeds = f35FrameRates.map(({ state }) =>
+  Math.hypot(state.x, state.y, state.z));
+assert(Math.max(...f35FinalSpeeds) - Math.min(...f35FinalSpeeds) < 1,
+  "F-35C recovery speed is frame-rate dependent", f35FrameRates);
+
 console.log("check_stall_translation: PASS");
 console.log(`  nose-up peak=${noseUp.peakY.toFixed(1)}m, y@8s=${noseUp.position.y.toFixed(1)}m, vy=${noseUp.state.y.toFixed(1)}m/s`);
 console.log(`  30/60/120fps spread=${(Math.max(...finalY) - Math.min(...finalY)).toFixed(3)}m`);
+console.log(`  F-35C M11 nose-down recovery=${f35FinalSpeeds[1].toFixed(1)}m/s`);

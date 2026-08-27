@@ -125,6 +125,25 @@ export function highAltitudeEnvelopeAt(
   return Object.freeze(envelope);
 }
 
+// An airborne mission starts from a trimmed flight condition, not from the
+// sea-level cruise scalar blindly copied into thin air. The shared envelope
+// decides the speed for every aircraft: ordinary sorties keep authored cruise,
+// a high-altitude sortie starts just above buffet, and an aircraft spawned
+// above its sustainable ceiling receives only its available maximum rather
+// than an invented per-type exemption.
+export function highAltitudeTrimmedLaunchSpeed(
+  cruiseSpeedMps,
+  envelope,
+  controlMargin = 1.06
+) {
+  const cruise = Math.max(0, Number(cruiseSpeedMps) || 0) *
+    clamp(Number(envelope?.maxSpeedFactor) || 1, 0, 1);
+  const minimum = Math.max(0, Number(envelope?.minimumControlledSpeed) || 0);
+  const available = Math.max(0, Number(envelope?.availableMaxSpeed) || cruise);
+  const margin = Math.max(1, Number(controlMargin) || 1);
+  return Math.min(available, Math.max(cruise, minimum * margin));
+}
+
 export function altitudeAdjustedStallThreshold(
   baseThresholdMps,
   baseStallEntryMps,

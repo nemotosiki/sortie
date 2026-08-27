@@ -89,7 +89,7 @@ assert(capped.state.verticalSpeed === -ATTITUDE_LIFT_MAX_SINK_SPEED,
 
 for (const required of [
   'from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1"',
-  'from "./src/flight/stall-translation.js?v=20260828-world-path-1"',
+  'from "./src/flight/stall-translation.js?v=20260828-stall-recovery-1"',
   "PLAYER_STABILITY = aircraftStabilityRating(spec);",
   "updateAttitudeLiftState(",
   "tmpV2.dot(WORLD_UP)",

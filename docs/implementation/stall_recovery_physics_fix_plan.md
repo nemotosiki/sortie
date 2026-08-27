@@ -82,16 +82,68 @@ Primary references:
 - [x] Read relevant stall/high-altitude Git history and current mission setup.
 - [x] Reproduce and measure the current mathematical deadlock.
 - [x] Confirm recovery requirements against FAA/NASA primary sources.
-- [ ] Pure simulation: nose-down + boost crosses the F-35C M11 recovery speed.
-- [ ] Pure simulation: nose-up deep stall still falls in world gravity.
-- [ ] Pure simulation: 30/60/120 fps results remain within tolerance.
-- [ ] Browser: M11/F-35C starts at a sustainable trimmed speed.
-- [ ] Browser: forced deep stall recovers with nose-down + boost in a bounded
+- [x] Pure simulation: nose-down + boost crosses the F-35C M11 recovery speed.
+- [x] Pure simulation: nose-up deep stall still falls in world gravity.
+- [x] Pure simulation: 30/60/120 fps results remain within tolerance.
+- [x] Browser: M11/F-35C starts at a sustainable trimmed speed.
+- [x] Browser: forced deep stall recovers with nose-down + boost in a bounded
       time and loses altitude while doing so.
-- [ ] Browser: level/no-boost control does not receive a free recovery.
-- [ ] Shared regression: existing player and enemy flight-envelope checks pass.
-- [ ] Record before/after measurements and final tuned constants below.
+- [x] Browser: level/no-boost control does not receive a free recovery.
+- [x] Shared regression: existing player and enemy flight-envelope checks pass.
+- [x] Record before/after measurements and final tuned constants below.
 
 ## Final measurements
 
-Pending implementation and browser verification.
+### Pure kernel, fixed high-altitude severity
+
+The same F-35C M11 condition used for the baseline was rerun at 30/60/120 fps
+with 20 degrees nose-down and the 0.8845 altitude thrust factor.
+
+| Result | Before | After |
+|---|---:|---:|
+| actual speed after 20 s | 138.1 m/s | 428.1 m/s |
+| crossed 399.5 m/s recovery threshold | no | yes |
+| 30/60/120 fps final-speed spread | not gated | below 1 m/s |
+
+The fixed-severity test is intentionally harsher than the live game: it never
+releases lift loss after crossing the threshold. It proves that the kernel no
+longer contains a mathematical energy deadlock.
+
+### Production Chrome, M11/F-35C
+
+| Probe | Measured result |
+|---|---:|
+| trimmed launch speed | 347.3 m/s |
+| minimum controlled speed at launch | 327.6 m/s |
+| level/no-boost after 3 s | 255.3 m/s, severity 1.00 |
+| nose-down + boost recovery | 6 s |
+| speed at completed recovery | 348.6 m/s |
+| altitude exchanged for recovery | 357 m |
+| HUD versus kinematic speed | exact integer-km/h parity |
+
+The no-power control remains stalled, while the recovery input trades altitude
+for speed and fully releases the world-space stall path. This is the intended
+behavioral distinction.
+
+### Final shared constants
+
+- world gravity: 9.80665 m/s2
+- stall drag rate: 0.08 /s
+- low-speed lift-loss share of drag: 0.18
+- high-AOA separated-flow share of drag: 0.82
+- body-axis engine acceleration cap: 18 m/s2
+- engine authority at full AOA separation: 0.18
+- mission-launch control margin: 1.06 x minimum controlled speed
+
+### Regression evidence
+
+- `check_stall_translation.mjs`
+- `check_high_altitude_envelope.mjs`
+- `check_attitude_lift.mjs`
+- `check_enemy_flight_envelope.mjs`
+- `check_stall_recovery_e2e.mjs`
+- `check_sera_m11_preflight.mjs`
+- `check_sera_m11_payload.mjs`
+- `check_sera_m11_e2e.mjs`
+- `check_attitude_lift_e2e.mjs`
+- `check_enemy_flight_envelope_e2e.mjs`

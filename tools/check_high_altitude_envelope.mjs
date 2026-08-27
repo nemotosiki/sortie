@@ -14,6 +14,7 @@ import {
   highAltitudeEnergyFloorAt,
   highAltitudeEnvelopeAt,
   highAltitudeSpeedRetentionAt,
+  highAltitudeTrimmedLaunchSpeed,
   isaTroposphereDensityRatio
 } from "../src/flight/high-altitude-envelope.js";
 
@@ -116,6 +117,23 @@ assert(altitudeAdjustedStallThreshold(62, 82, f16At9000)
 assert(altitudeAdjustedStallThreshold(114, 82, f16At9000)
     > f16At9000.minimumControlledSpeed,
   "recovery offset collapsed into stall entry");
+
+const f35M11 = highAltitudeEnvelopeAt(GAME_SERVICE_CEILING_M, 70, 540);
+const f35M11Launch = highAltitudeTrimmedLaunchSpeed(270, f35M11);
+near(f35M11Launch, f35M11.minimumControlledSpeed * 1.06, 1e-9,
+  "F-35C M11 trimmed launch speed");
+assert(f35M11Launch > f35M11.minimumControlledSpeed
+    && f35M11Launch < f35M11.availableMaxSpeed,
+  "F-35C M11 launch is not inside its sustainable envelope");
+near(highAltitudeTrimmedLaunchSpeed(270, sea), 270, 1e-12,
+  "ordinary-altitude authored cruise launch");
+const f35AboveCeiling = highAltitudeEnvelopeAt(10000, 70, 540);
+near(
+  highAltitudeTrimmedLaunchSpeed(270, f35AboveCeiling),
+  f35AboveCeiling.availableMaxSpeed,
+  1e-12,
+  "above-ceiling launch must not invent aerodynamic margin"
+);
 
 const verticalCommand = altitudeAdjustedVerticalSpeed(
   200,

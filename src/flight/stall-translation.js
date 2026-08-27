@@ -16,7 +16,11 @@ export const STALL_TERMINAL_FALL_SPEED = 180;
 export const STALL_AOA_ONSET_DEG = 12;
 export const STALL_AOA_FULL_DEG = 42;
 export const STALL_ENGINE_ACCELERATION = 18;
-export const STALL_ENGINE_AUTHORITY_AT_FULL_LOSS = 0.18;
+export const STALL_ENGINE_AUTHORITY_AT_FULL_AOA_LOSS = 0.18;
+// Low speed removes lift, but it is high-AOA separated flow that creates the
+// large drag rise. Keeping a small lift-loss share preserves energy bleed in a
+// mush while allowing an unloaded, nose-low aircraft to accelerate again.
+export const STALL_LIFT_LOSS_DRAG_SHARE = 0.18;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -35,11 +39,20 @@ export function resetStallTranslationState(state = {}) {
   state.z = 0;
   state.gravityWeight = 0;
   state.pathLoss = 0;
+  state.separatedFlow = 0;
+  state.dragWeight = 0;
+  state.engineAuthority = 1;
   state.angleOfAttackDeg = 0;
   return state;
 }
 
-export function updateStallTranslationState(state, desiredVelocity, stallSeverity, dt) {
+export function updateStallTranslationState(
+  state,
+  desiredVelocity,
+  stallSeverity,
+  dt,
+  options = {}
+) {
   const severity = clamp(Number(stallSeverity) || 0, 0, 1);
   const elapsed = Math.max(0, Number(dt) || 0);
   const desiredX = Number(desiredVelocity?.x) || 0;
@@ -79,6 +92,7 @@ export function updateStallTranslationState(state, desiredVelocity, stallSeverit
     (angleOfAttack - STALL_AOA_ONSET_DEG) /
       (STALL_AOA_FULL_DEG - STALL_AOA_ONSET_DEG)
   );
+  state.separatedFlow = aoaLoss;
   const pathLoss = Math.max(severity, aoaLoss);
   state.pathLoss = pathLoss;
 
@@ -95,6 +109,8 @@ export function updateStallTranslationState(state, desiredVelocity, stallSeverit
     state.y += (desiredY - state.y) * capture;
     state.z += (desiredZ - state.z) * capture;
     state.gravityWeight = 0;
+    state.dragWeight = 0;
+    state.engineAuthority = 1;
     return state;
   }
 
@@ -107,10 +123,19 @@ export function updateStallTranslationState(state, desiredVelocity, stallSeverit
   );
   state.gravityWeight = gravityWeight;
 
-  // Separated flow removes kinetic energy. Damping all three WORLD components
-  // prevents an upward entry velocity from being immortal, while gravity below
-  // still establishes an actual downward terminal fall.
-  const drag = Math.exp(-STALL_DRAG_RATE * gravityWeight * elapsed);
+  // Lift loss and separated-flow drag are related but not interchangeable. A
+  // low-speed wing can remain unable to support the aircraft after the pilot
+  // unloads it, yet at low AOA it no longer carries the full separated-flow
+  // drag penalty. That distinction prevents the old recovery deadlock where
+  // the low-speed latch itself removed more energy than the engine could add.
+  const dragWeight = clamp(
+    gravityWeight * STALL_LIFT_LOSS_DRAG_SHARE +
+      aoaLoss * (1 - STALL_LIFT_LOSS_DRAG_SHARE),
+    0,
+    1
+  );
+  state.dragWeight = dragWeight;
+  const drag = Math.exp(-STALL_DRAG_RATE * dragWeight * elapsed);
   state.x *= drag;
   state.y *= drag;
   state.z *= drag;
@@ -119,23 +144,29 @@ export function updateStallTranslationState(state, desiredVelocity, stallSeverit
     state.y - STALL_WORLD_GRAVITY * gravityWeight * elapsed
   );
 
-  // The engine still produces thrust in separated flow, but thrust is an
-  // acceleration along the BODY axis; it is not permission to replace the
-  // WORLD velocity with `nose * commandedSpeed`.  At full separation the
-  // retained authority is deliberately below one gravity, so pointing a
-  // stalled jet straight up cannot manufacture a climb.  Lowering the nose
-  // lets thrust and gravity combine to rebuild real airspeed for recovery.
+  // The engine still produces BODY-axis thrust when the wing is below its
+  // control speed. Engine authority follows inlet/body misalignment (AOA), not
+  // the low-speed severity latch: unloading the wing therefore makes throttle
+  // useful again while a high-alpha, nose-high jet still cannot power-climb out
+  // of a deep stall. High-altitude lapse is supplied by the shared envelope.
   if (desiredLength > 1e-6 && elapsed > 0) {
     const nx = desiredX / desiredLength;
     const ny = desiredY / desiredLength;
     const nz = desiredZ / desiredLength;
+    const engineAuthority = STALL_ENGINE_AUTHORITY_AT_FULL_AOA_LOSS +
+      (1 - STALL_ENGINE_AUTHORITY_AT_FULL_AOA_LOSS) * (1 - aoaLoss);
+    state.engineAuthority = engineAuthority;
     const axialSpeed = state.x * nx + state.y * ny + state.z * nz;
     const speedError = desiredLength - axialSpeed;
     if (speedError > 0) {
-      const engineAuthority = STALL_ENGINE_AUTHORITY_AT_FULL_LOSS +
-        (1 - STALL_ENGINE_AUTHORITY_AT_FULL_LOSS) * (1 - pathLoss);
+      const requestedThrustFactor = Number(options.thrustFactor);
+      const thrustFactor = clamp(
+        Number.isFinite(requestedThrustFactor) ? requestedThrustFactor : 1,
+        0,
+        1.5
+      );
       const acceleration = Math.min(
-        STALL_ENGINE_ACCELERATION * engineAuthority,
+        STALL_ENGINE_ACCELERATION * thrustFactor * engineAuthority,
         speedError / elapsed
       );
       state.x += nx * acceleration * elapsed;
@@ -166,6 +197,9 @@ export function updateStallTranslationState(state, desiredVelocity, stallSeverit
       state.z = desiredZ;
       state.gravityWeight = 0;
       state.pathLoss = 0;
+      state.separatedFlow = 0;
+      state.dragWeight = 0;
+      state.engineAuthority = 1;
       state.angleOfAttackDeg = 0;
     }
   }

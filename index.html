@@ -2746,7 +2746,7 @@
     import {
       resetStallTranslationState,
       updateStallTranslationState
-    } from "./src/flight/stall-translation.js?v=20260828-world-path-2";
+    } from "./src/flight/stall-translation.js?v=20260828-stall-recovery-1";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -2764,8 +2764,9 @@
       estimatedSustainableAltitudeM,
       highAltitudeClimbAuthorityAtSpeed,
       highAltitudeControlAuthorityAtSpeed,
-      highAltitudeEnvelopeAt
-    } from "./src/flight/high-altitude-envelope.js?v=20260827-speed-energy-v2";
+      highAltitudeEnvelopeAt,
+      highAltitudeTrimmedLaunchSpeed
+    } from "./src/flight/high-altitude-envelope.js?v=20260828-trimmed-launch-1";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -47558,7 +47559,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playerStallTranslation,
         tmpV11,
         stallSeverity,
-        dt
+        dt,
+        { thrustFactor: playerHighAltitudeEnvelope.thrustFactor }
       );
     }
 
@@ -51410,16 +51412,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // to compare several seconds of attitude response without waiting for
         // software WebGL to render every frame; enemies, mission timers and
         // ordnance deliberately do not advance.
-        forceFlightFrames: (frames, step = 1 / 60) => {
+        forceFlightFrames: (frames, step = 1 / 60, input = {}) => {
           if (gameState !== STATE_PLAYING) return null;
           const count = THREE.MathUtils.clamp(Math.floor(Number(frames) || 0), 0, 720);
           const slice = THREE.MathUtils.clamp(Number(step) || 0, 1 / 240, 1 / 20);
           keys.clear();
-          gamepadInput.pitch = 0;
-          gamepadInput.roll = 0;
-          gamepadInput.yaw = 0;
-          gamepadInput.boost = false;
-          gamepadInput.brake = false;
+          gamepadInput.pitch = THREE.MathUtils.clamp(Number(input.pitch) || 0, -1, 1);
+          gamepadInput.roll = THREE.MathUtils.clamp(Number(input.roll) || 0, -1, 1);
+          gamepadInput.yaw = THREE.MathUtils.clamp(Number(input.yaw) || 0, -1, 1);
+          gamepadInput.boost = Boolean(input.boost);
+          gamepadInput.brake = Boolean(input.brake);
           gamepadInput.gun = false;
           for (let frame = 0; frame < count && gameState === STATE_PLAYING; frame += 1) {
             updatePlayer(slice);
@@ -51427,7 +51429,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           playerKinematicVelocity(tmpV10);
           const kinematicSpeedMps = tmpV10.length();
           forwardOf(player, tmpV9);
-          return {
+          const result = {
             frames: count,
             step: slice,
             position: { x: player.position.x, y: player.position.y, z: player.position.z },
@@ -51440,8 +51442,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             attitudeLift: { ...playerAttitudeLift },
             effectiveVerticalSpeed: playerEffectiveVerticalSpeed(),
             flightPath: { ...playerStallTranslation },
-            stallSeverity
+            stallSeverity,
+            highAltitude: {
+              minimumControlledSpeed: playerHighAltitudeEnvelope.minimumControlledSpeed,
+              availableMaxSpeed: playerHighAltitudeEnvelope.availableMaxSpeed,
+              thrustFactor: playerHighAltitudeEnvelope.thrustFactor
+            }
           };
+          gamepadInput.pitch = 0;
+          gamepadInput.roll = 0;
+          gamepadInput.yaw = 0;
+          gamepadInput.boost = false;
+          gamepadInput.brake = false;
+          return result;
         },
         // What the pitch ladder actually DREW, alongside independently computed
         // ground truth. The truth half deliberately takes the other route: it
@@ -55070,7 +55083,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       checkpoint.active = false;
       checkpoint.used = false;
       bomberFirstKillFired = false;
-      playerSpeed = CRUISE_SPEED;
+      playerSpeed = highAltitudeTrimmedLaunchSpeed(
+        CRUISE_SPEED,
+        playerHighAltitudeEnvelope
+      );
       gunCooldown = 0;
       gunShots = 0;
       missilesLaunched = 0;
@@ -66417,7 +66433,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.stallTranslation,
         tmpV8,
         enemy.stallSeverity,
-        dt
+        dt,
+        { thrustFactor: enemy.highAltitudeEnvelope.thrustFactor }
       );
       if (enemy.stallTranslation.initialized) {
         enemy.velocity.set(
