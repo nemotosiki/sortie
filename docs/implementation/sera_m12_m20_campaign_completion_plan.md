@@ -150,7 +150,7 @@ mission, not from the superseded M11 outline.
 - [x] M14 coastal landing phases, hospital ship safety, F-35 gate, commit
 - [x] M15 city defence, persistent white-ARCA ledger, commit
 - [x] M16 fleet/SSGN/anti-ship defence, commit
-- [ ] M17 long approach and HELIX optional encounter, commit
+- [x] M17 long approach and HELIX optional encounter, commit
 - [ ] M18 KEREN subsystem boss and route outcomes, commit
 - [ ] M19 escort-radius pursuit decision and CROWN return, commit
 - [ ] M20 normal/GIBOR routes and CROWN/LARK final contract, commit
