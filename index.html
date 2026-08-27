@@ -45803,6 +45803,304 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m19"
     ); // @payload:mission_sera_m19
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.migalOuterHigh;
+        if (!base) throw new Error("[migalCore] migalOuterHigh base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([0, 13200]),
+          battleCenter: Object.freeze([0, -1200]),
+          councilRing: Object.freeze([0, -1200]),
+          northLane: Object.freeze([0, 15400]),
+          westLane: Object.freeze([-12600, 4100]),
+          eastLane: Object.freeze([12600, 3400]),
+          southLane: Object.freeze([0, -15800]),
+          highLane: Object.freeze([8800, 11400]),
+          crownBoss: Object.freeze([-760, -1880]),
+          larkBoss: Object.freeze([820, -1680])
+        });
+
+        ctx.addWorldPreset("migalCoreDawn", {
+          ...base,
+          label: "MIGAL CORE — OPHAN DAWN",
+          regionId: "migal_core",
+          sectorIds: Object.freeze(["ophan_central_ring", "four_councils", "capital_core_airspace"]),
+          variant: "war_day_31_first_light",
+          sceneryOrigin: [0, -1200],
+          previewFocus: [0, -1200],
+          missionAnchors,
+          clearColor: 0x405f7b,
+          sky: [[0, "#07152d"], [0.23, "#1d3d66"], [0.4, "#617f9d"], [0.5, "#e79d76"], [0.57, "#f2c89c"], [0.72, "#849eb0"], [1, "#36536c"]],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x4d493230,
+            noise: 0.017,
+            haze: 0.12,
+            thinClouds: 14,
+            cloudOpacity: 0.058,
+            cloudBand: [0.3, 0.64],
+            cloudTint: 0xf2d2c0
+          },
+          fog: { color: 0x93a8b2, near: 8500, far: 30400 },
+          sun: {
+            position: [-6100, 1020, -12800], color: 0xffbf86, radius: 108,
+            glare: [
+              { scale: 2050, color: 0xff9c68, opacity: 0.34 },
+              { scale: 510, color: 0xffead0, opacity: 0.78 }
+            ]
+          },
+          sunRoad: {
+            position: [-4200, 3, -8200], rotationY: -0.22, width: 520, length: 7600,
+            color: 0xffbd81, opacity: 0.3
+          },
+          ocean: {
+            ...base.ocean,
+            base: "#254c68", bright: "226, 167, 127", dark: "15, 47, 70",
+            roughness: 0.47, metalness: 0.15,
+            normalSpeed: [0.018, 0.01], normalSeed: 0x4d493231
+          },
+          lights: {
+            hemi: { sky: 0xa9c8df, ground: 0x493f42, intensity: 1.65 },
+            key: { color: 0xffbd86, intensity: 2.65, position: [-6200, 1700, -10800] },
+            fill: { color: 0x6f9ac0, intensity: 0.7, position: [6800, 3100, 5200] }
+          },
+          mountains: {
+            ...base.mountains,
+            count: 3,
+            distance: [17000, 22200],
+            radius: [260, 620],
+            height: [80, 250],
+            snowyAbove: 9999,
+            corridor: { x: 0, halfWidth: 5600 },
+            plateau: { radius: [4650, 4850], height: [82, 82], topRadius: 0.95, at: [0, -1200], snowyAbove: 9999 }
+          },
+          islands: { count: 3, stone: 0x687878, green: 0x486f5c },
+          clouds: {
+            ...base.clouds,
+            color: 0xead5ca,
+            opacity: 0.66,
+            cirrusColor: 0xd8bdba,
+            cirrusOpacity: 0.3,
+            texture: { seed: 0x4d493232, contrast: 1.0, underside: 0.42, softness: 1.02 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x4d493233,
+            keepClear: [
+              { box: { x: 5600, z0: -17000, z1: 14500 } },
+              { x: 0, z: -1200, r: 6900 }
+            ],
+            extraIslands: { count: 5, radius: [180, 460], height: [24, 82], distance: [10800, 16800] },
+            trees: { count: 120, color: 0x426f58, trunk: 0x62513f, scale: [0.7, 1.15] },
+            rocks: { count: 18, color: 0x657270, scale: [8, 24] },
+            city: null,
+            extraClouds: { towers: 3, towerSize: [95, 165], towerBase: 1200, stratus: 7, stratusSize: [260, 440], stratusBase: 2450, distance: [9800, 16200] }
+          }
+        });
+
+        ctx.addWorldDecorator("migalCoreCapital", {
+          worlds: ["migalCoreDawn"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "migalCoreCapital";
+            addRoot(root);
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 16));
+            const torusGeo = keepGeometry(new THREE.TorusGeometry(1, 0.012, 8, 48));
+            const material = (color, emissive = 0, roughness = 0.7, metalness = 0.18) => keepMaterial(
+              new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity: emissive ? 0.86 : 0 })
+            );
+            const concrete = material(0x7d898c);
+            const steel = material(0x4d5c66, 0, 0.52, 0.3);
+            const glass = material(0x668fa3, 0x1b6f8b, 0.42, 0.2);
+            const cyan = material(0x8ceeff, 0x27b7d2, 0.42, 0.24);
+            const amber = material(0xffd696, 0xff9838, 0.48, 0.08);
+            const dark = material(0x2b3942, 0, 0.8, 0.12);
+            const place = (geo, mat, name, x, y, z, sx, sy, sz, rotationX = 0) => {
+              const mesh = new THREE.Mesh(geo, mat);
+              mesh.name = name;
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.x = rotationX;
+              root.add(mesh);
+              return mesh;
+            };
+            const centerZ = -1200;
+            const cityY = Math.max(0, surfaceHeightAt(0, centerZ));
+
+            // The two concentric structures are the Ophan central ring seen from the
+            // outer missions. Twelve nodes line up with the earlier defence ring.
+            place(torusGeo, steel, "ophan-core-outer-ring", 0, cityY + 22, centerZ, 4050, 4050, 4050, Math.PI / 2);
+            place(torusGeo, cyan, "ophan-core-inner-ring", 0, cityY + 28, centerZ, 2450, 2450, 2450, Math.PI / 2);
+            for (let i = 0; i < 12; i += 1) {
+              const angle = i / 12 * Math.PI * 2;
+              const x = Math.sin(angle) * 4050;
+              const z = centerZ + Math.cos(angle) * 4050;
+              const y = Math.max(cityY, surfaceHeightAt(x, z));
+              place(cylGeo, concrete, `ophan-core-node-base-${i + 1}`, x, y + 12, z, 32, 24, 32);
+              place(cylGeo, steel, `ophan-core-node-mast-${i + 1}`, x, y + 72, z, 7, 96, 7);
+              place(boxGeo, cyan, `ophan-core-node-array-${i + 1}`, x, y + 126, z, 42, 10, 42);
+            }
+
+            // Four council towers face the central chamber, while a dense but
+            // low-rise city fills the ring without blocking low-altitude passes.
+            const council = [[-1180, -1200], [1180, -1200], [0, -2380], [0, -20]];
+            council.forEach(([x, z], index) => {
+              place(cylGeo, dark, `council-foundation-${index + 1}`, x, cityY + 18, z, 210, 36, 210);
+              place(boxGeo, glass, `council-tower-${index + 1}`, x, cityY + 270, z, 250, 500, 250);
+              place(boxGeo, amber, `council-crown-${index + 1}`, x, cityY + 530, z, 185, 12, 185);
+            });
+            place(cylGeo, concrete, "ophan-central-chamber", 0, cityY + 55, centerZ, 620, 110, 620);
+            place(cylGeo, glass, "ophan-central-spire", 0, cityY + 410, centerZ, 92, 710, 92);
+            place(cylGeo, amber, "ophan-central-beacon", 0, cityY + 780, centerZ, 34, 34, 34);
+
+            for (let row = -6; row <= 6; row += 1) {
+              for (let col = -6; col <= 6; col += 1) {
+                if (Math.abs(row) <= 1 && Math.abs(col) <= 1) continue;
+                const x = col * 390 + (row % 2) * 115;
+                const z = centerZ + row * 360;
+                if (Math.hypot(x, z - centerZ) > 3350) continue;
+                const height = 55 + (Math.abs(row * 13 + col * 17) % 8) * 31;
+                place(boxGeo, concrete, `migal-core-block-${row}-${col}`, x, cityY + height * 0.5, z, 245, height, 235);
+                place(boxGeo, amber, `migal-core-roof-${row}-${col}`, x, cityY + height + 3, z, 128, 5, 120);
+              }
+            }
+          }
+        });
+      },
+      "map_migalCore"
+    ); // @payload:map_migalCore
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, ACE_PROFILES
+        } = ctx.tables;
+        const world = WORLD_PRESETS.migalCoreDawn;
+        if (!world) throw new Error("[sera-m20] migalCoreDawn is not registered");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m19" && mission.campaign === "sera")) {
+          throw new Error("[sera-m20] sera-m19 predecessor is missing");
+        }
+        const required = ["f15c", "f15", "tu22m3", "jammer", "mig29", "su35", "s70", "su57"];
+        for (const type of required) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m20] required aircraft is missing: ${type}`);
+          if (!["f15c", "f15"].includes(type) && !ENEMY_AI_PROFILES[type]) {
+            throw new Error(`[sera-m20] enemy profile is missing: ${type}`);
+          }
+        }
+        if (!ENEMY_AI_PROFILES.f15c || !ENEMY_AI_PROFILES.f15) {
+          throw new Error("[sera-m20] hostile CROWN/LARK profiles are missing");
+        }
+        const aceBase = ACE_PROFILES.longbow || ACE_PROFILES.ironback;
+        if (!aceBase) throw new Error("[sera-m20] ace profile template is missing");
+
+        // Both profiles inherit ordinary F-15 durability at spawn. Their only
+        // advantage is pilot behaviour: CROWN holds pressure, LARK brackets wide.
+        // Radio fields exist for the registry schema but M20 suppresses every radio
+        // path before these dynamically spawned profiles can engage or die.
+        ctx.addAceProfile("m20Crown", {
+          ...aceBase,
+          callsign: "CROWN",
+          role: "ROOK veteran / pressure lead",
+          behavior: "evasive",
+          evadeLateral: 52,
+          evadeVertical: 24,
+          evadeFrequency: 1.45,
+          radarColor: "#ff4f5e",
+          tracerColor: 0xff6f64,
+          radio: { inbound: "", wingman: "", engage: "", down: "" }
+        });
+        ctx.addAceProfile("m20Lark", {
+          ...aceBase,
+          callsign: "LARK",
+          role: "ROOK 2 / wide flanker",
+          behavior: "evasive",
+          evadeLateral: 104,
+          evadeVertical: 44,
+          evadeFrequency: 2.15,
+          radarColor: "#ff4f5e",
+          tracerColor: 0xff7d68,
+          radio: { inbound: "", wingman: "", engage: "", down: "" }
+        });
+
+        const anchors = world.missionAnchors;
+        const m20FinalContract = Object.freeze({
+          sourceMission: "sera-m19",
+          routeField: "seraFinalRoute",
+          pursuitField: "ravenFinalPursuit",
+          cumulativeField: "ravenArcaKills",
+          cumulativeThreshold: 8,
+          phaseOneTag: "m20FinalDefence",
+          bossTag: "m20RookFinal",
+          silenceDuration: 3,
+          freeFlightDuration: 4,
+          crown: Object.freeze({ id: 20901, friendlyLabel: "CROWN", type: "f15c", ace: "m20Crown" }),
+          lark: Object.freeze({ id: 20902, friendlyLabel: "ROOK 2 LARK", type: "f15", ace: "m20Lark" }),
+          outcomes: Object.freeze({
+            route: "seraFinalRoute",
+            fakeAccomplished: "m20FakeAccomplished",
+            bossDuel: "m20BossDuel",
+            crownNeutralized: "m20CrownNeutralized",
+            larkNeutralized: "m20LarkNeutralized",
+            noHostileHold: "m20NoHostileHold",
+            ending: "seraCampaignEnding"
+          })
+        });
+
+        const mission = {
+          key: "sera-m20",
+          campaign: "sera",
+          campaignOrder: 20,
+          world: "migalCoreDawn",
+          title: "THE GUARANTOR",
+          jp: "ミガル中枢上空へ侵入した最後の攻撃隊を排除し、停戦発効を保証せよ。",
+          act: 4,
+          storyNo: 20,
+          story: `WAR DAY 31。停戦発効まで残りわずか。エレム・ケデム混成の最終攻撃隊は、四評議会とOPHAN中枢を一度の空襲で折るためミガルへ向かった。
+      ROOKはRAVEN、CROWN、LARKの三機で最後の防空線へ上がる。ここで守るのはROOTの所有権ではない。翌朝を戦争の続きにしないための、ただ一つの空域だ。`,
+          epilogue: [
+            "ミガル中枢への最終攻撃隊は消滅し、停戦発効の時刻を迎えた。",
+            "OPHANは一人の権限ではなく、四評議会と分散された政治責任の下に残った。",
+            "RAVENが保証したのは世界の所有ではない。戦争を終わらせるための空だった。"
+          ],
+          friendlies: {
+            playerStart: { x: anchors.playerStart[0], y: 3200, z: anchors.playerStart[1], facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] } },
+            wingmen: [
+              { type: "f15c", label: "CROWN", radioSpeaker: "crown", spw: "4aam", offset: { back: 138, side: -170, up: -8 } },
+              { type: "f15", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "4aam", offset: { back: 122, side: 165, up: -12 } }
+            ]
+          },
+          sequence: [
+            { types: ["jammer", "jammer"], tgt: true, band: 1, idBase: 2010, label: "FINAL EW SCREEN", missionTag: "m20FinalDefence", role: "support", skill: "veteran", at: [...anchors.northLane], altitude: 6100, facing: [...anchors.battleCenter] },
+            { types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 3, band: 2, idBase: 2020, label: "CAPITAL STRIKE", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [0, 16400], altitude: 5200, facing: [...anchors.councilRing] },
+            { types: ["mig29", "mig29", "mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 18, band: 1, idBase: 2030, label: "FULCRUM WALL", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [...anchors.westLane], altitude: 3300, facing: [...anchors.battleCenter] },
+            { types: ["su35", "su35", "su35", "su35", "su35", "su35"], tgt: true, concurrent: true, delay: 44, band: 2, idBase: 2040, label: "FLANKER PINCER", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.eastLane], altitude: 4100, facing: [...anchors.battleCenter] },
+            { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 72, band: 1, idBase: 2050, label: "HUNTER SCREEN", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.southLane], altitude: 2900, facing: [...anchors.councilRing] },
+            { types: ["su57", "su57"], tgt: true, concurrent: true, delay: 104, band: 2, idBase: 2060, label: "LAST GUARANTORS", missionTag: "m20FinalDefence", role: "evasive", skill: "ace", at: [...anchors.highLane], altitude: 5600, facing: [...anchors.battleCenter] }
+          ],
+          m20FinalContract,
+          fixedRadio: [
+            { id: "m20_intro", at: 2, speaker: "meridian", priority: "URGENT", text: "停戦発効まで、この一波を通すな。ミガル中枢防空、全赤TGTを排除せよ。" },
+            { id: "m20_crown", at: 6, speaker: "crown", priority: "NORMAL", text: "CROWN、左を取る。最後まで古いEAGLEで十分だ——RAVEN、中央を頼む。" },
+            { id: "m20_lark", at: 10, speaker: "lark", priority: "NORMAL", text: "LARK、右。爆撃機を先に切る。三機で朝まで空を残そう。" },
+            { id: "m20_bombers", at: 20, speaker: "meridian", priority: "CRITICAL", text: "Tu-22M3四、OPHAN中枢へ進入。ジャマーを落とし、爆撃線を崩せ。" },
+            { id: "m20_felon", at: 106, speaker: "crown", priority: "URGENT", text: "高空に二機、Su-57。数で押す増援じゃない——これが最後の盾だ。" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "ミガル中枢空域クリア。停戦発効を確認——THE GUARANTOR完了、ROOK帰投せよ。", id: "m20-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "ミガル中枢防空線が崩壊。停戦保証不能、残存機は離脱せよ。", id: "m20-failure" },
+          parTime: 690,
+          hasOutro: false,
+          map: { x: 0.82, y: 0.08 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 22800,
+          briefing: "ミガル中枢へ侵入する最終攻撃隊を全滅させ、停戦発効を保証せよ。CROWNはF-15C、LARKはF-15Eで青編隊に参加する。赤TGTはジャマー二、Tu-22M3四、MiG-29A六、Su-35六、S-70四、Su-57二の計24機。Su-57は二機を上限とし、物量は通常機と複合任務圧力で作る。\nM19で成立した航跡だけが終幕を分ける。ONE SHEMでは通常戦闘の完了後に三機とも帰投する。GIBORでは同じ通常目標を排除した後に一度MISSION ACCOMPLISHEDが表示されるが、デブリーフへは移らない。以降の変化に説明無線・選択画面・強制カメラはない。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m19" });
+      },
+      "mission_sera_m20"
+    ); // @payload:mission_sera_m20
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -46254,6 +46552,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m18Result) Object.assign(entry, m18Result);
       const m19Result = m19ResultSnapshot(mission);
       if (m19Result) Object.assign(entry, m19Result);
+      const m20Result = m20ResultSnapshot(mission);
+      if (m20Result) Object.assign(entry, m20Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -46729,6 +47029,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     const missilesInFlight = [];
     const enemyMissiles = [];
     const effects = [];
+    // M20's GIBOR coda is authored as silence, including generic kill/ace
+    // callouts and the normal result line. These latches live with the global
+    // presentation state so every radio/music entry point obeys the same rule.
+    let missionRadioSuppressed = false;
+    let missionMusicSuppressed = false;
     // Mission scenery (night-base floodlights): spawned with the ground
     // units, torn down with them.
     const missionProps = [];
@@ -49306,6 +49611,125 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM19ResolveOutcome: () => {
         const mission = m19Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM20Probe: () => {
+        const mission = m20Mission();
+        if (!mission) return null;
+        const contract = mission.m20FinalContract;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          outcomePending: outcomePending.active,
+          final: {
+            active: m20State.active,
+            route: m20State.route,
+            phase: m20State.phase,
+            completed: m20State.completed,
+            fakeAccomplished: m20State.fakeAccomplished,
+            duelStarted: m20State.duelStarted,
+            crownNeutralized: m20State.crownNeutralized,
+            larkNeutralized: m20State.larkNeutralized,
+            noHostileHold: m20State.noHostileHold,
+            silenceRemaining: Number(m20State.silenceRemaining.toFixed(3)),
+            noHostileRemaining: Number(m20State.noHostileRemaining.toFixed(3)),
+            radioSuppressed: missionRadioSuppressed,
+            musicSuppressed: missionMusicSuppressed,
+            bossIds: [...m20State.bossIds]
+          },
+          wingmen: friendlies.filter((friendly) => friendly.kind === "wingman").map((friendly) => ({
+            label: friendly.label,
+            type: friendly.type,
+            alive: friendly.alive,
+            retired: Boolean(friendly.retired),
+            visible: friendly.group.visible
+          })),
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            name: enemy.name || null,
+            alive: enemy.alive,
+            visible: enemy.group.visible,
+            tgt: isTgtEntry(enemy),
+            missionTag: enemy.missionTag || null,
+            missionRole: enemy.missionRole || null,
+            hp: Math.max(0, enemy.hp),
+            maxHp: enemy.maxHp,
+            ordinaryHp: ENEMY_TYPES[enemy.type]?.hp ?? null
+          })),
+          pending: pendingWaves.map((entry) => ({
+            timer: Number(entry.timer.toFixed(2)),
+            missionTag: entry.wave?.missionTag || null,
+            count: entry.wave?.types?.length || 0
+          })),
+          banner: {
+            text: ui.bigBannerText.textContent,
+            subtitle: ui.bigBannerSub.textContent,
+            visible: ui.bigBanner.classList.contains("visible")
+          },
+          radio: {
+            active: radioState.active,
+            queue: radioQueue.length,
+            speakerId: radioState.speakerId,
+            lineId: radioState.lineId
+          },
+          phaseOneTag: contract.phaseOneTag,
+          bossTag: contract.bossTag,
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM20DeployPending: () => {
+        const mission = m20Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(0.016);
+        updateM20MissionThreat(0);
+        return pendingWaves.length === 0;
+      },
+      forceSeraM20ClearPhaseOne: () => {
+        const mission = m20Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const tag = mission.m20FinalContract.phaseOneTag;
+        const targets = enemies.filter((enemy) => (
+          enemy.alive && enemy.missionTag === tag && isTgtEntry(enemy)
+        ));
+        for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+        updateM20MissionThreat(0);
+        return targets.length;
+      },
+      forceSeraM20EndSilence: () => {
+        const mission = m20Mission();
+        if (gameState !== STATE_PLAYING || !mission || m20State.phase !== "post-clear-silence") return false;
+        m20State.silenceRemaining = 0;
+        updateM20MissionThreat(0);
+        return m20State.phase === "duel";
+      },
+      forceSeraM20KillBoss: (callsign = "CROWN") => {
+        const mission = m20Mission();
+        if (gameState !== STATE_PLAYING || !mission || m20State.phase !== "duel") return false;
+        const wanted = String(callsign).toUpperCase();
+        const boss = enemies.find((enemy) => (
+          enemy.alive && enemy.missionTag === mission.m20FinalContract.bossTag
+          && (enemy.name === wanted || String(enemy.id) === String(callsign))
+        ));
+        if (!boss) return false;
+        damageEnemy(boss, boss.hp + 1, true, false);
+        updateM20MissionThreat(0);
+        return !boss.alive;
+      },
+      forceSeraM20EndNoHostileHold: () => {
+        const mission = m20Mission();
+        if (gameState !== STATE_PLAYING || !mission || m20State.phase !== "no-hostile-hold") return false;
+        m20State.noHostileRemaining = 0;
+        updateM20MissionThreat(0);
+        return outcomePending.active;
+      },
+      forceSeraM20ResolveOutcome: () => {
+        const mission = m20Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -53601,6 +54025,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function desiredMusicSlot() {
       const music = audioSystem.music;
+      if (missionMusicSuppressed) return null;
       if (music.override) return music.override;
       if (gameState === STATE_MISSION_SELECT || gameState === STATE_READY) return "menu";
       if (gameState === STATE_BRIEFING) return "briefing";
@@ -53908,6 +54333,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         return;
       }
       applyAircraftLoadout(selectedAircraftId);
+      missionRadioSuppressed = false;
+      missionMusicSuppressed = false;
       keys.clear();
       clearMissionObjects();
       applyWorldPreset(worldOverride || MISSIONS[currentMissionIndex].world);
@@ -53995,6 +54422,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM17State(MISSIONS[currentMissionIndex]);
       resetM18State(MISSIONS[currentMissionIndex]);
       resetM19State(MISSIONS[currentMissionIndex]);
+      resetM20State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -59564,6 +59992,285 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         [fields.cumulativeArcaKills || "ravenArcaKills"]: cumulative,
         [fields.finalPursuit || "ravenFinalPursuit"]: finalPursuit,
         [fields.finalRoute || "seraFinalRoute"]: finalRoute
+      };
+    }
+
+    // SERA M20 THE GUARANTOR -----------------------------------------------
+    // Phase one is the same conventional final defence on both routes. Only
+    // the M19 record selects the coda: ONE SHEM enters the real result flow,
+    // while GIBOR holds a false result band and silently replaces the two blue
+    // ROOK wingmen with two red contacts in one simulation frame.
+    const m20State = {
+      active: false,
+      route: "oneShem",
+      phase: "idle",
+      completed: false,
+      failed: false,
+      fakeAccomplished: false,
+      duelStarted: false,
+      crownNeutralized: false,
+      larkNeutralized: false,
+      noHostileHold: false,
+      silenceRemaining: 0,
+      noHostileRemaining: 0,
+      bossIds: []
+    };
+
+    function m20Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m20FinalContract ? mission : null;
+    }
+
+    function m20RouteFromRecord(mission) {
+      const contract = mission && mission.m20FinalContract;
+      if (!contract) return "oneShem";
+      const record = missionRecords[contract.sourceMission] || {};
+      const explicit = record[contract.routeField];
+      if (explicit === "gibor" || explicit === "oneShem") return explicit;
+      const pursued = record[contract.pursuitField] === true;
+      const cumulative = Math.max(0, Number(record[contract.cumulativeField]) || 0);
+      return pursued && cumulative >= Number(contract.cumulativeThreshold)
+        ? "gibor" : "oneShem";
+    }
+
+    function resetM20State(mission) {
+      m20State.active = Boolean(mission && mission.m20FinalContract);
+      m20State.route = m20State.active ? m20RouteFromRecord(mission) : "oneShem";
+      m20State.phase = m20State.active ? "phase1" : "idle";
+      m20State.completed = false;
+      m20State.failed = false;
+      m20State.fakeAccomplished = false;
+      m20State.duelStarted = false;
+      m20State.crownNeutralized = false;
+      m20State.larkNeutralized = false;
+      m20State.noHostileHold = false;
+      m20State.silenceRemaining = 0;
+      m20State.noHostileRemaining = 0;
+      m20State.bossIds.length = 0;
+    }
+
+    function m20PhaseOneAlive(mission = m20Mission()) {
+      const tag = mission?.m20FinalContract?.phaseOneTag;
+      return Boolean(tag) && enemies.some((enemy) => (
+        enemy.alive && enemy.missionTag === tag && isTgtEntry(enemy)
+      ));
+    }
+
+    function m20PhaseOnePending(mission = m20Mission()) {
+      const tag = mission?.m20FinalContract?.phaseOneTag;
+      if (!tag) return false;
+      return pendingWaves.some((entry) => entry.wave?.missionTag === tag)
+        || mission.waves.slice(missionWaveIndex).some((wave) => wave.missionTag === tag);
+    }
+
+    function clearEnemyMissilesForM20() {
+      for (let index = enemyMissiles.length - 1; index >= 0; index -= 1) {
+        removeEnemyMissile(index);
+      }
+      nearestMissileThreat = null;
+      document.body.classList.remove("missileAlert");
+    }
+
+    function startM20FalseAccomplished(mission) {
+      if (m20State.phase !== "phase1") return false;
+      const contract = mission.m20FinalContract;
+      m20State.phase = "post-clear-silence";
+      m20State.fakeAccomplished = true;
+      m20State.silenceRemaining = Math.max(2, Number(contract.silenceDuration) || 3);
+      missionRadioSuppressed = true;
+      missionMusicSuppressed = true;
+      resetRadio();
+      clearEnemyMissilesForM20();
+      resetLock();
+      pendingBanner = null;
+      pendingBannerTimer = 0;
+      showBigBanner("MISSION ACCOMPLISHED", mission.title, 2.55, "success");
+      playTone(523.25, 0.42, 0.085, "triangle");
+      playTone(659.25, 0.52, 0.075, "triangle", 0.12);
+      return true;
+    }
+
+    function m20FriendlyWingman(label) {
+      return friendlies.find((friendly) => (
+        friendly.kind === "wingman" && friendly.label === label && friendly.alive
+      )) || null;
+    }
+
+    function spawnM20FinalDuel(mission) {
+      if (m20State.phase !== "post-clear-silence") return false;
+      const contract = mission.m20FinalContract;
+      const definitions = [contract.crown, contract.lark];
+      const poses = definitions.map((definition, index) => {
+        const friendly = m20FriendlyWingman(definition.friendlyLabel);
+        return {
+          friendly,
+          position: friendly
+            ? friendly.group.position.clone()
+            : player.position.clone().add(new THREE.Vector3(index === 0 ? -700 : 700, 120, -950)),
+          quaternion: friendly ? friendly.group.quaternion.clone() : player.quaternion.clone(),
+          speed: friendly ? friendly.wingSpeed : CRUISE_SPEED
+        };
+      });
+
+      // Blue disappearance and red appearance happen inside this function;
+      // rendering cannot observe an intermediate white/neutral disposition.
+      for (const pose of poses) {
+        if (!pose.friendly) continue;
+        pose.friendly.alive = false;
+        pose.friendly.retired = true;
+        pose.friendly.group.visible = false;
+      }
+      for (const enemy of enemies) {
+        if (enemy.missionTag === contract.phaseOneTag) enemy.group.visible = false;
+      }
+
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      const oldHunt = spawningHunt;
+      const oldFloor = spawningHuntAltitudeFloor;
+      const oldTag = spawningMissionTag;
+      const oldForward = spawningForward;
+      const oldFacility = spawningFacilityIndex;
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawningHunt = null;
+      spawningHuntAltitudeFloor = null;
+      spawningMissionTag = contract.bossTag;
+      spawningForward = null;
+      spawningFacilityIndex = null;
+      try {
+        for (let index = 0; index < definitions.length; index += 1) {
+          const definition = definitions[index];
+          const pose = poses[index];
+          spawnEnemy(
+            pose.position,
+            20 + index,
+            0,
+            definition.type,
+            definition.ace,
+            definition.id - 1,
+            "ace",
+            "expert",
+            "player"
+          );
+          const boss = enemies.find((enemy) => enemy.id === definition.id);
+          if (!boss) continue;
+          boss.group.quaternion.copy(pose.quaternion).normalize();
+          boss.speed = Math.min(boss.highAltitudeEnvelope.availableMaxSpeed, Math.max(90, pose.speed));
+          boss.targetSpeed = Math.max(boss.spec.patrolSpeed, boss.speed);
+          boss.seed = index === 0 ? 0 : Math.PI;
+          boss.missionRole = index === 0 ? "m20PressureLead" : "m20WideFlanker";
+          boss.missileCooldown = 2.6 + index * 0.8;
+        }
+      } finally {
+        spawningTgt = oldTgt;
+        spawningRankNeutral = oldNeutral;
+        spawningHunt = oldHunt;
+        spawningHuntAltitudeFloor = oldFloor;
+        spawningMissionTag = oldTag;
+        spawningForward = oldForward;
+        spawningFacilityIndex = oldFacility;
+      }
+
+      const bosses = enemies.filter((enemy) => (
+        enemy.alive && enemy.missionTag === contract.bossTag && isTgtEntry(enemy)
+      ));
+      if (bosses.length !== 2) {
+        console.error(`[sera-m20] final duel expected two contacts, spawned ${bosses.length}`);
+        m20State.failed = true;
+        completeMission(false);
+        return false;
+      }
+      m20State.bossIds = bosses.map((enemy) => enemy.id);
+      m20State.duelStarted = true;
+      m20State.phase = "duel";
+      return true;
+    }
+
+    function beginM20NoHostileHold(mission = m20Mission()) {
+      if (!mission || m20State.phase === "no-hostile-hold" || m20State.completed) return false;
+      m20State.phase = "no-hostile-hold";
+      m20State.noHostileHold = true;
+      m20State.noHostileRemaining = Math.max(2, Number(mission.m20FinalContract.freeFlightDuration) || 4);
+      clearEnemyMissilesForM20();
+      resetLock();
+      hideBigBanner();
+      showBigBanner("NO HOSTILE CONTACTS", "", 2.35, "success");
+      return true;
+    }
+
+    function handleM20EnemyDestroyed(enemy) {
+      if (!m20State.active || !enemy) return;
+      const mission = m20Mission();
+      const contract = mission?.m20FinalContract;
+      if (!contract || enemy.missionTag !== contract.bossTag) return;
+      if (enemy.id === contract.crown.id) m20State.crownNeutralized = true;
+      if (enemy.id === contract.lark.id) m20State.larkNeutralized = true;
+      if (m20State.crownNeutralized && m20State.larkNeutralized) {
+        beginM20NoHostileHold(mission);
+      }
+    }
+
+    function updateM20MissionThreat(dt = 0) {
+      const mission = m20Mission();
+      if (!mission || !m20State.active) return false;
+      if (m20State.failed || m20State.completed) return true;
+
+      if (m20State.phase === "phase1") {
+        if (m20PhaseOneAlive(mission) || m20PhaseOnePending(mission)) return true;
+        if (m20State.route === "oneShem") {
+          m20State.completed = true;
+          completeMission(true);
+        } else {
+          startM20FalseAccomplished(mission);
+        }
+        return true;
+      }
+
+      if (m20State.phase === "post-clear-silence") {
+        m20State.silenceRemaining = Math.max(
+          0,
+          m20State.silenceRemaining - Math.max(0, Number(dt) || 0)
+        );
+        if (m20State.silenceRemaining <= 0) spawnM20FinalDuel(mission);
+        return true;
+      }
+
+      if (m20State.phase === "duel") {
+        const bossAlive = enemies.some((enemy) => (
+          enemy.alive && enemy.missionTag === mission.m20FinalContract.bossTag
+        ));
+        if (!bossAlive) beginM20NoHostileHold(mission);
+        return true;
+      }
+
+      if (m20State.phase === "no-hostile-hold") {
+        m20State.noHostileRemaining = Math.max(
+          0,
+          m20State.noHostileRemaining - Math.max(0, Number(dt) || 0)
+        );
+        if (m20State.noHostileRemaining <= 0) {
+          m20State.completed = true;
+          missionMusicSuppressed = false;
+          completeMission(true);
+        }
+        return true;
+      }
+      return true;
+    }
+
+    function m20ResultSnapshot(mission) {
+      const contract = mission && mission.m20FinalContract;
+      if (!contract || !m20State.active || !m20State.completed) return null;
+      const fields = contract.outcomes || {};
+      return {
+        [fields.route || "seraFinalRoute"]: m20State.route,
+        [fields.fakeAccomplished || "m20FakeAccomplished"]: m20State.fakeAccomplished,
+        [fields.bossDuel || "m20BossDuel"]: m20State.duelStarted,
+        [fields.crownNeutralized || "m20CrownNeutralized"]: m20State.crownNeutralized,
+        [fields.larkNeutralized || "m20LarkNeutralized"]: m20State.larkNeutralized,
+        [fields.noHostileHold || "m20NoHostileHold"]: m20State.noHostileHold,
+        [fields.ending || "seraCampaignEnding"]: m20State.route
       };
     }
 
@@ -65892,6 +66599,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       handleM17EnemyDestroyed(enemy, byWingman);
       handleM18EnemyDestroyed(enemy, byWingman);
       handleM19EnemyDestroyed(enemy, byWingman);
+      handleM20EnemyDestroyed(enemy, byWingman);
       if (enemy.m04RedFleet) {
         const destroyed = (sortieMarks.m04RedFleetDestroyed || 0) + 1;
         sortieMarks.m04RedFleetDestroyed = destroyed;
@@ -66338,6 +67046,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateFixedRadioSchedule();
       if (updateM18MissionThreat(dt)) return;
       if (updateM19MissionThreat(dt)) return;
+      if (updateM20MissionThreat(dt)) return;
       // M15 must claim bomber release at the 3.3km cruise-weapon line before
       // the legacy facility handler can turn the same run into a direct hit.
       if (updateM15MissionThreat()) return;
@@ -67635,6 +68344,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function triggerRadioLine(speakerId, text, priority = RADIO_PRIORITY.NORMAL, id = null) {
+      if (missionRadioSuppressed) return false;
       return radioController.triggerLine(speakerId, text, priority, id);
     }
 
@@ -67647,6 +68357,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function radioSay(speaker, text, priority, id) {
+      if (missionRadioSuppressed) return false;
       return radioController.say(speaker, text, priority, id);
     }
 

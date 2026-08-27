@@ -153,7 +153,7 @@ mission, not from the superseded M11 outline.
 - [x] M17 long approach and HELIX optional encounter, commit
 - [x] M18 KEREN subsystem boss and route outcomes, commit
 - [x] M19 escort-radius pursuit decision and CROWN return, commit
-- [ ] M20 normal/GIBOR routes and CROWN/LARK final contract, commit
+- [x] M20 normal/GIBOR routes and CROWN/LARK final contract, commit
 - [ ] Full M01-M20 unlock-chain and campaign-select browser regression
 - [ ] Inline every new payload and leave the local 8340 server playable
 
