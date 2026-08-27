@@ -108,21 +108,29 @@ try {
     debug.forceAttitude(0, 0, 0);
     const recovered = debug.forceFlightFrames(60, 1 / 60);
 
-    // A nose-up deep stall is the regression that exposed the bad vector
-    // reconstruction: lost vertical motion used to reappear along the last
-    // horizontal heading. One live production frame must move WORLD-down,
-    // without inventing a sideways translation.
+    // Persistent nose-up deep stall: keep this above the ordinary F-16 ceiling
+    // so its engine cannot immediately fly out of the forced stall. Entry
+    // inertia may carry it upward briefly, but WORLD gravity must create a peak
+    // and a descending velocity instead of letting the nose redirect the fall.
     debug.forceLoadout("f16");
-    debug.forceTeleport(0, 1800, 0);
+    debug.forceTeleport(0, 10000, 0);
     debug.forceResetAttitudeLift();
     debug.forceAttitude(0, 90, 0);
-    debug.forceFlightEnergy(20, 1);
+    debug.forceFlightEnergy(70, 1);
     const verticalBefore = debug.forceFlightFrames(0, 1 / 60);
-    const verticalAfter = debug.forceFlightFrames(1, 1 / 60);
+    const verticalFirst = debug.forceFlightFrames(1, 1 / 60);
+    const verticalSamples = [verticalBefore, verticalFirst];
+    for (let second = 0; second < 8; second += 1) {
+      verticalSamples.push(debug.forceFlightFrames(60, 1 / 60));
+    }
+    const verticalAfter = verticalSamples[verticalSamples.length - 1];
+    const peakY = Math.max(...verticalSamples.map((sample) => sample.position.y));
     const verticalStall = {
+      firstDy: verticalFirst.position.y - verticalBefore.position.y,
       dx: verticalAfter.position.x - verticalBefore.position.x,
-      dy: verticalAfter.position.y - verticalBefore.position.y,
       dz: verticalAfter.position.z - verticalBefore.position.z,
+      finalY: verticalAfter.position.y,
+      peakY,
       after: verticalAfter
     };
     return {
@@ -151,10 +159,13 @@ try {
   assert(Math.abs(results.recovery.recovered.effectiveVerticalSpeed) <
       Math.abs(results.recovery.inverted.effectiveVerticalSpeed) * 0.25,
     "upright recovery did not arrest inverted sink", results.recovery);
-  assert(results.verticalStall.dy < -0.25,
-    "nose-up deep stall did not move WORLD-down", results.verticalStall);
-  assert(Math.hypot(results.verticalStall.dx, results.verticalStall.dz) < 0.05,
-    "nose-up deep stall invented horizontal movement", results.verticalStall);
+  assert(results.verticalStall.firstDy > 0,
+    "nose-up stall lost its physically valid entry inertia", results.verticalStall);
+  assert(results.verticalStall.after.velocity.y < -10
+      && results.verticalStall.finalY < results.verticalStall.peakY - 20,
+    "nose-up deep stall never crossed its peak into WORLD-down fall", results.verticalStall);
+  assert(Math.hypot(results.verticalStall.dx, results.verticalStall.dz) < 5,
+    "deep-stalled flight path rotated sideways with the aircraft nose", results.verticalStall);
   assert(pageErrors.length === 0, "pageerror during attitude-lift check", pageErrors);
   assert(consoleErrors.length === 0, "console error during attitude-lift check", consoleErrors);
 
@@ -165,10 +176,11 @@ try {
     f16: { stability: results.f16.probe.stability, drop: results.f16.drop },
     f22: { stability: results.f22.probe.stability, drop: results.f22.drop },
     recoveryVerticalSpeed: results.recovery.recovered.effectiveVerticalSpeed,
-    verticalStallDelta: {
-      x: results.verticalStall.dx,
-      y: results.verticalStall.dy,
-      z: results.verticalStall.dz
+    verticalStall: {
+      firstDy: results.verticalStall.firstDy,
+      peakY: results.verticalStall.peakY,
+      finalY: results.verticalStall.finalY,
+      finalVy: results.verticalStall.after.velocity.y
     }
   }, null, 2));
 } finally {

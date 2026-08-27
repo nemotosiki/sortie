@@ -67,6 +67,7 @@ async function newMissionPage(aircraft = "f16") {
   await context.addInitScript(() => {
     navigator.getGamepads = () => [];
     localStorage.setItem("sortieMissionRecords", JSON.stringify({
+      "sera-m04": { cleared: true, rank: "A", scores: [1], times: [1] },
       "sera-m10": { cleared: true, rank: "A", scores: [1], times: [1] }
     }));
     localStorage.setItem("sortieHangarPurchases", JSON.stringify({
@@ -93,10 +94,12 @@ async function newMissionPage(aircraft = "f16") {
     return { index, unlocked: window.__game.mission.unlocked[index] };
   });
   assert(unlock.index >= 0 && unlock.unlocked, "M10 clear does not unlock M11");
-  const started = await page.evaluate((aircraftId) => (
-    window.__game.forceStartMissionByKey("sera-m11", aircraftId)
-  ), aircraft);
-  assert(started, "production launcher could not start M11");
+  const started = await page.evaluate((aircraftId) => ({
+    started: window.__game.forceStartMissionByKey("sera-m11", aircraftId),
+    progression: window.__game.debug.aircraftProgression(aircraftId, "sera"),
+    state: window.__game.state
+  }), aircraft);
+  assert(started.started, "production launcher could not start M11", started);
   await page.waitForFunction(() => window.__game?.seraM11Probe?.()?.missionKey === "sera-m11", null, {
     timeout: 60_000
   });

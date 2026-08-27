@@ -89,18 +89,21 @@ assert(capped.state.verticalSpeed === -ATTITUDE_LIFT_MAX_SINK_SPEED,
 
 for (const required of [
   'from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1"',
+  'from "./src/flight/stall-translation.js?v=20260828-world-path-1"',
   "PLAYER_STABILITY = aircraftStabilityRating(spec);",
   "updateAttitudeLiftState(",
   "tmpV2.dot(WORLD_UP)",
-  "return Math.min(\n        playerAttitudeLift.verticalSpeed,",
-  "return playerKinematicVelocity(out);",
+  "const playerStallTranslation = resetStallTranslationState({});",
+  "updatePlayerStallTranslation(dt);",
+  "stallTranslation: resetStallTranslationState({}),",
+  "updateStallTranslationState(\n        enemy.stallTranslation,",
   "playerKinematicVelocity(velocityOut).addScaledVector(tmpV3, -dropSpeed);",
   "hook.flight.aerodynamicVerticalSpeed = playerAttitudeLift.verticalSpeed;"
 ]) {
   assert(indexSource.includes(required), `production integration is missing: ${required}`);
 }
-assert(!indexSource.includes("STALL_SINK_RATE * stallSeverity + playerAttitudeLift"),
-  "stall and attitude sink were added as duplicate penalties");
+assert(!indexSource.includes("STALL_SINK_RATE"),
+  "legacy nose-relative fixed stall sink is still installed");
 
 console.log("check_attitude_lift: PASS");
 console.log(`  ordinary bank 60deg drop=${ordinaryBank.drop.toFixed(2)}m; knife-edge +/-90deg drop=${knifeEdge.drop.toFixed(2)}m`);

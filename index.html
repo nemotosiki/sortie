@@ -2744,6 +2744,10 @@
       updateAttitudeLiftState
     } from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1";
     import {
+      resetStallTranslationState,
+      updateStallTranslationState
+    } from "./src/flight/stall-translation.js?v=20260828-world-path-1";
+    import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
       managedCombatTurnSpeed,
@@ -2852,7 +2856,6 @@
     const MAX_DEBRIS_PARTICLES = 180;
     const MAX_SMOKE_PARTICLES = 320;
     const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(36);
-    const STALL_SINK_RATE = 44;
     let PITCH_RATE = THREE.MathUtils.degToRad(58);
     let EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
     let YAW_RATE = THREE.MathUtils.degToRad(16);
@@ -47447,32 +47450,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         : MAX_MISSILE_TURN_RATE;
     }
 
-    // Kinematic velocity contract shared by player and hostile guidance. The
-    // movement systems keep speed on the entity and attitude on its Group. The
-    // high-altitude helper turns that attitude into a constrained flight path
-    // without changing the speed magnitude shown by the HUD. Mounted
-    // subsystems inherit the parent hull's motion even though their own
-    // authored speed is zero.
-    function playerEffectiveVerticalSpeed() {
-      // Stall and attitude loss describe the same missing lift from different
-      // sides. Taking the stronger sink avoids double-charging a low-speed
-      // inverted aircraft with two independent downward penalties.
-      return Math.min(
-        playerAttitudeLift.verticalSpeed,
-        -STALL_SINK_RATE * stallSeverity
-      );
-    }
-
-    function playerKinematicVelocity(out) {
+    // Kinematic velocity contract shared by player and hostile guidance. A
+    // flying wing follows its nose; a stalled wing retains a WORLD-space path
+    // which gravity bends toward the ground. Mounted subsystems inherit the
+    // parent hull's motion even though their own authored speed is zero.
+    function playerNoseFlightVelocity(out, aerodynamicVerticalSpeed = 0) {
       forwardOf(player, out);
       altitudeAdjustedFlightVelocity(
         out,
         playerSpeed,
         playerHighAltitudeEnvelope,
-        playerEffectiveVerticalSpeed(),
+        aerodynamicVerticalSpeed,
         out
       );
       return out;
+    }
+
+    function playerEffectiveVerticalSpeed() {
+      if (!playerStallTranslation.active) return playerAttitudeLift.verticalSpeed;
+      playerNoseFlightVelocity(tmpV11, 0);
+      return playerStallTranslation.y - tmpV11.y;
+    }
+
+    function playerKinematicVelocity(out) {
+      if (playerStallTranslation.active) {
+        return out.set(
+          playerStallTranslation.x,
+          playerStallTranslation.y,
+          playerStallTranslation.z
+        );
+      }
+      return playerNoseFlightVelocity(out, playerAttitudeLift.verticalSpeed);
+    }
+
+    function updatePlayerStallTranslation(dt) {
+      playerNoseFlightVelocity(tmpV11, 0);
+      updateStallTranslationState(
+        playerStallTranslation,
+        tmpV11,
+        stallSeverity,
+        dt
+      );
     }
 
     function missileTargetVelocity(target, out) {
@@ -47632,6 +47650,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     const playerAttitudeLift = resetAttitudeLiftState({});
+    const playerStallTranslation = resetStallTranslationState({});
     let playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(0);
     let gunCooldown = 0;
     let gunShots = 0;
@@ -51298,6 +51317,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         forceResetAttitudeLift: () => {
           if (gameState !== STATE_PLAYING) return false;
           resetAttitudeLiftState(playerAttitudeLift);
+          resetStallTranslationState(playerStallTranslation);
           return true;
         },
         // Deterministic flight-energy setup for production-loop regression
@@ -51310,6 +51330,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           stallTimer = forcedSeverity;
           stallSeverity = forcedSeverity;
           stalling = forcedSeverity > 0.24;
+          resetStallTranslationState(playerStallTranslation);
           return { speedMps: playerSpeed, stallSeverity, stalling };
         },
         // Runs only the production player-flight step. Browser checks use this
@@ -51695,7 +51716,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            THREE.MathUtils.degToRad(rollDeg),
            "YXZ"
          )).normalize();
-          if (resetLift) resetAttitudeLiftState(enemy.attitudeLift);
+          if (resetLift) {
+            resetAttitudeLiftState(enemy.attitudeLift);
+            resetStallTranslationState(enemy.stallTranslation);
+          }
            return true;
          },
         forceConfigureEnemyFlight: (id, config = {}) => {
@@ -51736,6 +51760,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            );
           enemy.turnDemand = 1;
           resetAttitudeLiftState(enemy.attitudeLift);
+          resetStallTranslationState(enemy.stallTranslation);
           enemy.fireCooldown = 999;
           enemy.missileCooldown = 999;
           return true;
@@ -55547,6 +55572,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         BOOST_SPEED
       );
       resetAttitudeLiftState(playerAttitudeLift);
+      resetStallTranslationState(playerStallTranslation);
       syncPlayerOrientation();
     }
 
@@ -55757,6 +55783,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         dt
       );
 
+      updatePlayerStallTranslation(dt);
       playerKinematicVelocity(tmpV1);
       player.position.addScaledVector(tmpV1, dt);
 
@@ -58153,6 +58180,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
+        resetStallTranslationState(enemy.stallTranslation);
       }
        return true;
      }
@@ -60470,6 +60498,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
+        resetStallTranslationState(enemy.stallTranslation);
       }
       return true;
     }
@@ -62138,6 +62167,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          turnLimit: spec.patrolTurn,
          highAltitudeEnvelope: spawnAltitudeEnvelope,
          attitudeLift: resetAttitudeLiftState({}),
+         stallTranslation: resetStallTranslationState({}),
          // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
         // still has to notice it, rather than being born knowing.
@@ -66054,14 +66084,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
     }
 
-    function enemyEffectiveVerticalSpeed(enemy) {
-      // As on the player, attitude loss and stall describe the same missing
-      // lift from two directions. Taking the stronger sink prevents a slow,
-      // inverted aircraft from being charged twice for one absent wing force.
-      return Math.min(
-        enemy.attitudeLift.verticalSpeed,
-        -STALL_SINK_RATE * enemy.stallSeverity
+    function enemyNoseFlightVelocity(enemy, out, aerodynamicVerticalSpeed = 0) {
+      forwardOf(enemy.group, out);
+      altitudeAdjustedFlightVelocity(
+        out,
+        enemy.speed,
+        enemy.highAltitudeEnvelope,
+        aerodynamicVerticalSpeed,
+        out
       );
+      return out;
+    }
+
+    function enemyEffectiveVerticalSpeed(enemy) {
+      if (!enemy.stallTranslation.active) return enemy.attitudeLift.verticalSpeed;
+      enemyNoseFlightVelocity(enemy, tmpV11, 0);
+      return enemy.stallTranslation.y - tmpV11.y;
     }
 
     function updateEnemyAerodynamicState(enemy, dt) {
@@ -66151,13 +66189,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.highAltitudeEnvelope,
         dt
       );
-      altitudeAdjustedFlightVelocity(
+      enemyNoseFlightVelocity(enemy, tmpV8, 0);
+      updateStallTranslationState(
+        enemy.stallTranslation,
         tmpV8,
-        enemy.speed,
-        enemy.highAltitudeEnvelope,
-        enemyEffectiveVerticalSpeed(enemy),
-        enemy.velocity
+        enemy.stallSeverity,
+        dt
       );
+      if (enemy.stallTranslation.active) {
+        enemy.velocity.set(
+          enemy.stallTranslation.x,
+          enemy.stallTranslation.y,
+          enemy.stallTranslation.z
+        );
+      } else {
+        enemyNoseFlightVelocity(enemy, enemy.velocity, enemy.attitudeLift.verticalSpeed);
+      }
       enemy.group.position.addScaledVector(enemy.velocity, dt);
     }
 
@@ -66739,6 +66786,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (enemy.group.position.y < hardFloor) {
            enemy.group.position.y = hardFloor;
           enemy.attitudeLift.verticalSpeed = 0;
+          resetStallTranslationState(enemy.stallTranslation);
           forwardOf(enemy.group, tmpV4);
           if (tmpV4.y < 0) {
             tmpV8.set(tmpV4.x, 0.22, tmpV4.z).normalize();
@@ -67040,6 +67088,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (enemy.group.position.y < hardFloor) {
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
+        resetStallTranslationState(enemy.stallTranslation);
       }
 
       if (enemy.postStallTimer <= 0) enemy.postStallPhase = 0;
