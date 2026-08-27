@@ -139,3 +139,17 @@ REATTACK
 - 高性能機や増援数を無計画に増やさない。
 - 武器射程、ロック時間、旋回性能を索敵AIの都合で水増ししない。
 - マップ形状・地形配置には触れない。
+
+## 9. 実装後シミュレーション／横断監査
+
+`tools/simulate_enemy_air_ai_engagement.mjs`で18kmから接近する220／300／
+420m/sの三条件を計算した。防御purposeは探知後コミットまで14.8〜36.4秒の
+追跡窓を持ち、索敵と迎撃開始が同時になる旧挙動を解消した。INTERCEPTORは
+300m/s換算で最短1.05km、最長1.95kmの離隔を作り、1.5kmの再進入条件を
+3.5〜6.5秒の窓内で横切る。
+
+`tools/check_sera_enemy_ai_watchdog_e2e.mjs`はM01〜M20を個別起動し、現時点で
+174機の固定翼についてpurpose、sensor、contact、aim、有限座標、station、
+INTERCEPTOR phaseを横断確認してPASSした。M04の艦隊CAPはRAVENが艦隊から
+約19km離れている時に正しく未探知／艦隊上空待機となり、広域索敵化が
+全戦場での透視・無限追撃にはなっていない。

@@ -51729,6 +51729,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           }
           return count;
         },
+        forceDeployAllPendingWaves: () => {
+          if (gameState !== STATE_PLAYING) return false;
+          for (const queued of pendingWaves) queued.timer = 0;
+          updatePendingWaves(999);
+          return pendingWaves.length === 0;
+        },
         forceEnemyBreakCycle: (id, duration = 0.01) => {
           const enemy = enemies.find((candidate) => (
             candidate.alive && candidate.id === Number(id) && !candidate.surface && !candidate.heli
@@ -65599,7 +65605,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function updateEnemyContact(enemy, dt) {
       enemy.contactRetargetTimer = Math.max(0, (enemy.contactRetargetTimer || 0) - dt);
 
-      if (enemy.purpose === "strike" || enemy.purpose === "cas") {
+      if (enemy.purpose === "strike" || (enemy.purpose === "cas" && enemy.casTargetRef)) {
         enemy.contactState = "objective";
         enemy.contactRef = null;
         enemy.contactMemory = 0;
@@ -65908,7 +65914,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       if (enemy.purpose === "cas") {
-        if (enemy.mode !== "break") enemy.mode = enemy.casTargetRef ? "patrol" : "pursuit";
+        if (enemy.mode !== "break") {
+          enemy.mode = enemy.casTargetRef
+            ? "patrol"
+            : (enemy.contactRef ? "pursuit" : "patrol");
+        }
         return;
       }
 
@@ -66662,6 +66672,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // updateEnemyCasAttack; when no valid ground objective remains this
       // guard opens and the aircraft falls back to the ordinary air fight.
       if (enemy.purpose === "cas" && (enemy.casTargetRef || enemy.casEgressTimer > 0)) return;
+      if (STATION_ENEMY_PURPOSES.has(enemy.purpose)) {
+        resetEnemyMissileLock(enemy);
+        return;
+      }
 
       // Search and memory fly the contact geometry but do not grant weapon-grade
       // omniscience. A GCI vector becomes shootable only when the target is back
