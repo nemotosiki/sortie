@@ -2,8 +2,9 @@
 //
 // Sortie's translational model intentionally remains light-weight: the nose
 // still owns forward speed and the existing stall system still owns low-speed
-// loss of control. This state adds only the vertical velocity that appears
-// when the wing's lift vector can no longer support the aircraft's weight.
+// loss of control. This state adds only the WORLD-vertical velocity that
+// appears when the wing's lift vector can no longer support the aircraft's
+// weight.
 // It is acceleration-based so a quick combat roll is nearly free, while an
 // aircraft held inverted continues to settle until the pilot corrects it.
 
@@ -28,8 +29,13 @@ function smoothstep01(value) {
 
 export function attitudeLiftLossSeverity(upDot) {
   const dot = clamp(Number(upDot) || 0, -1, 1);
-  const span = ATTITUDE_LIFT_LOSS_ONSET_DOT + 1;
-  return smoothstep01((ATTITUDE_LIFT_LOSS_ONSET_DOT - dot) / span);
+  // Only the upward component of the wing normal can oppose gravity. At the
+  // 75-degree arcade onset most of that support has already gone; by a true
+  // knife-edge (upDot=0) none remains. Continuing through inverted flight must
+  // not somehow restore support, so the loss stays saturated from 90-180 deg.
+  return smoothstep01(
+    (ATTITUDE_LIFT_LOSS_ONSET_DOT - dot) / ATTITUDE_LIFT_LOSS_ONSET_DOT
+  );
 }
 
 export function attitudeLiftDownAcceleration(upDot, stability) {
@@ -58,10 +64,10 @@ export function updateAttitudeLiftState(state, upDot, stability, dt) {
 
   verticalSpeed -= downAcceleration * elapsed;
 
-  // Whatever lift remains damps the accumulated sink. At knife-edge the
-  // deficit reaches a small terminal rate instead of accelerating forever;
-  // fully inverted has no automatic recovery and therefore keeps settling.
-  // A high-STABILITY airframe regains its trimmed flight path faster.
+  // Whatever WORLD-up lift remains damps the accumulated sink. At knife-edge
+  // and beyond there is no automatic vertical recovery, so gravity keeps
+  // building the fall until the arcade cap. A high-STABILITY airframe both
+  // loses less support and regains its trimmed flight path faster.
   const recoveryK = ATTITUDE_LIFT_LOOSE_RECOVERY_K +
     (ATTITUDE_LIFT_STABLE_RECOVERY_K - ATTITUDE_LIFT_LOOSE_RECOVERY_K) * stable;
   const remainingLift = 1 - severity;

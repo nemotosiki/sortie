@@ -57,14 +57,11 @@ const verticalNose = altitudeAdjustedFlightVelocity(
   500,
   absolute,
   0,
-  { x: 1, y: 0, z: 0 },
   {}
 );
-near(Math.hypot(verticalNose.x, verticalNose.y, verticalNose.z), 500, 1e-9,
-  "absolute-ceiling velocity magnitude");
 near(verticalNose.y, -32, 1e-12, "absolute-ceiling vertical flight-path speed");
-assert(verticalNose.x > 498 && verticalNose.z === 0,
-  `blocked climb did not remain as horizontal inertia: ${JSON.stringify(verticalNose)}`);
+assert(verticalNose.x === 0 && verticalNose.z === 0,
+  `blocked vertical climb invented horizontal motion: ${JSON.stringify(verticalNose)}`);
 
 const steepAngle = 87 * Math.PI / 180;
 const steepHigh = altitudeAdjustedFlightVelocity(
@@ -72,13 +69,33 @@ const steepHigh = altitudeAdjustedFlightVelocity(
   518,
   highAltitudeEnvelopeAt(10625),
   0,
-  { x: 1, y: 0, z: 0 },
   {}
 );
-near(Math.hypot(steepHigh.x, steepHigh.y, steepHigh.z), 518, 1e-9,
-  "10,625m steep-climb velocity magnitude");
-assert(Math.abs(steepHigh.x) > 500,
-  `10,625m climb restriction deleted forward speed: ${JSON.stringify(steepHigh)}`);
+near(steepHigh.x, Math.cos(steepAngle) * 518, 1e-9,
+  "10,625m horizontal component");
+assert(Math.abs(steepHigh.x) < 30,
+  `10,625m climb restriction invented sideways speed: ${JSON.stringify(steepHigh)}`);
+
+const stalledVertical = altitudeAdjustedFlightVelocity(
+  { x: 0, y: 1, z: 0 },
+  60,
+  sea,
+  -44,
+  {}
+);
+near(stalledVertical.y, 16, 1e-12, "vertical stall gravity deceleration");
+assert(stalledVertical.x === 0 && stalledVertical.z === 0,
+  `WORLD gravity became lateral motion: ${JSON.stringify(stalledVertical)}`);
+
+const stalledLevel = altitudeAdjustedFlightVelocity(
+  { x: 0, y: 0, z: -1 },
+  60,
+  sea,
+  -44,
+  {}
+);
+near(stalledLevel.y, -44, 1e-12, "level stall WORLD-down speed");
+near(stalledLevel.z, -60, 1e-12, "level stall retained forward speed");
 
 near(altitudeAdjustedResponseK(0.6, 1), 0.6, 1e-12,
   "sea-level throttle response");

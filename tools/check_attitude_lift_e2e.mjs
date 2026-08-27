@@ -71,6 +71,7 @@ try {
     window.__game?.forceStartMissionByKey
     && window.__game?.debug?.forceAttitude
     && window.__game?.debug?.forceResetAttitudeLift
+    && window.__game?.debug?.forceFlightEnergy
     && window.__game?.debug?.forceFlightFrames
   ), null, { timeout: 120_000 });
   const started = await page.evaluate(() => window.__game.forceStartMissionByKey("sera-m04", "f16"));
@@ -106,16 +107,41 @@ try {
     const inverted = debug.forceFlightFrames(180, 1 / 60);
     debug.forceAttitude(0, 0, 0);
     const recovered = debug.forceFlightFrames(60, 1 / 60);
-    return { ordinary, knifeEdge, f16, f22, recovery: { inverted, recovered } };
+
+    // A nose-up deep stall is the regression that exposed the bad vector
+    // reconstruction: lost vertical motion used to reappear along the last
+    // horizontal heading. One live production frame must move WORLD-down,
+    // without inventing a sideways translation.
+    debug.forceLoadout("f16");
+    debug.forceTeleport(0, 1800, 0);
+    debug.forceResetAttitudeLift();
+    debug.forceAttitude(0, 90, 0);
+    debug.forceFlightEnergy(20, 1);
+    const verticalBefore = debug.forceFlightFrames(0, 1 / 60);
+    const verticalAfter = debug.forceFlightFrames(1, 1 / 60);
+    const verticalStall = {
+      dx: verticalAfter.position.x - verticalBefore.position.x,
+      dy: verticalAfter.position.y - verticalBefore.position.y,
+      dz: verticalAfter.position.z - verticalBefore.position.z,
+      after: verticalAfter
+    };
+    return {
+      ordinary,
+      knifeEdge,
+      f16,
+      f22,
+      recovery: { inverted, recovered },
+      verticalStall
+    };
   });
 
   // The live RAF can finish one sub-frame around forceTeleport before the
   // synchronous production-step sample begins; 0.1m is still effectively zero
-  // beside the 1m knife-edge and 31m inverted cases this gate separates.
+  // beside the 31m knife-edge/inverted cases this gate separates.
   assert(Math.abs(results.ordinary.drop) < 0.1,
     "ordinary 60-degree bank lost altitude", results.ordinary);
-  assert(results.knifeEdge.drop > 0.5 && results.knifeEdge.drop < 2,
-    "knife-edge penalty is not gentle in the production flight loop", results.knifeEdge);
+  assert(results.knifeEdge.drop > 30 && results.knifeEdge.drop < 34,
+    "knife-edge did not lose altitude under WORLD gravity", results.knifeEdge);
   assert(results.f16.drop > 30 && results.f16.drop < 34,
     "F-16 inverted drop left the production tuning window", results.f16);
   assert(results.f22.drop > 14 && results.f22.drop < 18 && results.f22.drop < results.f16.drop,
@@ -125,6 +151,10 @@ try {
   assert(Math.abs(results.recovery.recovered.effectiveVerticalSpeed) <
       Math.abs(results.recovery.inverted.effectiveVerticalSpeed) * 0.25,
     "upright recovery did not arrest inverted sink", results.recovery);
+  assert(results.verticalStall.dy < -0.25,
+    "nose-up deep stall did not move WORLD-down", results.verticalStall);
+  assert(Math.hypot(results.verticalStall.dx, results.verticalStall.dz) < 0.05,
+    "nose-up deep stall invented horizontal movement", results.verticalStall);
   assert(pageErrors.length === 0, "pageerror during attitude-lift check", pageErrors);
   assert(consoleErrors.length === 0, "console error during attitude-lift check", consoleErrors);
 
@@ -134,7 +164,12 @@ try {
     knifeEdgeDrop: results.knifeEdge.drop,
     f16: { stability: results.f16.probe.stability, drop: results.f16.drop },
     f22: { stability: results.f22.probe.stability, drop: results.f22.drop },
-    recoveryVerticalSpeed: results.recovery.recovered.effectiveVerticalSpeed
+    recoveryVerticalSpeed: results.recovery.recovered.effectiveVerticalSpeed,
+    verticalStallDelta: {
+      x: results.verticalStall.dx,
+      y: results.verticalStall.dy,
+      z: results.verticalStall.dz
+    }
   }, null, 2));
 } finally {
   await context.close();

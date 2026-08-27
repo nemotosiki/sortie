@@ -156,9 +156,10 @@ try {
       window.__game.forceSeraM11SetPlayerAltitude(9144);
       return { before, after, displacementSpeedMps };
     });
-    assert(Math.abs(speedParity.displacementSpeedMps - speedParity.after.speedMps) < 0.1
-        && Math.abs(speedParity.after.kinematicSpeedMps - speedParity.after.speedMps) < 1e-6
-        && speedParity.after.hudSpeedKph === Math.round(speedParity.after.speedMps * 3.6),
+    assert(Math.abs(speedParity.displacementSpeedMps - speedParity.after.kinematicSpeedMps) < 0.1
+        && speedParity.after.hudSpeedKph ===
+          Math.round(speedParity.after.kinematicSpeedMps * 3.6)
+        && speedParity.after.kinematicSpeedMps < speedParity.after.speedMps * 0.35,
       "high-altitude HUD speed diverged from actual displacement speed", speedParity);
     assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
       "HALO damage probe failed");

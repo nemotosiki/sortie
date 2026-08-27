@@ -35,10 +35,10 @@ assert(Math.abs(attitudeLiftLossSeverity(ATTITUDE_LIFT_LOSS_ONSET_DOT)) < 1e-12,
   "loss must begin at 75 degrees without a step");
 assert(attitudeLiftLossSeverity(Math.cos(60 * Math.PI / 180)) === 0,
   "ordinary 60-degree combat bank must remain unaffected");
-assert(attitudeLiftLossSeverity(0) > 0 && attitudeLiftLossSeverity(0) < 0.12,
-  "knife-edge onset must be present but gentle");
+assert(Math.abs(attitudeLiftLossSeverity(0) - 1) < 1e-12,
+  "knife-edge must have no remaining WORLD-up lift");
 assert(Math.abs(attitudeLiftLossSeverity(-1) - 1) < 1e-12,
-  "fully inverted attitude must reach full loss severity");
+  "inverted attitude must not regain WORLD-up lift");
 
 const stabilityCases = [
   { id: "f4", stability: 0.20 },
@@ -59,9 +59,12 @@ assert(stabilityCases[3].drop > 14 && stabilityCases[3].drop < 18,
   "maximum-STABILITY aircraft became immune or too heavily penalized", stabilityCases[3]);
 
 const knifeEdge = simulate({ stability: 0.45, bankDeg: 90 });
+const oppositeKnifeEdge = simulate({ stability: 0.45, bankDeg: -90 });
 const ordinaryBank = simulate({ stability: 0.20, bankDeg: 60 });
-assert(knifeEdge.drop > 0.5 && knifeEdge.drop < 2,
-  "knife-edge penalty is not gentle", knifeEdge);
+assert(knifeEdge.drop > 30 && knifeEdge.drop < 34,
+  "knife-edge did not fall under WORLD gravity", knifeEdge);
+assert(Math.abs(knifeEdge.drop - oppositeKnifeEdge.drop) < 1e-9,
+  "bank direction changed the WORLD-down fall", { knifeEdge, oppositeKnifeEdge });
 assert(ordinaryBank.drop === 0,
   "normal-bank handling changed", ordinaryBank);
 
@@ -85,7 +88,7 @@ assert(capped.state.verticalSpeed === -ATTITUDE_LIFT_MAX_SINK_SPEED,
   "attitude sink exceeded its arcade safety cap", capped);
 
 for (const required of [
-  'from "./src/flight/attitude-lift.js?v=20260813-attitude-lift-1"',
+  'from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1"',
   "PLAYER_STABILITY = aircraftStabilityRating(spec);",
   "updateAttitudeLiftState(",
   "tmpV2.dot(WORLD_UP)",
@@ -100,6 +103,6 @@ assert(!indexSource.includes("STALL_SINK_RATE * stallSeverity + playerAttitudeLi
   "stall and attitude sink were added as duplicate penalties");
 
 console.log("check_attitude_lift: PASS");
-console.log(`  ordinary bank 60deg drop=${ordinaryBank.drop.toFixed(2)}m; knife-edge 90deg drop=${knifeEdge.drop.toFixed(2)}m`);
+console.log(`  ordinary bank 60deg drop=${ordinaryBank.drop.toFixed(2)}m; knife-edge +/-90deg drop=${knifeEdge.drop.toFixed(2)}m`);
 console.log(`  inverted 3s: ${stabilityCases.map((entry) => `${entry.id}=${entry.drop.toFixed(1)}m`).join(", ")}`);
 console.log(`  30/60/120fps spread=${(Math.max(...frameDrops) - Math.min(...frameDrops)).toFixed(3)}m; sink cap=${ATTITUDE_LIFT_MAX_SINK_SPEED}m/s`);

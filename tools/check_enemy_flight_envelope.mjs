@@ -127,7 +127,7 @@ for (const required of [
   "stability: aircraftStabilityRating(air),",
   "altitudeAdjustedFlightVelocity(",
   "enemyEffectiveVerticalSpeed(enemy)",
-  "enemy.velocity,\n        enemy.velocity"
+  "enemyEffectiveVerticalSpeed(enemy),\n        enemy.velocity"
 ]) {
   assert(indexSource.includes(required), `production integration is missing: ${required}`);
 }

@@ -85,18 +85,20 @@ export function altitudeAdjustedVerticalSpeed(forwardVerticalSpeed, envelope) {
   return climb + (Number(envelope?.ceilingSinkSpeed) || 0);
 }
 
-// Restrict the flight-path angle without deleting translational speed. The
-// old integration scaled only the upward component, so a jet pointing nearly
-// vertical at the ceiling kept a large HUD airspeed while barely changing
-// position. Thin air should make the velocity vector lag behind the nose, not
-// make hundreds of metres per second disappear. The disallowed climb is kept
-// in the horizontal component and the resulting vector retains `speedMps`.
+// Build the actual WORLD-space translation vector. The horizontal components
+// remain the aircraft's forward motion, while thin-air climb loss, ceiling
+// sink and aerodynamic fall act only along WORLD Y. Never reallocate blocked
+// vertical motion into an arbitrary horizontal fallback: that made a vertical
+// or stalled aircraft slide sideways instead of yielding to gravity.
+//
+// The returned magnitude may differ from `speedMps`. That is intentional:
+// `speedMps` is the airframe's powered/forward speed, while gravity and a
+// restricted climb change the actual displacement measured by the HUD.
 export function altitudeAdjustedFlightVelocity(
   forwardDirection,
   speedMps,
   envelope,
   aerodynamicVerticalSpeed = 0,
-  fallbackHorizontal = null,
   out = forwardDirection
 ) {
   const speed = Math.max(0, Number(speedMps) || 0);
@@ -107,32 +109,9 @@ export function altitudeAdjustedFlightVelocity(
   const nx = forwardLength > 1e-12 ? fx / forwardLength : 0;
   const ny = forwardLength > 1e-12 ? fy / forwardLength : 0;
   const nz = forwardLength > 1e-12 ? fz / forwardLength : -1;
-  const fallbackX = Number(fallbackHorizontal?.x) || 0;
-  const fallbackZ = Number(fallbackHorizontal?.z) || 0;
-
-  const verticalSpeed = clamp(
-    altitudeAdjustedVerticalSpeed(ny * speed, envelope) +
-      (Number(aerodynamicVerticalSpeed) || 0),
-    -speed,
-    speed
-  );
-  const horizontalSpeed = Math.sqrt(Math.max(0, speed * speed - verticalSpeed * verticalSpeed));
-  let hx = nx;
-  let hz = nz;
-  let horizontalLength = Math.hypot(hx, hz);
-  if (horizontalLength <= 1e-12) {
-    hx = fallbackX;
-    hz = fallbackZ;
-    horizontalLength = Math.hypot(hx, hz);
-  }
-  if (horizontalLength <= 1e-12) {
-    hx = 0;
-    hz = -1;
-    horizontalLength = 1;
-  }
-
-  out.x = hx / horizontalLength * horizontalSpeed;
-  out.y = verticalSpeed;
-  out.z = hz / horizontalLength * horizontalSpeed;
+  out.x = nx * speed;
+  out.y = altitudeAdjustedVerticalSpeed(ny * speed, envelope) +
+    (Number(aerodynamicVerticalSpeed) || 0);
+  out.z = nz * speed;
   return out;
 }

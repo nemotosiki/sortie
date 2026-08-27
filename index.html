@@ -2725,7 +2725,7 @@
     import {
       resetAttitudeLiftState,
       updateAttitudeLiftState
-    } from "./src/flight/attitude-lift.js?v=20260813-attitude-lift-1";
+    } from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -2740,7 +2740,7 @@
       altitudeAdjustedFlightVelocity,
       altitudeAdjustedResponseK,
       highAltitudeEnvelopeAt
-    } from "./src/flight/high-altitude-envelope.js?v=20260827-high-altitude-2";
+    } from "./src/flight/high-altitude-envelope.js?v=20260827-world-gravity-1";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -44139,17 +44139,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playerSpeed,
         playerHighAltitudeEnvelope,
         playerEffectiveVerticalSpeed(),
-        playerHorizontalFlightDirection,
         out
       );
-      const horizontalLength = Math.hypot(out.x, out.z);
-      if (horizontalLength > 1e-9) {
-        playerHorizontalFlightDirection.set(
-          out.x / horizontalLength,
-          0,
-          out.z / horizontalLength
-        );
-      }
       return out;
     }
 
@@ -44310,7 +44301,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     let waveNumber = 0;
     let playerSpeed = CRUISE_SPEED;
     const playerAttitudeLift = resetAttitudeLiftState({});
-    const playerHorizontalFlightDirection = new THREE.Vector3(0, 0, -1);
     let playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(0);
     let gunCooldown = 0;
     let gunShots = 0;
@@ -46811,6 +46801,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           resetAttitudeLiftState(playerAttitudeLift);
           return true;
         },
+        // Deterministic flight-energy setup for production-loop regression
+        // checks. This changes no authored aircraft values; it only places the
+        // live player at a requested speed and stall state for the next frame.
+        forceFlightEnergy: (speedMps, severity = 0) => {
+          if (gameState !== STATE_PLAYING) return false;
+          playerSpeed = Math.max(0, Number(speedMps) || 0);
+          const forcedSeverity = THREE.MathUtils.clamp(Number(severity) || 0, 0, 1);
+          stallTimer = forcedSeverity;
+          stallSeverity = forcedSeverity;
+          stalling = forcedSeverity > 0.24;
+          return { speedMps: playerSpeed, stallSeverity, stalling };
+        },
         // Runs only the production player-flight step. Browser checks use this
         // to compare several seconds of attitude response without waiting for
         // software WebGL to render every frame; enemies, mission timers and
@@ -46830,13 +46832,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             updatePlayer(slice);
           }
           playerKinematicVelocity(tmpV10);
+          const kinematicSpeedMps = tmpV10.length();
           return {
             frames: count,
             step: slice,
             position: { x: player.position.x, y: player.position.y, z: player.position.z },
             speedMps: playerSpeed,
-            hudSpeedKph: Math.round(playerSpeed * 3.6),
-            kinematicSpeedMps: tmpV10.length(),
+            hudSpeedKph: Math.round(kinematicSpeedMps * 3.6),
+            kinematicSpeedMps,
             velocity: { x: tmpV10.x, y: tmpV10.y, z: tmpV10.z },
             stability: PLAYER_STABILITY,
             attitudeLift: { ...playerAttitudeLift },
@@ -50956,7 +50959,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallSeverity = 0;
       stalling = false;
       playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
-      playerHorizontalFlightDirection.set(0, 0, -1);
       resetAttitudeLiftState(playerAttitudeLift);
       syncPlayerOrientation();
     }
@@ -58931,7 +58933,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.speed,
         enemy.highAltitudeEnvelope,
         enemyEffectiveVerticalSpeed(enemy),
-        enemy.velocity,
         enemy.velocity
       );
       enemy.group.position.addScaledVector(enemy.velocity, dt);
@@ -63065,7 +63066,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateGuardReadout();
       updateM07RecoveryReadout();
       updateM11EwDirective();
-      const speedKph = Math.round(playerSpeed * 3.6);
+      // SPEED reports the motion the player actually sees across the world.
+      // During a stall gravity can add sink; near the ceiling a blocked climb
+      // can remove vertical travel. Reporting the powered forward scalar here
+      // was the old HUD/movement mismatch.
+      const speedKph = Math.round(playerKinematicVelocity(tmpV10).length() * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
       ui.altitude.textContent = String(altitudeM);
