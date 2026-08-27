@@ -123,6 +123,8 @@ try {
   probe = state.find((enemy) => enemy.id === cap.id);
   assert(probe.mode === "patrol" && probe.contactState === "memory" && probe.contactMemory > 0,
     "CAP did not return under leash while retaining a last-known contact", probe);
+  assert(probe.protectedId === cap.protectedId,
+    "CAP changed living protected hull while manoeuvring", { before: cap, after: probe });
   assert(opened.errors.length === 0, "browser errors during CAP sensor test", opened.errors);
   await opened.context.close();
 
@@ -143,6 +145,11 @@ try {
   const interceptor = state.find((enemy) => enemy.purpose === "interceptor");
   assert(interceptor && interceptor.interceptorPhase === "inbound",
     "M20 interceptor did not enter the pass state machine", interceptor);
+  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(720, 0.05));
+  state = await objectives(opened.page);
+  const naturalPass = state.find((enemy) => enemy.id === interceptor.id);
+  assert(naturalPass.interceptorPasses >= 1,
+    "interceptor never produced a natural overshoot/egress in 36 seconds", naturalPass);
   const overshootCases = await opened.page.evaluate(() => ({
     passed: window.__game.debug.interceptorOvershootProbe(650, 200, 540, -0.4),
     neverMerged: window.__game.debug.interceptorOvershootProbe(650, 600, 540, -0.4),
@@ -152,6 +159,7 @@ try {
   assert(overshootCases.passed && !overshootCases.neverMerged
       && !overshootCases.stillClosing && !overshootCases.targetAhead,
     "interceptor overshoot classifier accepted an invalid pass", overshootCases);
+  const passesBeforeForcedEgress = naturalPass.interceptorPasses;
   assert(await opened.page.evaluate((id) => window.__game.debug.forceInterceptorEgress(id), interceptor.id),
     "interceptor egress could not be forced");
   await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(2, 0.05));
@@ -159,7 +167,7 @@ try {
   let interceptorProbe = state.find((enemy) => enemy.id === interceptor.id);
   assert(interceptorProbe.interceptorPhase === "egress"
       && interceptorProbe.aimKind === "interceptor-egress"
-      && interceptorProbe.interceptorPasses === 1,
+      && interceptorProbe.interceptorPasses === passesBeforeForcedEgress + 1,
     "interceptor did not extend after its pass", interceptorProbe);
   await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(140, 0.05));
   state = await objectives(opened.page);

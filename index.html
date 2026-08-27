@@ -51116,6 +51116,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             defencePoint: defence
               ? [Number(defence.x.toFixed(1)), Number(defence.y.toFixed(1)), Number(defence.z.toFixed(1))]
               : null,
+            protectedId: enemy.purposeRef?.id ?? null,
             protectedLabel: enemy.purposeRef ? (enemy.purposeRef.label || enemy.purposeRef.type) : null
           };
         }),
@@ -65826,20 +65827,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function purposeProtectedAssetFor(enemy) {
       if (!enemy || !DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) return null;
-      let best = null;
-      let bestDistance = Infinity;
-      for (const candidate of enemies) {
-        if (!candidate.alive || candidate === enemy || candidate.subsystem) continue;
-        if (enemy.protectTag && candidate.missionTag !== enemy.protectTag) continue;
+      const compatibleAsset = (candidate) => {
+        if (!candidate?.alive || candidate === enemy || candidate.subsystem) return false;
+        if (enemy.protectTag && candidate.missionTag !== enemy.protectTag) return false;
         const airPackage = !candidate.surface && !candidate.heli
           && (candidate.strikeTarget || candidate.hunt);
         const fleetAsset = candidate.surface && !candidate.ground;
-        const compatible = enemy.purpose === "cap"
+        return enemy.purpose === "cap"
           ? fleetAsset
           : (enemy.purpose === "screen" || enemy.purpose === "escort")
             ? airPackage
             : (airPackage || fleetAsset);
-        if (!compatible) continue;
+      };
+
+      // A guard assignment is sticky while its charge lives. Re-selecting the
+      // nearest same-tag ship every frame made a CAP orbit jump between hulls
+      // as it crossed the fleet centre; escort fighters did the same between
+      // adjacent bombers. Reassignment is a loss response, not steering.
+      if (compatibleAsset(enemy.purposeRef)) return enemy.purposeRef;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const candidate of enemies) {
+        if (!compatibleAsset(candidate)) continue;
         const distance = candidate.group.position.distanceToSquared(enemy.group.position);
         if (distance >= bestDistance) continue;
         bestDistance = distance;
