@@ -10,6 +10,7 @@ export default function register(ctx) {
     WORLD_PRESETS,
     AIRCRAFT_TYPES,
     ENEMY_AI_PROFILES,
+    ACE_PROFILES,
     GROUND_TYPES
   } = ctx.tables;
 
@@ -18,25 +19,172 @@ export default function register(ctx) {
   if (!MISSIONS.some((mission) => mission.key === "sera-m10" && mission.campaign === "sera")) {
     throw new Error("[sera-m11] sera-m10 predecessor is missing");
   }
-  for (const type of ["fa18", "jammer", "mig31"]) {
+  for (const type of ["fa18", "jammer", "mig29", "mig31", "typhoon"]) {
     if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m11] required aircraft not registered: ${type}`);
   }
-  if (!ENEMY_AI_PROFILES.mig31) {
-    throw new Error("[sera-m11] required enemy profile not registered: mig31");
+  for (const type of ["mig29", "mig31"]) {
+    if (!ENEMY_AI_PROFILES[type]) {
+      throw new Error(`[sera-m11] required enemy profile not registered: ${type}`);
+    }
   }
-  for (const type of ["radarSite", "bunker", "fuelTank", "samSite", "aaGun"]) {
+  if (!ACE_PROFILES.longbow) throw new Error("[sera-m11] LONG BOW ace template is missing");
+  for (const type of ["radarSite", "bunker", "fuelTank", "samSite", "aaGun", "adTank"]) {
     if (!GROUND_TYPES[type]) throw new Error(`[sera-m11] required ground type not registered: ${type}`);
   }
 
   const anchors = world.missionAnchors;
   for (const key of [
     "playerStart", "strikeStart", "strikeExit", "battleCenter",
-    "northIntercept", "southIntercept", "weatherStation"
+    "northIntercept", "southIntercept", "baseCapEntry", "coastQraEntry",
+    "inlandQraEntry", "arcaWatchStart", "arcaWatchExit", "weatherStation"
   ]) {
     if (!Array.isArray(anchors?.[key]) || anchors[key].length !== 2) {
       throw new Error(`[sera-m11] Ver Ice Coast mission anchor is missing: ${key}`);
     }
   }
+
+  // M11's red board is a functioning installation rather than ten stock props
+  // scattered over snow. Each custom kind keeps the combat role and durability
+  // of the stock object it replaces, while giving guns, missiles and the HUD a
+  // distinct physical silhouette to read from above.
+  ctx.addGroundType("m11FireControlRadar", {
+    ...GROUND_TYPES.radarSite,
+    key: "m11FireControlRadar",
+    label: "FIRE CONTROL RADAR",
+    role: "Frozen Eye Phased-Array Fire-Control Radar",
+    hp: 70,
+    hitRadius: 31,
+    crash: Object.freeze({ halfLen: 14, halfBeam: 11, top: 14 }),
+    hitBox: Object.freeze({ x: 24, y: 16, z: 27 }),
+    smokeHeight: 10,
+    dishSpin: 0.42
+  });
+
+  ctx.addGroundModel("m11FireControlRadar", {
+    build(env) {
+      const { THREE, geometry, add, addRoot, dark, steel, olive, light } = env;
+      add(geometry.panel, olive, 0, 0.65, 0, 25, 1.3, 22);
+      add(geometry.panel, steel, 0, 3.3, 3.2, 16, 4.8, 11);
+      add(geometry.panel, dark, 0, 6.4, 3.2, 13.5, 1.4, 9.5);
+      add(geometry.panel, steel, 0, 8.2, -2.8, 2.2, 6.8, 2.2);
+      add(geometry.panel, dark, -8.8, 2.0, 4.7, 4.2, 2.6, 5.4);
+      add(geometry.panel, dark, 8.8, 2.0, 4.7, 4.2, 2.6, 5.4);
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 12.2, -2.8);
+      const array = new THREE.Mesh(geometry.shipOctPlate, light);
+      array.scale.set(7.4, 0.75, 6.4);
+      array.rotation.x = -0.28;
+      pivot.add(array);
+      const rear = new THREE.Mesh(geometry.panel, dark);
+      rear.position.set(0, -0.8, 1.3);
+      rear.scale.set(1.2, 1.2, 3.8);
+      pivot.add(rear);
+      addRoot(pivot);
+      return { dish: pivot };
+    }
+  });
+
+  ctx.addGroundType("m11ControlStation", {
+    ...GROUND_TYPES.bunker,
+    key: "m11ControlStation",
+    label: "BASE CONTROL STATION",
+    role: "Frozen Eye Hardened Operations Centre",
+    hp: 120,
+    hitRadius: 36,
+    crash: Object.freeze({ halfLen: 17, halfBeam: 15, top: 12 }),
+    hitBox: Object.freeze({ x: 29, y: 13, z: 33 }),
+    smokeHeight: 10
+  });
+
+  ctx.addGroundModel("m11ControlStation", {
+    build({ geometry, add, dark, steel, olive, light }) {
+      add(geometry.panel, dark, 0, 1.0, 0, 31, 2.0, 35);
+      add(geometry.panel, olive, 0, 4.2, 0, 25, 5.0, 29);
+      add(geometry.panel, steel, 0, 7.2, 1.5, 21, 1.2, 24);
+      add(geometry.panel, light, 0, 8.3, -2.5, 13, 1.0, 12);
+      add(geometry.panel, dark, 0, 4.0, -15.0, 8.0, 4.0, 3.0);
+      for (const x of [-9, 9]) {
+        add(geometry.shipCylinder, steel, x, 9.3, 4.5, 0.7, 4.0, 0.7);
+        add(geometry.panel, light, x, 11.7, 4.5, 2.6, 0.5, 2.6);
+      }
+    }
+  });
+
+  ctx.addGroundType("m11PowerPlant", {
+    ...GROUND_TYPES.fuelTank,
+    key: "m11PowerPlant",
+    label: "POWER PLANT",
+    role: "Frozen Eye Diesel Generator Plant",
+    hp: 58,
+    hitRadius: 29,
+    crash: Object.freeze({ halfLen: 15, halfBeam: 12, top: 10 }),
+    hitBox: Object.freeze({ x: 27, y: 11, z: 24 }),
+    smokeHeight: 9,
+    chain: null
+  });
+
+  ctx.addGroundModel("m11PowerPlant", {
+    build({ geometry, add, dark, steel, olive, light }) {
+      add(geometry.panel, olive, 0, 0.65, 0, 29, 1.3, 25);
+      for (const x of [-8.5, 0, 8.5]) {
+        add(geometry.panel, steel, x, 3.0, 0, 6.5, 4.2, 16);
+        add(geometry.panel, dark, x, 5.4, 1.0, 5.6, 0.8, 13.5);
+        add(geometry.shipCylinder, dark, x + 1.8, 7.8, 4.5, 0.65, 5.5, 0.65);
+      }
+      add(geometry.panel, light, 0, 2.0, -10.5, 23, 2.2, 2.5);
+    }
+  });
+
+  ctx.addGroundType("m11FuelFarm", {
+    ...GROUND_TYPES.fuelTank,
+    key: "m11FuelFarm",
+    label: "MISSILE FUEL FARM",
+    role: "Frozen Eye Missile Fuel Farm",
+    hp: 54,
+    hitRadius: 31,
+    crash: Object.freeze({ halfLen: 15, halfBeam: 13, top: 13 }),
+    hitBox: Object.freeze({ x: 29, y: 14, z: 26 }),
+    smokeHeight: 11
+  });
+
+  ctx.addGroundModel("m11FuelFarm", {
+    build({ geometry, add, dark, steel, olive, light }) {
+      add(geometry.panel, olive, 0, 0.65, 0, 30, 1.3, 27);
+      for (const [x, z] of [[-8, -6], [8, -6], [-8, 7], [8, 7]]) {
+        add(geometry.shipCylinder, steel, x, 4.6, z, 4.3, 8.0, 4.3);
+        add(geometry.shipCylinder, light, x, 8.8, z, 3.8, 0.7, 3.8);
+      }
+      add(geometry.panel, dark, 0, 1.9, -12.0, 24, 2.0, 1.6);
+      add(geometry.panel, dark, 0, 1.9, 13.0, 24, 2.0, 1.6);
+    }
+  });
+
+  ctx.addAceProfile("granite", {
+    ...ACE_PROFILES.longbow,
+    callsign: "GRANITE",
+    role: "WARDEN 1 / Air Defence Lead",
+    behavior: "armored",
+    evadeLateral: 34,
+    evadeVertical: 18,
+    evadeFrequency: 1.25,
+    radarColor: "#e9edf2",
+    tracerColor: 0xe9edf2,
+    theme: {
+      ...ACE_PROFILES.longbow.theme,
+      primary: 0x5a6168,
+      secondary: 0x252b31,
+      accent: 0xe7edf0,
+      canopy: 0xa7d8eb,
+      exhaust: 0xb9dbea,
+      scale: 1.08
+    },
+    radio: {
+      inbound: "高高度にネームド反応。WARDEN 1、TACネーム『GRANITE』。基地防空隊の指揮機だ。",
+      wingman: "MiG-31で格闘する気はない。HALOとこっちの退路を切るつもりだ。",
+      engage: "こちらGRANITE。FROZEN EYEが沈黙するまで、空域を封鎖する。",
+      down: "GRANITE、被弾。WARDEN編隊、基地防空任務を継続せよ。"
+    }
+  });
 
   const baseMark = "m11BaseNode";
   const hunterTag = "m11HaloHunter";
@@ -150,6 +298,23 @@ export default function register(ctx) {
           exit: { x: anchors.strikeExit[0], z: anchors.strikeExit[1] }
         }
       ],
+      // ARCA is still a blue observer on WAR DAY 121. POLAR WATCH crosses the
+      // northern edge, listens to civilian weather/rescue traffic, and leaves
+      // before the first radar-online interval. It has no weapons, hitbox,
+      // score value or persistence hook; the hostile split remains an M15 beat.
+      supportFlights: [
+        {
+          aircraft: "typhoon",
+          callsign: "ARCA POLAR WATCH",
+          count: 2,
+          vulnerable: false,
+          speed: 280,
+          altitude: 9800,
+          spacing: 320,
+          start: { x: anchors.arcaWatchStart[0], z: anchors.arcaWatchStart[1] },
+          exit: { x: anchors.arcaWatchExit[0], z: anchors.arcaWatchExit[1] }
+        }
+      ],
       guard: {
         readout: "integrity",
         label: "HALO EW",
@@ -163,16 +328,24 @@ export default function register(ctx) {
       }
     },
     groundUnits: [
-      { id: 21, type: "radarSite", label: "FIRE CONTROL RADAR WEST", x: baseX - 680, z: baseZ + 420, heading: 0.45, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
-      { id: 22, type: "radarSite", label: "FIRE CONTROL RADAR EAST", x: baseX + 670, z: baseZ + 360, heading: -0.5, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
-      { id: 23, type: "bunker", label: "BASE CONTROL STATION", x: baseX, z: baseZ, heading: Math.PI, tgt: true, mark: baseMark, missionRole: "baseStation" },
-      { id: 24, type: "fuelTank", label: "POWER PLANT NORTH", x: baseX - 360, z: baseZ - 520, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
-      { id: 25, type: "fuelTank", label: "MISSILE FUEL FARM", x: baseX + 370, z: baseZ - 560, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
+      { id: 21, type: "m11FireControlRadar", label: "FIRE CONTROL RADAR WEST", x: baseX - 680, z: baseZ + 420, heading: 0.45, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
+      { id: 22, type: "m11FireControlRadar", label: "FIRE CONTROL RADAR EAST", x: baseX + 670, z: baseZ + 360, heading: -0.5, tgt: true, mark: baseMark, missionRole: "fireControlRadar" },
+      { id: 23, type: "m11ControlStation", label: "BASE CONTROL STATION", x: baseX, z: baseZ, heading: Math.PI, tgt: true, mark: baseMark, missionRole: "baseStation" },
+      { id: 24, type: "m11PowerPlant", label: "POWER PLANT NORTH", x: baseX - 360, z: baseZ - 520, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
+      { id: 25, type: "m11FuelFarm", label: "MISSILE FUEL FARM", x: baseX + 370, z: baseZ - 560, heading: 0, tgt: true, mark: baseMark, missionRole: "basePower" },
       { id: 26, type: "samSite", label: "LONG RANGE SAM WEST", x: baseX - 1180, z: baseZ - 180, heading: 1.2, tgt: true, mark: baseMark, missionRole: "baseSam" },
       { id: 27, type: "samSite", label: "LONG RANGE SAM NORTH", x: baseX, z: baseZ + 1120, heading: Math.PI, tgt: true, mark: baseMark, missionRole: "baseSam" },
       { id: 28, type: "samSite", label: "LONG RANGE SAM EAST", x: baseX + 1180, z: baseZ - 160, heading: -1.2, tgt: true, mark: baseMark, missionRole: "baseSam" },
       { id: 29, type: "aaGun", label: "BASE DEFENCE GUN WEST", x: baseX - 720, z: baseZ - 850, heading: 0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" },
-      { id: 30, type: "aaGun", label: "BASE DEFENCE GUN EAST", x: baseX + 720, z: baseZ - 850, heading: -0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" }
+      { id: 30, type: "aaGun", label: "BASE DEFENCE GUN EAST", x: baseX + 720, z: baseZ - 850, heading: -0.25, tgt: true, mark: baseMark, missionRole: "baseDefence" },
+      // Perimeter contacts remain white and optional. The AD tanks use their
+      // ordinary SHORAD profile and never inherit the tagged base-SAM boost.
+      { id: 31, type: "adTank", label: "PERIMETER SHORAD WEST", x: baseX - 1450, z: baseZ + 560, heading: 1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 32, type: "adTank", label: "PERIMETER SHORAD EAST", x: baseX + 1450, z: baseZ + 520, heading: -1.0, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 33, type: "aaGun", label: "PERIMETER AAA SOUTHWEST", x: baseX - 1200, z: baseZ - 900, heading: 0.45, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 34, type: "aaGun", label: "PERIMETER AAA SOUTHEAST", x: baseX + 1200, z: baseZ - 900, heading: -0.45, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 35, type: "aaGun", label: "PERIMETER AAA NORTHWEST", x: baseX - 520, z: baseZ + 1370, heading: 2.7, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" },
+      { id: 36, type: "aaGun", label: "PERIMETER AAA NORTHEAST", x: baseX + 520, z: baseZ + 1340, heading: -2.7, tgt: false, rankNeutral: true, mark: "m11PerimeterContact", missionRole: "perimeterDefence" }
     ],
     sequence: [
       {
@@ -185,13 +358,45 @@ export default function register(ctx) {
         radio: [{ speaker: "meridian", priority: "URGENT", text: "高高度にMiG-31二機。HALOを狙う残存迎撃戦力、白表示だ。基地設備を優先せよ。", id: "m11-foxhound-one" }]
       },
       {
-        types: ["mig31", "mig31"], tgt: false, rankNeutral: true,
-        concurrent: true, delay: 92, missionTag: hunterTag, band: 3, idBase: 420,
-        label: "FOXHOUND HIGH 2", role: "line", skill: "veteran", hunt: "air",
+        types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
+        concurrent: true, delay: 18, missionTag: "m11BaseAirDefence", band: 2, idBase: 430,
+        label: "FROZEN CAP", role: "line", skill: "standard",
+        at: [...anchors.baseCapEntry], altitude: 6200,
+        facing: [...anchors.weatherStation],
+        radio: [{ speaker: "meridian", priority: "NORMAL", text: "基地西側にMiG-29A二機。低高度CAPだ。HALOではなくROOKを迎撃する。", id: "m11-cap-local" }]
+      },
+      {
+        types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
+        concurrent: true, delay: 75, missionTag: "m11BaseAirDefence", band: 2, idBase: 440,
+        label: "COAST QRA", role: "line", skill: "veteran",
+        at: [...anchors.coastQraEntry], altitude: 5900,
+        facing: [...anchors.battleCenter],
+        radio: [{ speaker: "lark", priority: "URGENT", text: "海岸側からQRA二機！ 妨害の切れ目に合わせて挟む気だ。", id: "m11-qra-coast" }]
+      },
+      {
+        types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
+        concurrent: true, delay: 87, missionTag: "m11BaseAirDefence", band: 2, idBase: 450,
+        label: "INLAND QRA", role: "line", skill: "veteran",
+        at: [...anchors.inlandQraEntry], altitude: 5700,
+        facing: [...anchors.weatherStation],
+        radio: [{ speaker: "meridian", priority: "URGENT", text: "第二組、内陸側から二機。敵航空戦力は合計六、基地攻撃中も後方を見ろ。", id: "m11-qra-inland" }]
+      },
+      {
+        types: ["mig31"], tgt: false, rankNeutral: true,
+        concurrent: true, delay: 145, missionTag: hunterTag, band: 3, idBase: 420,
+        label: "WARDEN 1", role: "elite", skill: "expert", ace: "granite",
+        at: [...anchors.southIntercept], altitude: interceptorAltitude,
+        facing: [...anchors.battleCenter],
+        radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEはRAVENを狙っている！", id: "m11-granite-inbound" }]
+      },
+      {
+        types: ["mig31"], tgt: false, rankNeutral: true,
+        concurrent: true, delay: 149, missionTag: hunterTag, band: 3, idBase: 421,
+        label: "WARDEN 2", role: "line", skill: "veteran", hunt: "air",
         huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.southIntercept], altitude: interceptorAltitude,
         facing: [...anchors.battleCenter],
-        radio: [{ speaker: "lark", priority: "URGENT", text: "南東、高高度にもう二機。4AAMなら届く、でも赤い基地TGTを残すな！", id: "m11-foxhound-two" }]
+        radio: [{ speaker: "lark", priority: "URGENT", text: "GRANITEの僚機はHALOへ向かった。4AAMなら届く、でも赤TGTを残すな！", id: "m11-warden-wing" }]
       }
     ],
     m11EscortContract,
@@ -199,6 +404,8 @@ export default function register(ctx) {
       { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、上空一万五百のHALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
       { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
       { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
+      { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間救難・気象周波数を監視中。基地北側を通過する。" },
+      { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、射撃管制網の復帰を確認。ARCA機は交戦せず監視空域を離脱する。" },
       { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
       { id: "m11-jam-pause", event: "haloJammingPause", speaker: "halo", priority: "CRITICAL", text: "HALO、再同期開始。敵射撃管制レーダー復活——低高度機は直ちに退避。" },
       { id: "m11-jam-resume", event: "haloJammingResume", speaker: "halo", priority: "CRITICAL", text: "妨害を再開。敵ミサイル誘導性能低下、攻撃窓を再設定する。" },
@@ -214,7 +421,7 @@ export default function register(ctx) {
     map: { x: 0.65, y: 0.18 },
     battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
     battleRadius: 19000,
-    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、敵基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。白表示のMiG-31四機はHALOを狙って10,650m帯に張り付く残存航空戦力で、撃墜は二次目標となる。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\nHALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、FROZEN EYE基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。基地外周には白表示のSHORAD二両と対空砲四基がいる。\n敵航空戦力はMiG-29A六機とMiG-31四機。MiG-29Aは基地CAPと二組のQRAとして時間差でRAVEN/LARKを迎撃する。MiG-31は10,650m帯の二次目標で、開幕二機はHALOを狙う。第二のレーダー復活ではネームドGRANITEを含むWARDEN二機が到着する。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\n青表示のARCA POLAR WATCH二機は民間救難・気象周波数を監視する非交戦飛行で、最初のレーダー復活前に離脱する。HALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
   };
 
   ctx.addMission(mission, { after: "sera-m10" });

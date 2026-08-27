@@ -17,6 +17,11 @@ export default function register(ctx) {
     firstIntercept: Object.freeze([-1800, 4100]),
     northIntercept: Object.freeze([3100, 8600]),
     southIntercept: Object.freeze([11200, -6500]),
+    baseCapEntry: Object.freeze([-3500, 1000]),
+    coastQraEntry: Object.freeze([12400, 1000]),
+    inlandQraEntry: Object.freeze([6500, -12100]),
+    arcaWatchStart: Object.freeze([-6500, 8000]),
+    arcaWatchExit: Object.freeze([8500, 6000]),
     diversionEntry: Object.freeze([-2500, -8200]),
     weatherStation: Object.freeze([4300, -2500]),
     fishingHarbour: Object.freeze([-3300, 3300])
@@ -267,12 +272,139 @@ export default function register(ctx) {
       cylinder("verHarbourBeaconLamp", -2770, 89, 3170, 18, 7, 0x7ce8dc,
         { emissive: 0x62e6d7, emissiveIntensity: 2.1 });
 
-      // Weather station: four instrument masts around a low operations block.
-      box("verWeatherStation", 4300, 24, -2500, 410, 48, 250, 0xcbd5d5, -0.12);
-      for (const [index, x, z] of [[1, 4050, -2750], [2, 4550, -2740], [3, 4100, -2220], [4, 4560, -2200]]) {
-        cylinder(`verWeatherMast${index}`, x, 70, z, 6, 136, 0x6f7e83);
-        cylinder(`verWeatherLamp${index}`, x, 141, z, 13, 7, 0xff7c5b,
+      // FROZEN EYE base. Combat targets are spawned by M11; everything here is
+      // visual-only infrastructure kept clear of those exact centres. A broad
+      // dark road loop first makes the ten contacts read as one installation,
+      // then hardened wings, portals and a logistics belt give it a plausible
+      // reason to exist beyond being a row of target props.
+      const baseX = 4300;
+      const baseZ = -2500;
+      const road = 0x4c575c;
+      const apron = 0x707d80;
+      const concrete = 0x99a5a5;
+      const bunker = 0x657173;
+      const roof = 0xaeb9b8;
+      const utility = 0x586368;
+      const snowWear = 0xc7d8da;
+      const targetPads = [
+        ["RadarWest", -680, 420, 105, 88], ["RadarEast", 670, 360, 105, 88],
+        ["Control", 0, 0, 130, 118], ["Power", -360, -520, 110, 96],
+        ["Fuel", 370, -560, 118, 102], ["SamWest", -1180, -180, 108, 108],
+        ["SamNorth", 0, 1120, 108, 108], ["SamEast", 1180, -160, 108, 108],
+        ["GunWest", -720, -850, 82, 82], ["GunEast", 720, -850, 82, 82]
+      ];
+      const revetment = (name, x, z, width, depth) => {
+        box(`verBase${name}Pad`, x, 1.62, z, width, 0.5, depth, apron);
+        const gap = 22;
+        const wall = 5;
+        const sideDepth = Math.max(12, (depth - gap) * 0.5);
+        box(`verBase${name}BermW`, x - width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
+        box(`verBase${name}BermE`, x + width * 0.52, 4.4, z, wall, 5.2, depth + 12, snowWear);
+        box(`verBase${name}BermN1`, x - (width + gap) * 0.25, 4.4, z + depth * 0.52,
+          (width - gap) * 0.5, 5.2, wall, snowWear);
+        box(`verBase${name}BermN2`, x + (width + gap) * 0.25, 4.4, z + depth * 0.52,
+          (width - gap) * 0.5, 5.2, wall, snowWear);
+        // South is the service entrance; short returns protect it without
+        // enclosing the target model inside scenery collision geometry.
+        box(`verBase${name}BermS1`, x - width * 0.37, 4.4, z - depth * 0.52,
+          sideDepth, 5.2, wall, snowWear);
+        box(`verBase${name}BermS2`, x + width * 0.37, 4.4, z - depth * 0.52,
+          sideDepth, 5.2, wall, snowWear);
+      };
+
+      // Perimeter service loop (2.8 x 2.4 km) and radial access roads.
+      box("verBaseRoadNorth", baseX, 1.48, baseZ + 1180, 2760, 0.28, 46, road);
+      box("verBaseRoadSouth", baseX, 1.48, baseZ - 1110, 2760, 0.28, 46, road);
+      box("verBaseRoadWest", baseX - 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
+      box("verBaseRoadEast", baseX + 1380, 1.49, baseZ + 35, 46, 0.3, 2250, road);
+      box("verBaseRoadSpine", baseX, 1.5, baseZ, 42, 0.32, 2200, road);
+      box("verBaseRoadCross", baseX, 1.5, baseZ - 210, 2500, 0.32, 42, road);
+      box("verBaseRoadRadar", baseX, 1.51, baseZ + 430, 1550, 0.34, 34, road);
+      box("verBaseRoadLogistics", baseX, 1.51, baseZ - 650, 1800, 0.34, 34, road);
+
+      // A weathered central apron remains low enough for the destructible
+      // control-station model to sit cleanly above it.
+      box("verBaseCentralApron", baseX, 1.54, baseZ, 610, 0.4, 470, apron);
+      for (const [name, ox, oz, width, depth] of targetPads) {
+        revetment(name, baseX + ox, baseZ + oz, width, depth);
+      }
+
+      // Hardened operations wings flank rather than cover the red control TGT.
+      for (const side of [-1, 1]) {
+        const x = baseX + side * 205;
+        box(`verBaseOpsWing${side < 0 ? "West" : "East"}`, x, 19, baseZ + 5,
+          210, 34, 118, bunker, side * 0.035);
+        box(`verBaseOpsRoof${side < 0 ? "West" : "East"}`, x, 37, baseZ + 5,
+          190, 4, 102, roof, side * 0.035);
+        box(`verBaseOpsLink${side < 0 ? "West" : "East"}`, baseX + side * 91, 8, baseZ,
+          54, 12, 28, utility);
+      }
+
+      // Logistics and maintenance belt. The gaps at x +/-360 preserve the
+      // power-plant and fuel-farm target bodies and their gun hitboxes.
+      box("verBaseVehicleWorkshop", baseX, 17, baseZ - 650, 190, 30, 90, bunker);
+      box("verBaseVehicleWorkshopRoof", baseX, 33, baseZ - 650, 176, 3, 78, roof);
+      box("verBaseStoresWest", baseX - 650, 13, baseZ - 500, 150, 23, 72, utility, 0.04);
+      box("verBaseStoresEast", baseX + 660, 13, baseZ - 500, 150, 23, 72, utility, -0.04);
+      box("verBaseGeneratorAnnex", baseX - 360, 8, baseZ - 655, 94, 13, 45, bunker);
+      box("verBaseFuelPumpHouse", baseX + 370, 7, baseZ - 705, 82, 11, 42, bunker);
+
+      // Two partly buried shelters imply underground command and missile
+      // storage without introducing terrain deformation or colliders.
+      for (const side of [-1, 1]) {
+        const x = baseX + side * 1040;
+        const z = baseZ + 620;
+        box(`verBasePortalApron${side < 0 ? "West" : "East"}`, x, 1.58, z - 95,
+          180, 0.45, 210, apron);
+        box(`verBasePortalMass${side < 0 ? "West" : "East"}`, x, 15, z,
+          230, 27, 120, snowWear);
+        box(`verBasePortalMouth${side < 0 ? "West" : "East"}`, x, 13, z - 63,
+          116, 22, 9, 0x20272b);
+        box(`verBasePortalDoor${side < 0 ? "West" : "East"}`, x, 12, z - 69,
+          94, 19, 4, utility);
+      }
+
+      // Small unarmed support vehicles: tractors, fuel bowsers, trailers and
+      // cargo sleds. They are scenery only, deliberately absent from M11's
+      // groundUnits and target-selection lists.
+      const supportProps = [
+        [-910, -690, 0.12, "Tractor"], [-800, -690, 0.12, "Truck"],
+        [-160, -790, -0.04, "Trailer"], [-45, -790, -0.04, "Cargo"],
+        [110, -790, 0.02, "Bowser"], [245, -790, 0.02, "Sled"],
+        [825, -675, -0.12, "Truck"], [945, -675, -0.12, "Tractor"],
+        [-1030, 875, Math.PI / 2, "Cart"], [1030, 860, Math.PI / 2, "Cart"],
+        [-180, 690, 0, "Container"], [180, 690, 0, "Container"]
+      ];
+      supportProps.forEach(([ox, oz, heading, label], index) => {
+        const long = label === "Trailer" || label === "Container";
+        const bowser = label === "Bowser";
+        box(`verBaseSupport${index + 1}${label}`, baseX + ox, 4.1, baseZ + oz,
+          long ? 26 : 18, 5.2, long ? 10 : 9, label === "Tractor" ? 0xd1b24b : utility, heading);
+        if (bowser) {
+          cylinder(`verBaseSupport${index + 1}Tank`, baseX + ox, 7.0, baseZ + oz,
+            4.0, 11.5, 0xa7afb0);
+        }
+      });
+
+      // Former weather instrumentation survives as base metrology and beacon
+      // masts. They sit between combat pads, not on top of the radar targets.
+      const mastSites = [
+        [1, -940, -900], [2, 940, -900], [3, -900, 980], [4, 900, 980],
+        [5, -250, 850], [6, 250, 850]
+      ];
+      for (const [index, ox, oz] of mastSites) {
+        cylinder(`verWeatherMast${index}`, baseX + ox, 42, baseZ + oz, 3.5, 80, 0x6f7e83);
+        cylinder(`verWeatherLamp${index}`, baseX + ox, 84, baseZ + oz, 8, 5, 0xff7c5b,
           { emissive: 0xff4f35, emissiveIntensity: 2.2 });
+      }
+
+      // Wind-scoured snow strips break up the perfectly paved shapes when seen
+      // from high altitude, but stay a few centimetres above the road surface.
+      for (let i = 0; i < 12; i += 1) {
+        const x = baseX - 1130 + i * 205;
+        const z = baseZ - 210 + ((i % 3) - 1) * 9;
+        box(`verBaseSnowWear${i + 1}`, x, 1.72, z, 105, 0.12, 4 + (i % 4) * 2,
+          snowWear, (i % 2 ? 1 : -1) * 0.035, { opacity: 0.72 });
       }
 
       root.traverse((node) => {

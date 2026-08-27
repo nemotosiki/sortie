@@ -13,7 +13,12 @@ const RADIO_SPEAKERS = {
   // missions; only a mission that authors one of these ids sees the new label.
   meridian: { label: "MERIDIAN", toneFreq: 620, toneType: "square" },
   crown: { label: "CROWN", toneFreq: 460, toneType: "sine" },
-  lark: { label: "LARK", toneFreq: 520, toneType: "triangle" }
+  lark: { label: "LARK", toneFreq: 520, toneType: "triangle" },
+  halo: { label: "HALO EW", toneFreq: 540, toneType: "triangle" },
+  // ARCA civil-monitoring liaison heard during Sera M11. A distinct channel
+  // keeps the blue observer's report from sounding like MERIDIAN issuing an
+  // allied combat order, which would foreshadow the M15 split too early.
+  pax: { label: "PAX / ARCA", toneFreq: 570, toneType: "sine" }
 };
 
 // Per-campaign overrides. `enemy` is deliberately absent: "HOSTILE" is what

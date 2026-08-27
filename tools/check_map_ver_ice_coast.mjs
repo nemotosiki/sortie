@@ -20,7 +20,9 @@ for (const token of [
   'regionId: "ver_ice_coast"',
   'variant: "polar_morning_high_altitude"',
   'root.name = "verIceCoastWorks"',
-  'verIceShelfWest', 'verIceLeadOne', 'verHarbourQuay', 'verWeatherStation'
+  'verIceShelfWest', 'verIceLeadOne', 'verHarbourQuay',
+  'verBaseRoadNorth', 'verBaseCentralApron', 'verBaseOpsWing',
+  'verBasePortalMass', 'verBaseSupport', 'verWeatherMast'
 ]) assert(source.includes(token), `missing ${token}`);
 assert(!/\bscene\.add\s*\(/.test(source), "decorator must not bypass addRoot");
 assert(!/\bdispose\s*\(/.test(source), "decorator must not own disposal");
@@ -68,8 +70,22 @@ try {
   const anchors = preset.missionAnchors;
   for (const key of [
     "playerStart", "strikeStart", "strikeExit", "operationLine", "battleCenter",
-    "firstIntercept", "northIntercept", "southIntercept", "diversionEntry"
+    "firstIntercept", "northIntercept", "southIntercept", "baseCapEntry",
+    "coastQraEntry", "inlandQraEntry", "arcaWatchStart", "arcaWatchExit",
+    "diversionEntry", "weatherStation"
   ]) assert(anchors?.[key]?.length === 2, `mission anchor ${key} is malformed`);
+  const base = anchors.weatherStation;
+  for (const key of ["baseCapEntry", "coastQraEntry", "inlandQraEntry"]) {
+    const range = Math.hypot(anchors[key][0] - base[0], anchors[key][1] - base[1]);
+    assert(range >= 8000 && range <= 10500,
+      `${key} must start 8-10.5km from the base, got ${range.toFixed(1)}`);
+  }
+  const arcaRoute = Math.hypot(
+    anchors.arcaWatchExit[0] - anchors.arcaWatchStart[0],
+    anchors.arcaWatchExit[1] - anchors.arcaWatchStart[1]
+  );
+  assert(arcaRoute >= 14500 && arcaRoute <= 16000,
+    `ARCA observer route should retire near the first radar window, got ${arcaRoute.toFixed(1)}m`);
   const routeLength = Math.hypot(
     anchors.strikeExit[0] - anchors.strikeStart[0],
     anchors.strikeExit[1] - anchors.strikeStart[1]
@@ -87,7 +103,7 @@ try {
 
   console.log("check_map_ver_ice_coast: PASS");
   console.log(`  route=${routeLength.toFixed(0)}m fog=${preset.fog.near}-${preset.fog.far}m relief<=${preset.mountains.height[1]}m`);
-  console.log("  broad shelf + dark leads + harbour + weather station registered");
+  console.log("  broad shelf + dark leads + harbour + 2.8km Frozen Eye base registered");
 } finally {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
