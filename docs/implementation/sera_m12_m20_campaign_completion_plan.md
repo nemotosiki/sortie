@@ -151,7 +151,7 @@ mission, not from the superseded M11 outline.
 - [x] M15 city defence, persistent white-ARCA ledger, commit
 - [x] M16 fleet/SSGN/anti-ship defence, commit
 - [x] M17 long approach and HELIX optional encounter, commit
-- [ ] M18 KEREN subsystem boss and route outcomes, commit
+- [x] M18 KEREN subsystem boss and route outcomes, commit
 - [ ] M19 escort-radius pursuit decision and CROWN return, commit
 - [ ] M20 normal/GIBOR routes and CROWN/LARK final contract, commit
 - [ ] Full M01-M20 unlock-chain and campaign-select browser regression

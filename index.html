@@ -22439,9 +22439,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       function register(ctx) {
         const { GROUND_TYPES } = ctx.tables;
 
-        // KEREN - the mountain railgun complex. Three kinds ship in this one payload
-        // because they are one installation: the guns, the towers that feed them and
-        // the fire-control core that points them. They are registered as three
+        // KEREN - the mountain railgun complex. Five kinds ship in this one payload
+        // because they are one installation: the guns, the towers that feed them,
+        // the cooling plant, the targeting radars and the fire-control core. They are
+        // registered as separate
         // separate GROUND_TYPES rather than one, because a superweapon the player
         // dismantles piece by piece has to BE pieces to the target list.
         //
@@ -22509,6 +22510,33 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           crash: Object.freeze({ halfLen: 9, halfBeam: 9, top: 42 }),
           hitBox: Object.freeze({ x: 20, y: 43, z: 18 }),
           smokeHeight: 10,
+          aa: null
+        });
+
+        ctx.addGroundType("kerenCooler", {
+          ...bunker,
+          key: "kerenCooler",
+          label: "KEREN COOLER",
+          role: "Mass Driver Cryogenic Cooling Plant",
+          hp: 150,
+          hitRadius: 27,
+          crash: Object.freeze({ halfLen: 25, halfBeam: 16, top: 19 }),
+          hitBox: Object.freeze({ x: 34, y: 21, z: 52 }),
+          smokeHeight: 11,
+          aa: null
+        });
+
+        ctx.addGroundType("kerenRadar", {
+          ...radarSite,
+          key: "kerenRadar",
+          label: "KEREN RADAR",
+          role: "Mass Driver Targeting Radar",
+          hp: 130,
+          hitRadius: 25,
+          crash: Object.freeze({ halfLen: 17, halfBeam: 17, top: 29 }),
+          hitBox: Object.freeze({ x: 36, y: 32, z: 36 }),
+          smokeHeight: 9,
+          dishSpin: radarSite.dishSpin,
           aa: null
         });
 
@@ -23158,7 +23186,61 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         });
 
         // ===========================================================================
-        // 4. kerenCore - the fire control centre
+        // 4. kerenCooler / kerenRadar - support systems
+        // ===========================================================================
+        ctx.addGroundModel("kerenCooler", {
+          build(env) {
+            const { geometry, steel, olive, dark, light, add } = env;
+            // A long buried pump hall with four unmistakable radiator towers. The
+            // paired blue-grey pipes connect the hall to the gun galleries.
+            add(geometry.panel, dark, 0, 1.4, 0, 34, 2.8, 52);
+            add(geometry.panel, olive, 0, 5.8, 0, 30, 6.2, 46);
+            add(geometry.panel, steel, 0, 9.4, 0, 28, 1.2, 44);
+            for (const x of [-10, 10]) {
+              for (const z of [-13, 13]) {
+                add(geometry.shipCylinder, steel, x, 13.2, z, 5.4, 9.2, 5.4);
+                add(geometry.shipCylinder, light, x, 18.1, z, 4.8, 0.8, 4.8);
+                for (let fin = 0; fin < 5; fin += 1) {
+                  add(geometry.panel, dark, x, 11 + fin * 1.4, z, 12, 0.38, 1.0);
+                }
+              }
+            }
+            for (const x of [-6, 6]) {
+              add(geometry.shipCylinder, light, x, 4.4, -27, 1.2, 18, 1.2, Math.PI / 2);
+            }
+          }
+        });
+
+        ctx.addGroundModel("kerenRadar", {
+          build(env) {
+            const { THREE, geometry, steel, olive, dark, light, add, addRoot } = env;
+            add(geometry.panel, dark, 0, 1.5, 0, 34, 3, 34);
+            add(geometry.panel, olive, 0, 5.3, 0, 27, 4.6, 27);
+            add(geometry.shipCylinder, steel, 0, 9.3, 0, 10, 4, 10);
+            const pivot = new THREE.Group();
+            pivot.position.set(0, 11.5, 0);
+            addRoot(pivot);
+            const spin = (geo, material, x, y, z, sx, sy, sz, rx = 0) => {
+              const mesh = new THREE.Mesh(geo, material);
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.x = rx;
+              pivot.add(mesh);
+              return mesh;
+            };
+            spin(geometry.shipCylinder, dark, 0, 0.8, 0, 5.4, 1.6, 5.4);
+            spin(geometry.panel, steel, -7.2, 7.5, 0.8, 1.2, 14, 1.6);
+            spin(geometry.panel, steel, 7.2, 7.5, 0.8, 1.2, 14, 1.6);
+            spin(geometry.panel, light, 0, 8.2, 0, 15, 14, 0.8, -0.48);
+            spin(geometry.panel, dark, 0, 8.2, 0.7, 15.8, 0.7, 1.0, -0.48);
+            add(geometry.panel, steel, -12, 18, 10, 0.8, 22, 0.8);
+            add(geometry.panel, light, -12, 29.2, 10, 1.4, 1.4, 1.4);
+            return { dish: pivot };
+          }
+        });
+
+        // ===========================================================================
+        // 5. kerenCore - the fire control centre
         // ===========================================================================
         ctx.addGroundModel("kerenCore", {
           build(env) {
@@ -45250,6 +45332,292 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m17"
     ); // @payload:mission_sera_m17
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.whitePass;
+        if (!base) throw new Error("[aradMountains] whitePass base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([0, 5400]),
+          ingressGate: Object.freeze([0, 1850]),
+          battleCenter: Object.freeze([0, -2650]),
+          gunLine: Object.freeze([0, -3250]),
+          commandCore: Object.freeze([0, -5350]),
+          radarWest: Object.freeze([-330, -1500]),
+          radarEast: Object.freeze([330, -1850]),
+          powerNorth: Object.freeze([-390, -2350]),
+          powerMid: Object.freeze([390, -3300]),
+          powerSouth: Object.freeze([-390, -4300]),
+          coolerWest: Object.freeze([-340, -3900]),
+          coolerEast: Object.freeze([340, -4700]),
+          city: Object.freeze([0, -7350]),
+          airNorth: Object.freeze([-5200, -2100]),
+          airSouth: Object.freeze([5200, -3600]),
+          prototype: Object.freeze([0, -8200])
+        });
+
+        ctx.addWorldPreset("aradMountainsArchive", {
+          ...base,
+          label: "ARAD MOUNTAINS — KEREN BATTERY CANYON",
+          regionId: "arad_mountains",
+          sectorIds: Object.freeze(["keren_ingress", "mass_driver_valley", "mountain_city_grid"]),
+          variant: "war_day_27_strong_crosswind",
+          sceneryOrigin: [0, -2100],
+          previewFocus: [0, -3150],
+          missionAnchors,
+          clearColor: 0x7596a8,
+          sky: [[0, "#173653"], [0.28, "#477997"], [0.47, "#9ab6c3"], [0.54, "#d9d6c8"], [0.68, "#9daaa9"], [1, "#65716e"]],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x41524144,
+            noise: 0.045,
+            haze: 0.16,
+            thinClouds: 34,
+            cloudOpacity: 0.11,
+            cloudBand: [0.29, 0.74],
+            cloudTint: 0xd8e0df
+          },
+          fog: { color: 0xa5b2b2, near: 3600, far: 13200 },
+          sun: {
+            position: [2700, 2300, 2050], color: 0xffe1b5, radius: 70,
+            glare: [
+              { scale: 920, color: 0xffd29b, opacity: 0.22 },
+              { scale: 260, color: 0xfff5df, opacity: 0.62 }
+            ]
+          },
+          lights: {
+            hemi: { sky: 0xc6dce5, ground: 0x48513f, intensity: 1.7 },
+            key: { color: 0xffdfb4, intensity: 2.25, position: [2500, 3200, 1900] },
+            fill: { color: 0x7ca2bd, intensity: 0.68, position: [-2600, 1700, -3500] }
+          },
+          clouds: {
+            ...base.clouds,
+            scale: 1.28,
+            hero: true,
+            color: 0xe6e9e6,
+            opacity: 0.66,
+            cirrusColor: 0xcad4d6,
+            cirrusOpacity: 0.38,
+            texture: { seed: 0x41524145, contrast: 1.12, underside: 0.47, softness: 0.84 }
+          },
+          decor: {
+            ...base.decor,
+            seed: 0x41524146,
+            keepClear: [
+              { box: { x: 470, z0: -6200, z1: 2500 } },
+              { x: 0, z: -7350, r: 1300 }
+            ],
+            trees: { count: 38, color: 0x3d5037, trunk: 0x504536, scale: [0.62, 1.0] },
+            rocks: { count: 46, color: 0x66675f, scale: [7, 30] },
+            extraClouds: { towers: 8, towerSize: [90, 180], towerBase: 900, stratus: 18, stratusSize: [220, 470], stratusBase: 1800, distance: [4800, 12800] }
+          }
+        });
+
+        ctx.addWorldDecorator("aradKerenValley", {
+          worlds: ["aradMountainsArchive"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "aradKerenValley";
+            addRoot(root);
+            const box = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cyl = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const material = (color, emissive = 0, intensity = 0) => keepMaterial(new THREE.MeshStandardMaterial({
+              color, roughness: 0.72, metalness: 0.18, emissive, emissiveIntensity: intensity
+            }));
+            const concrete = material(0x6d706a);
+            const dark = material(0x343a3b);
+            const steel = material(0x899196);
+            const power = material(0xb6e8ff, 0x55bfe8, 1.7);
+            const city = material(0x777a72);
+            const window = material(0xffdf9a, 0xffa53d, 1.0);
+            const place = (geo, mat, name, x, y, z, sx, sy, sz) => {
+              const mesh = new THREE.Mesh(geo, mat);
+              mesh.name = name;
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              root.add(mesh);
+              return mesh;
+            };
+
+            // Cut terraces make the six 100m-long gun models read as one installation
+            // rather than six unrelated targets scattered over the valley floor.
+            for (let row = 0; row < 3; row += 1) {
+              const z = -2750 - row * 720;
+              const y = surfaceHeightAt(0, z);
+              place(box, dark, `keren-terrace-${row + 1}`, 0, y + 1.4, z, 760, 2.8, 470);
+              place(box, concrete, `keren-service-road-${row + 1}`, 0, y + 3.1, z + 205, 580, 1.0, 28);
+            }
+
+            // A visible power line continues past the military complex into the city;
+            // this is why the faster pylon route carries a civilian outage cost.
+            for (let i = 0; i < 9; i += 1) {
+              const x = i % 2 === 0 ? -430 : 430;
+              const z = -2300 - i * 610;
+              const y = surfaceHeightAt(x, z);
+              place(box, steel, `arad-grid-mast-${i + 1}`, x, y + 38, z, 3, 76, 3);
+              place(box, dark, `arad-grid-arm-${i + 1}`, x, y + 72, z, 58, 3, 3);
+              place(cyl, power, `arad-grid-beacon-${i + 1}`, x, y + 77, z, 3.2, 5, 3.2);
+            }
+
+            // The mountain city is deliberately beyond the command core but still
+            // visible down-valley, tying the strategic weapon to an inhabited place.
+            const cityZ = -7350;
+            const cityY = surfaceHeightAt(0, cityZ);
+            for (let row = 0; row < 4; row += 1) {
+              for (let col = -4; col <= 4; col += 1) {
+                const x = col * 150 + (row % 2) * 55;
+                const z = cityZ + row * 180;
+                const height = 36 + ((Math.abs(col * 5 + row * 7) % 5) * 18);
+                place(box, city, `arad-city-${row}-${col}`, x, cityY + height * 0.5, z, 94, height, 104);
+                place(box, window, `arad-city-light-${row}-${col}`, x, cityY + height + 2, z, 34, 3, 34);
+              }
+            }
+          }
+        });
+      },
+      "map_aradMountains"
+    ); // @payload:map_aradMountains
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES,
+          HELI_TYPES, GROUND_TYPES
+        } = ctx.tables;
+        const world = WORLD_PRESETS.aradMountainsArchive;
+        if (!world) throw new Error("[sera-m18] aradMountainsArchive is not registered");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m17" && mission.campaign === "sera")) {
+          throw new Error("[sera-m18] sera-m17 predecessor is missing");
+        }
+        for (const type of ["f15", "ea18g", "b2", "a10", "mig29", "su57"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m18] required aircraft is missing: ${type}`);
+        }
+        for (const type of ["mig29", "su57"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m18] enemy profile is missing: ${type}`);
+        }
+        if (!HELI_TYPES.ka52) throw new Error("[sera-m18] Ka-52 helicopter type is missing");
+        for (const type of [
+          "kerenGun", "kerenPylon", "kerenCooler", "kerenRadar", "kerenCore",
+          "longRangeSam", "spaag"
+        ]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m18] required ground type is missing: ${type}`);
+        }
+
+        const anchors = world.missionAnchors;
+        const m18KerenContract = Object.freeze({
+          routeMarks: Object.freeze({ radar: "m18Radar", power: "m18Power", direct: "m18Gun" }),
+          routeRequired: Object.freeze({ radar: 2, power: 3, direct: 6 }),
+          coolerMark: "m18Cooler",
+          coreMark: "m18Core",
+          corePhase: "m18CoreExposure",
+          coreId: 1890,
+          fire: Object.freeze({ initialDelay: 34, baseInterval: 48, failAt: 3 }),
+          priorMission: Object.freeze({ key: "sera-m10", powerEscaped: "powerCarsEscaped", materialEscaped: "materialCarsEscaped" }),
+          outcomes: Object.freeze({
+            route: "kerenRoute",
+            strategicHits: "kerenStrategicHits",
+            civilianOutage: "aradCivilianBlackout",
+            componentsDestroyed: "kerenComponentsDestroyed",
+            coreDurability: "kerenCoreDurability",
+            fleetDamage: "m20FleetDamageFromKeren"
+          })
+        });
+
+        const gunPositions = [
+          [-190, -2660], [190, -2660], [-190, -3370],
+          [190, -3370], [-190, -4080], [190, -4080]
+        ];
+        const groundUnits = [
+          ...gunPositions.map(([x, z], i) => ({
+            id: 1810 + i, type: "kerenGun", label: `KEREN BARREL ${i + 1}`,
+            x, z, heading: i % 2 ? -0.06 : 0.06, tgt: true,
+            mark: "m18Gun", missionRole: "kerenGun"
+          })),
+          { id: 1820, type: "kerenPylon", label: "POWER PYLON NORTH", x: anchors.powerNorth[0], z: anchors.powerNorth[1], heading: 0, tgt: true, mark: "m18Power", missionRole: "kerenPower" },
+          { id: 1821, type: "kerenPylon", label: "POWER PYLON MID", x: anchors.powerMid[0], z: anchors.powerMid[1], heading: 0, tgt: true, mark: "m18Power", missionRole: "kerenPower" },
+          { id: 1822, type: "kerenPylon", label: "POWER PYLON SOUTH", x: anchors.powerSouth[0], z: anchors.powerSouth[1], heading: 0, tgt: true, mark: "m18Power", missionRole: "kerenPower" },
+          { id: 1830, type: "kerenCooler", label: "CRYO COOLER WEST", x: anchors.coolerWest[0], z: anchors.coolerWest[1], heading: 0.1, tgt: true, mark: "m18Cooler", missionRole: "kerenCooler" },
+          { id: 1831, type: "kerenCooler", label: "CRYO COOLER EAST", x: anchors.coolerEast[0], z: anchors.coolerEast[1], heading: -0.1, tgt: true, mark: "m18Cooler", missionRole: "kerenCooler" },
+          { id: 1840, type: "kerenRadar", label: "TARGETING RADAR WEST", x: anchors.radarWest[0], z: anchors.radarWest[1], heading: 0.35, tgt: true, mark: "m18Radar", missionRole: "kerenRadar" },
+          { id: 1841, type: "kerenRadar", label: "TARGETING RADAR EAST", x: anchors.radarEast[0], z: anchors.radarEast[1], heading: -0.35, tgt: true, mark: "m18Radar", missionRole: "kerenRadar" },
+          { id: 1890, type: "kerenCore", label: "KEREN COMMAND CORE", x: anchors.commandCore[0], z: anchors.commandCore[1], heading: Math.PI, tgt: true, mark: "m18Core", missionRole: "kerenCore", phase: "m18CoreExposure" },
+
+          // Air-defence contacts are dangerous but not part of the valid subsystem
+          // route. A player may suppress them without being forced to clear the map.
+          { id: 1850, type: "longRangeSam", label: "VALLEY SAM 1", x: -430, z: 850, heading: 0, tgt: false, rankNeutral: true, mark: "m18Defence", missionRole: "airDefence" },
+          { id: 1851, type: "longRangeSam", label: "VALLEY SAM 2", x: 430, z: -450, heading: Math.PI, tgt: false, rankNeutral: true, mark: "m18Defence", missionRole: "airDefence" },
+          { id: 1852, type: "longRangeSam", label: "VALLEY SAM 3", x: -430, z: -5050, heading: 0, tgt: false, rankNeutral: true, mark: "m18Defence", missionRole: "airDefence" },
+          { id: 1853, type: "longRangeSam", label: "VALLEY SAM 4", x: 430, z: -5750, heading: Math.PI, tgt: false, rankNeutral: true, mark: "m18Defence", missionRole: "airDefence" },
+          ...[-900, -200, 650, 1500, 2250, 3100].map((z, i) => ({
+            id: 1860 + i, type: "spaag", label: `VALLEY SPAAG ${i + 1}`,
+            x: i % 2 ? 360 : -360, z: -z, heading: i % 2 ? Math.PI : 0,
+            tgt: false, rankNeutral: true, mark: "m18Defence", missionRole: "airDefence"
+          }))
+        ];
+
+        const mission = {
+          key: "sera-m18",
+          campaign: "sera",
+          campaignOrder: 18,
+          world: "aradMountainsArchive",
+          title: "HORN OF HEAVEN",
+          jp: "アラド砲台峡谷へ侵入し、KERENの部位を無力化して山腹の指揮中枢を破壊せよ。",
+          act: 4,
+          storyNo: 18,
+          story: `WAR DAY 27。小惑星迎撃用だった六門の電磁投射砲が、ミガルとセラ艦隊へ照準を向けた。
+      最初に落とした系統を味方はRAVENの攻略判断として採用する。速い停電か、照準の剥奪か、砲身への危険な直撃か。名声は命令権ではなく、他の操縦者がその判断へ機体を預ける理由になった。`,
+          epilogue: [
+            "KERENの指揮中枢は山腹から露出し、最後の照準信号とともに沈黙した。",
+            "部位を落とした順番は、戦略砲の被害とアラド山岳都市の灯りへ別々に残った。",
+            "CROWNは祝福せず、任務が終わった時にRAVENが地上へ戻れるかだけを訊いた。"
+          ],
+          friendlies: {
+            playerStart: { x: anchors.playerStart[0], y: 920, z: anchors.playerStart[1], facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] } },
+            wingmen: [
+              { type: "f15", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "agm4", offset: { back: 120, side: 138, up: -14 } }
+            ],
+            supportFlights: [
+              { callsign: "HALO EW", aircraft: "ea18g", count: 1, vulnerable: false, enemyTargetable: true, combatSupport: false, start: { x: -2600, z: 4200 }, exit: { x: -1800, z: -6500 }, altitude: 4700, speed: 245, spacing: 220, holdAtExit: true, radioSpeaker: "meridian" },
+              { callsign: "VEIL", aircraft: "b2", count: 2, vulnerable: false, enemyTargetable: false, combatSupport: false, start: { x: 2100, z: 5100 }, exit: { x: 1500, z: -7200 }, altitude: 5200, speed: 250, spacing: 310, holdAtExit: true, radioSpeaker: "meridian" },
+              { callsign: "CHISEL", aircraft: "a10", count: 2, vulnerable: false, enemyTargetable: true, combatSupport: false, start: { x: -1000, z: 3500 }, exit: { x: 800, z: -5100 }, altitude: 720, speed: 155, spacing: 170, holdAtExit: true, radioSpeaker: "lark" }
+            ]
+          },
+          groundPhaseContracts: [
+            { id: "m18CoreExposure", activeInitially: false }
+          ],
+          groundUnits,
+          sequence: [
+            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, band: 1, idBase: 1870, label: "ALLIGATOR CANYON 1", missionTag: "m18AirDefence", role: "line", skill: "regular", at: [...anchors.airNorth], altitude: 620, facing: [...anchors.battleCenter] },
+            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 18, band: 1, idBase: 1880, label: "FULCRUM VALLEY 1", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [...anchors.airSouth], altitude: 1800, facing: [...anchors.battleCenter] },
+            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true, delay: 54, band: 2, idBase: 1900, label: "ALLIGATOR CANYON 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [4500, -5000], altitude: 680, facing: [...anchors.battleCenter] },
+            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 84, band: 2, idBase: 1910, label: "FULCRUM VALLEY 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [-5200, -5600], altitude: 2200, facing: [...anchors.battleCenter] },
+            { types: ["su57"], tgt: false, rankNeutral: true, concurrent: true, delay: 126, band: 3, idBase: 1920, label: "KEREN PROTOTYPE GUARD", missionTag: "m18Prototype", role: "evasive", skill: "ace", at: [...anchors.prototype], altitude: 3100, facing: [...anchors.battleCenter] }
+          ],
+          m18KerenContract,
+          fixedRadio: [
+            { id: "m18_intro_01", at: 2, speaker: "meridian", priority: "CRITICAL", text: "KEREN六砲身、電力塔三、冷却機二、照準レーダー二を確認。中枢は山腹内、現時点でロック不能。" },
+            { id: "m18_intro_02", at: 8, speaker: "lark", priority: "NORMAL", text: "最初に壊した系統へ攻撃隊を合わせる。レーダー、電力、砲身——RAVENが進路を選んで。" },
+            { id: "m18_route_radar", event: "m18RouteRadar", speaker: "meridian", priority: "URGENT", text: "照準系統を優先する。レーダー二基を破壊すれば中枢露出、KERENの命中率も低下する。" },
+            { id: "m18_route_power", event: "m18RoutePower", speaker: "lark", priority: "URGENT", text: "電力経路を選択。三塔停止で充電を遅らせる——ただしその線は山岳都市とも共用してる。" },
+            { id: "m18_route_direct", event: "m18RouteDirect", speaker: "meridian", priority: "URGENT", text: "砲身直接攻撃を採用。六門すべて破壊で民生電力を保ったまま中枢を引き出せる。" },
+            { id: "m18_first_fire", event: "m18FirstFire", speaker: "meridian", priority: "CRITICAL", text: "KEREN発射。戦略着弾を三回許せばミガル外環とHOME FLEETの防衛線が崩壊する。" },
+            { id: "m18_core_exposed", event: "m18CoreExposed", speaker: "lark", priority: "CRITICAL", text: "山腹が開いた！ KEREN COMMAND CORE、赤TGT！ ここで終わらせる！" },
+            { id: "m18_crown", event: "m18CrownQuestion", speaker: "crown", priority: "NORMAL", text: "RAVEN。任務が終わった時、お前はまだ地上へ降りられるか。" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "KEREN COMMAND CORE消失。戦略砲、全照準を停止。HORN OF HEAVEN完了。", id: "m18-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "KEREN戦略弾、第三着弾。ミガル外環と艦隊防衛線が崩壊、作戦中止。", id: "m18-failure" },
+          parTime: 720,
+          hasOutro: false,
+          map: { x: 0.82, y: 0.20 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 11800,
+          briefing: "アラド山地のKERENを部位破壊せよ。最初に破壊した系統で攻略方針が固定される。照準レーダー二基なら砲撃命中率低下、電力塔三基なら充電間隔延長と民間停電、砲身六門なら最も危険だが都市電力を維持する。条件達成後に山腹から露出するCOMMAND COREが最終赤TGT。\n冷却機二基は中枢耐久と発射間隔を下げる補助TGT。長距離SAM四、SPAAG六、Ka-52四、MiG-29A四は任意の防空戦力。Su-57は重要な護衛一機だけで、複数エリート機による水増しはしない。\nM10で逃したKEREN電力貨車は砲撃間隔、資材貨車は中枢耐久へ反映される。GIBORは異名にすぎず、RAVENへ世界権限は与えられない。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m17" });
+      },
+      "mission_sera_m18"
+    ); // @payload:mission_sera_m18
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -45697,6 +46065,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m16Result) Object.assign(entry, m16Result);
       const m17Result = m17ResultSnapshot(mission);
       if (m17Result) Object.assign(entry, m17Result);
+      const m18Result = m18ResultSnapshot(mission);
+      if (m18Result) Object.assign(entry, m18Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -48543,6 +48913,101 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM17ResolveOutcome: () => {
         const mission = m17Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM18Probe: () => {
+        const mission = m18Mission();
+        if (!mission) return null;
+        const contract = mission.m18KerenContract;
+        const core = enemies.find((enemy) => enemy.id === contract.coreId) || null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          outcomePending: outcomePending.active,
+          keren: {
+            active: m18State.active,
+            route: m18State.route,
+            destroyed: { ...m18State.destroyed },
+            coreExposed: m18State.coreExposed,
+            coreDestroyed: m18State.coreDestroyed,
+            coreHp: core ? core.hp : null,
+            coreMaxHp: core ? core.maxHp : null,
+            strategicHits: m18State.strategicHits,
+            shotSerial: m18State.shotSerial,
+            fireTimer: Number(m18State.fireTimer.toFixed(2)),
+            fireInterval: m18CurrentFireInterval(mission),
+            priorPowerEscaped: m18State.priorPowerEscaped,
+            priorMaterialEscaped: m18State.priorMaterialEscaped,
+            civilianOutage: m18State.route === "power"
+          },
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            mark: enemy.mark || null,
+            missionRole: enemy.missionRole || null
+          })),
+          pendingGround: pendingGroundUnits.map((unit) => ({
+            id: unit.id, type: unit.type, phase: unit.phase || null, mark: unit.mark || null
+          })),
+          pending: pendingWaves.map((entry) => ({
+            timer: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            missionTag: entry.wave?.missionTag || null
+          })),
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM18DeployPending: () => {
+        const mission = m18Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(0.016);
+        return pendingWaves.length === 0;
+      },
+      forceSeraM18Route: (route = "radar") => {
+        const mission = m18Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const selected = ["radar", "power", "direct"].includes(route) ? route : "radar";
+        const mark = mission.m18KerenContract.routeMarks[selected];
+        const targets = enemies.filter((enemy) => enemy.alive && enemy.mark === mark);
+        for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+        updateM18MissionThreat(0);
+        return m18State.route === selected && m18State.coreExposed;
+      },
+      forceSeraM18ClearCoolers: () => {
+        const mission = m18Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const targets = enemies.filter((enemy) => (
+          enemy.alive && enemy.mark === mission.m18KerenContract.coolerMark
+        ));
+        for (const target of targets) damageEnemy(target, target.hp + 1, true, false);
+        return targets.length;
+      },
+      forceSeraM18StrategicShot: (hit = true) => {
+        const mission = m18Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const landed = fireM18StrategicShot(mission, Boolean(hit));
+        m18State.fireTimer = m18CurrentFireInterval(mission);
+        return landed;
+      },
+      forceSeraM18ClearCore: () => {
+        const mission = m18Mission();
+        if (gameState !== STATE_PLAYING || !mission || !m18State.coreExposed) return false;
+        const core = enemies.find((enemy) => enemy.alive && enemy.id === mission.m18KerenContract.coreId);
+        if (!core) return false;
+        damageEnemy(core, core.hp + 1, true, false);
+        updateM18MissionThreat(0);
+        return m18State.completed;
+      },
+      forceSeraM18ResolveOutcome: () => {
+        const mission = m18Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -53230,6 +53695,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM15State(MISSIONS[currentMissionIndex]);
       resetM16State(MISSIONS[currentMissionIndex]);
       resetM17State(MISSIONS[currentMissionIndex]);
+      resetM18State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -58361,6 +58827,204 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ),
         [fields.arcaKills || "arcaKillsThisMission"]: arcaKills,
         [fields.cumulativeArcaKills || "ravenArcaKills"]: priorArcaKills(mission.key) + arcaKills
+      };
+    }
+
+    // SERA M18 HORN OF HEAVEN ----------------------------------------------
+    // KEREN is one installation made of independent ground contacts. The
+    // first gun/radar/pylon kill commits the attack plan; satisfying that
+    // plan opens the dormant core phase. Nothing here grants RAVEN command
+    // authority: allied radio simply follows the route the player demonstrated.
+    const m18State = {
+      active: false,
+      completed: false,
+      failed: false,
+      route: null,
+      coreExposed: false,
+      coreDestroyed: false,
+      strategicHits: 0,
+      shotSerial: 0,
+      fireTimer: 0,
+      firstFireFired: false,
+      crownQuestionAt: Number.POSITIVE_INFINITY,
+      priorPowerEscaped: 0,
+      priorMaterialEscaped: 0,
+      destroyed: { radar: 0, power: 0, direct: 0, cooler: 0 }
+    };
+
+    function m18Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m18KerenContract ? mission : null;
+    }
+
+    function resetM18State(mission) {
+      const contract = mission && mission.m18KerenContract;
+      m18State.active = Boolean(contract);
+      m18State.completed = false;
+      m18State.failed = false;
+      m18State.route = null;
+      m18State.coreExposed = false;
+      m18State.coreDestroyed = false;
+      m18State.strategicHits = 0;
+      m18State.shotSerial = 0;
+      m18State.firstFireFired = false;
+      m18State.crownQuestionAt = Number.POSITIVE_INFINITY;
+      m18State.destroyed = { radar: 0, power: 0, direct: 0, cooler: 0 };
+      const prior = contract ? missionRecords[contract.priorMission?.key] || {} : {};
+      m18State.priorPowerEscaped = Math.max(0, Number(prior[contract?.priorMission?.powerEscaped]) || 0);
+      m18State.priorMaterialEscaped = Math.max(0, Number(prior[contract?.priorMission?.materialEscaped]) || 0);
+      m18State.fireTimer = contract
+        ? Math.max(12, Number(contract.fire?.initialDelay) || 34) : 0;
+    }
+
+    function m18RouteForMark(contract, mark) {
+      if (mark === contract.routeMarks.radar) return "radar";
+      if (mark === contract.routeMarks.power) return "power";
+      if (mark === contract.routeMarks.direct) return "direct";
+      return null;
+    }
+
+    function m18SelectRoute(route) {
+      if (m18State.route || !route) return false;
+      m18State.route = route;
+      if (route === "radar") fireFixedRadioEvent("m18RouteRadar");
+      else if (route === "power") fireFixedRadioEvent("m18RoutePower");
+      else fireFixedRadioEvent("m18RouteDirect");
+      showBanner(`ATTACK ROUTE · ${route.toUpperCase()}`, 2.0, "success");
+      return true;
+    }
+
+    function m18ExposeCore(mission) {
+      if (m18State.coreExposed) return enemies.find((enemy) => enemy.id === mission.m18KerenContract.coreId) || null;
+      const contract = mission.m18KerenContract;
+      const route = m18State.route;
+      if (!route || m18State.destroyed[route] < Number(contract.routeRequired[route])) return null;
+      activateGroundPhase(contract.corePhase);
+      const core = enemies.find((enemy) => enemy.id === contract.coreId) || null;
+      if (!core) return null;
+      // M10's escaped material reaches KEREN as armour. Destroyed cryogenic
+      // plants make the exposed electronics brittle. This changes one common
+      // durability value rather than creating special core types per outcome.
+      const durability = Math.max(
+        120,
+        Number(core.spec.hp) + m18State.priorMaterialEscaped * 32 - m18State.destroyed.cooler * 35
+      );
+      core.maxHp = durability;
+      core.hp = durability;
+      m18State.coreExposed = true;
+      m18State.crownQuestionAt = missionElapsed + 5.5;
+      fireFixedRadioEvent("m18CoreExposed");
+      showBanner("KEREN COMMAND CORE EXPOSED", 2.4, "danger");
+      return core;
+    }
+
+    function m18AliveCount(mark) {
+      return enemies.filter((enemy) => enemy.alive && enemy.mark === mark).length;
+    }
+
+    function m18CurrentFireInterval(mission = m18Mission()) {
+      const contract = mission?.m18KerenContract;
+      if (!contract) return 0;
+      const pylonsDestroyed = m18State.destroyed.power;
+      const gunsDestroyed = m18State.destroyed.direct;
+      const coolersDestroyed = m18State.destroyed.cooler;
+      return Math.max(24,
+        Number(contract.fire.baseInterval)
+        - m18State.priorPowerEscaped * 4
+        + pylonsDestroyed * 14
+        + gunsDestroyed * 3
+        + coolersDestroyed * 7
+      );
+    }
+
+    function fireM18StrategicShot(mission, forcedHit = null) {
+      const contract = mission.m18KerenContract;
+      const gunsAlive = m18AliveCount(contract.routeMarks.direct);
+      if (gunsAlive <= 0) return false;
+      const radarsAlive = m18AliveCount(contract.routeMarks.radar);
+      const pylonsAlive = m18AliveCount(contract.routeMarks.power);
+      m18State.shotSerial += 1;
+      const accuracy = THREE.MathUtils.clamp(
+        0.14 + radarsAlive * 0.27 + pylonsAlive * 0.06,
+        0.06,
+        0.82
+      );
+      const deterministicRoll = ((m18State.shotSerial * 37 + gunsAlive * 11) % 100) / 100;
+      const hit = forcedHit === null ? deterministicRoll < accuracy : Boolean(forcedHit);
+      if (!m18State.firstFireFired) {
+        m18State.firstFireFired = true;
+        fireFixedRadioEvent("m18FirstFire");
+      }
+      showBanner(
+        hit ? "KEREN STRATEGIC IMPACT" : "KEREN ROUND DEVIATED",
+        1.9,
+        hit ? "danger" : "success"
+      );
+      playTone(hit ? 86 : 128, 0.38, 0.12, "sawtooth");
+      if (!hit) return false;
+      m18State.strategicHits += 1;
+      if (m18State.strategicHits >= Number(contract.fire.failAt)) {
+        m18State.failed = true;
+        missionFailureRadioOverride = mission.failureRadio || null;
+        completeMission(false);
+      }
+      return true;
+    }
+
+    function handleM18EnemyDestroyed(enemy) {
+      if (!m18State.active || !enemy) return;
+      const mission = m18Mission();
+      const contract = mission?.m18KerenContract;
+      if (!contract) return;
+      const route = m18RouteForMark(contract, enemy.mark);
+      if (route) {
+        m18SelectRoute(route);
+        m18State.destroyed[route] += 1;
+      } else if (enemy.mark === contract.coolerMark) {
+        m18State.destroyed.cooler += 1;
+      } else if (enemy.mark === contract.coreMark) {
+        m18State.coreDestroyed = true;
+      }
+      m18ExposeCore(mission);
+    }
+
+    function updateM18MissionThreat(dt = 0) {
+      const mission = m18Mission();
+      if (!mission || !m18State.active) return false;
+      if (m18State.failed || m18State.completed) return true;
+      if (m18State.coreDestroyed) {
+        m18State.completed = true;
+        completeMission(true);
+        return true;
+      }
+      m18ExposeCore(mission);
+      if (missionElapsed >= m18State.crownQuestionAt) {
+        m18State.crownQuestionAt = Number.POSITIVE_INFINITY;
+        fireFixedRadioEvent("m18CrownQuestion");
+      }
+      m18State.fireTimer -= Math.max(0, Number(dt) || 0);
+      if (m18State.fireTimer <= 0) {
+        fireM18StrategicShot(mission);
+        m18State.fireTimer += m18CurrentFireInterval(mission);
+      }
+      // Generic wave completion must not end a subsystem route before the
+      // dormant core appears and dies, so M18 owns every playing frame.
+      return true;
+    }
+
+    function m18ResultSnapshot(mission) {
+      const contract = mission && mission.m18KerenContract;
+      if (!contract || !m18State.active || !m18State.completed) return null;
+      const fields = contract.outcomes || {};
+      const core = enemies.find((enemy) => enemy.id === contract.coreId);
+      const components = Object.values(m18State.destroyed).reduce((sum, count) => sum + count, 0);
+      return {
+        [fields.route || "kerenRoute"]: m18State.route,
+        [fields.strategicHits || "kerenStrategicHits"]: m18State.strategicHits,
+        [fields.civilianOutage || "aradCivilianBlackout"]: m18State.route === "power",
+        [fields.componentsDestroyed || "kerenComponentsDestroyed"]: components,
+        [fields.coreDurability || "kerenCoreDurability"]: core ? core.maxHp : 0,
+        [fields.fleetDamage || "m20FleetDamageFromKeren"]: m18State.strategicHits
       };
     }
 
@@ -64686,6 +65350,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       handleM15EnemyDestroyed(enemy, byWingman);
       handleM16EnemyDestroyed(enemy, byWingman);
       handleM17EnemyDestroyed(enemy, byWingman);
+      handleM18EnemyDestroyed(enemy, byWingman);
       if (enemy.m04RedFleet) {
         const destroyed = (sortieMarks.m04RedFleetDestroyed || 0) + 1;
         sortieMarks.m04RedFleetDestroyed = destroyed;
@@ -65130,6 +65795,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       updatePendingWaves(dt);
       updateFixedRadioSchedule();
+      if (updateM18MissionThreat(dt)) return;
       // M15 must claim bomber release at the 3.3km cruise-weapon line before
       // the legacy facility handler can turn the same run into a direct hit.
       if (updateM15MissionThreat()) return;

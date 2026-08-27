@@ -1,9 +1,10 @@
 export default function register(ctx) {
   const { GROUND_TYPES } = ctx.tables;
 
-  // KEREN - the mountain railgun complex. Three kinds ship in this one payload
-  // because they are one installation: the guns, the towers that feed them and
-  // the fire-control core that points them. They are registered as three
+  // KEREN - the mountain railgun complex. Five kinds ship in this one payload
+  // because they are one installation: the guns, the towers that feed them,
+  // the cooling plant, the targeting radars and the fire-control core. They are
+  // registered as separate
   // separate GROUND_TYPES rather than one, because a superweapon the player
   // dismantles piece by piece has to BE pieces to the target list.
   //
@@ -71,6 +72,33 @@ export default function register(ctx) {
     crash: Object.freeze({ halfLen: 9, halfBeam: 9, top: 42 }),
     hitBox: Object.freeze({ x: 20, y: 43, z: 18 }),
     smokeHeight: 10,
+    aa: null
+  });
+
+  ctx.addGroundType("kerenCooler", {
+    ...bunker,
+    key: "kerenCooler",
+    label: "KEREN COOLER",
+    role: "Mass Driver Cryogenic Cooling Plant",
+    hp: 150,
+    hitRadius: 27,
+    crash: Object.freeze({ halfLen: 25, halfBeam: 16, top: 19 }),
+    hitBox: Object.freeze({ x: 34, y: 21, z: 52 }),
+    smokeHeight: 11,
+    aa: null
+  });
+
+  ctx.addGroundType("kerenRadar", {
+    ...radarSite,
+    key: "kerenRadar",
+    label: "KEREN RADAR",
+    role: "Mass Driver Targeting Radar",
+    hp: 130,
+    hitRadius: 25,
+    crash: Object.freeze({ halfLen: 17, halfBeam: 17, top: 29 }),
+    hitBox: Object.freeze({ x: 36, y: 32, z: 36 }),
+    smokeHeight: 9,
+    dishSpin: radarSite.dishSpin,
     aa: null
   });
 
@@ -720,7 +748,61 @@ export default function register(ctx) {
   });
 
   // ===========================================================================
-  // 4. kerenCore - the fire control centre
+  // 4. kerenCooler / kerenRadar - support systems
+  // ===========================================================================
+  ctx.addGroundModel("kerenCooler", {
+    build(env) {
+      const { geometry, steel, olive, dark, light, add } = env;
+      // A long buried pump hall with four unmistakable radiator towers. The
+      // paired blue-grey pipes connect the hall to the gun galleries.
+      add(geometry.panel, dark, 0, 1.4, 0, 34, 2.8, 52);
+      add(geometry.panel, olive, 0, 5.8, 0, 30, 6.2, 46);
+      add(geometry.panel, steel, 0, 9.4, 0, 28, 1.2, 44);
+      for (const x of [-10, 10]) {
+        for (const z of [-13, 13]) {
+          add(geometry.shipCylinder, steel, x, 13.2, z, 5.4, 9.2, 5.4);
+          add(geometry.shipCylinder, light, x, 18.1, z, 4.8, 0.8, 4.8);
+          for (let fin = 0; fin < 5; fin += 1) {
+            add(geometry.panel, dark, x, 11 + fin * 1.4, z, 12, 0.38, 1.0);
+          }
+        }
+      }
+      for (const x of [-6, 6]) {
+        add(geometry.shipCylinder, light, x, 4.4, -27, 1.2, 18, 1.2, Math.PI / 2);
+      }
+    }
+  });
+
+  ctx.addGroundModel("kerenRadar", {
+    build(env) {
+      const { THREE, geometry, steel, olive, dark, light, add, addRoot } = env;
+      add(geometry.panel, dark, 0, 1.5, 0, 34, 3, 34);
+      add(geometry.panel, olive, 0, 5.3, 0, 27, 4.6, 27);
+      add(geometry.shipCylinder, steel, 0, 9.3, 0, 10, 4, 10);
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 11.5, 0);
+      addRoot(pivot);
+      const spin = (geo, material, x, y, z, sx, sy, sz, rx = 0) => {
+        const mesh = new THREE.Mesh(geo, material);
+        mesh.position.set(x, y, z);
+        mesh.scale.set(sx, sy, sz);
+        mesh.rotation.x = rx;
+        pivot.add(mesh);
+        return mesh;
+      };
+      spin(geometry.shipCylinder, dark, 0, 0.8, 0, 5.4, 1.6, 5.4);
+      spin(geometry.panel, steel, -7.2, 7.5, 0.8, 1.2, 14, 1.6);
+      spin(geometry.panel, steel, 7.2, 7.5, 0.8, 1.2, 14, 1.6);
+      spin(geometry.panel, light, 0, 8.2, 0, 15, 14, 0.8, -0.48);
+      spin(geometry.panel, dark, 0, 8.2, 0.7, 15.8, 0.7, 1.0, -0.48);
+      add(geometry.panel, steel, -12, 18, 10, 0.8, 22, 0.8);
+      add(geometry.panel, light, -12, 29.2, 10, 1.4, 1.4, 1.4);
+      return { dish: pivot };
+    }
+  });
+
+  // ===========================================================================
+  // 5. kerenCore - the fire control centre
   // ===========================================================================
   ctx.addGroundModel("kerenCore", {
     build(env) {
