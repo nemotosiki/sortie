@@ -66161,9 +66161,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
      function updateEnemies(dt) {
       const time = performance.now() * 0.001;
-      forwardOf(player, tmpV5);
-      rightOf(player, tmpV6);
-      upOf(player, tmpV7);
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
@@ -66431,6 +66428,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.targetSpeed = Math.min(spec.maxSpeed, spec.patrolSpeed + spec.pursuitBonus);
         } else if (enemy.mode === "pursuit") {
           targetPoint = setEnemyPursuitAim(enemy, time, enemy.targetPoint);
+          const pursuitAxisTarget = enemy.contactState !== "memory" && enemy.contactRef !== player
+            ? enemy.contactRef?.group
+            : player;
+          rightOf(pursuitAxisTarget || player, tmpV6);
+          upOf(pursuitAxisTarget || player, tmpV7);
 
           if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
             // Elements bracket instead of stacking on one shortest-path point.
