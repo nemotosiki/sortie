@@ -93,8 +93,72 @@ export default function register(ctx) {
     }
   });
 
+  const sunsetAnchors = Object.freeze({
+    ...missionAnchors,
+    playerStart: Object.freeze([0, 10800]),
+    battleCenter: Object.freeze([0, -1800]),
+    convoyStart: Object.freeze([0, 8800]),
+    convoyExit: Object.freeze([0, -13200]),
+    westIntercept: Object.freeze([-9800, 3200]),
+    eastIntercept: Object.freeze([9800, 1800]),
+    northIntercept: Object.freeze([0, 14200]),
+    lowIntercept: Object.freeze([-7600, -7600]),
+    arcaEntry: Object.freeze([-11200, -3400]),
+    arcaExit: Object.freeze([12400, -10400])
+  });
+  const high = WORLD_PRESETS.migalOuterHigh;
+  ctx.addWorldPreset("migalOuterSunset", {
+    ...high,
+    label: "MIGAL OUTER — TRUST FALL CORRIDOR",
+    variant: "war_day_30_ceasefire_sunset",
+    missionAnchors: sunsetAnchors,
+    clearColor: 0x725f70,
+    sky: [[0, "#151f3d"], [0.26, "#384b70"], [0.44, "#8d7181"], [0.51, "#f2a66f"], [0.58, "#e7c18e"], [0.74, "#6e7c8d"], [1, "#35455d"]],
+    atmosphere: {
+      ...high.atmosphere,
+      seed: 0x4d493931,
+      noise: 0.019,
+      haze: 0.15,
+      thinClouds: 18,
+      cloudOpacity: 0.075,
+      cloudBand: [0.31, 0.67],
+      cloudTint: 0xf0c7ae
+    },
+    fog: { color: 0xb58e87, near: 7200, far: 27000 },
+    sun: {
+      position: [-2950, 590, -300], color: 0xffbb7d, radius: 112,
+      glare: [
+        { scale: 2100, color: 0xff995f, opacity: 0.38 },
+        { scale: 520, color: 0xffe4b4, opacity: 0.8 }
+      ]
+    },
+    sunRoad: {
+      position: [-2350, 3, -600], rotationY: 0.18, width: 430, length: 5800,
+      color: 0xffb16e, opacity: 0.34
+    },
+    ocean: {
+      ...high.ocean,
+      base: "#273f5d", bright: "220, 155, 119", dark: "18, 39, 65",
+      roughness: 0.5, metalness: 0.16, normalSpeed: [0.019, 0.011], normalSeed: 0x4d493932
+    },
+    lights: {
+      hemi: { sky: 0x9fb5d4, ground: 0x493f48, intensity: 1.5 },
+      key: { color: 0xffb273, intensity: 2.55, position: [-3200, 1100, -400] },
+      fill: { color: 0x7188b0, intensity: 0.62, position: [6200, 2600, 4200] }
+    },
+    clouds: {
+      ...high.clouds,
+      color: 0xe2c6b9,
+      opacity: 0.72,
+      cirrusColor: 0xd4a9a2,
+      cirrusOpacity: 0.34,
+      texture: { seed: 0x4d493933, contrast: 1.04, underside: 0.46, softness: 0.96 }
+    },
+    decor: { ...high.decor, seed: 0x4d493934 }
+  });
+
   ctx.addWorldDecorator("migalOuterDefenceRing", {
-    worlds: ["migalOuterHigh"],
+    worlds: ["migalOuterHigh", "migalOuterSunset"],
     build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
       const root = new THREE.Group();
       root.name = "migalOuterDefenceRing";
