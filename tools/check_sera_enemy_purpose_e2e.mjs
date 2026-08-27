@@ -175,6 +175,8 @@ try {
   assert(finalFighters.length === 18 && finalFighters.every((enemy) => (
     ["pinning", "intercept", "interceptor"].includes(enemy.purpose)
   )), "M20 fighter waves are still range-gated loiterers", finalFighters);
+  assert(finalFighters.filter((enemy) => enemy.purpose === "pinning").length === 2,
+    "M20 PINNING is not the doctrine's two-aircraft pair", finalFighters);
   assert(patrol.every((enemy) => !enemy.hater),
     "spawn order still assigns a random wingman hunter", patrol);
 

@@ -65,6 +65,7 @@ async function openMission(key, deployHook = null) {
     window.__game?.forceStartMissionByKey
     && window.__game?.debug?.enemyObjectiveProbe
     && window.__game?.debug?.forceEnemyBreakCycle
+    && window.__game?.debug?.forceInterceptorEgress
   ), null, { timeout: 120_000 });
   assert(await page.evaluate((missionKey) => window.__game.forceStartMissionByKey(missionKey, "f16"), key),
     `${key} could not start`);
@@ -137,6 +138,39 @@ try {
   assert(opened.errors.length === 0, "browser errors during assigned-target test", opened.errors);
   await opened.context.close();
 
+  opened = await openMission("sera-m20", "forceSeraM20DeployPending");
+  state = await objectives(opened.page);
+  const interceptor = state.find((enemy) => enemy.purpose === "interceptor");
+  assert(interceptor && interceptor.interceptorPhase === "inbound",
+    "M20 interceptor did not enter the pass state machine", interceptor);
+  const overshootCases = await opened.page.evaluate(() => ({
+    passed: window.__game.debug.interceptorOvershootProbe(650, 200, 540, -0.4),
+    neverMerged: window.__game.debug.interceptorOvershootProbe(650, 600, 540, -0.4),
+    stillClosing: window.__game.debug.interceptorOvershootProbe(500, 200, 540, -0.4),
+    targetAhead: window.__game.debug.interceptorOvershootProbe(650, 200, 540, 0.4)
+  }));
+  assert(overshootCases.passed && !overshootCases.neverMerged
+      && !overshootCases.stillClosing && !overshootCases.targetAhead,
+    "interceptor overshoot classifier accepted an invalid pass", overshootCases);
+  assert(await opened.page.evaluate((id) => window.__game.debug.forceInterceptorEgress(id), interceptor.id),
+    "interceptor egress could not be forced");
+  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(2, 0.05));
+  state = await objectives(opened.page);
+  let interceptorProbe = state.find((enemy) => enemy.id === interceptor.id);
+  assert(interceptorProbe.interceptorPhase === "egress"
+      && interceptorProbe.aimKind === "interceptor-egress"
+      && interceptorProbe.interceptorPasses === 1,
+    "interceptor did not extend after its pass", interceptorProbe);
+  await opened.page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(140, 0.05));
+  state = await objectives(opened.page);
+  interceptorProbe = state.find((enemy) => enemy.id === interceptor.id);
+  assert(interceptorProbe.interceptorPhase === "reattack"
+      && interceptorProbe.mode === "pursuit"
+      && interceptorProbe.aimKind === "pursuit",
+    "interceptor did not turn back for a second pass", interceptorProbe);
+  assert(opened.errors.length === 0, "browser errors during interceptor pass test", opened.errors);
+  await opened.context.close();
+
   opened = await openMission("sera-m19", "forceSeraM19DeployPending");
   const before = (await objectives(opened.page))
     .filter((enemy) => enemy.purpose === "hunt" && enemy.target)
@@ -150,7 +184,7 @@ try {
   await opened.context.close();
 
   console.log("check_enemy_air_ai_sensor_e2e: PASS");
-  console.log("  long-range track / bounded CAP / break resume / M11 target split / hunt stability");
+  console.log("  long-range track / bounded CAP / break resume / M11 target split / interceptor reattack / hunt stability");
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
