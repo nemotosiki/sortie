@@ -51842,8 +51842,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            if (gameState !== STATE_PLAYING) return false;
            const enemy = enemies.find((candidate) => candidate.alive && candidate.id === id);
           if (!enemy || enemy.surface || enemy.heli || enemy.subsystem) return false;
-           enemy.speed = speed;
-           enemy.targetSpeed = speed;
+           const requested = Math.max(0, Number(speed) || 0);
+           if (enemy.flightDynamics.initialized && enemy.flightDynamics.airspeed > 1e-6) {
+             const scale = requested / enemy.flightDynamics.airspeed;
+             enemy.flightDynamics.x *= scale;
+             enemy.flightDynamics.y *= scale;
+             enemy.flightDynamics.z *= scale;
+             enemy.flightDynamics.airspeed = requested;
+             enemy.velocity.set(
+               enemy.flightDynamics.x,
+               enemy.flightDynamics.y,
+               enemy.flightDynamics.z
+             );
+           } else {
+             seedEnemyFlightDynamics(enemy, requested);
+           }
+           enemy.speed = requested;
+           enemy.targetSpeed = requested;
            return enemy.speed;
          },
         forceEnemyAttitude: (id, pitchDeg = 0, yawDeg = 0, rollDeg = 0, resetLift = true) => {
@@ -51862,6 +51877,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           if (resetLift) {
             resetAttitudeLiftState(enemy.attitudeLift);
             resetStallTranslationState(enemy.stallTranslation);
+            resetFlightDynamicsState(enemy.flightDynamics);
           }
            return true;
          },
@@ -51904,6 +51920,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.turnDemand = 1;
           resetAttitudeLiftState(enemy.attitudeLift);
           resetStallTranslationState(enemy.stallTranslation);
+          seedEnemyFlightDynamics(enemy, speed);
           enemy.fireCooldown = 999;
           enemy.missileCooldown = 999;
           return true;
@@ -51979,11 +51996,35 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             headingErrorDeg: THREE.MathUtils.radToDeg(enemy.headingError),
             turnEnvelopeGain: enemy.turnEnvelopeGain,
             turnLimitDeg: THREE.MathUtils.radToDeg(enemy.turnLimit),
-            attitudeUpDot: enemy.attitudeLift.upDot,
-            attitudeLiftLoss: enemy.attitudeLift.severity,
-            aerodynamicVerticalSpeed: enemy.attitudeLift.verticalSpeed,
+            attitudeUpDot: upOf(enemy.group, tmpV11).dot(WORLD_UP),
+            attitudeLiftLoss: enemy.flightDynamics.telemetry.supportDeficit,
+            aerodynamicVerticalSpeed: enemy.flightDynamics.y,
              effectiveVerticalSpeed: enemyEffectiveVerticalSpeed(enemy),
-             flightPath: { ...enemy.stallTranslation },
+             flightPath: {
+               initialized: enemy.flightDynamics.initialized,
+               active: enemy.flightDynamics.stallRatio > 0.08,
+               x: enemy.flightDynamics.x,
+               y: enemy.flightDynamics.y,
+               z: enemy.flightDynamics.z,
+               pathLoss: enemy.flightDynamics.stallRatio,
+               separatedFlow: enemy.flightDynamics.separatedFlow,
+               angleOfAttackDeg: enemy.flightDynamics.angleOfAttackDeg
+             },
+             dynamics: {
+               airspeed: enemy.flightDynamics.airspeed,
+               angleOfAttackDeg: enemy.flightDynamics.angleOfAttackDeg,
+               separatedFlow: enemy.flightDynamics.separatedFlow,
+               liftDeficit: enemy.flightDynamics.liftDeficit,
+               controlAuthority: { ...enemy.flightDynamics.controlAuthority },
+               forces: {
+                 gravity: { ...enemy.flightDynamics.forces.gravity },
+                 thrust: { ...enemy.flightDynamics.forces.thrust },
+                 drag: { ...enemy.flightDynamics.forces.drag },
+                 lift: { ...enemy.flightDynamics.forces.lift },
+                 acceleration: { ...enemy.flightDynamics.forces.acceleration }
+               },
+               telemetry: { ...enemy.flightDynamics.telemetry }
+             },
              highAltitude: {
                densityRatio: enemy.highAltitudeEnvelope?.densityRatio ?? 1,
                stallSpeedMultiplier: enemy.highAltitudeEnvelope?.stallSpeedMultiplier ?? 1,
@@ -58350,6 +58391,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
         resetStallTranslationState(enemy.stallTranslation);
+        seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, enemy.spec.stallEntrySpeed * 1.05));
       }
        return true;
      }
@@ -60721,6 +60763,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
         resetStallTranslationState(enemy.stallTranslation);
+        seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, enemy.spec.stallEntrySpeed * 1.05));
       }
       return true;
     }
@@ -62390,6 +62433,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          highAltitudeEnvelope: spawnAltitudeEnvelope,
          attitudeLift: resetAttitudeLiftState({}),
          stallTranslation: resetStallTranslationState({}),
+         flightDynamics: resetFlightDynamicsState({}),
+         pitchCommand: 0,
          // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
         // still has to notice it, rather than being born knowing.
@@ -66331,9 +66376,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function enemyEffectiveVerticalSpeed(enemy) {
-      if (!enemy.stallTranslation.initialized) return enemy.attitudeLift.verticalSpeed;
-      enemyNoseFlightVelocity(enemy, tmpV11, 0);
-      return enemy.stallTranslation.y - tmpV11.y;
+      return enemy.flightDynamics?.initialized
+        ? enemy.flightDynamics.y
+        : 0;
+    }
+
+    function seedEnemyFlightDynamics(enemy, speedMps = enemy.speed) {
+      forwardOf(enemy.group, tmpV11);
+      resetFlightDynamicsState(enemy.flightDynamics, {
+        x: tmpV11.x * speedMps,
+        y: tmpV11.y * speedMps,
+        z: tmpV11.z * speedMps
+      });
+      enemy.speed = enemy.flightDynamics.airspeed;
+      enemy.velocity.set(
+        enemy.flightDynamics.x,
+        enemy.flightDynamics.y,
+        enemy.flightDynamics.z
+      );
+      return enemy.flightDynamics;
     }
 
     function updateEnemyAerodynamicState(enemy, dt) {
@@ -66343,39 +66404,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.spec.stallEntrySpeed,
         enemy.spec.maxSpeed
       );
-      forwardOf(enemy.group, tmpV8);
-      const actualFlightSpeed = enemy.stallTranslation.initialized
-        ? Math.hypot(
-          enemy.stallTranslation.x,
-          enemy.stallTranslation.y,
-          enemy.stallTranslation.z
-        )
+      const actualFlightSpeed = enemy.flightDynamics?.initialized
+        ? enemy.flightDynamics.airspeed
         : enemy.speed;
-      updateAerodynamicStallState(enemy.stallState, {
-        speed: actualFlightSpeed,
-        stallEntrySpeed: enemy.highAltitudeEnvelope.minimumControlledSpeed,
-        deepStallSpeed: altitudeAdjustedStallThreshold(
-          STALL_DEEP_SPEED,
-          spec.stallEntrySpeed,
-          enemy.highAltitudeEnvelope
-        ),
-        recoverySpeed: altitudeAdjustedStallThreshold(
-          STALL_RECOVERY_SPEED,
-          spec.stallEntrySpeed,
-          enemy.highAltitudeEnvelope
-        ),
-        stallAuthorityLoss: spec.stallAuthorityLoss,
-        turnDemand: enemy.turnDemand,
-        noseHighDemand: Math.max(0, tmpV8.y - 0.18)
-      }, dt);
-      enemy.stallSeverity = enemy.stallState.severity;
-      enemy.stalling = enemy.stallState.stalling;
-      const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
-        enemy.speed,
-        enemy.highAltitudeEnvelope
-      );
-      enemy.controlAuthority = enemy.stallState.controlAuthority *
-        highAltitudeControlAuthority;
+      enemy.speed = actualFlightSpeed;
+      enemy.stallSeverity = enemy.flightDynamics?.stallRatio || 0;
+      enemy.stalling = enemy.stallSeverity > 0.24;
+      enemy.stallState.timer = enemy.stallSeverity;
+      enemy.stallState.severity = enemy.stallSeverity;
+      enemy.stallState.stalling = enemy.stalling;
+      enemy.controlAuthority = enemy.flightDynamics?.controlAuthority?.path ?? 1;
     }
 
     function enemyConstrainedTurn(enemy, maximumRate) {
@@ -66387,12 +66425,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       );
       const baseRate = Math.max(0.00001, spec.patrolTurn);
       const result = constrainedAircraftTurn({
-        speed: enemy.stallTranslation.initialized
-          ? Math.hypot(
-            enemy.stallTranslation.x,
-            enemy.stallTranslation.y,
-            enemy.stallTranslation.z
-          )
+        speed: enemy.flightDynamics?.initialized
+          ? enemy.flightDynamics.airspeed
           : enemy.speed,
         referenceSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
         stallEntrySpeed: envelope.minimumControlledSpeed,
@@ -66403,66 +66437,65 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         stallSeverity: enemy.stallSeverity,
         stallAuthorityLoss: spec.stallAuthorityLoss
       });
-      const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
-        enemy.speed,
-        envelope
-      );
+      const dynamicAuthority = enemy.flightDynamics?.controlAuthority?.path ?? 1;
       enemy.turnEnvelopeGain = result.gain;
-      enemy.controlAuthority = result.authority * highAltitudeControlAuthority;
-      enemy.turnLimit = result.rate * highAltitudeControlAuthority;
+      enemy.controlAuthority = Math.min(result.authority, dynamicAuthority);
+      enemy.turnLimit = result.rate * dynamicAuthority;
       return enemy.turnLimit;
     }
 
     function applyEnemyStallNoseDrop(enemy, dt) {
-      if (!enemy.stallTranslation.active && enemy.stallSeverity <= 0.005) return;
-      const severity = Math.max(
-        enemy.stallSeverity,
-        Number(enemy.stallTranslation.pathLoss) || 0
-      );
+      const dynamics = enemy.flightDynamics;
+      const lowEnergyDeparture = dynamics.airspeed < dynamics.telemetry.supportSpeed * 0.92;
+      if (dynamics.separatedFlow <= 0.05 && !lowEnergyDeparture) return;
+      const severity = Math.max(enemy.stallSeverity, dynamics.separatedFlow || 0);
       const recoveryRate = STALL_NOSE_DROP_RATE *
         (0.72 + Math.max(0, Math.min(1, Number(enemy.spec.stability) || 0)) * 0.56);
       rotateForwardTowardFlightPath(
         enemy.group.quaternion,
-        enemy.stallTranslation,
+        dynamics,
         recoveryRate * severity * dt,
-        severity * 0.34
+        severity * 0.16
       );
     }
 
     function moveEnemyFixedWing(enemy, dt) {
-      // Translation is computed from the constrained attitude and retained as a
-      // real velocity so missile lead sees a stalling or inverted target fall.
-      upOf(enemy.group, tmpV8);
-      updateAttitudeLiftState(
-        enemy.attitudeLift,
-        tmpV8.dot(WORLD_UP),
-        enemy.spec.stability,
-        dt
-      );
+      const spec = enemy.spec;
+      const actualSpeed = enemy.flightDynamics.initialized
+        ? enemy.flightDynamics.airspeed
+        : enemy.speed;
+      const availableMax = Math.max(1, spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor);
+      const desiredSpeed = THREE.MathUtils.clamp(enemy.targetSpeed, 0, availableMax);
+      let throttle = Math.pow(desiredSpeed / availableMax, 2);
+      if (enemy.aimKind === "stall-recovery" || desiredSpeed >= availableMax * 0.98) throttle = 1;
+      const airBrake = desiredSpeed < actualSpeed
+        ? THREE.MathUtils.clamp((actualSpeed - desiredSpeed) / Math.max(1, actualSpeed * 0.32), 0, 1)
+        : 0;
       forwardOf(enemy.group, tmpV8);
-      enemy.speed = altitudeEnergyAdjustedSpeed(
-        enemy.speed,
-        tmpV8.y,
-        enemy.highAltitudeEnvelope,
-        dt
+      upOf(enemy.group, tmpV9);
+      updateFlightDynamicsState(enemy.flightDynamics, {
+        forward: tmpV8,
+        up: tmpV9,
+        initialSpeed: enemy.speed,
+        throttle,
+        airBrake,
+        baseCruiseSpeed: spec.cruiseSpeed,
+        baseMaxSpeed: spec.maxSpeed,
+        baseStallSpeed: spec.stallEntrySpeed,
+        envelope: enemy.highAltitudeEnvelope,
+        structuralG: spec.structuralG,
+        stability: spec.stability,
+        pitchInput: enemy.pitchCommand || 0,
+        pathTurnRate: enemy.turnLimit
+      }, dt);
+      enemy.speed = enemy.flightDynamics.airspeed;
+      enemy.stallSeverity = enemy.flightDynamics.stallRatio;
+      enemy.stalling = enemy.stallSeverity > 0.24;
+      enemy.velocity.set(
+        enemy.flightDynamics.x,
+        enemy.flightDynamics.y,
+        enemy.flightDynamics.z
       );
-      enemyNoseFlightVelocity(enemy, tmpV8, enemy.attitudeLift.verticalSpeed);
-      updateStallTranslationState(
-        enemy.stallTranslation,
-        tmpV8,
-        enemy.stallSeverity,
-        dt,
-        { thrustFactor: enemy.highAltitudeEnvelope.thrustFactor }
-      );
-      if (enemy.stallTranslation.initialized) {
-        enemy.velocity.set(
-          enemy.stallTranslation.x,
-          enemy.stallTranslation.y,
-          enemy.stallTranslation.z
-        );
-      } else {
-        enemyNoseFlightVelocity(enemy, enemy.velocity, enemy.attitudeLift.verticalSpeed);
-      }
       enemy.group.position.addScaledVector(enemy.velocity, dt);
     }
 
@@ -66580,6 +66613,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         if (updateM16AntiShipWeapon(enemy, dt)) continue;
 
         updateEnemyAerodynamicState(enemy, dt);
+        enemy.pitchCommand = 0;
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
         // quarter it burns - black smoke with orange flame flicker.
@@ -66990,6 +67024,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          if (tmpV4.lengthSq() > 0.00001) {
            tmpV4.normalize();
           forwardOf(enemy.group, tmpV8);
+          enemy.pitchCommand = THREE.MathUtils.clamp((tmpV4.y - tmpV8.y) * 2, -1, 1);
           enemy.headingError = tmpV8.angleTo(tmpV4);
           applyEnemyEnergyManagement(enemy, enemy.headingError);
            tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
@@ -67045,6 +67080,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            enemy.group.position.y = hardFloor;
           enemy.attitudeLift.verticalSpeed = 0;
           resetStallTranslationState(enemy.stallTranslation);
+          seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, spec.stallEntrySpeed * 1.05));
           forwardOf(enemy.group, tmpV4);
           if (tmpV4.y < 0) {
             tmpV8.set(tmpV4.x, 0.22, tmpV4.z).normalize();
@@ -67347,6 +67383,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.group.position.y = hardFloor;
         enemy.attitudeLift.verticalSpeed = 0;
         resetStallTranslationState(enemy.stallTranslation);
+        seedEnemyFlightDynamics(enemy, Math.max(enemy.speed, spec.stallEntrySpeed * 1.05));
       }
 
       if (enemy.postStallTimer <= 0) enemy.postStallPhase = 0;

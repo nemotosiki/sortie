@@ -235,6 +235,13 @@ function stepFlightDynamics(state, input, dt) {
     // removed the very lift supporting a steady coordinated turn.
     bodyLiftG = Math.max(bodyLiftG, Math.min(trimLiftG, availableLiftG));
   }
+  if (supportAlignment < -0.08 && bodyLiftG < 0) {
+    // Negative-G lift exists, but an inverted fighter may not use the positive-G
+    // structural limit as an unlimited upside-down support system. Stability
+    // augmentation improves the brief negative-G response without making the
+    // aircraft immune to WORLD-down gravity.
+    bodyLiftG = Math.max(bodyLiftG, -(0.34 + stability * 0.28));
+  }
   bodyLiftG *= 1 - separatedFlow * 0.9;
   const stabilityAssistG = supportNormal
     ? requestedSupportG * stability * 0.32 * smoothstep01((0.35 - supportAlignment) / 1.35)

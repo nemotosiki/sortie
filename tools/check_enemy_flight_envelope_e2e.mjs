@@ -178,9 +178,9 @@ try {
   assert(results.recovered.speed > results.peakStall.speed &&
       results.recovered.stallSeverity < results.peakStall.stallSeverity,
     "production AI did not accelerate and recover after the stall", results);
-  assert(results.inverted.drop > 8 && results.inverted.attitudeLiftLoss > 0.9,
+  assert(results.inverted.drop > 8 && results.inverted.attitudeLiftLoss > 0.35,
     "production enemy translation ignored sustained inverted lift loss", results.inverted);
-  assert(results.knifeEdge.drop > 8 && results.knifeEdge.attitudeLiftLoss > 0.9,
+  assert(results.knifeEdge.drop > 8 && results.knifeEdge.attitudeLiftLoss > 0.35,
     "production enemy translation ignored knife-edge WORLD gravity", results.knifeEdge);
   assert(pageErrors.length === 0, "pageerror during enemy flight check", pageErrors);
   assert(consoleErrors.length === 0, "console error during enemy flight check", consoleErrors);

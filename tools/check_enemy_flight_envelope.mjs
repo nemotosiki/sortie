@@ -118,18 +118,19 @@ assert(!recovered.stalling && recovered.severity < 0.05 && recovered.controlAuth
 
 for (const required of [
   'from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1"',
+  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-1"',
   "updateEnemyAerodynamicState(enemy, dt);",
   "applyEnemyEnergyManagement(enemy, enemy.headingError);",
   "const turnRate = enemyConstrainedTurn(enemy, requestedRate);",
   "applyEnemyStallNoseDrop(enemy, dt);",
   "moveEnemyFixedWing(enemy, dt);",
   "stallState: resetAerodynamicStallState({}),",
-  "stallTranslation: resetStallTranslationState({}),",
+  "flightDynamics: resetFlightDynamicsState({}),",
   "stability: aircraftStabilityRating(air),",
-  "altitudeAdjustedFlightVelocity(",
   "enemyEffectiveVerticalSpeed(enemy)",
-  "updateStallTranslationState(\n        enemy.stallTranslation,",
-  "enemyNoseFlightVelocity(enemy, enemy.velocity, enemy.attitudeLift.verticalSpeed);"
+  "updateFlightDynamicsState(enemy.flightDynamics, {",
+  "enemy.speed = enemy.flightDynamics.airspeed;",
+  "enemy.velocity.set(\n        enemy.flightDynamics.x,"
 ]) {
   assert(indexSource.includes(required), `production integration is missing: ${required}`);
 }
