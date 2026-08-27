@@ -90,10 +90,10 @@ collision system would be a separate engine change and is outside this pass.
 - HALO aggregate HP, HALO altitude/orbit, LARK, success/failure, Retry, result
   persistence, and the four-MiG-31 high-altitude secondary condition.
 - HALO holds 12,500 m as a latest-model lower-stratosphere EW platform. MiG-31
-  is exempt from the fighter envelope. MiG-31 receives the airframe's 2,000 m
-  energy-ceiling extension and holds 11,900 m; ordinary fighters run out of
-  sustained speed near 10,000 m, leaving only a narrow horizontal margin inside
-  a 4AAM's 2,000 m slant range.
+  is outside the fighter simulation. MiG-31's authored 833 m/s top speed passes
+  through the same shared model as every fighter and sustains 11,900 m; ordinary
+  fighters run out of energy near 10,000 m, leaving only a narrow horizontal
+  margin inside a 4AAM's 2,000 m slant range.
 - All four MiG-31s remain HALO-only high-altitude hunters. The second pair is
   re-authored as WARDEN 1 `GRANITE` plus one WARDEN wingman without increasing
   the total MiG-31 count or diverting either aircraft toward RAVEN/LARK/ARCA.

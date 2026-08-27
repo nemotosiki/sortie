@@ -2738,9 +2738,13 @@
       HIGH_ALTITUDE_EFFECT_START_M,
       altitudeAdjustedFlightVelocity,
       altitudeAdjustedResponseK,
+      altitudeAdjustedStallThreshold,
       altitudeEnergyAdjustedSpeed,
+      estimatedSustainableAltitudeM,
+      highAltitudeClimbAuthorityAtSpeed,
+      highAltitudeControlAuthorityAtSpeed,
       highAltitudeEnvelopeAt
-    } from "./src/flight/high-altitude-envelope.js?v=20260827-energy-ceiling-1";
+    } from "./src/flight/high-altitude-envelope.js?v=20260827-speed-energy-v2";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -2786,7 +2790,7 @@
     // constraint. Unlike roll damping alone this also accounts for low-speed
     // stability and how much authority the aircraft retains in a stall.
     let PLAYER_STABILITY = 0.45;
-    let PLAYER_HIGH_ALTITUDE_CEILING_BONUS = 0;
+    let PLAYER_ESTIMATED_ENERGY_CEILING = 10000;
     // The other two axes, driven off the same per-airframe stability figure
     // (spec.rollDamping, 8.2 on the heavy interceptor to 12.6 on the canard
     // fighter). Roll always had inertia; these two did not, so every aircraft
@@ -4006,10 +4010,9 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         role: "High-Speed Interceptor",
         tag: "INTERCEPTOR",
         blurb: "全機中最速の大型迎撃機。ひとたび加速しきれば誰にも追いつかれないが、加速は緩慢で旋回半径は絶望的に大きい。格闘戦を捨て、長射程ミサイルで遠距離から仕留める機体だ。",
-        // Twin D-30F6-class thrust gives the Foxhound a two-kilometre extension
-        // above the ordinary 10 km aerodynamic ceiling. M11's near-12 km
-        // intercept is sustainable for this airframe and not for a normal jet.
-        highAltitudeCeilingBonus: 2000,
+        // The shared altitude model reads this exceptional top speed directly:
+        // 833 m/s becomes approximately 2,000 km/h at 11 km and naturally buys
+        // a near-12 km energy ceiling without an aircraft-id exception.
         cruiseSpeed: 400, boostSpeed: 833, brakeSpeed: 150,
         pitchRateDeg: 26, rollRateDeg: 98, yawRateDeg: 7, maxBankAngleDeg: 42,
         normalRollSpring: 26, rollRateLimitDeg: 94, turnRateDeg: 18,
@@ -4586,8 +4589,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // so the Foxhound's straight-line role is immediately legible. F-4 is an
     // explicit SPEED-REBALANCE exception, as are aircraft whose job is already
     // defined by being slow (attackers, bombers, transports, EW platforms and
-    // UAVs). This grants F-4 no high-altitude advantage; only MiG-31 owns the
-    // separate `highAltitudeCeilingBonus` field.
+    // UAVs). This grants F-4 no high-altitude advantage; every fighter enters
+    // the same speed-dependent altitude calculation.
     const FIGHTER_SPEED_REBALANCE_SCALE = 0.95;
     const FIGHTER_SPEED_REBALANCE_IDS = new Set([
       "f16", "gripen", "f2a", "fa18a", "fa18", "f15c", "f15", "f14",
@@ -6368,7 +6371,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
              stallAuthorityLoss: air.stallAuthorityLoss,
              structuralG: air.structuralG,
              stability: aircraftStabilityRating(air),
-             highAltitudeCeilingBonus: Math.max(0, Number(air.highAltitudeCeilingBonus) || 0),
+             estimatedEnergyCeiling: estimatedSustainableAltitudeM(
+               air.stallEntrySpeed,
+               effectiveBoost
+             ),
              patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
             pursuitTurn: THREE.MathUtils.degToRad(
               air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR * (ai.pursuitTurnScale ?? 1)
@@ -42953,9 +42959,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const hunterTag = "m11HaloHunter";
         // RAVEN enters at the authored 30,000 ft combat band. HALO is a latest-model
         // stratospheric EW platform exempt from the fighter envelope and holds
-        // 12.5 km. The MiG-31's engine-specific +2 km margin lets it fight near its
-        // 12 km aerodynamic ceiling; an ordinary fighter at roughly 10 km has only
-        // a narrow horizontal margin inside a 4AAM's 2 km slant range.
+        // 12.5 km. MiG-31's exceptional 833 m/s top speed passes through the same
+        // altitude-energy model as every fighter and yields a near-12 km sustainable
+        // band; an ordinary fighter near 10 km has only a narrow horizontal margin
+        // inside a 4AAM's 2 km slant range.
         const playerStartAltitude = 9144;
         const operationAltitude = 12500;
         const safeAltitude = 9000;
@@ -45690,7 +45697,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         player.position.y = Math.max(4, Number(altitude) || 4);
         playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
           player.position.y,
-          PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
           STALL_ENTRY_SPEED,
           BOOST_SPEED
         );
@@ -45712,7 +45718,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         );
         playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
           player.position.y,
-          PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
           STALL_ENTRY_SPEED,
           BOOST_SPEED
         );
@@ -47336,7 +47341,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
            enemy.controlAuthority = 1;
            enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(
              enemy.group.position.y,
-             enemy.spec.highAltitudeCeilingBonus,
              enemy.spec.stallEntrySpeed,
              enemy.spec.maxSpeed
            );
@@ -47387,10 +47391,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
              highAltitude: {
                densityRatio: enemy.highAltitudeEnvelope?.densityRatio ?? 1,
                stallSpeedMultiplier: enemy.highAltitudeEnvelope?.stallSpeedMultiplier ?? 1,
-               turnAuthority: enemy.highAltitudeEnvelope?.turnAuthority ?? 1,
+               minimumControlledSpeed: enemy.highAltitudeEnvelope?.minimumControlledSpeed ?? enemy.spec.stallEntrySpeed,
+               energyFloorSpeed: enemy.highAltitudeEnvelope?.energyFloorSpeed ?? 0,
+               availableMaxSpeed: enemy.highAltitudeEnvelope?.availableMaxSpeed ?? enemy.spec.maxSpeed,
+               estimatedEnergyCeiling: enemy.spec.estimatedEnergyCeiling,
+               turnAuthority: highAltitudeControlAuthorityAtSpeed(
+                 enemy.speed,
+                 enemy.highAltitudeEnvelope
+               ),
                thrustFactor: enemy.highAltitudeEnvelope?.thrustFactor ?? 1,
                maxSpeedFactor: enemy.highAltitudeEnvelope?.maxSpeedFactor ?? 1,
-               climbAuthority: enemy.highAltitudeEnvelope?.climbAuthority ?? 1
+               climbAuthority: highAltitudeClimbAuthorityAtSpeed(
+                 enemy.speed,
+                 enemy.highAltitudeEnvelope
+               )
              },
              position: [enemy.group.position.x, enemy.group.position.y, enemy.group.position.z]
           })),
@@ -50404,7 +50418,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       applyFriendlyPlayerStart(MISSIONS[currentMissionIndex]);
       playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
         player.position.y,
-        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
         STALL_ENTRY_SPEED,
         BOOST_SPEED
       );
@@ -51074,7 +51087,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stalling = false;
       playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
         player.position.y,
-        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
         STALL_ENTRY_SPEED,
         BOOST_SPEED
       );
@@ -51105,7 +51117,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const brakeTargetSpeed = BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP * highGBrakeLoad;
       playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
         player.position.y,
-        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
         STALL_ENTRY_SPEED,
         BOOST_SPEED
       );
@@ -51132,10 +51143,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playerHighAltitudeEnvelope,
         dt
       );
-      const highAltitudeStallMultiplier = playerHighAltitudeEnvelope.stallSpeedMultiplier;
-      const effectiveStallEntrySpeed = STALL_ENTRY_SPEED * highAltitudeStallMultiplier;
-      const effectiveDeepStallSpeed = STALL_DEEP_SPEED * highAltitudeStallMultiplier;
-      const effectiveRecoverySpeed = STALL_RECOVERY_SPEED * highAltitudeStallMultiplier;
+      const effectiveStallEntrySpeed = playerHighAltitudeEnvelope.minimumControlledSpeed;
+      const effectiveDeepStallSpeed = altitudeAdjustedStallThreshold(
+        STALL_DEEP_SPEED,
+        STALL_ENTRY_SPEED,
+        playerHighAltitudeEnvelope
+      );
+      const effectiveRecoverySpeed = altitudeAdjustedStallThreshold(
+        STALL_RECOVERY_SPEED,
+        STALL_ENTRY_SPEED,
+        playerHighAltitudeEnvelope
+      );
       const lowSpeedRatio = THREE.MathUtils.clamp(
         (effectiveStallEntrySpeed - playerSpeed) /
           Math.max(1, effectiveStallEntrySpeed - effectiveDeepStallSpeed),
@@ -51160,8 +51178,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallSeverity = THREE.MathUtils.clamp(stallSeverity, 0, 1);
       stalling = stallSeverity > 0.24;
 
+      const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
+        playerSpeed,
+        playerHighAltitudeEnvelope
+      );
       playerControlAuthority = THREE.MathUtils.clamp(
-        (1 - stallSeverity * STALL_AUTHORITY_LOSS) * playerHighAltitudeEnvelope.turnAuthority,
+        (1 - stallSeverity * STALL_AUTHORITY_LOSS) * highAltitudeControlAuthority,
         0.12,
         1
       );
@@ -51175,7 +51197,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         TURN_GAIN_CEILING
       );
       playerTurnFactor = rawTurnFactor * (1 - stallSeverity * 0.78) *
-        playerHighAltitudeEnvelope.turnAuthority;
+        highAltitudeControlAuthority;
       // Pitch follows the same curve but with the swing compressed, so nosing
       // around still feels usable at the extremes of the speed range.
       const pitchManeuverFactor = THREE.MathUtils.clamp(
@@ -53652,13 +53674,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forwardOf(enemy.group, tmpV8);
       enemy.headingError = tmpV8.angleTo(tmpV4);
       const retreatEnergy = managedCombatTurnSpeed({
-        commandedSpeed: enemy.spec.maxSpeed,
+        commandedSpeed: enemy.spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor,
         headingErrorRad: enemy.headingError,
         stallSeverity: enemy.stallSeverity,
-        stallEntrySpeed: enemy.spec.stallEntrySpeed,
+        stallEntrySpeed: enemy.highAltitudeEnvelope.minimumControlledSpeed,
         structuralG: enemy.spec.structuralG,
-        cruiseSpeed: enemy.spec.cruiseSpeed,
-        maxSpeed: enemy.spec.maxSpeed
+        cruiseSpeed: enemy.spec.cruiseSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor,
+        maxSpeed: enemy.spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor
       });
       enemy.turnDemand = retreatEnergy.turnDemand;
        tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV4);
@@ -53667,7 +53689,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemyConstrainedTurn(enemy, enemy.spec.pursuitTurn * 0.8) * dt
       );
        enemy.group.quaternion.normalize();
-       enemy.targetSpeed = enemy.spec.maxSpeed;
+       enemy.targetSpeed = enemy.spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor;
        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(enemy.spec.speedResponse, dt));
       applyEnemyStallNoseDrop(enemy, dt);
       moveEnemyFixedWing(enemy, dt);
@@ -55653,6 +55675,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
 
       const formationLeaderId = idBase + 1;
+      const spawnAltitudeEnvelope = highAltitudeEnvelopeAt(
+        position.y,
+        spec.stallEntrySpeed,
+        spec.maxSpeed
+      );
+      const spawnMinimumSpeed = Math.min(
+        spawnAltitudeEnvelope.availableMaxSpeed,
+        spawnAltitudeEnvelope.minimumControlledSpeed * 1.03
+      );
+      const spawnSpeed = Math.min(
+        spawnAltitudeEnvelope.availableMaxSpeed,
+        Math.max(spec.patrolSpeed * 0.92, spawnMinimumSpeed)
+      );
       enemies.push({
         id,
         serial: enemySerial,
@@ -55701,8 +55736,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         alive: true,
         maxHp: spec.hp,
         hp: spec.hp,
-         speed: spec.patrolSpeed * 0.92,
-         targetSpeed: spec.patrolSpeed,
+         speed: spawnSpeed,
+         targetSpeed: Math.max(spec.patrolSpeed, spawnMinimumSpeed),
          // Fixed-wing translation and aerodynamic state. The AI is allowed to
          // request a target point and throttle, but current energy, structural G,
          // stall and attitude lift decide how much of that request is delivered.
@@ -55715,12 +55750,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          headingError: 0,
          turnEnvelopeGain: 1,
          turnLimit: spec.patrolTurn,
-         highAltitudeEnvelope: highAltitudeEnvelopeAt(
-           position.y,
-           spec.highAltitudeCeilingBonus,
-           spec.stallEntrySpeed,
-           spec.maxSpeed
-         ),
+         highAltitudeEnvelope: spawnAltitudeEnvelope,
          attitudeLift: resetAttitudeLiftState({}),
          // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
@@ -59104,32 +59134,41 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const spec = enemy.spec;
       enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(
         enemy.group.position.y,
-        enemy.spec.highAltitudeCeilingBonus,
         enemy.spec.stallEntrySpeed,
         enemy.spec.maxSpeed
       );
-      const stallMultiplier = enemy.highAltitudeEnvelope.stallSpeedMultiplier;
       forwardOf(enemy.group, tmpV8);
       updateAerodynamicStallState(enemy.stallState, {
         speed: enemy.speed,
-        stallEntrySpeed: spec.stallEntrySpeed * stallMultiplier,
-        deepStallSpeed: STALL_DEEP_SPEED * stallMultiplier,
-        recoverySpeed: STALL_RECOVERY_SPEED * stallMultiplier,
+        stallEntrySpeed: enemy.highAltitudeEnvelope.minimumControlledSpeed,
+        deepStallSpeed: altitudeAdjustedStallThreshold(
+          STALL_DEEP_SPEED,
+          spec.stallEntrySpeed,
+          enemy.highAltitudeEnvelope
+        ),
+        recoverySpeed: altitudeAdjustedStallThreshold(
+          STALL_RECOVERY_SPEED,
+          spec.stallEntrySpeed,
+          enemy.highAltitudeEnvelope
+        ),
         stallAuthorityLoss: spec.stallAuthorityLoss,
         turnDemand: enemy.turnDemand,
         noseHighDemand: Math.max(0, tmpV8.y - 0.18)
       }, dt);
       enemy.stallSeverity = enemy.stallState.severity;
       enemy.stalling = enemy.stallState.stalling;
+      const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
+        enemy.speed,
+        enemy.highAltitudeEnvelope
+      );
       enemy.controlAuthority = enemy.stallState.controlAuthority *
-        enemy.highAltitudeEnvelope.turnAuthority;
+        highAltitudeControlAuthority;
     }
 
     function enemyConstrainedTurn(enemy, maximumRate) {
       const spec = enemy.spec;
       const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(
         enemy.group.position.y,
-        enemy.spec.highAltitudeCeilingBonus,
         enemy.spec.stallEntrySpeed,
         enemy.spec.maxSpeed
       );
@@ -59137,7 +59176,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const result = constrainedAircraftTurn({
         speed: enemy.speed,
         referenceSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
-        stallEntrySpeed: spec.stallEntrySpeed * envelope.stallSpeedMultiplier,
+        stallEntrySpeed: envelope.minimumControlledSpeed,
         structuralG: spec.structuralG,
         baseTurnRate: baseRate,
         maximumGain: Math.max(0, maximumRate) / baseRate,
@@ -59145,9 +59184,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         stallSeverity: enemy.stallSeverity,
         stallAuthorityLoss: spec.stallAuthorityLoss
       });
+      const highAltitudeControlAuthority = highAltitudeControlAuthorityAtSpeed(
+        enemy.speed,
+        envelope
+      );
       enemy.turnEnvelopeGain = result.gain;
-      enemy.controlAuthority = result.authority * envelope.turnAuthority;
-      enemy.turnLimit = result.rate * envelope.turnAuthority;
+      enemy.controlAuthority = result.authority * highAltitudeControlAuthority;
+      enemy.turnLimit = result.rate * highAltitudeControlAuthority;
       return enemy.turnLimit;
     }
 
@@ -59188,7 +59231,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const spec = enemy.spec;
       const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(
         enemy.group.position.y,
-        enemy.spec.highAltitudeCeilingBonus,
         enemy.spec.stallEntrySpeed,
         enemy.spec.maxSpeed
       );
@@ -59196,7 +59238,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         commandedSpeed: enemy.targetSpeed,
         headingErrorRad: headingError,
         stallSeverity: enemy.stallSeverity,
-        stallEntrySpeed: spec.stallEntrySpeed * envelope.stallSpeedMultiplier,
+        stallEntrySpeed: envelope.minimumControlledSpeed,
         structuralG: spec.structuralG,
         cruiseSpeed: spec.cruiseSpeed * envelope.maxSpeedFactor,
         maxSpeed: spec.maxSpeed * envelope.maxSpeedFactor
@@ -59674,7 +59716,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // their tail - and it is why a rookie sails 250m out in front while an
         // ace is only briefly wrong-footed.
         const altitudeMaxSpeed = spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor;
-        enemy.targetSpeed = Math.min(enemy.targetSpeed, altitudeMaxSpeed);
+        const altitudeMinimumSpeed = Math.min(
+          altitudeMaxSpeed,
+          enemy.highAltitudeEnvelope.minimumControlledSpeed * 1.03
+        );
+        enemy.targetSpeed = THREE.MathUtils.clamp(
+          enemy.targetSpeed,
+          altitudeMinimumSpeed,
+          altitudeMaxSpeed
+        );
         const closing = enemy.targetSpeed < enemy.speed;
          const speedK = closing
            ? (spec.speedDecelK ?? spec.speedResponse)
@@ -59954,6 +60004,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
        }
        enemy.group.quaternion.normalize();
 
+       enemy.targetSpeed = Math.min(
+         enemy.targetSpeed,
+         spec.maxSpeed * enemy.highAltitudeEnvelope.maxSpeedFactor
+       );
        enemy.speed = THREE.MathUtils.lerp(enemy.speed, enemy.targetSpeed, damping(spec.speedResponse, dt));
       // The cobra may command a thrust-vector pitch outside the ordinary turn
       // table, but it does not get a second translation model: low-speed stall,
@@ -63353,8 +63407,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Both halves need the flight gate. `stalling` is frozen at whatever it
       // was when updatePlayer stopped running, so gating only `lowSpeed` left
       // STALL burning on the debrief of every sortie that ended in a stall.
-      const effectiveStallWarningSpeed = STALL_WARNING_SPEED *
-        playerHighAltitudeEnvelope.stallSpeedMultiplier;
+      const effectiveStallWarningSpeed = altitudeAdjustedStallThreshold(
+        STALL_WARNING_SPEED,
+        STALL_ENTRY_SPEED,
+        playerHighAltitudeEnvelope
+      );
       const lowSpeed = inFlight && playerSpeed < effectiveStallWarningSpeed;
       const stallLit = inFlight && stalling;
       const highAltitudeCaution = inFlight && playerHighAltitudeEnvelope.thinAir >= 0.85;
@@ -63522,13 +63579,22 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.flight.highAltitude = {
         onsetM: HIGH_ALTITUDE_EFFECT_START_M,
         serviceCeilingM: GAME_SERVICE_CEILING_M,
-        absoluteCeilingM: playerHighAltitudeEnvelope.absoluteCeiling,
+        estimatedEnergyCeilingM: PLAYER_ESTIMATED_ENERGY_CEILING,
         densityRatio: playerHighAltitudeEnvelope.densityRatio,
         stallSpeedMultiplier: playerHighAltitudeEnvelope.stallSpeedMultiplier,
-        turnAuthority: playerHighAltitudeEnvelope.turnAuthority,
+        minimumControlledSpeed: playerHighAltitudeEnvelope.minimumControlledSpeed,
+        energyFloorSpeed: playerHighAltitudeEnvelope.energyFloorSpeed,
+        availableMaxSpeed: playerHighAltitudeEnvelope.availableMaxSpeed,
+        turnAuthority: highAltitudeControlAuthorityAtSpeed(
+          playerSpeed,
+          playerHighAltitudeEnvelope
+        ),
         thrustFactor: playerHighAltitudeEnvelope.thrustFactor,
         maxSpeedFactor: playerHighAltitudeEnvelope.maxSpeedFactor,
-        climbAuthority: playerHighAltitudeEnvelope.climbAuthority,
+        climbAuthority: highAltitudeClimbAuthorityAtSpeed(
+          playerSpeed,
+          playerHighAltitudeEnvelope
+        ),
         ceilingSinkSpeed: playerHighAltitudeEnvelope.ceilingSinkSpeed
       };
       hook.cameraFocus.active = cameraFocusActive;
@@ -67347,8 +67413,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
       PLAYER_STABILITY = aircraftStabilityRating(spec);
-      PLAYER_HIGH_ALTITUDE_CEILING_BONUS = Math.max(
-        0, Number(spec.highAltitudeCeilingBonus) || 0
+      PLAYER_ESTIMATED_ENERGY_CEILING = estimatedSustainableAltitudeM(
+        spec.stallEntrySpeed,
+        BOOST_SPEED
       );
       STRUCTURAL_G = spec.structuralG;
       TIP_OFFSET_X = spec.tipSpan * spec.theme.scale;

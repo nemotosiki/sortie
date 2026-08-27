@@ -161,8 +161,7 @@ try {
     assert(Math.abs(speedParity.displacementSpeedMps - speedParity.after.kinematicSpeedMps) < 0.1
         && speedParity.after.hudSpeedKph ===
           Math.round(speedParity.after.kinematicSpeedMps * 3.6)
-        && speedParity.after.kinematicSpeedMps > speedParity.after.speedMps * 0.55
-        && speedParity.after.kinematicSpeedMps < speedParity.after.speedMps * 0.65,
+        && speedParity.after.kinematicSpeedMps > speedParity.after.speedMps * 0.98,
       "high-altitude HUD speed diverged from actual displacement speed", speedParity);
     assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
       "HALO damage probe failed");
@@ -244,7 +243,10 @@ try {
     assert(probe.directive.className.includes("danger") && probe.directive.instruction.includes("9000"),
       "low-altitude radar-online HUD is not critical", probe.directive);
 
-    assert(await page.evaluate(() => window.__game.forceSeraM11SetPlayerAltitude(9000)),
+    // Cross the 9,000m line with a small flight margin. At exactly the line a
+    // descending aircraft can legitimately fall back below it before the next
+    // missile tick; the authored instruction remains ALT 9000.
+    assert(await page.evaluate(() => window.__game.forceSeraM11SetPlayerAltitude(9050)),
       "9,000m sanctuary did not arm");
     await page.waitForFunction((id) => {
       const missile = window.__game.seraM11Probe().missiles.find((entry) => entry.id === id);
@@ -352,6 +354,32 @@ try {
     await context.close();
   }
 
+  // Browser-side calibration anchor for the shared altitude model. Nothing in
+  // the envelope names MiG-31; its authored 833m/s top speed alone must yield
+  // about 2,000km/h available at 11km and a sustainable ceiling near 12km.
+  {
+    const { context, page } = await newMissionPage();
+    const calibration = await page.evaluate(() => {
+      const mig = window.__game.seraM11Probe().contacts.find((entry) => (
+        entry.alive && entry.type === "mig31"
+      ));
+      if (!mig || !window.__game.debug.forceConfigureEnemyFlight(mig.id, {
+        altitude: 11000,
+        speed: 2000 / 3.6
+      })) return null;
+      return window.__game.debug.enemyFlightProbe(mig.id)[0] || null;
+    });
+    assert(calibration?.type === "mig31" && calibration.maxSpeed === 833,
+      "MiG-31 calibration page did not expose the production airframe", calibration);
+    assert(calibration.position[1] === 11000
+        && calibration.highAltitude.availableMaxSpeed * 3.6 >= 1990
+        && calibration.highAltitude.availableMaxSpeed * 3.6 <= 2010
+        && calibration.highAltitude.estimatedEnergyCeiling >= 11800
+        && calibration.highAltitude.estimatedEnergyCeiling <= 12100,
+      "shared altitude model missed the MiG-31 11km calibration", calibration);
+    await context.close();
+  }
+
   // Partial optional route with the canonical LARK airframe pairing: two of
   // four MiG-31s destroyed, every HALO aircraft safe, base still clearable.
   {
@@ -442,7 +470,7 @@ try {
   assert(pageErrors.length === 0, "page errors", pageErrors);
   assert(consoleErrors.length === 0, "console errors", consoleErrors);
   console.log("check_sera_m11_e2e: PASS");
-  console.log("  unlock / HALO HP / EW HUD / enhanced SAM / sanctuary / red x10 / white x16 / ARCA / full-partial-zero optional routes / Retry / timeout");
+  console.log("  unlock / HALO HP / EW HUD / enhanced SAM / sanctuary / MiG-31 @11km / red x10 / white x16 / ARCA / full-partial-zero optional routes / Retry / timeout");
   console.log(`  screenshot: ${screenshotPath}`);
 } finally {
   await browser.close();

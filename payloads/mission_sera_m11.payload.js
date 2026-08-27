@@ -239,9 +239,10 @@ export default function register(ctx) {
   const hunterTag = "m11HaloHunter";
   // RAVEN enters at the authored 30,000 ft combat band. HALO is a latest-model
   // stratospheric EW platform exempt from the fighter envelope and holds
-  // 12.5 km. The MiG-31's engine-specific +2 km margin lets it fight near its
-  // 12 km aerodynamic ceiling; an ordinary fighter at roughly 10 km has only
-  // a narrow horizontal margin inside a 4AAM's 2 km slant range.
+  // 12.5 km. MiG-31's exceptional 833 m/s top speed passes through the same
+  // altitude-energy model as every fighter and yields a near-12 km sustainable
+  // band; an ordinary fighter near 10 km has only a narrow horizontal margin
+  // inside a 4AAM's 2 km slant range.
   const playerStartAltitude = 9144;
   const operationAltitude = 12500;
   const safeAltitude = 9000;

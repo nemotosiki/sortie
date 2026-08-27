@@ -32,7 +32,7 @@ for (const token of [
 ]) assert(plan.includes(token), `rework plan contract missing: ${token}`);
 
 for (const token of [
-  'from "./src/flight/high-altitude-envelope.js?v=20260827-energy-ceiling-1"',
+  'from "./src/flight/high-altitude-envelope.js?v=20260827-speed-energy-v2"',
   'ctx.addAircraft("jammer"', 'label: "IL-22PP JAMMER"',
   'id="m11EwDirective"', "function updateM11ElectronicWarfare(mission)",
   "function m11EnhancedSamTuning(enemy)", "// @payload:map_verIceCoast",

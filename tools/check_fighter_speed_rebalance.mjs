@@ -40,8 +40,8 @@ for (const token of [
   "wingBoost: effectiveAircraftBoostSpeed(spec)"
 ]) assert(source.includes(token), `runtime/HUD path is not using adjusted speed: ${token}`);
 
-assert(source.includes("highAltitudeCeilingBonus: 2000"),
-  "MiG-31 high-altitude engine advantage is missing");
+assert(!source.includes("highAltitudeCeilingBonus"),
+  "an aircraft-specific high-altitude ceiling bonus remains in the host");
 const aircraftTable = source.slice(
   source.indexOf("const AIRCRAFT_TYPES ="),
   source.indexOf("const FIGHTER_SPEED_REBALANCE_SCALE =")
@@ -54,11 +54,14 @@ const aircraftDefinition = (id) => {
   const end = nextMatch ? start + id.length + 17 + nextMatch.index : aircraftTable.length;
   return aircraftTable.slice(start, end);
 };
-assert(aircraftDefinition("mig31").includes("highAltitudeCeilingBonus: 2000"),
-  "MiG-31 definition lost its 12km high-altitude exception");
 assert(!aircraftDefinition("f4").includes("highAltitudeCeilingBonus"),
   "F-4 received a high-altitude exception; it is exempt from speed reduction only");
+assert(!aircraftDefinition("mig31").includes("highAltitudeCeilingBonus"),
+  "MiG-31 must earn its altitude from the shared speed model, not a bonus");
+assert(source.includes("estimatedSustainableAltitudeM(")
+    && source.includes("highAltitudeControlAuthorityAtSpeed("),
+  "shared speed-dependent altitude paths are missing");
 
 console.log("check_fighter_speed_rebalance: PASS");
 console.log("  speed: modern fighters x0.95 / MiG-31, F-4, attack-support-heavy unchanged");
-console.log("  altitude: MiG-31 exception only / F-4 remains an ordinary-ceiling fighter");
+console.log("  altitude: one speed-dependent model / MiG-31 earns ~12km from 833m/s");

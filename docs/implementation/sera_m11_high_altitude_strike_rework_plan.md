@@ -43,7 +43,7 @@ their real absolute ceiling:
 | thin-air onset | 6,500 m / 21,325 ft | penalties begin smoothly; existing low/medium missions remain unchanged |
 | combat/service ceiling | 9,144 m / 30,000 ft | M11 player ingress/retreat band; full density-derived stall-speed penalty, materially reduced manoeuvre/thrust margin |
 | ordinary energy ceiling | approximately 10,000 m / 32,808 ft | full power leaves only a few percent of straight-and-level stall margin; a climb or turn naturally spends it |
-| MiG-31 energy ceiling | approximately 12,000 m / 39,370 ft | airframe-specific engine margin; the same density, speed, stall and gravity rules still apply |
+| MiG-31 energy ceiling | approximately 12,000 m / 39,370 ft | the shared model reads its exceptional 833 m/s top speed; no aircraft-id bonus |
 
 At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
