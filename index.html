@@ -2746,7 +2746,7 @@
       neutralThrottleForEnvelope,
       resetFlightDynamicsState,
       updateFlightDynamicsState
-    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-4";
+    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-5";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -2858,7 +2858,14 @@
     // Natural static-stability tendency, deliberately weaker than manual pitch.
     // It helps an unattended departure lower the nose but cannot overpower a
     // pilot trying to unload, brake or establish a recovery attitude.
-    const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(8);
+    // Separated flow moves a conventional fighter's centre of pressure and
+    // produces a pronounced nose-down/static-stability moment. Eight degrees
+    // per second was too weak: gravity turned the WORLD flight path downward
+    // faster than the airframe could follow, leaving a jet descending at
+    // 80-90 m/s while its nose still pointed above the horizon. This is a
+    // relative-wind alignment rate, not a WORLD-down attitude command; aircraft
+    // stability and remaining pitch authority still scale it below.
+    const STALL_NOSE_DROP_RATE = THREE.MathUtils.degToRad(16);
     let PITCH_RATE = THREE.MathUtils.degToRad(58);
     let EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(102);
     let YAW_RATE = THREE.MathUtils.degToRad(16);

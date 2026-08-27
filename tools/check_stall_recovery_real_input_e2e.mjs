@@ -48,7 +48,16 @@ const expertMode = process.env.SORTIE_STALL_EXPERT === "1";
 const verbose = process.env.SORTIE_STALL_VERBOSE === "1";
 const scenario = process.env.SORTIE_STALL_SCENARIO || "stall";
 const scenarioSeconds = Math.max(1, Number(process.env.SORTIE_STALL_SECONDS) || 8);
+const stallEntrySeconds = Math.max(
+  8,
+  Number(process.env.SORTIE_STALL_ENTRY_SECONDS) || 40
+);
 const startAltitude = Number(process.env.SORTIE_STALL_START_ALTITUDE);
+const recoveryInput = process.env.SORTIE_STALL_RECOVERY_INPUT || "combined";
+const requestedStallPreset = process.env.SORTIE_STALL_PRESET;
+const stallPreset = requestedStallPreset === "none"
+  ? ""
+  : (requestedStallPreset || "horizontal");
 const holdRecoveryInput = process.env.SORTIE_STALL_HOLD_RECOVERY === "1";
 await context.addInitScript((aircraft) => {
   navigator.getGamepads = () => [];
@@ -109,6 +118,12 @@ const read = async (phase, elapsed) => page.evaluate(({ phase, elapsed }) => {
     densityRatio: Number(flight.highAltitude.densityRatio.toFixed(3)),
     thrustLapse: Number(flight.dynamics.telemetry.thrustLapse.toFixed(3)),
     engineAuthority: Number(flight.dynamics.telemetry.engineAuthority.toFixed(3)),
+    staticThrustToWeight: Number((
+      flight.dynamics.telemetry.staticThrustToWeight || 0
+    ).toFixed(3)),
+    engineAcceleration: Number((
+      flight.dynamics.telemetry.engineAcceleration || 0
+    ).toFixed(2)),
     availableLiftG: Number(flight.dynamics.telemetry.availableLiftG.toFixed(2)),
     pathAssistBlend: Number((flight.dynamics.telemetry.controlledPathBlend || 0).toFixed(3)),
     thrustY: Number(flight.dynamics.forces.thrust.y.toFixed(2)),
@@ -169,6 +184,8 @@ try {
 
   let stalled = null;
   let recovered = null;
+  let recoveryStart = null;
+  let presetSetup = null;
   const turnScenario = scenario === "turn" || scenario === "coast-turn" ||
     scenario === "brake-turn" || scenario === "pull-turn";
   if (turnScenario) {
@@ -196,39 +213,131 @@ try {
   } else {
     // Real keyboard events and the real requestAnimationFrame loop.  Pull to a
     // modest climb, then keep the airbrake out until the wing is deeply stalled.
-    await page.keyboard.down("Control");
-    await page.keyboard.down("s");
-    await sampleFor("pitch-up", 4, (sample) => sample.attitudeY >= 0.42);
-    // Keep pulling while the brake bleeds energy. Releasing pitch here lets a
-    // stable aircraft lower its nose and enter a controlled descent without
-    // ever exceeding critical AOA; that is a low-energy mush, not a stall.
-    stalled = await sampleFor("decelerate", 18, (sample) => sample.stall >= 0.5);
-    await page.keyboard.up("s");
-    await page.keyboard.up("Control");
+    if (stallPreset) {
+      presetSetup = await page.evaluate((preset) => {
+        const game = window.__game;
+        const debug = game.debug;
+        const supportSpeed = Math.max(
+          40,
+          Number(game.flight.dynamics.telemetry.supportSpeed) || 84
+        );
+        const config = preset === "climbing"
+          ? {
+            pathPitchDeg: 35,
+            nosePitchDeg: 65,
+            speedMps: supportSpeed * 0.72,
+            altitudeM: 2500
+          }
+          : {
+            pathPitchDeg: 0,
+            nosePitchDeg: 30,
+            speedMps: supportSpeed * 0.78,
+            altitudeM: 2500
+          };
+        const current = game.flight.position;
+        const altitude = game.flight.altitudeM > 7000
+          ? game.flight.altitudeM
+          : config.altitudeM;
+        // Some campaign builds intentionally omit the generic teleport probe;
+        // the preset does not depend on it. M11's dedicated altitude probe has
+        // already placed high-altitude cases, and M01 has enough clearance for
+        // this short energy test from its authored start.
+        if (typeof debug.forceTeleport === "function") {
+          debug.forceTeleport(current.x, altitude, current.z);
+        }
+        // Seed the persistent WORLD velocity along the requested flight path,
+        // then rotate only the airframe. The resulting 30-degree AOA is a real
+        // separated-flow state; no production force or attitude is mocked.
+        debug.forceAttitude(0, config.pathPitchDeg, 0);
+        debug.forceResetAttitudeLift();
+        debug.forceFlightEnergy(config.speedMps, 0);
+        debug.forceAttitude(0, config.nosePitchDeg, 0);
+        debug.forceFlightEnergy(config.speedMps, 1);
+        const stepped = debug.forceFlightFrames(1, 1 / 60, {});
+        return {
+          ...config,
+          altitudeM: game.flight.altitudeM,
+          hasForceTeleport: typeof debug.forceTeleport === "function",
+          stepped
+        };
+      }, stallPreset);
+      await page.waitForFunction(() => (
+        window.__game.flight.stallSeverity >= 0.5
+          && window.__game.flight.dynamics.separatedFlow >= 0.5
+      ), null, { timeout: 5000 });
+      stalled = await read("preset-stall", 0);
+    } else {
+      await page.keyboard.down("Control");
+      await page.keyboard.down("s");
+      await sampleFor("pitch-up", 4, (sample) => sample.attitudeY >= 0.42);
+      // Keep pulling while the brake bleeds energy. Releasing pitch here lets a
+      // stable aircraft lower its nose and enter a controlled descent without
+      // ever exceeding critical AOA; that is a low-energy mush, not a stall.
+      stalled = await sampleFor(
+        "decelerate",
+        stallEntrySeconds,
+        (sample) => sample.stall >= 0.5
+      );
+      await page.keyboard.up("s");
+      await page.keyboard.up("Control");
+    }
     await page.screenshot({ path: stallShot });
 
-    // The player's actual recovery action: full power, lower the nose through
-    // the horizon, then neutralise pitch while keeping power on. Holding the
-    // stick through a complete outside loop is a separate over-control defect,
-    // not the recovery technique this probe is meant to measure.
-    await page.keyboard.down("Shift");
-    await page.keyboard.down("w");
-    if (!holdRecoveryInput) {
-      await sampleFor("lower-nose", 8, (sample) => sample.attitudeY <= -0.16);
-      await page.keyboard.up("w");
+    // Probe power and unloading independently as well as together. This keeps
+    // a passing combined recovery from hiding an engine/drag defect.
+    recoveryStart = await read("recovery-start", 0);
+    const usePower = recoveryInput === "combined" || recoveryInput === "power";
+    const useNoseDown = recoveryInput === "combined" || recoveryInput === "nose";
+    if (usePower) await page.keyboard.down("Shift");
+    if (useNoseDown) {
+      await page.keyboard.down("w");
+      if (!holdRecoveryInput) {
+        await sampleFor("lower-nose", 8, (sample) => sample.attitudeY <= -0.16);
+        await page.keyboard.up("w");
+      }
     }
-    recovered = await sampleFor("recover", holdRecoveryInput ? 28 : 24, (sample) => (
-      sample.elapsed >= 1
-        && sample.stall < 0.08
-        && sample.aoa < 10
-        && sample.speed > sample.supportSpeed * 1.05
-    ));
+    const passiveBallistic = recoveryInput === "passive";
+    recovered = await sampleFor(
+      useNoseDown ? "recover" : (passiveBallistic ? "passive-fall" : "power-only"),
+      useNoseDown ? (holdRecoveryInput ? 28 : 24) : scenarioSeconds,
+      (sample) => useNoseDown
+        ? (
+          sample.elapsed >= 1
+            && sample.stall < 0.08
+            && sample.aoa < 10
+            && sample.speed > sample.supportSpeed * 1.05
+        )
+        : passiveBallistic && sample.elapsed >= 2
+          && sample.verticalSpeed < -3
+          && sample.attitudeY < -0.03
+    );
+    await page.keyboard.up("w");
     await page.keyboard.up("Shift");
     await page.screenshot({ path: recoveryShot });
   }
 
+  const passiveApexAltitude = recoveryInput === "passive"
+    ? Math.max(
+      recoveryStart.altitude,
+      ...samples
+        .filter((sample) => sample.phase === "passive-fall")
+        .map((sample) => sample.altitude)
+    )
+    : null;
   const recoveredSuccessfully = turnScenario
     ? recovered.stall < 0.12 && recovered.separated < 0.35 && recovered.aoa < 18
+    : recoveryInput === "power"
+      ? stalled.stall >= 0.5
+        && stalled.separated >= 0.5
+        && recovered.speed > recoveryStart.speed + 8
+    : recoveryInput === "passive"
+      ? stalled.stall >= 0.5
+        && stalled.separated >= 0.5
+        && recoveryStart.verticalSpeed > 10
+        && recovered.verticalSpeed < -3
+        && recovered.attitudeY < -0.03
+        && passiveApexAltitude > recoveryStart.altitude + 5
+        && recovered.altitude < passiveApexAltitude - 20
     : stalled.stall >= 0.5
       && stalled.separated >= 0.5
       && recovered.stall < 0.08
@@ -255,8 +364,13 @@ try {
     aircraftId,
     controlMode: expertMode ? "expert" : "normal",
     scenario,
+    recoveryInput,
+    stallPreset,
     holdRecoveryInput,
+    presetSetup,
     stalled,
+    recoveryStart,
+    passiveApexAltitude,
     recovered,
     recoveredSuccessfully,
     errors,

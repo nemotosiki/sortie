@@ -15,6 +15,8 @@ export const FLIGHT_AOA_ONSET_DEG = 14;
 export const FLIGHT_AOA_FULL_DEG = 22;
 export const FLIGHT_PATH_ASSIST_ONSET_RATIO = 1.02;
 export const FLIGHT_PATH_ASSIST_FULL_RATIO = 1.35;
+export const FLIGHT_MIN_STATIC_THRUST_TO_WEIGHT = 0.38;
+export const FLIGHT_MAX_STATIC_THRUST_TO_WEIGHT = 1.18;
 
 const EPSILON = 1e-9;
 
@@ -35,6 +37,20 @@ export function controlledFlightPathBlend(speed, supportSpeed, separatedFlow = 0
       (FLIGHT_PATH_ASSIST_FULL_RATIO - FLIGHT_PATH_ASSIST_ONSET_RATIO)
   );
   return energyBlend * (1 - clamp(finite(separatedFlow), 0, 1));
+}
+
+// Sortie has authored speed envelopes but not engine thrust and combat mass
+// for every airframe. Convert that existing performance scale into a bounded
+// static thrust-to-weight ratio instead of treating top speed as 3-5 G of
+// forward acceleration. The same rule covers every fixed-wing aircraft:
+// attack aircraft sit toward the lower bound, ordinary fighters around 0.9,
+// and only the fastest interceptors/top-tier fighters approach the upper cap.
+export function staticThrustToWeightForMaxSpeed(baseMaxSpeedMps) {
+  return clamp(
+    Math.max(0, finite(baseMaxSpeedMps)) / 600,
+    FLIGHT_MIN_STATIC_THRUST_TO_WEIGHT,
+    FLIGHT_MAX_STATIC_THRUST_TO_WEIGHT
+  );
 }
 
 function finite(value, fallback = 0) {
@@ -158,6 +174,8 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
     pathAssistLoadG: 0,
     controlledPathBlend: 0,
     engineAuthority: 1,
+    staticThrustToWeight: 0,
+    engineAcceleration: 0,
     thrustLapse: 1,
     dragAcceleration: 0,
     pathTurnDegPerSec: 0
@@ -468,7 +486,8 @@ function stepFlightDynamics(state, input, dt) {
     ? clamp(1 - availableLiftG / requestedSupportG, 0, 1)
     : 0;
 
-  const engineAcceleration = 8 + baseMaxSpeed * 0.055;
+  const staticThrustToWeight = staticThrustToWeightForMaxSpeed(baseMaxSpeed);
+  const engineAcceleration = FLIGHT_GRAVITY_MPS2 * staticThrustToWeight;
   const thrustLapse = densityRatio * speedRetention * speedRetention;
   // Wing separation does not switch a jet engine off. High AOA already makes
   // thrust inefficient because it remains aligned with the body while the
@@ -573,6 +592,8 @@ function stepFlightDynamics(state, input, dt) {
   // to inspect without introducing kilograms or a hidden wing area.
   state.telemetry.dynamicPressureRatio = densityRatio * Math.pow(speed / baseStallSpeed, 2);
   state.telemetry.engineAuthority = engineAuthority;
+  state.telemetry.staticThrustToWeight = staticThrustToWeight;
+  state.telemetry.engineAcceleration = engineAcceleration;
   state.telemetry.thrustLapse = thrustLapse;
   state.telemetry.dragAcceleration = dragAcceleration;
   state.telemetry.pathTurnDegPerSec = dt > 0 ? pathTurnAngle / dt * 180 / Math.PI : 0;

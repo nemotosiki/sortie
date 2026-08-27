@@ -109,8 +109,11 @@ try {
     const frameBefore = reset(9144, 340, 0);
     const frameAfter = debug.forceFlightFrames(1, 1 / 60, { boost: true });
 
-    const coast = runFrom(14765, 270, 1, 10, 1 / 60, {});
-    const brake = runFrom(14765, 270, 1, 10, 1 / 60, { brake: true });
+    // Airbrake effectiveness is an ordinary-altitude handling check. At
+    // 14,765 m dynamic pressure is intentionally tiny, so demanding the same
+    // deceleration there contradicts the atmospheric model being tested.
+    const coast = runFrom(2500, 270, 0, 10, 1 / 60, {});
+    const brake = runFrom(2500, 270, 0, 10, 1 / 60, { brake: true });
     const noseDown = runFrom(14765, 270, 1, 5, 1 / 60, { boost: true, pitch: -0.65 });
     const noseUp = runFrom(14765, 270, 1, 5, 1 / 60, { boost: true, pitch: 0.65 });
 

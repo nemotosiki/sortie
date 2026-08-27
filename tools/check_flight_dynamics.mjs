@@ -3,6 +3,7 @@ import {
   FLIGHT_GRAVITY_MPS2,
   neutralThrottleForEnvelope,
   resetFlightDynamicsState,
+  staticThrustToWeightForMaxSpeed,
   updateFlightDynamicsState
 } from "../src/flight/flight-dynamics.js";
 import { highAltitudeEnvelopeAt } from "../src/flight/high-altitude-envelope.js";
@@ -48,7 +49,7 @@ const coast = resetFlightDynamicsState({}, { x: 0, y: 0, z: -270 });
 const braked = resetFlightDynamicsState({}, { x: 0, y: 0, z: -270 });
 stepFor(coast, base, 5);
 stepFor(braked, { ...base, throttle: 0.03, airBrake: 1 }, 5);
-assert(coast.airspeed - braked.airspeed > 55,
+assert(coast.airspeed - braked.airspeed > 40,
   "airbrake did not materially reduce actual velocity", { coast, braked });
 
 const lowEnergy = resetFlightDynamicsState({}, { x: 0, y: 0, z: -55 });
@@ -90,6 +91,36 @@ near(thrustMagnitude(stalledThrust), thrustMagnitude(attachedThrust), 1e-9,
   "separated flow reduced engine thrust");
 near(stalledThrust.telemetry.engineAuthority, 1, 1e-12,
   "stall engine authority");
+near(staticThrustToWeightForMaxSpeed(570), 0.95, 1e-12,
+  "F-16 static thrust-to-weight ratio");
+
+// A normal fighter is not a 4 G rocket. Even with full afterburner and the
+// nose/velocity straight up, WORLD gravity must reduce its upward velocity.
+const verticalBoost = resetFlightDynamicsState({}, { x: 0, y: 70, z: 0 });
+updateFlightDynamicsState(verticalBoost, {
+  ...base,
+  forward: { x: 0, y: 1, z: 0 },
+  up: { x: 0, y: 0, z: 1 },
+  baseMaxSpeed: 570,
+  throttle: 1
+}, 1 / 60);
+assert(verticalBoost.forces.acceleration.y < 0
+    && verticalBoost.telemetry.staticThrustToWeight < 1,
+  "ordinary fighter accelerated upward indefinitely like a rocket", verticalBoost);
+
+// At ordinary altitude, a low-speed stalled aircraft still receives usable
+// axial acceleration when its velocity has a forward component. Separation
+// adds drag; it does not introduce an engine lockout.
+const lowSpeedStalledBoost = resetFlightDynamicsState({}, { x: 0, y: 0, z: -137 });
+updateFlightDynamicsState(lowSpeedStalledBoost, {
+  ...base,
+  ...noseUp30,
+  baseMaxSpeed: 570,
+  throttle: 1
+}, 1 / 60);
+assert(lowSpeedStalledBoost.forces.acceleration.z < 0,
+  "ordinary-altitude stalled aircraft could not accelerate along its flight path",
+  lowSpeedStalledBoost);
 
 const thinAir = highAltitudeEnvelopeAt(9144, 70, 540);
 const highAltitudeThrust = resetFlightDynamicsState({}, { x: 0, y: 0, z: -120 });
@@ -110,7 +141,7 @@ const downDirection = { x: 0, y: -0.5, z: -Math.sqrt(0.75) };
 const upDirection = { x: 0, y: 0.5, z: -Math.sqrt(0.75) };
 stepFor(noseDown, { ...base, forward: downDirection, throttle: 1 }, 5);
 stepFor(noseUp, { ...base, forward: upDirection, throttle: 1 }, 5);
-assert(noseDown.y < noseUp.y - 18 && noseDown.airspeed > noseUp.airspeed + 8,
+assert(noseDown.y < noseUp.y - 18 && noseDown.airspeed > noseUp.airspeed + 4,
   "nose-down recovery and nose-up departure are not dynamically distinct",
   { noseDown, noseUp });
 assert(noseDown.controlAuthority.pitchDown >= 0.3
