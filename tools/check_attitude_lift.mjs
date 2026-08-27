@@ -90,15 +90,15 @@ assert(capped.state.verticalSpeed === -ATTITUDE_LIFT_MAX_SINK_SPEED,
 for (const required of [
   'from "./src/flight/attitude-lift.js?v=20260827-world-gravity-1"',
   'from "./src/flight/stall-translation.js?v=20260828-stall-recovery-1"',
+  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-1"',
   "PLAYER_STABILITY = aircraftStabilityRating(spec);",
-  "updateAttitudeLiftState(",
-  "tmpV2.dot(WORLD_UP)",
-  "const playerStallTranslation = resetStallTranslationState({});",
-  "updatePlayerStallTranslation(dt);",
+  "const playerFlightDynamics = resetFlightDynamicsState({});",
+  "updateFlightDynamicsState(playerFlightDynamics, {",
+  "playerSpeed = playerFlightDynamics.airspeed;",
   "stallTranslation: resetStallTranslationState({}),",
   "updateStallTranslationState(\n        enemy.stallTranslation,",
   "playerKinematicVelocity(velocityOut).addScaledVector(tmpV3, -dropSpeed);",
-  "hook.flight.aerodynamicVerticalSpeed = playerAttitudeLift.verticalSpeed;"
+  "hook.flight.aerodynamicVerticalSpeed = playerFlightDynamics.y;"
 ]) {
   assert(indexSource.includes(required), `production integration is missing: ${required}`);
 }

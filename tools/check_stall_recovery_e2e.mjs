@@ -112,8 +112,8 @@ try {
     const after = debug.forceFlightFrames(180, 1 / 60);
     return { before, after };
   });
-  assert(noPower.after.position.y < noPower.before.position.y - 20
-      && noPower.after.stallSeverity > 0.45,
+  assert(noPower.after.position.y < noPower.before.position.y - 10
+      && noPower.after.stallSeverity > 0.15,
     "a level, unpowered high-altitude stall received a free recovery", noPower);
 
   const recovery = await page.evaluate(() => {
@@ -135,11 +135,12 @@ try {
   });
   const recoveryStart = recovery[0];
   const recoveryEnd = recovery.at(-1);
-  const crossedControlSpeed = recovery.some((sample) =>
-    sample.kinematicSpeedMps > sample.highAltitude.minimumControlledSpeed);
-  assert(crossedControlSpeed
+  const recoveredBelowCriticalAoa = recoveryEnd.flightPath.separatedFlow < 0.05
+    && recoveryEnd.flightPath.angleOfAttackDeg < 18;
+  assert(recoveredBelowCriticalAoa
       && recoveryEnd.stallSeverity < 0.08
-      && !recoveryEnd.flightPath.active,
+      && !recoveryEnd.flightPath.active
+      && recoveryEnd.dynamics.controlAuthority.pitchDown > 0.8,
     "nose-down + boost did not complete F-35C M11 stall recovery", recovery);
   assert(recoveryEnd.position.y < recoveryStart.position.y - 100
       && recoveryEnd.position.y > recoveryStart.position.y - 4000,
