@@ -44113,6 +44113,353 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m14"
     ); // @payload:mission_sera_m14
+    applyPayload(
+      function register(ctx) {
+        const { AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const uav = AIRCRAFT_TYPES.uav;
+        const transportAI = ENEMY_AI_PROFILES.transport;
+        if (!uav || !transportAI) {
+          throw new Error("[cruiseWeapon] expected uav and transport templates");
+        }
+
+        const theme = {
+          primary: 0xd7d9d5,
+          secondary: 0x777b80,
+          accent: 0xd75a3f,
+          canopy: 0x777b80,
+          exhaust: 0xffa04a,
+          scale: 0.78,
+          variant: "cruiseWeapon"
+        };
+
+        ctx.addAircraft("cruiseWeapon", {
+          ...uav,
+          id: "cruiseWeapon",
+          label: "CRUISE MISSILE",
+          role: "Air-Launched Cruise Weapon",
+          tag: "MISSILE",
+          enemyOnly: true,
+          blurb: "爆撃機から切り離された低空巡航弾。母機を失っても指定区画へ飛び続ける。",
+          cruiseSpeed: 210,
+          boostSpeed: 210,
+          brakeSpeed: 210,
+          maxHealth: 34,
+          missileCapacity: 0,
+          tipSpan: 2.9,
+          tipZ: 0.6,
+          theme
+        }, { order: false });
+
+        ctx.addEnemyProfile("cruiseWeapon", {
+          ...transportAI,
+          label: "CRUISE MISSILE",
+          hitboxScale: 0.52,
+          explosionScale: 0.58,
+          attackRange: 0,
+          fireMin: 999,
+          fireSpread: 0,
+          radarColor: "#ffffff",
+          tracerColor: 0xffffff,
+          explosionColor: 0xff9b52,
+          theme
+        });
+
+        ctx.addAircraftModel("cruiseWeapon", {
+          silhouette: "M20 2 L23 8 L23 23 L29 29 L29 32 L23 30 L23 38 L26 42 L14 42 L17 38 L17 30 L11 32 L11 29 L17 23 L17 8 Z",
+          build({ geometry, primary, secondary, accent, dark, add, addFlame }) {
+            add(geometry.missileBody, primary, 0, 0, 0.2, 1.65, 1.65, 2.8);
+            add(geometry.missileNose, secondary, 0, 0, -7.4, 1.55, 1.55, 1.5);
+            add(geometry.missileFins, accent, 0, 0, 4.4, 2.35, 2.35, 1.5);
+            add(geometry.panel, dark, 0, 0.08, 0.6, 6.2, 0.18, 1.4);
+            addFlame(0, 0, 7.8, 0.72, 0.72);
+          }
+        });
+      },
+      "aircraft_cruiseWeapon"
+    ); // @payload:aircraft_cruiseWeapon
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.nightCity;
+        if (!base) throw new Error("[migalCityNight] nightCity base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          playerStart: Object.freeze([0, 600]),
+          battleCenter: Object.freeze([0, -7600]),
+          militaryRoot: Object.freeze([0, -9000]),
+          powerDistrict: Object.freeze([-920, -9380]),
+          hospitalDistrict: Object.freeze([940, -8620]),
+          northernLane: Object.freeze([0, 900]),
+          westernLane: Object.freeze([-9800, -8000]),
+          easternLane: Object.freeze([9800, -7800]),
+          arcaEntry: Object.freeze([-5200, -4700]),
+          arcaExit: Object.freeze([5200, -11800])
+        });
+
+        ctx.addWorldPreset("migalCityNight", {
+          ...base,
+          label: "MIGAL CITY — NIGHT OF NUMBERS",
+          regionId: "migal_city",
+          sectorIds: Object.freeze(["central_medical", "power_district", "military_root", "atoll_port"]),
+          variant: "war_day_23_night_defence",
+          missionAnchors,
+          previewFocus: [0, -9000],
+          fog: { ...base.fog, far: 7600 },
+          atmosphere: { ...base.atmosphere, seed: 0x4d494731, haze: 0.052 },
+          decor: {
+            ...base.decor,
+            seed: 0x4d494732,
+            city: {
+              ...base.decor.city,
+              windows: { ...base.decor.city.windows, lit: 0.24 },
+              grid: { ...base.decor.city.grid, max: 17000 }
+            }
+          }
+        });
+
+        ctx.addWorldDecorator("migalCityDistrictLandmarks", {
+          worlds: ["migalCityNight"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "migalCityDistrictLandmarks";
+            addRoot(root);
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 18));
+            const ringGeo = keepGeometry(new THREE.TorusGeometry(1, 0.1, 8, 32));
+            const mat = (color, emissive = 0, intensity = 0) => keepMaterial(new THREE.MeshStandardMaterial({
+              color, roughness: 0.64, metalness: 0.18,
+              emissive, emissiveIntensity: intensity
+            }));
+            const concrete = mat(0x68717d);
+            const dark = mat(0x1a202b);
+            const rootGlow = mat(0x80d7ff, 0x42aeea, 2.2);
+            const powerGlow = mat(0xffb347, 0xff7a24, 2.0);
+            const medicalGlow = mat(0xeafcff, 0x7fffe2, 2.5);
+            const red = mat(0xff6b5b, 0xff3b30, 2.0);
+            const put = (geo, material, x, y, z, sx, sy, sz) => {
+              const mesh = new THREE.Mesh(geo, material);
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              root.add(mesh);
+              return mesh;
+            };
+            const ground = (x, z) => surfaceHeightAt(x, z);
+
+            // Military ROOT: a narrow authenticated-data tower with three cyan rings.
+            {
+              const x = 0, z = -9000, y = ground(x, z);
+              put(boxGeo, dark, x, y + 112, z, 54, 224, 54);
+              put(boxGeo, concrete, x, y + 235, z, 34, 24, 34);
+              for (const h of [58, 126, 194]) {
+                const ring = put(ringGeo, rootGlow, x, y + h, z, 74, 74, 74);
+                ring.rotation.x = Math.PI / 2;
+              }
+              put(boxGeo, rootGlow, x, y + 252, z, 7, 42, 7);
+            }
+
+            // Medical district: low white blocks, roof helipad and a luminous cross.
+            {
+              const x = 940, z = -8620, y = ground(x, z);
+              put(boxGeo, concrete, x, y + 34, z, 210, 68, 150);
+              put(boxGeo, medicalGlow, x, y + 71, z, 68, 5, 68);
+              put(boxGeo, medicalGlow, x, y + 106, z, 12, 66, 8);
+              put(boxGeo, medicalGlow, x, y + 106, z, 58, 12, 8);
+            }
+
+            // Power district: transformer rows and orange obstruction stacks.
+            {
+              const x = -920, z = -9380, y = ground(x, z);
+              for (let row = -1; row <= 1; row += 1) {
+                put(boxGeo, dark, x + row * 145, y + 24, z, 112, 48, 82);
+                for (let col = -1; col <= 1; col += 1) {
+                  put(cylGeo, powerGlow, x + row * 145 + col * 28, y + 66, z, 5, 72, 5);
+                }
+              }
+              for (const dx of [-230, 230]) {
+                put(cylGeo, concrete, x + dx, y + 76, z - 70, 18, 152, 18);
+                put(boxGeo, red, x + dx, y + 158, z - 70, 16, 8, 16);
+              }
+            }
+          }
+        });
+      },
+      "map_migalCity"
+    ); // @payload:map_migalCity
+    applyPayload(
+      function register(ctx) {
+        const { MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES } = ctx.tables;
+        const world = WORLD_PRESETS.migalCityNight;
+        if (!world) throw new Error("[sera-m15] migalCityNight is not registered");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m14" && mission.campaign === "sera")) {
+          throw new Error("[sera-m15] sera-m14 predecessor is missing");
+        }
+        for (const type of ["tu22m3", "su35", "jammer", "typhoon", "cruiseWeapon", "fa18", "f15c", "uav"]) {
+          if (!AIRCRAFT_TYPES[type]) throw new Error(`[sera-m15] required aircraft missing: ${type}`);
+        }
+        for (const type of ["tu22m3", "su35", "jammer", "typhoon", "cruiseWeapon"]) {
+          if (!ENEMY_AI_PROFILES[type]) throw new Error(`[sera-m15] required enemy profile missing: ${type}`);
+        }
+
+        const anchors = world.missionAnchors;
+        const district = (id, label, at) => ({
+          id, label, x: at[0], z: at[1], maxHealth: 100, hitRadius: 150
+        });
+        const wave = (types, options = {}) => ({
+          types,
+          tgt: options.tgt ?? true,
+          rankNeutral: options.rankNeutral ?? false,
+          concurrent: options.concurrent ?? true,
+          delay: options.delay || 0,
+          band: options.band || 2,
+          idBase: options.idBase,
+          label: options.label,
+          missionTag: options.missionTag || "m15RedPackage",
+          role: options.role || "line",
+          skill: options.skill || "regular",
+          facilityIndex: Number.isInteger(options.facilityIndex) ? options.facilityIndex : undefined,
+          at: options.at,
+          altitude: options.altitude,
+          facing: options.facing,
+          radio: options.radio
+        });
+
+        const m15CityContract = Object.freeze({
+          jammerTag: "m15Jammer",
+          redTag: "m15RedPackage",
+          cruiseTag: "m15CruiseWeapon",
+          cruiseType: "cruiseWeapon",
+          whiteArcaTag: "arcaWhiteM15",
+          whiteArcaDelay: 56,
+          releaseRadius: 3300,
+          cruiseSpeed: 210,
+          cruiseDamage: 50,
+          cruiseIdBase: 1590,
+          cruiseEligibleIds: Object.freeze([1511, 1531, 1551, 1552]),
+          districtIds: Object.freeze(["migal-military-root", "migal-power-district", "migal-hospital-district"]),
+          jammer: Object.freeze({ falseContacts: 7 }),
+          outcomes: Object.freeze({
+            districtsSaved: "migalDistrictsSaved",
+            militaryRootSafe: "migalMilitaryRootSafe",
+            powerDistrictSafe: "migalPowerDistrictSafe",
+            hospitalDistrictSafe: "migalHospitalDistrictSafe",
+            cruiseLaunched: "cruiseWeaponsLaunched",
+            cruiseIntercepted: "cruiseWeaponsIntercepted",
+            cruiseImpacts: "cruiseWeaponImpacts",
+            arcaKills: "arcaKillsThisMission",
+            cumulativeArcaKills: "ravenArcaKills"
+          })
+        });
+
+        const mission = {
+          key: "sera-m15",
+          campaign: "sera",
+          campaignOrder: 15,
+          world: "migalCityNight",
+          title: "NIGHT OF NUMBERS",
+          jp: "ミガル市街へ侵入する妨害機と三方向の爆撃編隊を迎撃し、軍事ROOT・発電区・中央医療区を防衛せよ。",
+          act: 3,
+          storyNo: 15,
+          story: "WAR DAY 23。海面に映るミガルの灯を、三つの爆撃航路が同時に横切る。\n軍事ROOTは防空を、発電区は避難路を、病院区は今も続く手術を支えている。数字だけなら優先順位は簡単だった。",
+          epilogue: [
+            "ミガル上空の爆撃編隊は消え、残った灯が夜の海面へ戻った。",
+            "MERIDIANは撃墜数より先に、軍事ROOT、発電区、病院区の生存を読み上げた。",
+            "ARCAはもう青い同伴者ではなかった。だが白い機体を追うことは、まだ任務ではなかった。"
+          ],
+          friendlies: {
+            playerStart: {
+              x: anchors.playerStart[0], y: 1850, z: anchors.playerStart[1],
+              facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] }
+            },
+            wingmen: [
+              { type: "fa18", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "aam4", offset: { back: 125, side: 150, up: -18 } }
+            ],
+            supportFlights: [
+              {
+                aircraft: "typhoon", callsign: "ARCA CIVIC WATCH", count: 2,
+                vulnerable: false, enemyTargetable: false, combatSupport: true,
+                combatTargetTypes: ["jammer", "tu22m3"], radioSpeaker: "pax",
+                speed: 330, altitude: 3500, spacing: 360, holdAtExit: false,
+                start: { x: anchors.arcaEntry[0], z: anchors.arcaEntry[1] },
+                exit: { x: anchors.arcaExit[0], z: anchors.arcaExit[1] }
+              },
+              {
+                aircraft: "f15c", callsign: "MIGAL SHIELD", count: 4,
+                vulnerable: false, enemyTargetable: false, combatSupport: true,
+                combatTargetTypes: ["tu22m3", "su35", "cruiseWeapon"],
+                speed: 285, altitude: 2600, spacing: 300, holdAtExit: true,
+                start: { x: -2600, z: -4700 }, exit: { x: 0, z: -9000 }
+              },
+              {
+                aircraft: "uav", callsign: "OPHAN DEFENCE", count: 4,
+                vulnerable: false, enemyTargetable: false, combatSupport: true,
+                combatTargetTypes: ["cruiseWeapon"],
+                speed: 190, altitude: 1500, spacing: 230, holdAtExit: true,
+                start: { x: 2500, z: -5600 }, exit: { x: 0, z: -9000 }
+              }
+            ]
+          },
+          protectedFacilities: [
+            district("migal-military-root", "MILITARY ROOT", anchors.militaryRoot),
+            district("migal-power-district", "POWER DISTRICT", anchors.powerDistrict),
+            district("migal-hospital-district", "CENTRAL HOSPITAL", anchors.hospitalDistrict)
+          ],
+          facilityContract: {
+            rankCapAfterLoss: "A",
+            failWhenAllLost: true,
+            hitDamage: 50,
+            lossRadio: { speaker: "lark", priority: "URGENT", text: "区画が一つ落ちた。残る灯を守る、次の巡航弾を探せ！", id: "m15-district-lost" }
+          },
+          sequence: [
+            wave(["jammer"], {
+              concurrent: false, band: 1, idBase: 1500, label: "BLACK COUNT",
+              missionTag: "m15Jammer", at: [0, -4300], altitude: 4100, facing: [0, -9000],
+              radio: [
+                { speaker: "meridian", priority: "CRITICAL", text: "妨害中継機を赤TGT指定。表示の分裂を止めてから爆撃航路を読む。", id: "m15-jammer-contact" }
+              ]
+            }),
+            wave(["tu22m3", "tu22m3"], {
+              concurrent: false, idBase: 1510, label: "ROOT LANE", facilityIndex: 0,
+              at: anchors.northernLane, altitude: 2600, facing: anchors.militaryRoot,
+              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "三航路を確認。中央二機は軍事ROOT、西は発電区、東は中央病院へ向かう。", id: "m15-three-lanes" }]
+            }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, idBase: 1520, label: "ROOT ESCORT", at: [1600, -900], altitude: 3000, facing: anchors.militaryRoot }),
+            wave(["tu22m3", "tu22m3"], { delay: 5, idBase: 1530, label: "POWER LANE", facilityIndex: 1, at: anchors.westernLane, altitude: 2300, facing: anchors.powerDistrict }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 5, idBase: 1540, label: "POWER ESCORT", at: [-9400, -6600], altitude: 2850, facing: anchors.powerDistrict }),
+            wave(["tu22m3", "tu22m3"], { delay: 10, idBase: 1550, label: "HOSPITAL LANE", facilityIndex: 2, at: anchors.easternLane, altitude: 2250, facing: anchors.hospitalDistrict }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 10, idBase: 1560, label: "HOSPITAL ESCORT", at: [9500, -6100], altitude: 2850, facing: anchors.hospitalDistrict }),
+            // Held by the M15 runtime until every blue ARCA object has retired.
+            wave(["typhoon", "typhoon"], {
+              tgt: false, rankNeutral: true, delay: 999, idBase: 1570,
+              label: "ARCA ENFORCEMENT", missionTag: "arcaWhiteM15",
+              at: [-7200, -11100], altitude: 3600, facing: [0, -9000], skill: "expert",
+              radio: [
+                { speaker: "pax", priority: "URGENT", text: "ARCA執行機よりROOK。国際管理空域への武装進入を警告する。離脱しない場合は交戦する。", id: "m15-arca-white" },
+                { speaker: "meridian", priority: "CRITICAL", text: "ROOK 1、ARCAは白NON-TGT。赤い爆撃主力を優先、追撃は任務外だ。", id: "m15-arca-priority" }
+              ]
+            })
+          ],
+          m15CityContract,
+          fixedRadio: [
+            { id: "m15-intro", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ミガル市街防空へ移行。軍事ROOT、発電区、中央医療区を同時防衛する。" },
+            { id: "m15-arca-blue", at: 8, speaker: "pax", priority: "NORMAL", text: "ARCA CIVIC WATCH、避難航空路の監視を終了する。国際協定に従い作戦空域を離脱する。" },
+            { id: "m15-jammer-down", event: "m15JammerDown", speaker: "lark", priority: "CRITICAL", text: "妨害が消えた！ 三本の本物の航路が見える、数じゃなく行き先を見ろ！" },
+            { id: "m15-cruise-launch", event: "m15CruiseLaunch", speaker: "meridian", priority: "URGENT", text: "巡航弾分離！ 母機撃墜後も飛翔を継続する。小型の白い四角を迎撃せよ！" },
+            { id: "m15-first-intercept", event: "m15FirstCruiseIntercept", speaker: "lark", priority: "NORMAL", text: "巡航弾を一発落とした！ 爆撃機だけ見てたら街へ抜けるぞ！" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "全赤TGT消失。ミガル市街防空を達成、生存区画を集計して帰投せよ。", id: "m15-success" },
+          failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "三防衛区画すべて喪失。ミガル市街防空を中止する。", id: "m15-failure" },
+          parTime: 520,
+          hasOutro: false,
+          map: { x: 0.52, y: 0.32 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 14200,
+          briefing: "夜間のミガル市街へ侵入する妨害機一、Tu-22M3六、Su-35護衛六を迎撃せよ。最初に妨害中継機を破壊し、軍事ROOT・発電区・中央病院へ分かれる三航路を識別する。\n四機の爆撃機は市街手前で迎撃可能な巡航弾を分離する。発射後に母機を落としても巡航弾は消えず、HUD上の小型白色航空目標として区画へ飛び続ける。三区画全滅で任務失敗。\n序盤の青ARCA CIVIC WATCHは作戦空域から撤退する。後半の白ARCA Typhoon二機は別に出現する攻撃可能なNON-TGTで、任務達成にもランクにも不要。M15からRAVENのARCA撃墜数を作戦記録へ保存する。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m14" });
+      },
+      "mission_sera_m15"
+    ); // @payload:mission_sera_m15
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -44554,6 +44901,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m13Result) Object.assign(entry, m13Result);
       const m14Result = m14ResultSnapshot(mission);
       if (m14Result) Object.assign(entry, m14Result);
+      const m15Result = m15ResultSnapshot(mission);
+      if (m15Result) Object.assign(entry, m15Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -46975,6 +47324,150 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM14ResolveOutcome: () => {
         const mission = m14Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM15Probe: () => {
+        const mission = m15Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          city: { ...m15State },
+          facilities: m15Facilities(mission).map((facility) => ({
+            id: facility.facilityId,
+            label: facility.label,
+            alive: facility.alive,
+            hp: facility.hp,
+            maxHp: facility.maxHp,
+            hits: facility.hits
+          })),
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            missionTag: enemy.missionTag || null,
+            cruiseTarget: enemy.m15CruiseTargetId || null,
+            bombRunFired: Boolean(enemy.bombRunFired)
+          })),
+          friendlies: friendlies.map((friendly) => ({
+            type: friendly.type,
+            label: friendly.label,
+            alive: friendly.alive,
+            retired: Boolean(friendly.retired),
+            combatSupport: Boolean(friendly.combatSupport)
+          })),
+          pending: pendingWaves.map((entry) => ({
+            delay: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            tgt: entry.wave ? isTgtEntry(entry.wave) : false,
+            missionTag: entry.wave?.missionTag || null
+          })),
+          ghostMarkers: m12GhostMarkerElements.length,
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM15ClearJammer: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const jammer = enemies.find((enemy) => (
+          enemy.alive && enemy.missionTag === mission.m15CityContract.jammerTag
+        ));
+        if (jammer) damageEnemy(jammer, jammer.hp + 1, true, false);
+        updateM15MissionThreat();
+        for (let step = 0; step < 3 && missionWaveIndex < mission.waves.length; step += 1) {
+          updateMission(3, 3);
+        }
+        return m15State.jammerDownFired;
+      },
+      forceSeraM15RetireBlueArca: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        const flight = m15BlueArcaFlight();
+        for (const friendly of flight) retireFriendly(friendly);
+        missionElapsed = Math.max(
+          missionElapsed,
+          Number(mission.m15CityContract.whiteArcaDelay) || 0
+        );
+        updateM15MissionThreat();
+        updatePendingWaves(1);
+        return flight.length;
+      },
+      forceSeraM15DeployPending: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) {
+          if (queued.wave?.missionTag === mission.m15CityContract.whiteArcaTag
+              && !m15State.blueArcaRetired) continue;
+          queued.timer = 0;
+        }
+        updatePendingWaves(0.016);
+        updateM15MissionThreat();
+        return true;
+      },
+      forceSeraM15ReleaseCruiseWeapons: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || enemy.type !== "tu22m3" || !enemy.strikeTargetRef) continue;
+          const facility = enemy.strikeTargetRef;
+          const range = Math.max(500, Number(mission.m15CityContract.releaseRadius) - 120);
+          tmpV1.copy(enemy.group.position).setY(0)
+            .sub(tmpV2.set(facility.x, 0, facility.z));
+          if (tmpV1.lengthSq() < 1) tmpV1.set(0, 0, 1);
+          tmpV1.normalize().multiplyScalar(range);
+          enemy.group.position.set(facility.x + tmpV1.x, enemy.group.position.y, facility.z + tmpV1.z);
+        }
+        updateM15MissionThreat();
+        return m15State.cruiseLaunched;
+      },
+      forceSeraM15ImpactCruise: (index = 0) => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        const weapons = enemies.filter((enemy) => enemy.alive && enemy.m15CruiseWeapon);
+        const weapon = weapons[Math.max(0, Math.floor(Number(index) || 0))];
+        if (!weapon) return false;
+        const facility = protectedFacilities.find(
+          (entry) => entry.facilityId === weapon.m15CruiseTargetId
+        );
+        if (!facility) return false;
+        weapon.group.position.set(facility.x, facility.y + 38, facility.z);
+        updateM15CruiseWeapon(weapon, 0.016);
+        updateM15MissionThreat();
+        return true;
+      },
+      forceSeraM15ClearWhiteArca: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || enemy.missionTag !== mission.m15CityContract.whiteArcaTag) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        return cleared;
+      },
+      forceSeraM15ClearDesignated: () => {
+        const mission = m15Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || !isTgtEntry(enemy)) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM15MissionThreat();
+        return cleared;
+      },
+      forceSeraM15ResolveOutcome: () => {
+        const mission = m15Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -51659,6 +52152,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM12State(MISSIONS[currentMissionIndex]);
       resetM13State(MISSIONS[currentMissionIndex]);
       resetM14State(MISSIONS[currentMissionIndex]);
+      resetM15State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -56026,6 +56520,264 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         [fields.landingShipsBeached || "landingShipsBeached"]: m14State.beachedIds.size,
         [fields.landedArmorSpawned || "landedArmorSpawned"]: m14State.landedArmorSpawned,
         [fields.hospitalShipSafe || "hospitalShipSafe"]: m14HospitalShipSafe()
+      };
+    }
+
+    const m15State = {
+      active: false,
+      completed: false,
+      failed: false,
+      jammerDownFired: false,
+      blueArcaRetired: false,
+      whiteArcaReleased: false,
+      cruiseSerial: 0,
+      cruiseLaunched: 0,
+      cruiseIntercepted: 0,
+      cruiseImpacts: 0,
+      arcaKillsThisSortie: 0
+    };
+
+    function m15Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m15CityContract ? mission : null;
+    }
+
+    function resetM15State(mission) {
+      m15State.active = Boolean(mission && mission.m15CityContract);
+      m15State.completed = false;
+      m15State.failed = false;
+      m15State.jammerDownFired = false;
+      m15State.blueArcaRetired = false;
+      m15State.whiteArcaReleased = false;
+      m15State.cruiseSerial = 0;
+      m15State.cruiseLaunched = 0;
+      m15State.cruiseIntercepted = 0;
+      m15State.cruiseImpacts = 0;
+      m15State.arcaKillsThisSortie = 0;
+    }
+
+    function m15Facilities(mission = m15Mission()) {
+      const ids = new Set(mission?.m15CityContract?.districtIds || []);
+      return protectedFacilities.filter((facility) => ids.has(facility.facilityId));
+    }
+
+    function m15BlueArcaFlight() {
+      return friendlies.filter((friendly) => (
+        typeof friendly.label === "string" && friendly.label.startsWith("ARCA CIVIC WATCH")
+      ));
+    }
+
+    function spawnM15CruiseWeapon(bomber, mission) {
+      const contract = mission.m15CityContract;
+      const facility = bomber && bomber.strikeTargetRef;
+      if (!facility || !facility.alive) return null;
+      const idBase = Number(contract.cruiseIdBase) + m15State.cruiseSerial;
+      const oldTgt = spawningTgt;
+      const oldNeutral = spawningRankNeutral;
+      const oldHunt = spawningHunt;
+      const oldTag = spawningMissionTag;
+      const oldFacility = spawningFacilityIndex;
+      const oldForward = spawningForward;
+      const position = bomber.group.position.clone();
+      // The weapon has already separated and descended to its terrain-following
+      // leg when it becomes a HUD contact. Keeping the bomber's 2.5km altitude
+      // would draw a steep bomb dive rather than a cruise profile.
+      position.y = Math.min(position.y - 80, Math.max(facility.y + 180, 620));
+      spawningTgt = true;
+      spawningRankNeutral = false;
+      spawningHunt = null;
+      spawningMissionTag = contract.cruiseTag;
+      spawningFacilityIndex = null;
+      spawningForward = null;
+      try {
+        spawnEnemy(
+          position, 3, 0, contract.cruiseType, null, idBase,
+          "line", "regular", null
+        );
+      } finally {
+        spawningTgt = oldTgt;
+        spawningRankNeutral = oldNeutral;
+        spawningHunt = oldHunt;
+        spawningMissionTag = oldTag;
+        spawningFacilityIndex = oldFacility;
+        spawningForward = oldForward;
+      }
+      const weapon = enemies.find((enemy) => enemy.id === idBase + 1);
+      if (!weapon) return null;
+      weapon.m15CruiseWeapon = true;
+      weapon.m15CruiseTargetId = facility.facilityId;
+      weapon.m15Impact = false;
+      weapon.speed = Math.max(120, Number(contract.cruiseSpeed) || 210);
+      weapon.targetSpeed = weapon.speed;
+      weapon.fireCooldown = 999;
+      weapon.missileCooldown = 999;
+      tmpV1.set(facility.x, facility.y + 38, facility.z).sub(weapon.group.position);
+      if (tmpV1.lengthSq() > 0.001) {
+        weapon.group.quaternion.setFromUnitVectors(LOCAL_FORWARD, tmpV1.normalize());
+      }
+      m15State.cruiseSerial += 1;
+      m15State.cruiseLaunched += 1;
+      if (m15State.cruiseLaunched === 1) {
+        fireFixedRadioEvent("m15CruiseLaunch");
+        showBanner("CRUISE WEAPONS INBOUND", 2.0, "danger");
+      }
+      return weapon;
+    }
+
+    function updateM15CruiseWeapon(enemy, dt) {
+      if (!enemy || !enemy.alive || !enemy.m15CruiseWeapon) return false;
+      const mission = m15Mission();
+      const contract = mission?.m15CityContract;
+      if (!contract) return false;
+      const facility = protectedFacilities.find(
+        (entry) => entry.facilityId === enemy.m15CruiseTargetId
+      );
+      if (!facility) {
+        damageEnemy(enemy, enemy.hp + 1, true, true);
+        return true;
+      }
+      tmpV1.set(facility.x, facility.y + 38, facility.z).sub(enemy.group.position);
+      const distance = tmpV1.length();
+      if (distance <= Math.max(80, facility.hitRadius * 0.7)) {
+        enemy.m15Impact = true;
+        m15State.cruiseImpacts += 1;
+        damageProtectedFacility(facility, Number(contract.cruiseDamage) || 50);
+        damageEnemy(enemy, enemy.hp + 1, true, true);
+        return true;
+      }
+      if (distance > 0.001) {
+        tmpV1.multiplyScalar(1 / distance);
+        tmpQ1.setFromUnitVectors(LOCAL_FORWARD, tmpV1);
+        enemy.group.quaternion.rotateTowards(tmpQ1, THREE.MathUtils.degToRad(28) * dt);
+        enemy.group.quaternion.normalize();
+      }
+      forwardOf(enemy.group, tmpV2);
+      enemy.group.position.addScaledVector(tmpV2, enemy.speed * dt);
+      enemy.smokeTimer -= dt;
+      if (enemy.smokeTimer <= 0) {
+        tmpV3.copy(enemy.group.position).addScaledVector(tmpV2, -6);
+        smokeParticlePool.spawn(tmpV3, tmpV2.clone().multiplyScalar(-8), 0.75, 0xd4d7da, -0.18, 0.55);
+        enemy.smokeTimer += 0.055;
+      }
+      updateEnemyOrdnance(enemy, dt, performance.now() * 0.001);
+      return true;
+    }
+
+    function handleM15EnemyDestroyed(enemy, byWingman) {
+      if (!m15State.active || !enemy) return;
+      const mission = m15Mission();
+      const contract = mission?.m15CityContract;
+      if (!contract) return;
+      if (enemy.m15CruiseWeapon && !enemy.m15Impact) {
+        m15State.cruiseIntercepted += 1;
+        if (m15State.cruiseIntercepted === 1) fireFixedRadioEvent("m15FirstCruiseIntercept");
+      }
+      if (!byWingman && enemy.missionTag === contract.whiteArcaTag) {
+        m15State.arcaKillsThisSortie += 1;
+      }
+    }
+
+    function updateM15MissionThreat() {
+      const mission = m15Mission();
+      if (!mission || !m15State.active) return false;
+      if (m15State.failed || m15State.completed) return true;
+      const contract = mission.m15CityContract;
+
+      const jammerAlive = enemies.some((enemy) => (
+        enemy.alive && enemy.missionTag === contract.jammerTag
+      ));
+      if (!jammerAlive && !m15State.jammerDownFired) {
+        m15State.jammerDownFired = true;
+        fireFixedRadioEvent("m15JammerDown");
+        showBanner("THREE ATTACK LANES IDENTIFIED", 2.0, "success");
+        clearM12GhostHudMarkers();
+      }
+
+      const blueArca = m15BlueArcaFlight();
+      m15State.blueArcaRetired = blueArca.length > 0
+        && blueArca.every((friendly) => friendly.retired || !friendly.alive);
+      if (
+        !m15State.whiteArcaReleased
+        && m15State.blueArcaRetired
+        && missionElapsed >= Math.max(0, Number(contract.whiteArcaDelay) || 0)
+      ) {
+        const queued = pendingWaves.find((entry) => (
+          entry.wave?.missionTag === contract.whiteArcaTag
+        ));
+        if (queued) queued.timer = 0;
+        m15State.whiteArcaReleased = true;
+      }
+
+      const eligible = new Set(contract.cruiseEligibleIds || []);
+      for (const enemy of enemies) {
+        if (
+          !enemy.alive || enemy.bombRunFired || !enemy.strikeTargetRef
+          || enemy.type !== "tu22m3"
+        ) continue;
+        const facility = enemy.strikeTargetRef;
+        const distance = Math.hypot(
+          enemy.group.position.x - facility.x,
+          enemy.group.position.z - facility.z
+        );
+        if (distance > Math.max(600, Number(contract.releaseRadius) || 3300)) continue;
+        enemy.bombRunFired = true;
+        if (eligible.has(enemy.id)) spawnM15CruiseWeapon(enemy, mission);
+        else damageProtectedFacility(facility, Number(contract.cruiseDamage) || 50);
+        egressStrikeAircraft(enemy);
+      }
+
+      const facilities = m15Facilities(mission);
+      if (facilities.length > 0 && facilities.every((facility) => !facility.alive)) {
+        m15State.failed = true;
+        missionFailureRadioOverride = mission.failureRadio || null;
+        showBanner("ALL THREE DISTRICTS LOST", 2.2, "danger");
+        completeMission(false);
+        return true;
+      }
+
+      const liveDesignated = enemies.some((enemy) => enemy.alive && isTgtEntry(enemy));
+      const pendingDesignated = pendingWaves.some((entry) => (
+        entry.wave && isTgtEntry(entry.wave)
+      ));
+      const futureDesignated = mission.waves.slice(missionWaveIndex).some(
+        (wave) => isTgtEntry(wave)
+      );
+      if (!liveDesignated && !pendingDesignated && !futureDesignated) {
+        m15State.completed = true;
+        completeMission(true);
+        return true;
+      }
+      return false;
+    }
+
+    function priorArcaKills(excludeMissionKey = null) {
+      let total = 0;
+      for (const [key, record] of Object.entries(missionRecords)) {
+        if (key === excludeMissionKey || !record || typeof record !== "object") continue;
+        total += Math.max(0, Number(record.arcaKillsThisMission) || 0);
+      }
+      return total;
+    }
+
+    function m15ResultSnapshot(mission) {
+      const contract = mission && mission.m15CityContract;
+      if (!contract || !m15State.active || !m15State.completed) return null;
+      const facilities = m15Facilities(mission);
+      const alive = new Map(facilities.map((facility) => [facility.facilityId, facility.alive]));
+      const existing = Math.max(0,
+        Number(missionRecords[mission.key]?.arcaKillsThisMission) || 0);
+      const arcaKills = Math.max(existing, m15State.arcaKillsThisSortie);
+      const fields = contract.outcomes || {};
+      return {
+        [fields.districtsSaved || "migalDistrictsSaved"]: facilities.filter((facility) => facility.alive).length,
+        [fields.militaryRootSafe || "migalMilitaryRootSafe"]: alive.get(contract.districtIds[0]) === true,
+        [fields.powerDistrictSafe || "migalPowerDistrictSafe"]: alive.get(contract.districtIds[1]) === true,
+        [fields.hospitalDistrictSafe || "migalHospitalDistrictSafe"]: alive.get(contract.districtIds[2]) === true,
+        [fields.cruiseLaunched || "cruiseWeaponsLaunched"]: m15State.cruiseLaunched,
+        [fields.cruiseIntercepted || "cruiseWeaponsIntercepted"]: m15State.cruiseIntercepted,
+        [fields.cruiseImpacts || "cruiseWeaponImpacts"]: m15State.cruiseImpacts,
+        [fields.arcaKills || "arcaKillsThisMission"]: arcaKills,
+        [fields.cumulativeArcaKills || "ravenArcaKills"]: priorArcaKills(mission.key) + arcaKills
       };
     }
 
@@ -60813,6 +61565,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          // shared ordnance path below while retreating.
          if (updateM08RetreatingAircraft(enemy, dt)) continue;
 
+        // NIGHT OF NUMBERS' released cruise weapons are real lockable air
+        // contacts, but not aircraft. Their straight district-bound flight
+        // owns the frame and deliberately bypasses fighter pursuit/stall AI.
+        if (updateM15CruiseWeapon(enemy, dt)) continue;
+
         updateEnemyAerodynamicState(enemy, dt);
 
         // Damage states: below half HP the aircraft trails grey smoke, below a
@@ -62332,6 +63089,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
       enemy.alive = false;
       enemy.hitbox.visible = false;
+      handleM15EnemyDestroyed(enemy, byWingman);
       if (enemy.m04RedFleet) {
         const destroyed = (sortieMarks.m04RedFleetDestroyed || 0) + 1;
         sortieMarks.m04RedFleetDestroyed = destroyed;
@@ -62776,6 +63534,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       }
       updatePendingWaves(dt);
       updateFixedRadioSchedule();
+      // M15 must claim bomber release at the 3.3km cruise-weapon line before
+      // the legacy facility handler can turn the same run into a direct hit.
+      if (updateM15MissionThreat()) return;
       if (updateStrikeThreat()) return;
       updateLandingThreat();
       if (updateM03MissionThreat()) return;
@@ -64190,20 +64951,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     }
 
     function updateM12GhostHudMarkers() {
-      const mission = m12Mission();
-      const jammerAlive = Boolean(
-        mission && m12State.active && enemies.some((enemy) => (
-          enemy.alive && enemy.type === "jammer"
-          && enemy.missionTag === mission.m12SwarmContract.designatedTag
-        ))
-      );
+      const m12 = m12Mission();
+      const m15 = m15Mission();
+      const jammerTag = m12 && m12State.active
+        ? m12.m12SwarmContract.designatedTag
+        : (m15 && m15State.active ? m15.m15CityContract.jammerTag : null);
+      const jammerAlive = Boolean(jammerTag && enemies.some((enemy) => (
+        enemy.alive && enemy.type === "jammer" && enemy.missionTag === jammerTag
+      )));
       if (!jammerAlive) {
         clearM12GhostHudMarkers();
         return;
       }
 
       const count = Math.max(0, Math.min(10,
-        Number(mission.m12SwarmContract.jammer?.falseContacts) || 0));
+        Number(
+          m12?.m12SwarmContract?.jammer?.falseContacts
+          ?? m15?.m15CityContract?.jammer?.falseContacts
+        ) || 0));
       while (m12GhostMarkerElements.length < count) {
         const marker = document.createElement("div");
         marker.className = "enemyMarker jammerGhost active";
