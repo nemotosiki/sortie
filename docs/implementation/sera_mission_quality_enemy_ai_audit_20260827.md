@@ -94,7 +94,7 @@ CAS. This is a second checkpoint after the air-purpose rework.
 | M11 FROZEN EYE | Current user-authored base strike, HALO cycle and target splits implemented | FROZEN CAP/QRA need explicit assignments; `standard` is not a skill key |
 | M12 GLASS SWARM | Good finite 27-aircraft escalation and optional grid choice | Drone attack and crewed cover wait for generic merge range |
 | M13 LIFELINE | Strong hunt contract, staggered groups and aggregate HP | AWACS must remain SUPPORT; channel boats need an explicit operational role |
-| M14 BREAKWATER | Large landing force and staged carrier aviation implemented | Every aircraft is red; review which air screen should be white after purpose QA |
+| M14 BREAKWATER | Open-ocean capacity interdiction and staged carrier aviation implemented | Red is limited to LHD/LST capacity; white screens must actively protect or intercept |
 | M15 NIGHT OF NUMBERS | Three strike lanes, cruise weapons and blue-to-white ARCA transition implemented | Su-35 escort and white ARCA engagement are range-accidental |
 | M16 HOME FLEET | Fleet HP, SSGN windows, ASM interception and bomber ship-hunt implemented | Su-33 screen and AWACS support intentions are only labels |
 | M17 THE LONG APPROACH | Bomber/support TGTs, rare prototype and white HELIX pair match plan | High cover and HELIX may loiter rather than pressure their intended target |
@@ -147,12 +147,14 @@ hostile fighter wave.
   No extra Su-57/Su-35 spam was added. M05 instead gains six planned blue
   ground objects and real CAS pressure.
 - [x] Review M14's red-air requirement after the landing/CAP behaviour is
-  playable; do not change IFF merely to increase white-marker count.
+  playable. The open-sea rework supersedes the old all-red shoreline contract:
+  only the LHD/LST hulls physically advance the landing objective.
 
-M14 remains all-red in the carrier-air package because the mission contract
-explicitly requires the embarked Su-33/Ka-52 force. Its Su-33s now defend the
-landing fleet instead of waiting near their spawn point; changing them to white
-would weaken the authored landing-force objective rather than improve variety.
+M14's Su-33/Ka-52 package is now white, hostile and rank-neutral. Su-33s defend
+the assault-capacity tag and Ka-52s intercept RAVEN, so the contacts remain
+meaningful without becoming arbitrary clear requirements. Aegis, frigate and
+missile-boat screens follow the same rule. Destroying a screen is a tactical
+choice that buys access to the red hulls; it is not the mission's strategic end.
 
 ### E. Verification
 

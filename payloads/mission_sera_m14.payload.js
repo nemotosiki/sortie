@@ -1,7 +1,7 @@
-// Sera M14 BREAKWATER — amphibious interception with per-LST beach spawns.
+// Sera M14 BREAKWATER — open-ocean amphibious-capacity interdiction.
 export default function register(ctx) {
   const {
-    MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, HELI_TYPES, SHIP_TYPES, GROUND_TYPES
+    MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, HELI_TYPES, SHIP_TYPES
   } = ctx.tables;
   const world = WORLD_PRESETS.naharMudflats;
   if (!world) throw new Error("[sera-m14] naharMudflats is not registered");
@@ -13,20 +13,22 @@ export default function register(ctx) {
     throw new Error("[sera-m14] Su-33 air contact is missing");
   }
   if (!HELI_TYPES.ka52) throw new Error("[sera-m14] Ka-52 helicopter type is missing");
-  for (const type of ["lhd", "landingShip", "missileBoat", "hospitalShip"]) {
+  for (const type of ["lhd", "landingShip", "aegis", "frigate", "missileBoat", "hospitalShip"]) {
     if (!SHIP_TYPES[type]) throw new Error(`[sera-m14] required ship type is missing: ${type}`);
-  }
-  for (const type of ["tank", "spaag"]) {
-    if (!GROUND_TYPES[type]) throw new Error(`[sera-m14] required ground type is missing: ${type}`);
   }
   const anchors = world.missionAnchors;
   const m14LandingContract = Object.freeze({
+    objectiveShipIds: Object.freeze([1411, 1412, 1413, 1414, 1415]),
     landingShipIds: Object.freeze([1412, 1413, 1414, 1415]),
-    landingTag: "m14LandingFleet",
+    assaultTag: "m14AssaultCapacity",
+    screenTag: "m14EscortScreen",
     airTag: "m14CarrierAir",
-    groundMark: "m14LandedArmor",
-    groundIdBase: 1490,
+    routeSpeed: 16,
+    escapeFailAt: 2,
+    rankCapAfterEscape: "A",
     outcomes: Object.freeze({
+      assaultShipsStopped: "assaultShipsStopped",
+      landingShipsEscaped: "landingShipsEscaped",
       landingShipsBeached: "landingShipsBeached",
       landedArmorSpawned: "landedArmorSpawned",
       hospitalShipSafe: "hospitalShipSafe"
@@ -39,18 +41,18 @@ export default function register(ctx) {
     campaignOrder: 14,
     world: "naharMudflats",
     title: "BREAKWATER",
-    jp: "ナハル西岸へ接近する上陸群を海上で阻止し、接岸した装甲部隊を排除せよ。",
+    jp: "ナハル西方外洋で上陸能力を持つ艦を識別し、移送線へ到達する前に阻止せよ。",
     act: 3,
     storyNo: 14,
-    story: "WAR DAY 20。同じ時刻、ハドールへ物資が向かう裏で、ナハル西岸へ上陸群が入る。\n白い病院船が同じ水路を横切る。赤TGTだけを見て撃てばよい——それでも対艦ミサイルの爆煙は白い船体を隠す。",
+    story: "WAR DAY 20。ハドールへ医療物資が向かう同じ時刻、エレム上陸群はナハル西方外洋を二縦隊で進む。\n白い病院船MERCYも戦域を横切る。互いの司令部が見ているのは同じ海だが、ROOKに必要なのは意図の断定ではない。上陸能力を示す赤TGTだけを、沖合移送線の手前で止めることだ。",
     epilogue: [
-      "ナハル西岸の上陸群は無力化され、干潟の防衛線は残った。",
-      "接岸を許した艦の数だけ、海ではなく砂浜に残骸が増えた。",
-      "病院船は戦闘空域を抜け、救難灯を消さずに航海を続けた。"
+      "上陸群は海岸線を見る前に継続能力を失い、ナハル西側の防衛線は時間を得た。",
+      "護衛艦と艦載機はなお海上に残る。それでも、岸へ運ぶ艦がなければ橋頭堡は作れない。",
+      "病院船MERCYは両軍の航跡を横切り、どちらの説明にも回収されない白い船影を残した。"
     ],
     friendlies: {
       playerStart: {
-        x: anchors.playerStart[0], y: 1250, z: anchors.playerStart[1],
+        x: anchors.playerStart[0], y: 1450, z: anchors.playerStart[1],
         facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] }
       },
       wingmen: [
@@ -67,66 +69,105 @@ export default function register(ctx) {
         spacing: 320
       }
     },
+    // This is an offshore transfer boundary, not a drawable airfield or beach.
+    // Landing-capacity hulls steer toward it; crossing it resolves that hull as
+    // escaped. The HUD directive owns the warning, so no blue base marker is drawn.
     friendlyBase: {
-      x: anchors.beachhead[0], z: anchors.beachhead[1], heading: 0,
-      label: "NAHAR WEST DEFENCE LINE", style: "beach", failRadius: 470
+      x: anchors.transferLine[0], z: anchors.transferLine[1], heading: 0,
+      label: "AMPHIBIOUS TRANSFER LINE", style: "interdiction", failRadius: 440,
+      hidden: true, hudHidden: true
     },
     sequence: [
       {
         kind: "naval",
-        fleet: ["lhd", "landingShip", "landingShip", "landingShip", "landingShip", "missileBoat", "missileBoat", "missileBoat", "missileBoat"],
-        tgt: true, idBase: 1410, band: 1, label: "ELEM ASSAULT GROUP",
-        missionTag: "m14LandingFleet", at: [...anchors.assaultEntry], facing: [...anchors.beachhead], spacing: 520,
+        fleet: ["lhd", "landingShip", "landingShip"],
+        tgt: true, idBase: 1410, band: 1, label: "ELEM ASSAULT NORTH",
+        missionTag: "m14AssaultCapacity",
+        at: [...anchors.assaultNorthEntry], facing: [...anchors.transferLine], spacing: 430,
         radio: [
-          { speaker: "meridian", priority: "CRITICAL", text: "強襲揚陸艦一、LST四、ミサイル艇四。全艦赤TGT、接岸前に数を減らせ。", id: "m14-assault-group" }
+          { speaker: "meridian", priority: "CRITICAL", text: "北縦隊、LHD一・LST二を赤TGT指定。護衛艦は白だ。移送線へ届く前に上陸能力を止めろ。", id: "m14-assault-north" }
         ]
       },
       {
-        types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
-        delay: 22, band: 1, idBase: 1430, label: "SEA FLANKER 1", role: "line", skill: "regular",
-        purpose: "cap", protectTag: "m14LandingFleet", commitRange: 5800, leashRange: 9800,
-        at: [...anchors.northCapEntry], altitude: 2100, facing: [...anchors.battleCenter]
+        kind: "naval",
+        fleet: ["aegis", "frigate", "missileBoat", "missileBoat"],
+        tgt: false, rankNeutral: true, concurrent: true, delay: 2,
+        idBase: 1420, band: 1, label: "ELEM NORTH SCREEN",
+        missionTag: "m14EscortScreen",
+        at: [5000, 2650], facing: [...anchors.transferLine], spacing: 560
       },
       {
-        types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
-        delay: 54, band: 2, idBase: 1440, label: "ALLIGATOR 1", role: "line", skill: "regular",
+        kind: "naval",
+        fleet: ["landingShip", "landingShip"],
+        tgt: true, concurrent: true, delay: 48,
+        idBase: 1413, band: 2, label: "ELEM ASSAULT SOUTH",
+        missionTag: "m14AssaultCapacity",
+        at: [...anchors.assaultSouthEntry], facing: [...anchors.transferLine], spacing: 460,
+        radio: [
+          { speaker: "lark", priority: "URGENT", text: "南にもLST二！ 一列じゃない、挟むように入ってくる。赤TGTを分担しよう。", id: "m14-assault-south" }
+        ]
+      },
+      {
+        kind: "naval",
+        fleet: ["frigate", "missileBoat", "missileBoat"],
+        tgt: false, rankNeutral: true, concurrent: true, delay: 50,
+        idBase: 1424, band: 2, label: "ELEM SOUTH SCREEN",
+        missionTag: "m14EscortScreen",
+        at: [6500, -2550], facing: [...anchors.transferLine], spacing: 540
+      },
+      {
+        types: ["su33", "su33"], tgt: false, rankNeutral: true, concurrent: true,
+        missionTag: "m14CarrierAir", delay: 24, band: 1, idBase: 1430,
+        label: "SEA FLANKER 1", role: "line", skill: "regular",
+        purpose: "cap", protectTag: "m14AssaultCapacity", commitRange: 7000, leashRange: 12800,
+        at: [...anchors.northCapEntry], altitude: 2400, facing: [...anchors.battleCenter]
+      },
+      {
+        types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true,
+        missionTag: "m14CarrierAir", delay: 62, band: 2, idBase: 1440,
+        label: "ALLIGATOR 1", role: "line", skill: "regular",
         purpose: "intercept",
-        at: [2200, -3800], altitude: 420, facing: [...anchors.beachhead]
+        at: [2500, -4300], altitude: 480, facing: [...anchors.battleCenter]
       },
       {
-        types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
-        delay: 78, band: 2, idBase: 1450, label: "SEA FLANKER 2", role: "line", skill: "veteran",
-        purpose: "cap", protectTag: "m14LandingFleet", commitRange: 6000, leashRange: 10200,
-        at: [...anchors.southCapEntry], altitude: 2400, facing: [...anchors.battleCenter]
+        types: ["su33", "su33"], tgt: false, rankNeutral: true, concurrent: true,
+        missionTag: "m14CarrierAir", delay: 86, band: 2, idBase: 1450,
+        label: "SEA FLANKER 2", role: "line", skill: "veteran",
+        purpose: "cap", protectTag: "m14AssaultCapacity", commitRange: 7400, leashRange: 13200,
+        at: [...anchors.southCapEntry], altitude: 2700, facing: [...anchors.battleCenter]
       },
       {
-        types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
-        delay: 112, band: 2, idBase: 1460, label: "ALLIGATOR 2", role: "line", skill: "veteran",
+        types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true,
+        missionTag: "m14CarrierAir", delay: 118, band: 2, idBase: 1460,
+        label: "ALLIGATOR 2", role: "line", skill: "veteran",
         purpose: "intercept",
-        at: [-1200, 3600], altitude: 460, facing: [...anchors.beachhead]
+        at: [-600, 3900], altitude: 520, facing: [...anchors.battleCenter]
       },
       {
-        types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
-        delay: 138, band: 3, idBase: 1470, label: "SEA FLANKER 3", role: "line", skill: "veteran",
+        types: ["su33", "su33"], tgt: false, rankNeutral: true, concurrent: true,
+        missionTag: "m14CarrierAir", delay: 146, band: 3, idBase: 1470,
+        label: "SEA FLANKER 3", role: "line", skill: "veteran",
         purpose: "relief",
-        at: [9800, 500], altitude: 2600, facing: [...anchors.battleCenter],
-        radio: [{ speaker: "lark", priority: "URGENT", text: "Su-33最終隊！ 艦載機を片付けて、砂浜へ上がった装甲を潰す！", id: "m14-final-cap" }]
+        at: [10400, 400], altitude: 2900, facing: [...anchors.battleCenter],
+        radio: [{ speaker: "lark", priority: "URGENT", text: "Su-33増援。白だが放置すればこちらを押さえに来る——赤TGTへの進路だけは渡さないで。", id: "m14-final-cap" }]
       }
     ],
     m14LandingContract,
     fixedRadio: [
-      { id: "m14_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル西岸へ到着。上陸群は干潟水路を西進中。" },
-      { id: "m14_intro_02", at: 8, speaker: "lark", priority: "CRITICAL", text: "病院船MERCYが航路を横断中。青い船体を射線に入れないで。" },
-      { id: "m14_first_beach", event: "m14FirstBeach", speaker: "meridian", priority: "URGENT", text: "LST接岸、ランプ開放。戦車とSPAAGを赤TGTへ追加、海上群への攻撃も継続せよ。" },
-      { id: "m14_all_afloat_stopped", event: "m14AfloatStopped", speaker: "lark", priority: "CRITICAL", text: "海上の上陸艦は止めた！ 残る赤TGTは砂浜と艦載機だけだ。" }
+      { id: "m14_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル西方アプローチへ進入。海岸はまだ水平線の向こうだ。" },
+      { id: "m14_intro_02", at: 8, speaker: "meridian", priority: "CRITICAL", text: "赤TGTはLHDとLSTのみ。白の護衛は脅威だが、撃破必須ではない。上陸能力を優先せよ。" },
+      { id: "m14_intro_03", at: 15, speaker: "lark", priority: "NORMAL", text: "病院船MERCYが南北に横断中。敵が寄せたのか偶然かは分からない。青い船影は射線から外す。" },
+      { id: "m14_first_escape", event: "m14FirstEscape", speaker: "meridian", priority: "URGENT", text: "上陸艦一隻が移送線を突破。任務は続行するが完全阻止評価は失われた。次は通すな。" },
+      { id: "m14_capacity_stopped", event: "m14CapacityStopped", speaker: "lark", priority: "CRITICAL", text: "上陸能力を止めた！ 護衛は残っていても橋頭堡は作れない。離脱しよう。" }
     ],
-    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸群、艦載隊、接岸装甲を排除。ナハル西岸を確保した。ROOK、帰投せよ。", id: "m14-success" },
-    parTime: 480,
+    failureRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸艦二隻が移送線を突破。ナハル沿岸への投入を止められない。作戦失敗、離脱せよ。", id: "m14-failure" },
+    successRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸群の継続能力を無力化。ナハル西側は防衛準備時間を確保した。ROOK、帰投せよ。", id: "m14-success" },
+    parTime: 520,
     hasOutro: false,
     map: { x: 0.73, y: 0.28 },
     battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
-    battleRadius: 16400,
-    briefing: "ナハル西岸へ接近する強襲揚陸艦一、LST四、ミサイル艇四を海上で阻止せよ。LSTは接岸すると停止し、戦車六・SPAAG二を順次砂浜へ展開する。接岸前に沈めた艦から地上部隊は出ない。\nSu-33六は上陸群の艦載航空隊、Ka-52四は海岸制圧隊で、すべて赤TGT。海上・航空・接岸地上の全赤TGT排除で任務達成。\n病院船MERCYは青い友軍扱いで、ターゲット選択・ロック・攻撃候補に一切入らない。白い軍艦として出すのではなく、最初から最後まで保護対象の航行船として識別せよ。M14クリア後、F-35Cの購入が解禁される。"
+    battleRadius: 19600,
+    briefing: "ナハル西方外洋を進む二つの上陸縦隊を迎撃し、LHD一・LST四の赤TGTを沖合移送線の手前で阻止せよ。1隻の突破では任務を続行するが評価はA以下、2隻突破で作戦失敗となる。\nイージス艦・フリゲート・ミサイル艇、Su-33六、Ka-52四は白の護衛脅威であり撃破必須ではない。Ka-52は上陸目標ではなく、プレイヤーを妨害する低優先度接触として扱う。\n病院船MERCYは青い非戦闘船で、選択・ロック・攻撃候補に入らない。上陸能力の阻止で任務達成し、クリア後にF-35Cの購入が解禁される。"
   };
 
   ctx.addMission(mission, { after: "sera-m13" });

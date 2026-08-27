@@ -73,12 +73,16 @@ mission, not from the superseded M11 outline.
 
 ### M14 BREAKWATER
 
-- Geography: `nahar_strait` west-coast mudflat sector; reuse the actual Nahar
-  coastline instead of inventing a second coast.
-- Loop: stop landing ships at sea, then destroy armor that reached shore.
+- Geography: `nahar_strait` western open-ocean approach. The registry keeps
+  `naharMudflats`, but the copied M04 coast, settlement and shore phase are
+  removed.
+- Loop: identify and stop the LHD + four LSTs before the offshore transfer
+  line. One crossing caps rank at A; the second crossing fails.
 - Keep the hospital ship blue/neutral and never lock it as TGT.
-- The later phase contains Su-33s from the assault group's carrier aviation;
-  this is their first proper fleet-origin combat role.
+- Aegis/frigate/missile-boat screens, Su-33 fleet CAP and Ka-52 interceptors are
+  white, hostile, rank-neutral pressure. They do not block completion.
+- The Su-33s retain their first proper fleet-origin combat role without being
+  promoted into required red targets.
 - Completion unlocks F-35C for M15.
 
 ### M15 NIGHT OF NUMBERS

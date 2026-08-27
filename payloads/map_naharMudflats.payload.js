@@ -1,141 +1,135 @@
-// NAHAR WEST MUDFLATS (`naharMudflats`) — M14 daylight landing corridor.
-// Reuses the exact Nahar Strait continental sheets and coastline from M04.
+// NAHAR WESTERN APPROACHES (`naharMudflats`) — M14 open-ocean interdiction.
+// The key is retained for save/registry compatibility; the old M04-derived
+// coast, mudflats and settlement are intentionally gone.
 export default function register(ctx) {
   const { WORLD_PRESETS } = ctx.tables;
-  const base = WORLD_PRESETS.naharStrait;
-  if (!base) throw new Error("[naharMudflats] naharStrait base preset is missing");
+  const base = WORLD_PRESETS.archipelagoDay;
+  if (!base) throw new Error("[naharMudflats] archipelagoDay base preset is missing");
 
   const missionAnchors = Object.freeze({
-    ...base.missionAnchors,
-    playerStart: Object.freeze([-10800, 300]),
-    battleCenter: Object.freeze([-3800, -900]),
-    assaultEntry: Object.freeze([5200, 0]),
-    beachhead: Object.freeze([-7800, -2150]),
-    hospitalStart: Object.freeze([-9800, 900]),
-    hospitalExit: Object.freeze([9000, 1250]),
-    northCapEntry: Object.freeze([7800, 7600]),
-    southCapEntry: Object.freeze([8200, -7600])
+    playerStart: Object.freeze([-5200, 5000]),
+    battleCenter: Object.freeze([1000, -500]),
+    assaultNorthEntry: Object.freeze([4600, 2000]),
+    assaultSouthEntry: Object.freeze([6000, -3200]),
+    transferLine: Object.freeze([-3000, -700]),
+    hospitalStart: Object.freeze([300, -10800]),
+    hospitalExit: Object.freeze([300, 10800]),
+    northCapEntry: Object.freeze([9000, 8200]),
+    southCapEntry: Object.freeze([9800, -8500])
   });
 
   ctx.addWorldPreset("naharMudflats", {
     ...base,
-    label: "NAHAR WEST COAST — MUDFLATS",
-    sectorIds: Object.freeze(["west_mudflat_defence", "hospital_channel", "assault_approach"]),
-    variant: "clear_midday_mudflats",
-    previewFocus: [-3800, -900],
+    label: "NAHAR WESTERN APPROACHES — OPEN SEA",
+    regionId: "nahar_strait",
+    sectorIds: Object.freeze(["western_offshore_approach", "hospital_crossing", "amphibious_transfer_line"]),
+    variant: "high_noon_open_sea_interdiction",
+    previewFocus: [1000, -500],
     missionAnchors,
-    clearColor: 0x75b8db,
+    clearColor: 0x6f9fb8,
     sky: [
-      [0, "#2d80bd"], [0.34, "#69b4de"], [0.52, "#badbea"],
-      [0.7, "#e3e9e6"], [1, "#8bbfd1"]
+      [0, "#1d557f"], [0.3, "#4e8fb8"], [0.53, "#9cc8dc"],
+      [0.7, "#d5e2e4"], [1, "#5f91a8"]
     ],
     atmosphere: {
       ...base.atmosphere,
       seed: 0x4e414814,
-      noise: 0.02,
-      haze: 0.13,
-      thinClouds: 18,
-      cloudOpacity: 0.07,
-      cloudBand: [0.34, 0.68],
-      cloudTint: 0xe2e7e5
+      noise: 0.018,
+      haze: 0.09,
+      thinClouds: 22,
+      cloudOpacity: 0.055,
+      cloudBand: [0.32, 0.7],
+      cloudTint: 0xe7eff1
     },
-    fog: { color: 0x9fc9d4, near: 10500, far: 39000 },
+    fog: { color: 0x8fb8c7, near: 14500, far: 43000 },
     sun: {
-      position: [-5400, 7200, -3600], color: 0xfff0c7, radius: 112,
+      position: [-6800, 9800, -4200], color: 0xfff3cf, radius: 105,
       glare: [
-        { scale: 1750, color: 0xffd592, opacity: 0.3 },
-        { scale: 470, color: 0xfff7dc, opacity: 0.75 }
+        { scale: 1680, color: 0xffe2a8, opacity: 0.27 },
+        { scale: 430, color: 0xffffec, opacity: 0.82 }
       ]
     },
-    sunRoad: null,
+    sunRoad: {
+      color: 0xffedc2, opacity: 0.2, width: 920, length: 7200,
+      rotationY: Math.atan2(6800, 4200), position: [-1900, 0.35, -2500]
+    },
     ocean: {
       ...base.ocean,
-      base: "#2d7581",
-      bright: "121, 190, 193",
-      dark: "27, 86, 99",
-      roughness: 0.67,
+      base: "#1b6078",
+      bright: "150, 222, 229",
+      dark: "10, 52, 72",
+      repeat: 34,
+      roughness: 0.54,
+      metalness: 0.24,
+      normalRepeat: 56,
+      normalScale: [0.3, 0.3],
+      normalSpeed: [0.014, 0.006],
       normalSeed: 0x4e414815
     },
     lights: {
-      hemi: { sky: 0xc5e5f2, ground: 0x52634d, intensity: 1.72 },
-      key: { color: 0xffefc5, intensity: 2.45, position: [-4800, 7300, -3400] },
-      fill: { color: 0x7fb6c9, intensity: 0.62, position: [5200, 1200, 2800] }
+      hemi: { sky: 0xd0edf6, ground: 0x264553, intensity: 2.02 },
+      key: { color: 0xfff2d4, intensity: 2.85, position: [-6200, 9100, -3800] },
+      fill: { color: 0x7ac3dd, intensity: 0.7, position: [6500, 1800, 3200] }
     },
+    mountains: { ...base.mountains, count: 0, plateau: null, corridor: null },
+    islands: { ...base.islands, count: 0 },
     clouds: {
       ...base.clouds,
-      color: 0xf0f2ee,
-      opacity: 0.66,
-      cirrusColor: 0xd3dfe2,
-      cirrusOpacity: 0.28,
-      texture: { seed: 0x4e414816, contrast: 0.94, underside: 0.38, softness: 1.08 }
+      hero: false,
+      color: 0xf5f7f5,
+      opacity: 0.67,
+      cirrusColor: 0xdce8ec,
+      cirrusOpacity: 0.32,
+      texture: { seed: 0x4e414816, contrast: 0.98, underside: 0.34, softness: 1.1 }
     },
-    decor: { ...base.decor, seed: 0x4e414817 }
+    decor: {
+      seed: 0x4e414817,
+      keepClear: [],
+      extraIslands: null,
+      shore: null,
+      trees: null,
+      lighthouse: null,
+      rocks: null,
+      extraClouds: {
+        towers: 0, towerSize: [105, 180], towerBase: 980,
+        stratus: 12, stratusSize: [260, 440], stratusBase: 2100,
+        distance: [2400, 8400]
+      }
+    }
   });
 
-  ctx.addWorldDecorator("naharMudflatDefence", {
+  // Navigation buoys provide scale and heading references without turning the
+  // sector back into a coastline. They sit outside both assault columns and
+  // the hospital ship's crossing route.
+  ctx.addWorldDecorator("naharOffshoreNavigation", {
     worlds: ["naharMudflats"],
-    build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+    build({ THREE, addRoot, keepGeometry, keepMaterial }) {
       const root = new THREE.Group();
-      root.name = "naharMudflatDefence";
+      root.name = "naharOffshoreNavigation";
       addRoot(root);
-      const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
-      const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
-      const planeGeo = keepGeometry(new THREE.PlaneGeometry(1, 1));
-      const mat = (color, roughness = 0.9, metalness = 0.03) => keepMaterial(
-        new THREE.MeshStandardMaterial({ color, roughness, metalness })
-      );
-      const mud = mat(0x756d59, 0.98);
-      const sand = mat(0xa79a78, 0.96);
-      const concrete = mat(0x85877f, 0.9);
-      const steel = mat(0x505a5e, 0.68, 0.25);
-      const roof = mat(0x4b5154, 0.78, 0.12);
-      const ground = (x, z) => surfaceHeightAt(x, z) + 0.6;
-      const box = (name, x, y, z, sx, sy, sz, material, ry = 0) => {
-        const mesh = new THREE.Mesh(boxGeo, material);
-        mesh.name = name;
-        mesh.position.set(x, y, z);
-        mesh.scale.set(sx, sy, sz);
-        mesh.rotation.y = ry;
-        root.add(mesh);
-      };
-      const patch = (name, x, z, sx, sz, material, ry = 0) => {
-        const mesh = new THREE.Mesh(planeGeo, material);
-        mesh.name = name;
-        mesh.position.set(x, ground(x, z), z);
-        mesh.scale.set(sx, sz, 1);
-        mesh.rotateX(-Math.PI / 2);
-        mesh.rotateZ(ry);
-        root.add(mesh);
-      };
-
-      // Irregular exposed flats and shallow sandbars continue the south-bank
-      // coastline into the actual landing sector without replacing terrain.
-      patch("nahar-mudflat-west", -7900, -2450, 3800, 720, mud, 0.03);
-      patch("nahar-mudflat-channel", -5900, -2300, 2100, 460, sand, -0.06);
-      patch("nahar-mudflat-east", -9400, -2320, 1600, 520, mud, 0.09);
-
-      // Coastal revetments and a small fishing settlement show that this is a
-      // defended inhabited shore, not an empty target slab.
-      for (let i = 0; i < 8; i += 1) {
-        const x = -9100 + (i % 4) * 310;
-        const z = -3100 - Math.floor(i / 4) * 260;
-        const y = ground(x, z);
-        box(`nahar-coast-house-${i}`, x, y + 18, z, 150, 36, 90, concrete, (i % 3 - 1) * 0.04);
-        box(`nahar-coast-roof-${i}`, x, y + 38, z, 160, 5, 100, roof, (i % 3 - 1) * 0.04);
-      }
-      for (let i = 0; i < 9; i += 1) {
-        const x = -8750 + i * 250;
-        const z = -2730 + Math.sin(i * 0.8) * 80;
-        box(`nahar-revetment-${i}`, x, ground(x, z) + 5, z, 150, 10, 28, concrete, -0.04);
-      }
-      for (const [index, x] of [-9200, -7800, -6500].entries()) {
-        const z = -2580;
-        const mast = new THREE.Mesh(cylGeo, steel);
-        mast.name = `nahar-channel-marker-${index}`;
-        mast.position.set(x, ground(x, z) + 18, z);
-        mast.scale.set(3, 36, 3);
-        root.add(mast);
-      }
+      const mastGeo = keepGeometry(new THREE.CylinderGeometry(1, 1.35, 1, 10));
+      const cageGeo = keepGeometry(new THREE.TorusGeometry(1, 0.2, 6, 12));
+      const red = keepMaterial(new THREE.MeshStandardMaterial({ color: 0xb94a3e, roughness: 0.72, metalness: 0.2 }));
+      const white = keepMaterial(new THREE.MeshStandardMaterial({ color: 0xe8eee9, roughness: 0.7, metalness: 0.16 }));
+      const positions = [
+        [-7200, -6200], [-7000, 6900], [-4200, -7700], [-4000, 7900],
+        [3600, -7200], [3900, 7600], [8200, -5900], [8500, 6200]
+      ];
+      positions.forEach(([x, z], index) => {
+        const group = new THREE.Group();
+        group.name = `nahar-offshore-buoy-${index}`;
+        group.position.set(x, 2.2, z);
+        const mast = new THREE.Mesh(mastGeo, index % 2 ? white : red);
+        mast.scale.set(2.8, 9, 2.8);
+        mast.position.y = 3.8;
+        group.add(mast);
+        const cage = new THREE.Mesh(cageGeo, index % 2 ? red : white);
+        cage.rotation.x = Math.PI / 2;
+        cage.scale.setScalar(3.7);
+        cage.position.y = 8.6;
+        group.add(cage);
+        root.add(group);
+      });
     }
   });
 }
