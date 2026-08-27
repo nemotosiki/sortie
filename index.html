@@ -43841,6 +43841,278 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       "mission_sera_m13"
     ); // @payload:mission_sera_m13
+    applyPayload(
+      function register(ctx) {
+        const { WORLD_PRESETS } = ctx.tables;
+        const base = WORLD_PRESETS.naharStrait;
+        if (!base) throw new Error("[naharMudflats] naharStrait base preset is missing");
+
+        const missionAnchors = Object.freeze({
+          ...base.missionAnchors,
+          playerStart: Object.freeze([-10800, 300]),
+          battleCenter: Object.freeze([-3800, -900]),
+          assaultEntry: Object.freeze([5200, 0]),
+          beachhead: Object.freeze([-7800, -2150]),
+          hospitalStart: Object.freeze([-9800, 900]),
+          hospitalExit: Object.freeze([9000, 1250]),
+          northCapEntry: Object.freeze([7800, 7600]),
+          southCapEntry: Object.freeze([8200, -7600])
+        });
+
+        ctx.addWorldPreset("naharMudflats", {
+          ...base,
+          label: "NAHAR WEST COAST — MUDFLATS",
+          sectorIds: Object.freeze(["west_mudflat_defence", "hospital_channel", "assault_approach"]),
+          variant: "clear_midday_mudflats",
+          previewFocus: [-3800, -900],
+          missionAnchors,
+          clearColor: 0x75b8db,
+          sky: [
+            [0, "#2d80bd"], [0.34, "#69b4de"], [0.52, "#badbea"],
+            [0.7, "#e3e9e6"], [1, "#8bbfd1"]
+          ],
+          atmosphere: {
+            ...base.atmosphere,
+            seed: 0x4e414814,
+            noise: 0.02,
+            haze: 0.13,
+            thinClouds: 18,
+            cloudOpacity: 0.07,
+            cloudBand: [0.34, 0.68],
+            cloudTint: 0xe2e7e5
+          },
+          fog: { color: 0x9fc9d4, near: 10500, far: 39000 },
+          sun: {
+            position: [-5400, 7200, -3600], color: 0xfff0c7, radius: 112,
+            glare: [
+              { scale: 1750, color: 0xffd592, opacity: 0.3 },
+              { scale: 470, color: 0xfff7dc, opacity: 0.75 }
+            ]
+          },
+          sunRoad: null,
+          ocean: {
+            ...base.ocean,
+            base: "#2d7581",
+            bright: "121, 190, 193",
+            dark: "27, 86, 99",
+            roughness: 0.67,
+            normalSeed: 0x4e414815
+          },
+          lights: {
+            hemi: { sky: 0xc5e5f2, ground: 0x52634d, intensity: 1.72 },
+            key: { color: 0xffefc5, intensity: 2.45, position: [-4800, 7300, -3400] },
+            fill: { color: 0x7fb6c9, intensity: 0.62, position: [5200, 1200, 2800] }
+          },
+          clouds: {
+            ...base.clouds,
+            color: 0xf0f2ee,
+            opacity: 0.66,
+            cirrusColor: 0xd3dfe2,
+            cirrusOpacity: 0.28,
+            texture: { seed: 0x4e414816, contrast: 0.94, underside: 0.38, softness: 1.08 }
+          },
+          decor: { ...base.decor, seed: 0x4e414817 }
+        });
+
+        ctx.addWorldDecorator("naharMudflatDefence", {
+          worlds: ["naharMudflats"],
+          build({ THREE, addRoot, keepGeometry, keepMaterial, surfaceHeightAt }) {
+            const root = new THREE.Group();
+            root.name = "naharMudflatDefence";
+            addRoot(root);
+            const boxGeo = keepGeometry(new THREE.BoxGeometry(1, 1, 1));
+            const cylGeo = keepGeometry(new THREE.CylinderGeometry(1, 1, 1, 12));
+            const planeGeo = keepGeometry(new THREE.PlaneGeometry(1, 1));
+            const mat = (color, roughness = 0.9, metalness = 0.03) => keepMaterial(
+              new THREE.MeshStandardMaterial({ color, roughness, metalness })
+            );
+            const mud = mat(0x756d59, 0.98);
+            const sand = mat(0xa79a78, 0.96);
+            const concrete = mat(0x85877f, 0.9);
+            const steel = mat(0x505a5e, 0.68, 0.25);
+            const roof = mat(0x4b5154, 0.78, 0.12);
+            const ground = (x, z) => surfaceHeightAt(x, z) + 0.6;
+            const box = (name, x, y, z, sx, sy, sz, material, ry = 0) => {
+              const mesh = new THREE.Mesh(boxGeo, material);
+              mesh.name = name;
+              mesh.position.set(x, y, z);
+              mesh.scale.set(sx, sy, sz);
+              mesh.rotation.y = ry;
+              root.add(mesh);
+            };
+            const patch = (name, x, z, sx, sz, material, ry = 0) => {
+              const mesh = new THREE.Mesh(planeGeo, material);
+              mesh.name = name;
+              mesh.position.set(x, ground(x, z), z);
+              mesh.scale.set(sx, sz, 1);
+              mesh.rotateX(-Math.PI / 2);
+              mesh.rotateZ(ry);
+              root.add(mesh);
+            };
+
+            // Irregular exposed flats and shallow sandbars continue the south-bank
+            // coastline into the actual landing sector without replacing terrain.
+            patch("nahar-mudflat-west", -7900, -2450, 3800, 720, mud, 0.03);
+            patch("nahar-mudflat-channel", -5900, -2300, 2100, 460, sand, -0.06);
+            patch("nahar-mudflat-east", -9400, -2320, 1600, 520, mud, 0.09);
+
+            // Coastal revetments and a small fishing settlement show that this is a
+            // defended inhabited shore, not an empty target slab.
+            for (let i = 0; i < 8; i += 1) {
+              const x = -9100 + (i % 4) * 310;
+              const z = -3100 - Math.floor(i / 4) * 260;
+              const y = ground(x, z);
+              box(`nahar-coast-house-${i}`, x, y + 18, z, 150, 36, 90, concrete, (i % 3 - 1) * 0.04);
+              box(`nahar-coast-roof-${i}`, x, y + 38, z, 160, 5, 100, roof, (i % 3 - 1) * 0.04);
+            }
+            for (let i = 0; i < 9; i += 1) {
+              const x = -8750 + i * 250;
+              const z = -2730 + Math.sin(i * 0.8) * 80;
+              box(`nahar-revetment-${i}`, x, ground(x, z) + 5, z, 150, 10, 28, concrete, -0.04);
+            }
+            for (const [index, x] of [-9200, -7800, -6500].entries()) {
+              const z = -2580;
+              const mast = new THREE.Mesh(cylGeo, steel);
+              mast.name = `nahar-channel-marker-${index}`;
+              mast.position.set(x, ground(x, z) + 18, z);
+              mast.scale.set(3, 36, 3);
+              root.add(mast);
+            }
+          }
+        });
+      },
+      "map_naharMudflats"
+    ); // @payload:map_naharMudflats
+    applyPayload(
+      function register(ctx) {
+        const {
+          MISSIONS, WORLD_PRESETS, AIRCRAFT_TYPES, ENEMY_AI_PROFILES, HELI_TYPES, SHIP_TYPES, GROUND_TYPES
+        } = ctx.tables;
+        const world = WORLD_PRESETS.naharMudflats;
+        if (!world) throw new Error("[sera-m14] naharMudflats is not registered");
+        if (!MISSIONS.some((mission) => mission.key === "sera-m13" && mission.campaign === "sera")) {
+          throw new Error("[sera-m14] sera-m13 predecessor is missing");
+        }
+        if (!AIRCRAFT_TYPES.fa18) throw new Error("[sera-m14] F/A-18F wingman type is missing");
+        if (!AIRCRAFT_TYPES.su33 || !ENEMY_AI_PROFILES.su33) {
+          throw new Error("[sera-m14] Su-33 air contact is missing");
+        }
+        if (!HELI_TYPES.ka52) throw new Error("[sera-m14] Ka-52 helicopter type is missing");
+        for (const type of ["lhd", "landingShip", "missileBoat", "hospitalShip"]) {
+          if (!SHIP_TYPES[type]) throw new Error(`[sera-m14] required ship type is missing: ${type}`);
+        }
+        for (const type of ["tank", "spaag"]) {
+          if (!GROUND_TYPES[type]) throw new Error(`[sera-m14] required ground type is missing: ${type}`);
+        }
+        const anchors = world.missionAnchors;
+        const m14LandingContract = Object.freeze({
+          landingShipIds: Object.freeze([1412, 1413, 1414, 1415]),
+          landingTag: "m14LandingFleet",
+          airTag: "m14CarrierAir",
+          groundMark: "m14LandedArmor",
+          groundIdBase: 1490,
+          outcomes: Object.freeze({
+            landingShipsBeached: "landingShipsBeached",
+            landedArmorSpawned: "landedArmorSpawned",
+            hospitalShipSafe: "hospitalShipSafe"
+          })
+        });
+
+        const mission = {
+          key: "sera-m14",
+          campaign: "sera",
+          campaignOrder: 14,
+          world: "naharMudflats",
+          title: "BREAKWATER",
+          jp: "ナハル西岸へ接近する上陸群を海上で阻止し、接岸した装甲部隊を排除せよ。",
+          act: 3,
+          storyNo: 14,
+          story: "WAR DAY 20。同じ時刻、ハドールへ物資が向かう裏で、ナハル西岸へ上陸群が入る。\n白い病院船が同じ水路を横切る。赤TGTだけを見て撃てばよい——それでも対艦ミサイルの爆煙は白い船体を隠す。",
+          epilogue: [
+            "ナハル西岸の上陸群は無力化され、干潟の防衛線は残った。",
+            "接岸を許した艦の数だけ、海ではなく砂浜に残骸が増えた。",
+            "病院船は戦闘空域を抜け、救難灯を消さずに航海を続けた。"
+          ],
+          friendlies: {
+            playerStart: {
+              x: anchors.playerStart[0], y: 1250, z: anchors.playerStart[1],
+              facing: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] }
+            },
+            wingmen: [
+              { type: "fa18", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "asm", offset: { back: 120, side: 145, up: -14 } }
+            ],
+            ships: {
+              callsign: "MERCY",
+              hull: "hospitalShip",
+              count: 1,
+              vulnerable: false,
+              hp: 588,
+              start: { x: anchors.hospitalStart[0], z: anchors.hospitalStart[1] },
+              exit: { x: anchors.hospitalExit[0], z: anchors.hospitalExit[1] },
+              spacing: 320
+            }
+          },
+          friendlyBase: {
+            x: anchors.beachhead[0], z: anchors.beachhead[1], heading: 0,
+            label: "NAHAR WEST DEFENCE LINE", style: "beach", failRadius: 470
+          },
+          sequence: [
+            {
+              kind: "naval",
+              fleet: ["lhd", "landingShip", "landingShip", "landingShip", "landingShip", "missileBoat", "missileBoat", "missileBoat", "missileBoat"],
+              tgt: true, idBase: 1410, band: 1, label: "ELEM ASSAULT GROUP",
+              missionTag: "m14LandingFleet", at: [...anchors.assaultEntry], facing: [...anchors.beachhead], spacing: 520,
+              radio: [
+                { speaker: "meridian", priority: "CRITICAL", text: "強襲揚陸艦一、LST四、ミサイル艇四。全艦赤TGT、接岸前に数を減らせ。", id: "m14-assault-group" }
+              ]
+            },
+            {
+              types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
+              delay: 22, band: 1, idBase: 1430, label: "SEA FLANKER 1", role: "line", skill: "regular",
+              at: [...anchors.northCapEntry], altitude: 2100, facing: [...anchors.battleCenter]
+            },
+            {
+              types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
+              delay: 54, band: 2, idBase: 1440, label: "ALLIGATOR 1", role: "line", skill: "regular",
+              at: [2200, -3800], altitude: 420, facing: [...anchors.beachhead]
+            },
+            {
+              types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
+              delay: 78, band: 2, idBase: 1450, label: "SEA FLANKER 2", role: "line", skill: "veteran",
+              at: [...anchors.southCapEntry], altitude: 2400, facing: [...anchors.battleCenter]
+            },
+            {
+              types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
+              delay: 112, band: 2, idBase: 1460, label: "ALLIGATOR 2", role: "line", skill: "veteran",
+              at: [-1200, 3600], altitude: 460, facing: [...anchors.beachhead]
+            },
+            {
+              types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
+              delay: 138, band: 3, idBase: 1470, label: "SEA FLANKER 3", role: "line", skill: "veteran",
+              at: [9800, 500], altitude: 2600, facing: [...anchors.battleCenter],
+              radio: [{ speaker: "lark", priority: "URGENT", text: "Su-33最終隊！ 艦載機を片付けて、砂浜へ上がった装甲を潰す！", id: "m14-final-cap" }]
+            }
+          ],
+          m14LandingContract,
+          fixedRadio: [
+            { id: "m14_intro_01", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、ナハル西岸へ到着。上陸群は干潟水路を西進中。" },
+            { id: "m14_intro_02", at: 8, speaker: "lark", priority: "CRITICAL", text: "青表示の病院船MERCYが航路を横断する。選択もロックもできない、赤TGTだけ撃て。" },
+            { id: "m14_first_beach", event: "m14FirstBeach", speaker: "meridian", priority: "URGENT", text: "LST接岸、ランプ開放。戦車とSPAAGを赤TGTへ追加、海上群への攻撃も継続せよ。" },
+            { id: "m14_all_afloat_stopped", event: "m14AfloatStopped", speaker: "lark", priority: "CRITICAL", text: "海上の上陸艦は止めた！ 残る赤TGTは砂浜と艦載機だけだ。" }
+          ],
+          successRadio: { speaker: "meridian", priority: "CRITICAL", text: "上陸群、艦載隊、接岸装甲の全赤TGT消失。BREAKWATER成功。", id: "m14-success" },
+          parTime: 480,
+          hasOutro: false,
+          map: { x: 0.73, y: 0.28 },
+          battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
+          battleRadius: 16400,
+          briefing: "ナハル西岸へ接近する強襲揚陸艦一、LST四、ミサイル艇四を海上で阻止せよ。LSTは接岸すると停止し、戦車六・SPAAG二を順次砂浜へ展開する。接岸前に沈めた艦から地上部隊は出ない。\nSu-33六は上陸群の艦載航空隊、Ka-52四は海岸制圧隊で、すべて赤TGT。海上・航空・接岸地上の全赤TGT排除で任務達成。\n病院船MERCYは青い友軍扱いで、ターゲット選択・ロック・攻撃候補に一切入らない。白い軍艦として出すのではなく、最初から最後まで保護対象の航行船として識別せよ。M14クリア後、F-35Cの購入が解禁される。"
+        };
+
+        ctx.addMission(mission, { after: "sera-m13" });
+      },
+      "mission_sera_m14"
+    ); // @payload:mission_sera_m14
     // ==== @PAYLOADS:END ====
 
     // Dev-only loader. `index.html?payloads=payloads/a.payload.js,payloads/b.js`
@@ -44280,6 +44552,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (m12Result) Object.assign(entry, m12Result);
       const m13Result = m13ResultSnapshot(mission);
       if (m13Result) Object.assign(entry, m13Result);
+      const m14Result = m14ResultSnapshot(mission);
+      if (m14Result) Object.assign(entry, m14Result);
       missionRecords[key] = entry;
       saveMissionRecords();
     }
@@ -46614,6 +46888,93 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       },
       forceSeraM13ResolveOutcome: () => {
         const mission = m13Mission();
+        if (!mission || !outcomePending.active) return false;
+        outcomePending.timer = 0;
+        updateOutcomePending(99);
+        return gameState === STATE_COMPLETE;
+      },
+      seraM14Probe: () => {
+        const mission = m14Mission();
+        if (!mission) return null;
+        return {
+          state: gameState,
+          missionKey: mission.key,
+          worldKey: mission.world,
+          elapsed: Number(missionElapsed.toFixed(2)),
+          outcomePending: outcomePending.active,
+          landing: {
+            ...m14State,
+            beachedIds: [...m14State.beachedIds],
+            hospitalShipSafe: m14HospitalShipSafe()
+          },
+          contacts: enemies.map((enemy) => ({
+            id: enemy.id,
+            type: enemy.type,
+            alive: enemy.alive,
+            tgt: isTgtEntry(enemy),
+            beached: Boolean(enemy.beached),
+            mark: enemy.mark || null,
+            missionRole: enemy.missionRole || null,
+            missionTag: enemy.missionTag || null
+          })),
+          friendlies: friendlies.map((friendly) => ({
+            kind: friendly.kind,
+            type: friendly.type,
+            label: friendly.label,
+            alive: friendly.alive,
+            vulnerable: Boolean(friendly.vulnerable),
+            retired: Boolean(friendly.retired)
+          })),
+          pending: pendingWaves.map((entry) => ({
+            delay: Number(entry.timer.toFixed(2)),
+            types: [...(entry.wave?.types || [])],
+            tgt: entry.wave ? isTgtEntry(entry.wave) : false,
+            missionTag: entry.wave?.missionTag || null
+          })),
+          f35cUnlocked: aircraftProgressionUnlocked("f35c", "sera"),
+          radioEvents: [...fixedRadioFired],
+          record: missionRecords[mission.key] ? { ...missionRecords[mission.key] } : null
+        };
+      },
+      forceSeraM14BeachLandingShip: (slot = 0) => {
+        const mission = m14Mission();
+        if (gameState !== STATE_PLAYING || !mission || !friendlyBase) return 0;
+        const index = Math.max(0, Math.min(
+          mission.m14LandingContract.landingShipIds.length - 1,
+          Math.floor(Number(slot) || 0)
+        ));
+        const id = mission.m14LandingContract.landingShipIds[index];
+        const ship = enemies.find((enemy) => enemy.id === id && enemy.alive);
+        if (!ship) return 0;
+        ship.group.position.set(friendlyBase.x + 40 + index * 35, 0, friendlyBase.z + 45);
+        updateLandingThreat();
+        updateM14MissionThreat();
+        return enemies.filter((enemy) => (
+          enemy.alive && enemy.mark === mission.m14LandingContract.groundMark
+        )).length;
+      },
+      forceSeraM14DeployPending: () => {
+        const mission = m14Mission();
+        if (gameState !== STATE_PLAYING || !mission) return false;
+        for (const queued of pendingWaves) queued.timer = 0;
+        updatePendingWaves(999);
+        updateM14MissionThreat();
+        return pendingWaves.length === 0;
+      },
+      forceSeraM14ClearDesignated: () => {
+        const mission = m14Mission();
+        if (gameState !== STATE_PLAYING || !mission) return 0;
+        let cleared = 0;
+        for (const enemy of enemies) {
+          if (!enemy.alive || !isTgtEntry(enemy)) continue;
+          damageEnemy(enemy, enemy.hp + 1, true, false);
+          cleared += 1;
+        }
+        updateM14MissionThreat();
+        return cleared;
+      },
+      forceSeraM14ResolveOutcome: () => {
+        const mission = m14Mission();
         if (!mission || !outcomePending.active) return false;
         outcomePending.timer = 0;
         updateOutcomePending(99);
@@ -51211,7 +51572,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Preview is open to any roster jet (see selectAircraft), but launching
       // one the player hasn't bought yet would let a look become a free
       // sortie. This is the one gate that turns "selected" into "flown".
-      if (!ownsAircraft(selectedAircraftId)) {
+      if (!canFlyAircraft(selectedAircraftId)) {
         notifyHangarLocked(selectedAircraftId);
         return;
       }
@@ -51297,6 +51658,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       resetM11State(MISSIONS[currentMissionIndex]);
       resetM12State(MISSIONS[currentMissionIndex]);
       resetM13State(MISSIONS[currentMissionIndex]);
+      resetM14State(MISSIONS[currentMissionIndex]);
       // The hunter pattern is deterministic per sortie. Leaving the counter at
       // the previous sortie's remainder made the advertised one-in-three split
       // depend on what the player flew before this launch.
@@ -55553,6 +55915,117 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         [fields.allSafe || "allLifelineAircraftSafe"]: lost === 0 && saved >= Number(contract.total || 4),
         [fields.awacsDestroyed || "enemyAwacsDestroyed"]: m13State.awacsDestroyed,
         [fields.reinforcementsDelayed || "reinforcementsDelayed"]: m13State.delayedAircraft
+      };
+    }
+
+    const m14State = {
+      active: false,
+      completed: false,
+      beachedIds: new Set(),
+      landedArmorSpawned: 0,
+      firstBeachFired: false,
+      afloatStoppedFired: false
+    };
+
+    function m14Mission() {
+      const mission = MISSIONS[currentMissionIndex];
+      return mission && mission.m14LandingContract ? mission : null;
+    }
+
+    function resetM14State(mission) {
+      m14State.active = Boolean(mission && mission.m14LandingContract);
+      m14State.completed = false;
+      m14State.beachedIds.clear();
+      m14State.landedArmorSpawned = 0;
+      m14State.firstBeachFired = false;
+      m14State.afloatStoppedFired = false;
+    }
+
+    function spawnM14LandedArmor(mission, ship, slot) {
+      const contract = mission.m14LandingContract;
+      const beach = mission.friendlyBase || { x: ship.group.position.x, z: ship.group.position.z };
+      const bundles = [
+        ["tank", "tank"],
+        ["tank", "tank"],
+        ["tank", "spaag"],
+        ["tank", "spaag"]
+      ];
+      const types = bundles[slot] || ["tank"];
+      let spawned = 0;
+      for (let i = 0; i < types.length; i += 1) {
+        const side = slot - 1.5;
+        const unit = {
+          id: contract.groundIdBase + slot * 10 + i,
+          type: types[i],
+          label: types[i] === "spaag" ? `BEACH SPAAG ${slot + 1}` : `BEACH ARMOR ${slot * 2 + i + 1}`,
+          x: beach.x + side * 330 + (i - 0.5) * 135,
+          z: beach.z - 760 - slot * 145 - i * 115,
+          heading: 0.08 + side * 0.04,
+          tgt: true,
+          rankNeutral: false,
+          mark: contract.groundMark,
+          missionRole: "landedArmor"
+        };
+        if (spawnMissionGroundUnit(unit) !== null) spawned += 1;
+      }
+      m14State.landedArmorSpawned += spawned;
+      return spawned;
+    }
+
+    function updateM14MissionThreat() {
+      const mission = m14Mission();
+      if (!mission || !m14State.active) return false;
+      if (m14State.completed) return true;
+      const contract = mission.m14LandingContract;
+      for (let slot = 0; slot < contract.landingShipIds.length; slot += 1) {
+        const id = contract.landingShipIds[slot];
+        const ship = enemies.find((enemy) => enemy.id === id);
+        if (!ship || !ship.alive || !ship.beached || m14State.beachedIds.has(id)) continue;
+        m14State.beachedIds.add(id);
+        spawnM14LandedArmor(mission, ship, slot);
+        if (!m14State.firstBeachFired) {
+          m14State.firstBeachFired = true;
+          fireFixedRadioEvent("m14FirstBeach");
+          showBanner("ENEMY ARMOR ASHORE", 2.0, "danger");
+        }
+      }
+
+      const landingShips = contract.landingShipIds.map(
+        (id) => enemies.find((enemy) => enemy.id === id)
+      ).filter(Boolean);
+      if (!m14State.afloatStoppedFired && landingShips.length > 0
+          && landingShips.every((ship) => !ship.alive || ship.beached)) {
+        m14State.afloatStoppedFired = true;
+        fireFixedRadioEvent("m14AfloatStopped");
+      }
+
+      const liveDesignated = enemies.filter((enemy) => enemy.alive && isTgtEntry(enemy)).length;
+      const pendingDesignated = pendingWaves.reduce((sum, queued) => (
+        sum + (queued.wave && isTgtEntry(queued.wave) ? waveSizeOf(queued.wave) : 0)
+      ), 0);
+      if (liveDesignated + pendingDesignated === 0) {
+        m14State.completed = true;
+        completeMission(true);
+      }
+      // Dynamic armor is not in mission.totalTargets, so M14 owns the frame
+      // until both sea/air contacts and every actually-landed vehicle are gone.
+      return true;
+    }
+
+    function m14HospitalShipSafe() {
+      return friendlies.some((friendly) => (
+        friendly.kind === "ship" && friendly.type === "hospitalShip" && friendly.alive
+      ));
+    }
+
+    function m14ResultSnapshot(mission) {
+      const contract = mission && mission.m14LandingContract;
+      if (!contract || !m14State.active || !m14State.completed) return null;
+      const fields = contract.outcomes || {};
+      return {
+        [fields.landingShipsBeached || "landingShipsBeached"]: m14State.beachedIds.size,
+        [fields.landedArmorSpawned || "landedArmorSpawned"]: m14State.landedArmorSpawned,
+        [fields.hospitalShipSafe || "hospitalShipSafe"]: m14HospitalShipSafe()
       };
     }
 
@@ -62315,6 +62788,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (updateM11MissionThreat()) return;
       if (updateM12MissionThreat()) return;
       if (updateM13MissionState()) return;
+      if (updateM14MissionThreat()) return;
       if (activeWaveGate) {
         activeWaveGate.elapsed += dt;
         const gateContactAlive = activeWaveGate.mode === "groundMarkClear"
@@ -68573,6 +69047,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return isStarterAircraft(id, campaignId) || purchasesFor(campaignId).has(id);
     }
 
+    function aircraftProgressionUnlocked(id, campaignId = selectedCampaignId) {
+      // v0.17: the carrier Lightning is the reward for breaking the Nahar
+      // landing and first becomes usable in M15. Keep ownership and progression
+      // separate so an older profile that bought one early does not lose the
+      // purchase, but still cannot launch it before the intended campaign beat.
+      if (campaignId === "sera" && id === "f35c") {
+        return Boolean(missionRecords["sera-m14"]?.cleared);
+      }
+      return true;
+    }
+
+    function canFlyAircraft(id, campaignId = selectedCampaignId) {
+      return ownsAircraft(id, campaignId) && aircraftProgressionUnlocked(id, campaignId);
+    }
+
     // Everything this campaign has ever paid out, less everything it has bought.
     // scores[0] is the mission's best total (the array is sorted descending and
     // capped at three), so income only moves when the player beats their own
@@ -68613,6 +69102,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const campaignId = selectedCampaignId;
       if (ownsAircraft(id, campaignId)) return { ok: false, reason: "owned" };
       if (!campaignAircraft(campaignId).includes(id)) return { ok: false, reason: "roster" };
+      if (!aircraftProgressionUnlocked(id, campaignId)) {
+        return { ok: false, reason: "progression", requirement: "M14 CLEAR" };
+      }
       const price = aircraftPrice(id, campaignId);
       const wallet = walletFor(campaignId);
       if (wallet < price) return { ok: false, reason: "funds", short: price - wallet, price, wallet };
@@ -68660,7 +69152,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // the free starter on the American side, which hid that the Russian
       // roster leads with an unowned Su-37: LAUNCH fell into the purchase-
       // confirm flow and a fresh profile could not sortie at all.
-      selectedAircraftId = roster.find((id) => ownsAircraft(id)) ?? roster[0];
+      selectedAircraftId = roster.find((id) => canFlyAircraft(id)) ?? roster[0];
       rebuildPlayerModel(selectedAircraftId);
       window.__game.selectedAircraft = selectedAircraftId;
       return selectedAircraftId;
@@ -68813,7 +69305,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const id = item.dataset.aircraft;
         const badge = item.querySelector('[data-role="priceBadge"]');
         if (badge) {
-          badge.textContent = ownsAircraft(id) ? "OWNED" : formatCredits(aircraftPrice(id));
+          badge.textContent = !aircraftProgressionUnlocked(id)
+            ? "M14 CLEAR"
+            : (ownsAircraft(id) ? "OWNED" : formatCredits(aircraftPrice(id)));
         }
       }
       ui.hangarWallet.textContent = formatCredits(walletFor());
@@ -68866,6 +69360,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         line.classList.remove("hidden");
         return;
       }
+      if (!aircraftProgressionUnlocked(selectedAircraftId)) {
+        line.textContent = "LOCKED · CLEAR M14";
+        line.classList.add("warn");
+        line.classList.remove("hidden");
+        return;
+      }
       if (pendingPurchaseId === selectedAircraftId && !ownsAircraft(selectedAircraftId)) {
         line.textContent = `PURCHASE (${formatCredits(aircraftPrice(selectedAircraftId))})?`;
         line.classList.remove("warn", "hidden");
@@ -68880,6 +69380,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // flies immediately - the confirm step only exists for the one case where
     // pressing launch would otherwise spend credits by accident.
     function requestLaunch() {
+      if (!aircraftProgressionUnlocked(selectedAircraftId)) {
+        notifyHangarLocked(selectedAircraftId);
+        return;
+      }
       if (gameState !== STATE_READY || ownsAircraft(selectedAircraftId)) {
         startMission();
         return;
@@ -68899,6 +69403,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (result.reason === "funds") {
         if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
         renderHangarPurchaseLine(`NEED ${formatCredits(result.short)} MORE`, true);
+      } else if (result.reason === "progression") {
+        renderHangarPurchaseLine("LOCKED · CLEAR M14", true);
       } else {
         renderHangarPurchaseLine();
       }
@@ -68909,7 +69415,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // vocabulary for "you don't have this yet" everywhere it can come up.
     function notifyHangarLocked(id) {
       if (!playSfx("rwr", 0.32, 1.15)) playTone(180, 0.16, 0.08, "square");
-      renderHangarPurchaseLine(`PURCHASE (${formatCredits(aircraftPrice(id))})?`, true);
+      renderHangarPurchaseLine(
+        aircraftProgressionUnlocked(id) ? `PURCHASE (${formatCredits(aircraftPrice(id))})?` : "LOCKED · CLEAR M14",
+        true
+      );
     }
 
     // Backing store is in CSS pixels, so everything below draws in CSS space and

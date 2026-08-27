@@ -147,7 +147,7 @@ mission, not from the superseded M11 outline.
 - [x] Shared campaign-state/result helpers needed by M12-M20
 - [x] M12 map, mission, route logic, checks, browser clear, commit
 - [x] M13 map, escort loop, HP gauge, checks, browser clear, commit
-- [ ] M14 coastal landing phases, hospital ship safety, F-35 gate, commit
+- [x] M14 coastal landing phases, hospital ship safety, F-35 gate, commit
 - [ ] M15 city defence, persistent white-ARCA ledger, commit
 - [ ] M16 fleet/SSGN/anti-ship defence, commit
 - [ ] M17 long approach and HELIX optional encounter, commit
