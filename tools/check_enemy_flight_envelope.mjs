@@ -118,7 +118,7 @@ assert(!recovered.stalling && recovered.severity < 0.05 && recovered.controlAuth
 
 for (const required of [
   'from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1"',
-  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-1"',
+  'from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-2"',
   "updateEnemyAerodynamicState(enemy, dt);",
   "applyEnemyEnergyManagement(enemy, enemy.headingError);",
   "const turnRate = enemyConstrainedTurn(enemy, requestedRate);",

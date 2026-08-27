@@ -154,10 +154,11 @@ try {
     };
   });
 
-  // The live RAF can finish one sub-frame around forceTeleport before the
-  // synchronous production-step sample begins; 0.1m is still effectively zero
-  // beside the 31m knife-edge/inverted cases this gate separates.
-  assert(Math.abs(results.ordinary.drop) < 0.1,
+  // A banked, turning aircraft need not hold mathematically exact altitude.
+  // Less than one metre in three seconds is a trimmed path beside the tens of
+  // metres expected from knife-edge/inverted attitudes, and avoids preserving
+  // the old hidden vertical-velocity clamp as a test requirement.
+  assert(Math.abs(results.ordinary.drop) < 1,
     "ordinary 60-degree bank lost altitude", results.ordinary);
   assert(results.knifeEdge.drop > 38 && results.knifeEdge.drop < 46,
     "knife-edge did not lose altitude under WORLD gravity", results.knifeEdge);

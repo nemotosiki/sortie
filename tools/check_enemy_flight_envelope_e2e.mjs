@@ -107,8 +107,10 @@ try {
     resetState(spec.stallEntrySpeed * 0.55);
     let peakStall = null;
     for (let frame = 0; frame < 90; frame += 1) {
-      // Hold the article below entry long enough to prove the constraint; the
-      // AI itself correctly opens the throttle almost immediately.
+      // Hold both low energy and an above-critical body/path angle long enough
+      // to prove a physical stall. Low speed alone is a sink condition and no
+      // longer fabricates separated flow at zero AOA.
+      debug.forceEnemyAttitude(id, 30, 0, 0, false);
       debug.forceEnemySpeed(id, spec.stallEntrySpeed * 0.55);
       debug.forceEnemyFlightFrames(1, 1 / 60);
       const probe = debug.enemyFlightProbe(id)[0];
@@ -174,7 +176,7 @@ try {
       results.highAltitude.highAltitude.turnAuthority < 0.73,
     "production AI did not receive the 30,000 ft thin-air envelope", results.highAltitude);
   assert(results.peakStall.stalling && results.peakStall.stallSeverity > 0.24,
-    "production AI never entered a forced low-speed stall", results.peakStall);
+    "production AI never entered a forced high-AOA low-energy stall", results.peakStall);
   assert(results.recovered.speed > results.peakStall.speed &&
       results.recovered.stallSeverity < results.peakStall.stallSeverity,
     "production AI did not accelerate and recover after the stall", results);

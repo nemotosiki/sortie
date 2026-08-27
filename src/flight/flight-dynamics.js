@@ -8,7 +8,11 @@
 export const FLIGHT_GRAVITY_MPS2 = 9.80665;
 export const FLIGHT_DYNAMICS_MAX_STEP = 1 / 120;
 export const FLIGHT_AOA_ONSET_DEG = 14;
-export const FLIGHT_AOA_FULL_DEG = 38;
+// FAA training material places the critical AOA for conventional aircraft in
+// roughly the 16-20 degree region. Sortie's shared fighter wing starts to lose
+// attached flow at 14 degrees and is fully separated by 22; low energy by
+// itself is a mush/sink condition and does not redefine the critical AOA.
+export const FLIGHT_AOA_FULL_DEG = 22;
 
 const EPSILON = 1e-9;
 
@@ -90,6 +94,21 @@ function rotateToward(x, y, z, target, maxAngle) {
   };
 }
 
+function rotateAroundAxis(vector, axis, angle) {
+  if (Math.abs(angle) <= EPSILON) return { ...vector };
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const dot = vector.x * axis.x + vector.y * axis.y + vector.z * axis.z;
+  return {
+    x: vector.x * cosine + (axis.y * vector.z - axis.z * vector.y) * sine +
+      axis.x * dot * (1 - cosine),
+    y: vector.y * cosine + (axis.z * vector.x - axis.x * vector.z) * sine +
+      axis.y * dot * (1 - cosine),
+    z: vector.z * cosine + (axis.x * vector.y - axis.y * vector.x) * sine +
+      axis.z * dot * (1 - cosine)
+  };
+}
+
 export function resetFlightDynamicsState(state = {}, velocity = null) {
   state.initialized = Boolean(velocity);
   state.x = finite(velocity?.x);
@@ -97,6 +116,7 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
   state.z = finite(velocity?.z);
   state.airspeed = length(state.x, state.y, state.z);
   state.angleOfAttackDeg = 0;
+  state.flowMisalignmentDeg = 0;
   state.separatedFlow = 0;
   state.liftDeficit = 0;
   state.stallRatio = 0;
@@ -109,6 +129,7 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
   };
   state.forces = {
     gravity: { x: 0, y: -FLIGHT_GRAVITY_MPS2, z: 0 },
+    control: { x: 0, y: 0, z: 0 },
     thrust: { x: 0, y: 0, z: 0 },
     drag: { x: 0, y: 0, z: 0 },
     lift: { x: 0, y: 0, z: 0 },
@@ -121,6 +142,7 @@ export function resetFlightDynamicsState(state = {}, velocity = null) {
     loadFactorG: 0,
     supportDeficit: 0,
     dynamicPressureRatio: 0,
+    pathCommandLoadG: 0,
     engineAuthority: 1,
     thrustLapse: 1,
     dragAcceleration: 0,
@@ -170,32 +192,160 @@ function stepFlightDynamics(state, input, dt) {
   let direction = speed > EPSILON
     ? { x: state.x / speed, y: state.y / speed, z: state.z / speed }
     : { ...forward };
+  const directionBeforeStep = { ...direction };
   let noseDot = clamp(
     direction.x * forward.x + direction.y * forward.y + direction.z * forward.z,
     -1,
     1
   );
-  let angleOfAttackDeg = Math.acos(noseDot) * 180 / Math.PI;
+  let flowMisalignmentDeg = Math.acos(noseDot) * 180 / Math.PI;
+  let signedAoaDeg = -Math.asin(clamp(
+    direction.x * bodyUp.x + direction.y * bodyUp.y + direction.z * bodyUp.z,
+    -1,
+    1
+  )) * 180 / Math.PI;
+  let angleOfAttackDeg = Math.abs(signedAoaDeg);
   let separatedFlow = smoothstep01(
     (angleOfAttackDeg - FLIGHT_AOA_ONSET_DEG) /
       (FLIGHT_AOA_FULL_DEG - FLIGHT_AOA_ONSET_DEG)
   );
   const energyRatio = speed / supportSpeed;
   const energyAuthority = smoothstep01((energyRatio - 0.38) / 0.67);
-  const baseAuthority = clamp(
+  let requestedSupportG = Math.sqrt(Math.max(0, 1 - direction.y * direction.y));
+  let availableLiftG = Math.min(
+    maximumLoadG,
+    Math.pow(Math.max(0, speed) / supportSpeed, 2)
+  );
+  let baseAuthority = clamp(
     (0.1 + 0.9 * energyAuthority) * (1 - separatedFlow * 0.9),
     0.06,
     1
   );
-  const pitchDownAuthority = clamp(0.30 + baseAuthority * 0.70, 0.30, 1);
-  const pitchUpAuthority = clamp(0.10 + baseAuthority * 0.90, 0.10, 1);
-  const rollAuthority = clamp(0.18 + baseAuthority * 0.82, 0.18, 1);
-  const yawAuthority = clamp(0.12 + baseAuthority * 0.88, 0.12, 1);
-  const pathAuthority = clamp(0.045 + baseAuthority * 0.955, 0.045, 1);
+  let pitchDownAuthority = clamp(0.30 + baseAuthority * 0.70, 0.30, 1);
+  let pitchUpAuthority = clamp(0.10 + baseAuthority * 0.90, 0.10, 1);
+  let rollAuthority = clamp(0.18 + baseAuthority * 0.82, 0.18, 1);
+  let yawAuthority = clamp(0.12 + baseAuthority * 0.88, 0.12, 1);
+  let pathAuthority = clamp(0.045 + baseAuthority * 0.955, 0.045, 1);
 
-  // Do not rotate velocity toward the nose here. That tempting shortcut is a
-  // hidden force which also erases a gravity-driven fall at knife-edge. The
-  // lift vector below is the only aerodynamic force allowed to bend the path.
+  // The attitude controller turns the visible nose before this translational
+  // step. A pilot-requested turn therefore needs an equally explicit flight-
+  // path command; otherwise the nose can sweep at the authored arcade rate
+  // while WORLD velocity hardly turns, manufacturing 20-30 degrees of false
+  // AOA during an ordinary bank. This is deliberately opt-in and rate-limited.
+  // With no active pitch/yaw/normal-mode turn rate it is exactly zero, so it
+  // cannot recapture a knife-edge, inverted or stalled trajectory and erase
+  // the gravity-driven fall.
+  const fallbackPathSteeringRate = Math.max(0, finite(input.pathSteeringRate, 0));
+  const requestedPathYawRate = finite(input.pathYawRate, 0);
+  const requestedPathPitchRate = finite(input.pathPitchRate, 0);
+  const requestedPathRate = Math.hypot(
+    requestedPathYawRate,
+    requestedPathPitchRate
+  ) || fallbackPathSteeringRate;
+  let controlAccelerationX = 0;
+  let controlAccelerationY = 0;
+  let controlAccelerationZ = 0;
+  let pathCommandLoadG = 0;
+  if (requestedPathRate > EPSILON && speed > EPSILON) {
+    const beforeX = state.x;
+    const beforeY = state.y;
+    const beforeZ = state.z;
+    // A direction change is a lateral acceleration (a = v * omega), not a
+    // free kinematic rotation. Reserve enough of the available lift vector to
+    // oppose gravity, then allow the pilot command to consume only the
+    // remaining load. At and below the support speed there is no spare load:
+    // the nose can still rotate, but the flight path cannot follow it, so AOA
+    // rises and the wing can genuinely stall.
+    const maneuverLoadG = Math.sqrt(Math.max(
+      0,
+      availableLiftG * availableLiftG - requestedSupportG * requestedSupportG
+    ));
+    const physicalTurnRate = maneuverLoadG * FLIGHT_GRAVITY_MPS2 / speed;
+    const steeringTurnRate = Math.min(requestedPathRate * pathAuthority, physicalTurnRate);
+    const steeringScale = steeringTurnRate / requestedPathRate;
+    let steered;
+    if (Math.abs(requestedPathYawRate) > EPSILON ||
+        Math.abs(requestedPathPitchRate) > EPSILON) {
+      // Keep the axes distinct. A coordinated heading command rotates the path
+      // around WORLD up and therefore cannot erase a gravity-driven descent;
+      // pitch rotates around the real wing axis. The former generic
+      // rotate-toward-nose operation incorrectly used a bank turn to pull a
+      // sinking aircraft back up to the horizon for free.
+      const yawed = rotateAroundAxis(
+        { x: state.x, y: state.y, z: state.z },
+        { x: 0, y: 1, z: 0 },
+        requestedPathYawRate * steeringScale * dt
+      );
+      const right = normalized({
+        x: forward.y * bodyUp.z - forward.z * bodyUp.y,
+        y: forward.z * bodyUp.x - forward.x * bodyUp.z,
+        z: forward.x * bodyUp.y - forward.y * bodyUp.x
+      }, { x: 1, y: 0, z: 0 });
+      steered = rotateAroundAxis(
+        yawed,
+        right,
+        requestedPathPitchRate * steeringScale * dt
+      );
+      steered.angle = Math.acos(clamp(
+        (beforeX * steered.x + beforeY * steered.y + beforeZ * steered.z) /
+          Math.max(EPSILON, speed * speed),
+        -1,
+        1
+      ));
+    } else {
+      steered = rotateToward(
+        state.x,
+        state.y,
+        state.z,
+        forward,
+        steeringTurnRate * dt
+      );
+    }
+    state.x = steered.x;
+    state.y = steered.y;
+    state.z = steered.z;
+    controlAccelerationX = (state.x - beforeX) / dt;
+    controlAccelerationY = (state.y - beforeY) / dt;
+    controlAccelerationZ = (state.z - beforeZ) / dt;
+    pathCommandLoadG = steered.angle / Math.max(dt, EPSILON) * speed /
+      FLIGHT_GRAVITY_MPS2;
+    speed = length(state.x, state.y, state.z);
+    direction = speed > EPSILON
+      ? { x: state.x / speed, y: state.y / speed, z: state.z / speed }
+      : { ...forward };
+    noseDot = clamp(
+      direction.x * forward.x + direction.y * forward.y + direction.z * forward.z,
+      -1,
+      1
+    );
+    flowMisalignmentDeg = Math.acos(noseDot) * 180 / Math.PI;
+    signedAoaDeg = -Math.asin(clamp(
+      direction.x * bodyUp.x + direction.y * bodyUp.y + direction.z * bodyUp.z,
+      -1,
+      1
+    )) * 180 / Math.PI;
+    angleOfAttackDeg = Math.abs(signedAoaDeg);
+    separatedFlow = smoothstep01(
+      (angleOfAttackDeg - FLIGHT_AOA_ONSET_DEG) /
+        (FLIGHT_AOA_FULL_DEG - FLIGHT_AOA_ONSET_DEG)
+    );
+    baseAuthority = clamp(
+      (0.1 + 0.9 * energyAuthority) * (1 - separatedFlow * 0.9),
+      0.06,
+      1
+    );
+    pitchDownAuthority = clamp(0.30 + baseAuthority * 0.70, 0.30, 1);
+    pitchUpAuthority = clamp(0.10 + baseAuthority * 0.90, 0.10, 1);
+    rollAuthority = clamp(0.18 + baseAuthority * 0.82, 0.18, 1);
+    yawAuthority = clamp(0.12 + baseAuthority * 0.88, 0.12, 1);
+    pathAuthority = clamp(0.045 + baseAuthority * 0.955, 0.045, 1);
+    requestedSupportG = Math.sqrt(Math.max(0, 1 - direction.y * direction.y));
+    availableLiftG = Math.min(
+      maximumLoadG,
+      Math.pow(Math.max(0, speed) / supportSpeed, 2)
+    );
+  }
+
   const directionBeforeForces = { ...direction };
 
   const wingNormal = projectedNormal(bodyUp, direction);
@@ -213,28 +363,26 @@ function stepFlightDynamics(state, input, dt) {
   // Gravity perpendicular to the current path is the load the wing must
   // support. A vertical zoom needs no 1g wing support; gravity correctly spends
   // its axial speed instead.
-  const requestedSupportG = Math.sqrt(Math.max(0, 1 - direction.y * direction.y));
-  const availableLiftG = Math.min(
-    maximumLoadG,
-    Math.pow(Math.max(0, speed) / supportSpeed, 2)
-  );
+  const availableBodyLiftG = Math.sqrt(Math.max(
+    0,
+    availableLiftG * availableLiftG - pathCommandLoadG * pathCommandLoadG
+  ));
   const trimLiftG = supportAlignment > 0.08
     ? Math.min(maximumLoadG, requestedSupportG / supportAlignment)
     : 0;
-  const signedAoaDeg = -Math.asin(clamp(
-    direction.x * bodyUp.x + direction.y * bodyUp.y + direction.z * bodyUp.z,
-    -1,
-    1
-  )) * 180 / Math.PI;
   const pitchCommand = clamp(finite(input.pitchInput, 0), -1, 1);
   const maneuverLiftG = signedAoaDeg * 0.16 +
     pitchCommand * maximumLoadG * 0.32;
-  let bodyLiftG = clamp(trimLiftG + maneuverLiftG, -availableLiftG, availableLiftG);
+  let bodyLiftG = clamp(
+    trimLiftG + maneuverLiftG,
+    -availableBodyLiftG,
+    availableBodyLiftG
+  );
   if (supportAlignment > 0.08 && Math.abs(pitchCommand) < 0.05) {
     // The flight-control trim holds the selected bank attitude. Without this
     // floor the lift-induced path bend itself reduced computed AOA, which then
     // removed the very lift supporting a steady coordinated turn.
-    bodyLiftG = Math.max(bodyLiftG, Math.min(trimLiftG, availableLiftG));
+    bodyLiftG = Math.max(bodyLiftG, Math.min(trimLiftG, availableBodyLiftG));
   }
   if (supportAlignment < -0.08 && bodyLiftG < 0) {
     // Negative-G lift exists, but an inverted fighter may not use the positive-G
@@ -247,7 +395,7 @@ function stepFlightDynamics(state, input, dt) {
   const stabilityAssistG = supportNormal
     ? requestedSupportG * stability * 0.32 * smoothstep01((0.35 - supportAlignment) / 1.35)
     : 0;
-  const remainingAssistG = Math.max(0, availableLiftG - Math.abs(bodyLiftG));
+  const remainingAssistG = Math.max(0, availableBodyLiftG - Math.abs(bodyLiftG));
   const generatedAssistG = Math.min(stabilityAssistG, remainingAssistG) *
     (1 - separatedFlow * 0.9);
   const generatedSupportG = Math.max(0, bodyLiftG * supportAlignment + generatedAssistG);
@@ -282,13 +430,19 @@ function stepFlightDynamics(state, input, dt) {
   const dragX = -direction.x * dragAcceleration;
   const dragY = -direction.y * dragAcceleration;
   const dragZ = -direction.z * dragAcceleration;
-  const accelerationX = thrustX + dragX + liftX;
-  const accelerationY = -FLIGHT_GRAVITY_MPS2 + thrustY + dragY + liftY;
-  const accelerationZ = thrustZ + dragZ + liftZ;
+  const forceAccelerationX = thrustX + dragX + liftX;
+  const forceAccelerationY = -FLIGHT_GRAVITY_MPS2 + thrustY + dragY + liftY;
+  const forceAccelerationZ = thrustZ + dragZ + liftZ;
+  const accelerationX = controlAccelerationX + forceAccelerationX;
+  const accelerationY = controlAccelerationY + forceAccelerationY;
+  const accelerationZ = controlAccelerationZ + forceAccelerationZ;
 
-  state.x += accelerationX * dt;
-  state.y += accelerationY * dt;
-  state.z += accelerationZ * dt;
+  // Path steering was already applied as the direction-preserving velocity
+  // rotation above. Integrate only gravity/aerodynamic/engine force here; the
+  // combined acceleration is retained below for instrumentation.
+  state.x += forceAccelerationX * dt;
+  state.y += forceAccelerationY * dt;
+  state.z += forceAccelerationZ * dt;
   state.airspeed = length(state.x, state.y, state.z);
   const directionAfterForces = state.airspeed > EPSILON
     ? {
@@ -298,16 +452,22 @@ function stepFlightDynamics(state, input, dt) {
     }
     : directionBeforeForces;
   const pathTurnAngle = Math.acos(clamp(
-    directionBeforeForces.x * directionAfterForces.x +
-      directionBeforeForces.y * directionAfterForces.y +
-      directionBeforeForces.z * directionAfterForces.z,
+    directionBeforeStep.x * directionAfterForces.x +
+      directionBeforeStep.y * directionAfterForces.y +
+      directionBeforeStep.z * directionAfterForces.z,
     -1,
     1
   ));
   state.angleOfAttackDeg = angleOfAttackDeg;
+  state.flowMisalignmentDeg = flowMisalignmentDeg;
   state.separatedFlow = separatedFlow;
   state.liftDeficit = liftDeficit;
-  const targetStallRatio = Math.max(separatedFlow, smoothstep01(liftDeficit));
+  // Insufficient dynamic pressure means the wing cannot support the requested
+  // path and the aircraft must sink/descend. It is not an aerodynamic stall
+  // until the wing also exceeds critical AOA and separates. Keeping these two
+  // states distinct prevents a high-altitude, low-energy aircraft at 3 degrees
+  // AOA from being falsely trapped in a full-stall control state.
+  const targetStallRatio = separatedFlow;
   const stallResponse = targetStallRatio > state.stallRatio ? 6.5 : 2.4;
   state.stallRatio += (targetStallRatio - state.stallRatio) *
     (1 - Math.exp(-stallResponse * dt));
@@ -318,6 +478,11 @@ function stepFlightDynamics(state, input, dt) {
   state.controlAuthority.yaw = yawAuthority;
   state.controlAuthority.path = pathAuthority;
   state.forces.gravity = { x: 0, y: -FLIGHT_GRAVITY_MPS2, z: 0 };
+  state.forces.control = {
+    x: controlAccelerationX,
+    y: controlAccelerationY,
+    z: controlAccelerationZ
+  };
   state.forces.thrust = { x: thrustX, y: thrustY, z: thrustZ };
   state.forces.drag = { x: dragX, y: dragY, z: dragZ };
   state.forces.lift = { x: liftX, y: liftY, z: liftZ };
@@ -325,7 +490,12 @@ function stepFlightDynamics(state, input, dt) {
   state.telemetry.supportSpeed = supportSpeed;
   state.telemetry.availableLiftG = availableLiftG;
   state.telemetry.requestedLiftG = requestedSupportG;
-  state.telemetry.loadFactorG = Math.hypot(bodyLiftG, generatedAssistG);
+  state.telemetry.loadFactorG = Math.hypot(
+    bodyLiftG,
+    generatedAssistG,
+    pathCommandLoadG
+  );
+  state.telemetry.pathCommandLoadG = pathCommandLoadG;
   state.telemetry.supportDeficit = supportDeficit;
   // q / q_ref with q_ref taken at the airframe's sea-level stall speed.
   // The 1/2 and reference density cancel, leaving a compact dimensionless

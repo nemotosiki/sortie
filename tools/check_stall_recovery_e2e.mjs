@@ -102,39 +102,58 @@ try {
       && launch.sample.stallSeverity < 0.01,
     "M11 did not launch F-35C in a trimmed sustainable state", launch.sample);
 
-  const noPower = await page.evaluate(() => {
+  const lowEnergy = await page.evaluate(() => {
     const debug = window.__game.debug;
     window.__game.forceSeraM11SetPlayerAltitude(9144);
     debug.forceResetAttitudeLift();
     debug.forceAttitude(0, 0, 0);
-    debug.forceFlightEnergy(270, 1);
+    debug.forceFlightEnergy(270, 0);
     const before = debug.forceFlightFrames(0, 1 / 60);
     const after = debug.forceFlightFrames(180, 1 / 60);
     return { before, after };
   });
-  assert(noPower.after.position.y < noPower.before.position.y - 10
-      && noPower.after.stallSeverity > 0.15,
-    "a level, unpowered high-altitude stall received a free recovery", noPower);
+  assert(lowEnergy.after.position.y < lowEnergy.before.position.y - 10
+      && lowEnergy.after.dynamics.liftDeficit > 0.15
+      && lowEnergy.after.stallSeverity < 0.08
+      && lowEnergy.after.flightPath.separatedFlow < 0.05,
+    "high-altitude low energy did not produce a non-stalled sinking path", lowEnergy);
 
   const recovery = await page.evaluate(() => {
     const debug = window.__game.debug;
     window.__game.forceSeraM11SetPlayerAltitude(9144);
-    debug.forceResetAttitudeLift();
-    debug.forceAttitude(0, 0, 0);
-    debug.forceFlightEnergy(270, 1);
-    const samples = [debug.forceFlightFrames(0, 1 / 60)];
+    const primePhysicalStall = () => {
+      debug.forceResetAttitudeLift();
+      debug.forceAttitude(0, 0, 0);
+      debug.forceFlightEnergy(300, 0);
+      debug.forceFlightFrames(1, 1 / 60);
+      // Rotate the body, not WORLD velocity, then keep pulling while energy is
+      // bled. This establishes the same above-critical-AOA separation as the
+      // real keyboard regression without pinning an impossible stall flag.
+      debug.forceAttitude(0, 30, 0);
+      let sample = debug.forceFlightFrames(1, 1 / 60, { brake: true, pitch: 0.7 });
+      for (let batch = 0; batch < 8 && sample.stallSeverity < 0.75; batch += 1) {
+        sample = debug.forceFlightFrames(15, 1 / 60, { brake: true, pitch: 0.7 });
+      }
+      return sample;
+    };
+    const samples = [primePhysicalStall()];
     for (let second = 0; second < 16; second += 1) {
       samples.push(debug.forceFlightFrames(60, 1 / 60, {
         boost: true,
         pitch: second < 3 ? -0.65 : 0
       }));
       if (samples.at(-1).stallSeverity < 0.08
-          && !samples.at(-1).flightPath.active) break;
+          && !samples.at(-1).flightPath.active
+          && samples.at(-1).kinematicSpeedMps >
+            samples.at(-1).highAltitude.minimumControlledSpeed * 1.05) break;
     }
     return samples;
   });
   const recoveryStart = recovery[0];
   const recoveryEnd = recovery.at(-1);
+  assert(recoveryStart.flightPath.separatedFlow > 0.5
+      && recoveryStart.stallSeverity > 0.5,
+    "recovery probe did not begin from a physical AOA stall", recoveryStart);
   const recoveredBelowCriticalAoa = recoveryEnd.flightPath.separatedFlow < 0.05
     && recoveryEnd.flightPath.angleOfAttackDeg < 18;
   assert(recoveredBelowCriticalAoa
@@ -152,7 +171,7 @@ try {
   assert(consoleErrors.length === 0, "console errors", consoleErrors);
   console.log("check_stall_recovery_e2e: PASS");
   console.log(`  launch=${launch.sample.speedMps.toFixed(1)}m/s minimum=${launch.sample.highAltitude.minimumControlledSpeed.toFixed(1)}m/s`);
-  console.log(`  no-power 3s=${noPower.after.kinematicSpeedMps.toFixed(1)}m/s severity=${noPower.after.stallSeverity.toFixed(2)}`);
+  console.log(`  low-energy 3s=${lowEnergy.after.kinematicSpeedMps.toFixed(1)}m/s liftDeficit=${lowEnergy.after.dynamics.liftDeficit.toFixed(2)}`);
   console.log(`  recovered in ${recovery.length - 1}s at ${recoveryEnd.kinematicSpeedMps.toFixed(1)}m/s after ${(recoveryStart.position.y - recoveryEnd.position.y).toFixed(0)}m descent`);
 } finally {
   await context.close();

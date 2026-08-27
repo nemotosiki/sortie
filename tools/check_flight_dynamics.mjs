@@ -51,10 +51,23 @@ stepFor(braked, { ...base, throttle: 0.03, airBrake: 1 }, 5);
 assert(coast.airspeed - braked.airspeed > 55,
   "airbrake did not materially reduce actual velocity", { coast, braked });
 
-const stalledLevel = resetFlightDynamicsState({}, { x: 0, y: 0, z: -55 });
-stepFor(stalledLevel, { ...base, throttle: 0 }, 4);
-assert(stalledLevel.y < -12 && stalledLevel.stallRatio > 0.18,
-  "low-energy aircraft did not fall under WORLD gravity", stalledLevel);
+const lowEnergy = resetFlightDynamicsState({}, { x: 0, y: 0, z: -55 });
+stepFor(lowEnergy, { ...base, throttle: 0 }, 4);
+assert(lowEnergy.y < -12 && lowEnergy.liftDeficit > 0.18,
+  "low-energy aircraft did not fall under WORLD gravity", lowEnergy);
+assert(lowEnergy.stallRatio < 0.05,
+  "low dynamic pressure was incorrectly labelled as an AOA stall", lowEnergy);
+
+const highAoa = resetFlightDynamicsState({}, { x: 0, y: 0, z: -70 });
+const noseUp30 = {
+  forward: { x: 0, y: 0.5, z: -Math.sqrt(0.75) },
+  up: { x: 0, y: Math.sqrt(0.75), z: 0.5 }
+};
+stepFor(highAoa, { ...base, ...noseUp30, throttle: 0 }, 1);
+assert(highAoa.angleOfAttackDeg > 20
+    && highAoa.separatedFlow > 0.8
+    && highAoa.stallRatio > 0.8,
+  "critical AOA did not produce separated flow and a real stall", highAoa);
 
 const noseDown = resetFlightDynamicsState({}, { x: 0, y: 0, z: -70 });
 const noseUp = resetFlightDynamicsState({}, { x: 0, y: 0, z: -70 });
@@ -81,16 +94,55 @@ assert(Math.max(...fps.map((sample) => sample.y)) - Math.min(...fps.map((sample)
 assert(Math.max(...fps.map((sample) => sample.airspeed)) - Math.min(...fps.map((sample) => sample.airspeed)) < 0.2,
   "airspeed integration is frame-rate dependent", fps);
 
+// Reproduce an authored arcade turn without THREE.js: the attitude controller
+// yaws the nose at 30 deg/s while the translational controller receives the
+// same explicit path request. A routine turn must stay attached, while the
+// no-command gravity cases above remain untouched.
+const controlledTurn = resetFlightDynamicsState({}, { x: 0, y: 0, z: -270 });
+let controlledTurnHeading = 0;
+for (let index = 0; index < 300; index += 1) {
+  controlledTurnHeading += Math.PI / 6 / 60;
+  const forward = {
+    x: Math.sin(controlledTurnHeading),
+    y: 0,
+    z: -Math.cos(controlledTurnHeading)
+  };
+  updateFlightDynamicsState(controlledTurn, {
+    ...base,
+    forward,
+    pathYawRate: Math.PI / 6 * 1.08
+  }, 1 / 60);
+}
+assert(controlledTurn.angleOfAttackDeg < 8 && controlledTurn.stallRatio < 0.08,
+  "pilot-requested turn detached WORLD velocity from the nose", controlledTurn);
+assert(Math.abs(Math.atan2(controlledTurn.x, -controlledTurn.z)) > 1.8,
+  "pilot-requested turn did not materially bend the flight path", controlledTurn);
+
 console.log("check_flight_dynamics: PASS");
 console.log(JSON.stringify({
   trim: { speed: trim.airspeed, verticalSpeed: trim.y },
   brakeDelta: coast.airspeed - braked.airspeed,
-  stall: { verticalSpeed: stalledLevel.y, ratio: stalledLevel.stallRatio },
+  lowEnergy: {
+    verticalSpeed: lowEnergy.y,
+    liftDeficit: lowEnergy.liftDeficit,
+    stallRatio: lowEnergy.stallRatio
+  },
+  highAoaStall: {
+    aoa: highAoa.angleOfAttackDeg,
+    separatedFlow: highAoa.separatedFlow,
+    stallRatio: highAoa.stallRatio
+  },
   recovery: {
     noseDownSpeed: noseDown.airspeed,
     noseDownVy: noseDown.y,
     noseUpSpeed: noseUp.airspeed,
     noseUpVy: noseUp.y
   },
-  fps: fps.map(({ airspeed, y }) => ({ airspeed, y }))
+  fps: fps.map(({ airspeed, y }) => ({ airspeed, y })),
+  controlledTurn: {
+    speed: controlledTurn.airspeed,
+    aoa: controlledTurn.angleOfAttackDeg,
+    stallRatio: controlledTurn.stallRatio,
+    pathHeadingDeg: Math.atan2(controlledTurn.x, -controlledTurn.z) * 180 / Math.PI
+  }
 }, null, 2));

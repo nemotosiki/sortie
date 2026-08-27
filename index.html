@@ -2524,7 +2524,7 @@
       <div id="recoveryGaugeStatus">ESCORT SEALIGHT</div>
     </div>
     <div id="boostIndicator">AFTERBURNER</div>
-    <div id="stallWarning">STALL · ACCELERATE / LOWER NOSE</div>
+    <div id="stallWarning">STALL · LOWER NOSE / LEVEL WINGS</div>
     <div id="lockWarning">WARNING</div>
     <div id="missileWarning">MISSILE ALERT</div>
     <div id="battleAreaWarning">RETURN TO THE BATTLE AREA</div>
@@ -2742,10 +2742,11 @@
     } from "./src/combat/multi-lock.js?v=20260813-concurrent-lock-1";
     import {
       FLIGHT_AOA_ONSET_DEG,
+      FLIGHT_GRAVITY_MPS2,
       neutralThrottleForEnvelope,
       resetFlightDynamicsState,
       updateFlightDynamicsState
-    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-1";
+    } from "./src/flight/flight-dynamics.js?v=20260828-unified-flight-2";
     import {
       aircraftTurnRateAtSpeed,
       constrainedAircraftTurn,
@@ -50435,6 +50436,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         aerodynamicVerticalSpeed: 0,
         effectiveVerticalSpeed: 0,
         altitudeM: 0,
+        position: { x: 0, y: 0, z: 0 },
+        attitudeForward: { x: 0, y: 0, z: -1 },
+        velocity: { x: 0, y: 0, z: 0 },
+        input: { pitch: 0, roll: 0, yaw: 0, boost: false, brake: false },
         highAltitude: null
       },
       cameraFocus: { active: false, targetId: null, source: null },
@@ -51479,11 +51484,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               z: playerFlightDynamics.z,
               pathLoss: playerFlightDynamics.stallRatio,
               separatedFlow: playerFlightDynamics.separatedFlow,
-              angleOfAttackDeg: playerFlightDynamics.angleOfAttackDeg
+              angleOfAttackDeg: playerFlightDynamics.angleOfAttackDeg,
+              flowMisalignmentDeg: playerFlightDynamics.flowMisalignmentDeg
             },
             dynamics: {
               airspeed: playerFlightDynamics.airspeed,
               angleOfAttackDeg: playerFlightDynamics.angleOfAttackDeg,
+              flowMisalignmentDeg: playerFlightDynamics.flowMisalignmentDeg,
               separatedFlow: playerFlightDynamics.separatedFlow,
               liftDeficit: playerFlightDynamics.liftDeficit,
               stallRatio: playerFlightDynamics.stallRatio,
@@ -55816,16 +55823,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     function applyPlayerStallNoseRecovery(dt, pitchInput = 0) {
       const lowEnergyDeparture = playerFlightDynamics.airspeed <
         playerFlightDynamics.telemetry.supportSpeed * 0.92;
-      if ((playerFlightDynamics.separatedFlow <= 0.05 && !lowEnergyDeparture) ||
-          Math.abs(pitchInput) > 0.05) return;
-      const recoveryRate = STALL_NOSE_DROP_RATE * (0.72 + PLAYER_STABILITY * 0.56);
+      if (playerFlightDynamics.separatedFlow <= 0.05 && !lowEnergyDeparture) return;
+      // Pulling further into a departure remains the pilot's choice. Nose-down
+      // recovery is different: without static-stability assistance the authored
+      // pitch rate can rotate the model all the way through an outside loop
+      // while its low-energy WORLD velocity barely turns. The HUD then tells the
+      // player to LOWER NOSE even as that input drives AOA toward 180 degrees.
+      // Let stability oppose that overshoot while preserving the pilot's input.
+      if (pitchInput > 0.05) return;
+      const passiveRecoveryRate = STALL_NOSE_DROP_RATE *
+        (0.72 + PLAYER_STABILITY * 0.56);
+      const commandedRecoveryRate = pitchInput < -0.05
+        ? Math.abs(playerPitchRate) * 1.12
+        : 0;
+      const recoveryRate = Math.max(passiveRecoveryRate, commandedRecoveryRate);
       const severity = Math.max(stallSeverity, playerFlightDynamics.separatedFlow || 0);
       const orientation = controlMode === CONTROL_NORMAL
         ? playerFlightFrame : player.quaternion;
       rotateForwardTowardFlightPath(
         orientation,
         playerFlightDynamics,
-        recoveryRate * severity * dt,
+        recoveryRate * Math.max(0.35, severity) * dt,
         severity * 0.16
       );
     }
@@ -55898,15 +55916,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // turn performance, the stall model and the enemy balance are all
       // unchanged.
       const pitchTargetRate = pitchInput * PITCH_RATE * pitchManeuverFactor * playerControlAuthority;
-      playerPitchRate = THREE.MathUtils.lerp(
-        playerPitchRate, pitchTargetRate, damping(PITCH_RESPONSE_K, dt)
-      );
+      const previousPitchRate = playerPitchRate;
+      const pitchRetention = Math.pow(PITCH_RESPONSE_K, dt);
+      const pitchResponseRate = -Math.log(PITCH_RESPONSE_K);
+      const pitchAngularStep = pitchTargetRate * dt +
+        (previousPitchRate - pitchTargetRate) *
+          (1 - pitchRetention) / pitchResponseRate;
+      playerPitchRate = pitchTargetRate +
+        (previousPitchRate - pitchTargetRate) * pitchRetention;
 
       const yawTargetRate = yawInput * YAW_RATE * playerTurnFactor *
         (controlMode === CONTROL_NORMAL ? 1 : yawControlAuthority);
-      playerYawRate = THREE.MathUtils.lerp(
-        playerYawRate, yawTargetRate, damping(YAW_RESPONSE_K, dt)
-      );
+      const previousYawRate = playerYawRate;
+      const yawRetention = Math.pow(YAW_RESPONSE_K, dt);
+      const yawResponseRate = -Math.log(YAW_RESPONSE_K);
+      const yawAngularStep = yawTargetRate * dt +
+        (previousYawRate - yawTargetRate) *
+          (1 - yawRetention) / yawResponseRate;
+      playerYawRate = yawTargetRate +
+        (previousYawRate - yawTargetRate) * yawRetention;
+      const pitchStepRate = pitchAngularStep / Math.max(1e-6, dt);
+      const yawStepRate = yawAngularStep / Math.max(1e-6, dt);
+      let pathYawRate = 0;
+      let pathPitchRate = 0;
 
       if (controlMode === CONTROL_NORMAL) {
         const targetBank = rollInput * MAX_BANK_ANGLE;
@@ -55922,7 +55954,47 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         playerBank += rollRate * dt;
         playerBank = THREE.MathUtils.clamp(playerBank, -MAX_BANK_ANGLE * 1.12, MAX_BANK_ANGLE * 1.12);
 
-        const turnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * playerTurnFactor;
+        const authoredTurnRate = Math.sin(playerBank) * COORDINATED_TURN_RATE * playerTurnFactor;
+        const availableLiftG = Math.max(
+          0,
+          Number(playerFlightDynamics.telemetry.availableLiftG) || 0
+        );
+        const requestedSupportG = Math.max(
+          0,
+          Number(playerFlightDynamics.telemetry.requestedLiftG) || 0
+        );
+        const maneuverTurnRate = Math.sqrt(Math.max(
+          0,
+          availableLiftG * availableLiftG - requestedSupportG * requestedSupportG
+        )) * FLIGHT_GRAVITY_MPS2 / Math.max(1, actualFlightSpeed);
+        const bankSine = Math.sin(playerBank);
+        const bankCosine = Math.max(0.08, Math.cos(playerBank));
+        const bankLiftG = Math.min(
+          availableLiftG,
+          requestedSupportG / bankCosine
+        );
+        const naturalBankTurnRate = bankSine * bankLiftG *
+          FLIGHT_GRAVITY_MPS2 / Math.max(1, actualFlightSpeed);
+        const physicalTurnRate = Math.max(
+          Math.abs(naturalBankTurnRate),
+          maneuverTurnRate
+        );
+        // Normal mode is a coordinated-turn assist, so its visible nose must
+        // not yaw faster than the wing can bend the actual path. Near the
+        // ceiling the result is a slow descending turn rather than an
+        // artificial sideslip/AOA stall; at normal energy the authored AC-style
+        // turn remains available up to the same structural-load envelope.
+        const turnRate = THREE.MathUtils.clamp(
+          authoredTurnRate,
+          -physicalTurnRate,
+          physicalTurnRate
+        );
+        const assistedPathTurnRate = Math.sign(turnRate) === Math.sign(naturalBankTurnRate)
+          ? Math.sign(turnRate) * Math.max(
+            0,
+            Math.abs(turnRate) - Math.abs(naturalBankTurnRate)
+          )
+          : turnRate;
         if (Math.abs(turnRate) > 0.00001) {
           tmpQ1.setFromAxisAngle(WORLD_UP, turnRate * dt);
           playerFlightFrame.premultiply(tmpQ1).normalize();
@@ -55930,15 +56002,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         // Driven by the RATE, not the input, so the nose keeps going for a
         // moment after the stick centres.
-        if (Math.abs(playerYawRate) > 0.00001) {
-          tmpQ1.setFromAxisAngle(WORLD_UP, playerYawRate * dt);
+        if (Math.abs(yawAngularStep) > 0.0000001) {
+          tmpQ1.setFromAxisAngle(WORLD_UP, yawAngularStep);
           playerFlightFrame.premultiply(tmpQ1).normalize();
         }
 
-        if (Math.abs(playerPitchRate) > 0.00001) {
-          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, playerPitchRate * dt);
+        if (Math.abs(pitchAngularStep) > 0.0000001) {
+          tmpQ1.setFromAxisAngle(LOCAL_RIGHT, pitchAngularStep);
           playerFlightFrame.multiply(tmpQ1).normalize();
         }
+
+        // Normal-mode bank and rudder both request heading change. Feed the
+        // same angular request to the WORLD velocity integrator so a routine
+        // bank cannot leave the path behind the nose and create a false stall.
+        // Banked wing lift already turns WORLD velocity. The flight-path assist
+        // supplies only the authored remainder, avoiding the old double-turn
+        // where both forces independently applied the full heading rate.
+        pathYawRate = (assistedPathTurnRate + yawStepRate) * 1.08;
+        pathPitchRate = pitchStepRate * 1.08;
 
         applyPlayerStallNoseRecovery(dt, pitchInput);
         syncPlayerOrientation();
@@ -55951,9 +56032,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         );
         rollRate = expertRollRate;
 
-        if (Math.abs(playerPitchRate) > 0.00001) player.rotateX(playerPitchRate * dt);
-        if (Math.abs(playerYawRate) > 0.00001) player.rotateY(playerYawRate * dt);
+        if (Math.abs(pitchAngularStep) > 0.0000001) player.rotateX(pitchAngularStep);
+        if (Math.abs(yawAngularStep) > 0.0000001) player.rotateY(yawAngularStep);
         if (Math.abs(expertRollRate) > 0.00001) player.rotateZ(expertRollRate * dt);
+        // A pure expert roll changes attitude, not flight direction. Only the
+        // pitch/yaw rates request path steering; gravity and banked lift remain
+        // responsible for everything else.
+        pathYawRate = yawStepRate * 1.08;
+        pathPitchRate = pitchStepRate * 1.08;
         applyPlayerStallNoseRecovery(dt, pitchInput);
         player.quaternion.normalize();
         playerFlightFrame.copy(player.quaternion);
@@ -55984,6 +56070,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         structuralG: STRUCTURAL_G,
         stability: PLAYER_STABILITY,
         pitchInput,
+        pathYawRate,
+        pathPitchRate,
         pathTurnRate: Math.max(
           PITCH_RATE * 1.05,
           COORDINATED_TURN_RATE * Math.max(1, rawTurnFactor)
@@ -71077,9 +71165,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ui.stallWarning.classList.toggle("active", lowSpeed || stallLit || highAltitudeCaution);
       ui.stallWarning.classList.toggle("caution", !stallLit && (lowSpeed || highAltitudeCaution));
       ui.stallWarning.textContent = stalling
-        ? "STALL · ACCELERATE / LOWER NOSE"
+        ? "STALL · LOWER NOSE / LEVEL WINGS"
         : (lowSpeed
-          ? "LOW SPEED · STALL RISK"
+          ? (playerHighAltitudeEnvelope.thinAir >= 0.5
+            ? "LOW ENERGY · DESCEND / ACCELERATE"
+            : "LOW SPEED · STALL RISK")
           : `HIGH ALTITUDE · THIN AIR ${Math.round(player.position.y)}M`);
 
       const boundaryWarning = gameState === STATE_PLAYING && battleArea.warning;
@@ -71234,14 +71324,37 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.flight.attitudeDownAcceleration = -playerFlightDynamics.forces.acceleration.y;
       hook.flight.aerodynamicVerticalSpeed = playerFlightDynamics.y;
       hook.flight.effectiveVerticalSpeed = playerEffectiveVerticalSpeed();
+      forwardOf(player, tmpV10);
+      hook.flight.attitudeForward = { x: tmpV10.x, y: tmpV10.y, z: tmpV10.z };
+      hook.flight.position = {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z
+      };
+      hook.flight.velocity = {
+        x: playerFlightDynamics.x,
+        y: playerFlightDynamics.y,
+        z: playerFlightDynamics.z
+      };
+      hook.flight.input = {
+        pitch: ((keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
+          (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0)) + gamepadInput.pitch,
+        roll: ((keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) -
+          (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0)) + gamepadInput.roll,
+        yaw: ((keys.has("KeyQ") ? 1 : 0) - (keys.has("KeyE") ? 1 : 0)) + gamepadInput.yaw,
+        boost: keys.has("ShiftLeft") || keys.has("ShiftRight") || gamepadInput.boost,
+        brake: keys.has("ControlLeft") || keys.has("ControlRight") || gamepadInput.brake
+      };
       hook.flight.dynamics = {
         airspeed: playerFlightDynamics.airspeed,
         angleOfAttackDeg: playerFlightDynamics.angleOfAttackDeg,
+        flowMisalignmentDeg: playerFlightDynamics.flowMisalignmentDeg,
         separatedFlow: playerFlightDynamics.separatedFlow,
         liftDeficit: playerFlightDynamics.liftDeficit,
         controlAuthority: { ...playerFlightDynamics.controlAuthority },
         forces: {
           gravity: { ...playerFlightDynamics.forces.gravity },
+          control: { ...playerFlightDynamics.forces.control },
           thrust: { ...playerFlightDynamics.forces.thrust },
           drag: { ...playerFlightDynamics.forces.drag },
           lift: { ...playerFlightDynamics.forces.lift },
