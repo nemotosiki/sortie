@@ -89,9 +89,14 @@ collision system would be a separate engine change and is outside this pass.
   contract.
 - HALO aggregate HP, HALO altitude/orbit, LARK, success/failure, Retry, result
   persistence, and the four-MiG-31 high-altitude secondary condition.
-- The first MiG-31 pair remains a HALO-hunting high-altitude threat. The second
-  pair may be re-authored as WARDEN 1 `GRANITE` plus one WARDEN wingman without
-  increasing the total MiG-31 count.
+- HALO holds 12,500 m as a latest-model lower-stratosphere EW platform. MiG-31
+  is exempt from the fighter envelope. MiG-31 receives the airframe's 2,000 m
+  energy-ceiling extension and holds 11,900 m; ordinary fighters run out of
+  sustained speed near 10,000 m, leaving only a narrow horizontal margin inside
+  a 4AAM's 2,000 m slant range.
+- All four MiG-31s remain HALO-only high-altitude hunters. The second pair is
+  re-authored as WARDEN 1 `GRANITE` plus one WARDEN wingman without increasing
+  the total MiG-31 count or diverting either aircraft toward RAVEN/LARK/ARCA.
 - Base scenery is not selectable, lockable, score-bearing, or counted in
   `TGT REMAIN`.
 
@@ -102,7 +107,9 @@ ten-red-TGT clear condition.
 
 ## Layout contract
 
-All positions below are offsets from the existing `weatherStation` anchor.
+All positions below are offsets from the `weatherStation` anchor. The final
+anchor is `[0, 6500]`, on the continuous western mainland shelf rather than the
+former offshore point at `[4300, -2500]`.
 The installation uses a roughly `2.8 km x 2.6 km` outer footprint. Existing
 target positions define the layout; scenery is fitted around them rather than
 moving targets to fit a drawing.
@@ -139,19 +146,20 @@ reach the intended unit without an unrelated mesh visually masking it.
 ## Enemy-density contract
 
 M11 is treated as a large mission under the campaign density plan. The intended
-finite contact count is 26 hostile units, plus two blue ARCA observers:
+finite contact count is 26 hostile units, plus two blue ARCA self-defence aircraft:
 
 | Layer | Red TGT | White Elem enemy | Blue ARCA | Total |
 |---|---:|---:|---:|---:|
 | Existing base objectives | 10 | 0 | 0 | 10 |
 | Added perimeter defenders | 0 | 6 | 0 | 6 |
 | Staged air response | 0 | 10 | 0 | 10 |
-| Third-faction monitoring | 0 | 0 | 2 | 2 |
+| Third-faction monitoring/self-defence | 0 | 0 | 2 | 2 |
 | **Mission contact total** | **10** | **16** | **2** | **28** |
 
 Only the ten red targets count toward mission completion. The 16 Elem contacts
 make attacking and retreating through each jamming window dangerous. The two
-ARCA aircraft are not enemies at this point in the campaign.
+ARCA aircraft are not enemies at this point in the campaign, but may defend
+their own monitoring corridor against MiG-29A.
 
 ### Optional perimeter ground defenders
 
@@ -185,13 +193,13 @@ full three-phase battle.
 
 **Time:** mission start to approximately 70 seconds.
 
-- retain the existing first MiG-31 pair at approximately 10,650 m;
+- retain the existing first MiG-31 pair at approximately 11,900 m;
 - they continue hunting HALO and force the player to choose between the base
   strike and a difficult 4AAM climb;
 - add one local MiG-29A CAP pair at approximately 5,500–6,500 m;
 - CAP spawns 7–9 km from the base/player attack line, with a completed patrol
   heading rather than an immediate firing solution;
-- CAP prioritises RAVEN/LARK and does not hunt HALO.
+- CAP splits between RAVEN/LARK and does not hunt HALO.
 
 The result is four airborne enemies at the opening, split into a high escort
 threat and a medium-altitude player screen.
@@ -206,7 +214,8 @@ radar-online cycle.
 - first pair enters from the coastward side, second from the inland side;
 - spawn distance is 8–10 km from the base and outside both weapon range and a
   finished nose-on firing solution;
-- all four prioritise RAVEN, then LARK; they do not attack HALO;
+- the two QRA pairs split between RAVEN, LARK, and ARCA; they do not attack
+  HALO;
 - MERIDIAN warns before the first pair enters, and LARK calls the opposite-side
   second pair so the player is not surprised by a rear spawn.
 
@@ -223,11 +232,10 @@ whichever integration method proves deterministic without a global host change.
   MiG-31 wingman;
 - register a dedicated `granite` ace key; do not reuse the already occupied
   cross-campaign `warden` registry key;
-- keep the pair near 10,650 m and preserve the existing total of four MiG-31s;
-- the wingman continues to pressure HALO;
-- GRANITE prioritises RAVEN when RAVEN climbs into the high-altitude engagement
-  band, otherwise screens the HALO attack lane without descending into an
-  ordinary low-altitude dogfight;
+- keep the pair near 11,900 m and preserve the existing total of four MiG-31s;
+- both WARDEN aircraft continue to pressure HALO exclusively;
+- GRANITE remains near the HALO attack lane and does not switch to RAVEN even
+  when RAVEN climbs into the high-altitude engagement band;
 - GRANITE is a white optional enemy and part of the existing four-MiG-31 S-rank
   secondary condition, never a red TGT;
 - his radio treats the polar boundary as a military duty and does not insult or
@@ -249,25 +257,27 @@ for hostile ARCA:
 - therefore M11 must not spawn a white hostile ARCA flight or any F-3.
 
 M11 instead uses a small blue `ARCA POLAR WATCH` flight to continue the existing
-third-faction story without breaking its chronology:
+third-faction story without breaking its chronology. Political neutrality does
+not require the flight to accept an attack without defending itself:
 
 - Typhoon x2, because the ARCA roster defines it as the high-altitude monitoring
   and fast-intervention aircraft;
 - approximately 9,600–10,000 m, outside the base core and clear of HALO's
   formation slot;
-- `ARCA / SUPPORT`, not lockable by the player, not mission-critical, and not
-  persisted;
+- `ARCA / SUPPORT`, not lockable by the player, enemy-targetable only, not
+  mission-critical, and not persisted;
 - PAX states that ARCA is monitoring the polar rescue/weather frequency and
   orders both sides not to interfere with the civilian channel;
-- the flight does not attack red base TGTs, HALO hunters, or mission-critical
-  units and cannot steal completion;
-- when the first radar-online phase begins, PAX withdraws POLAR WATCH rather
-  than joining the strike, foreshadowing that ARCA's neutrality has limits.
+- the flight attacks only MiG-29A assigned to its corridor; it does not attack
+  red base TGTs or MiG-31 HALO hunters and cannot steal completion;
+- MiG-29A may shoot down POLAR WATCH, but those losses never enter HALO's HP,
+  mission failure, score, rank, or persistence;
+- PAX reports the local engagement while explicitly leaving the MiG-31/HALO
+  fight to ROOK, foreshadowing that ARCA's neutrality has limits.
 
-This is a story/presence beat, not two extra combat allies. Before implementation
-the friendly support-flight path must be proven to carry two fighter models on
-a deterministic fly-through. If it cannot, the plan falls back to a noncombat
-radio/remote-contact presentation rather than spawning them as fake enemies.
+This is a bounded self-defence beat, not a second player-controlled formation.
+The friendly support-flight path carries two fighter models, a physical pursuit
+curve and gunfire, while keeping their target filter fixed to MiG-29A.
 
 ## Visual construction
 
@@ -357,6 +367,8 @@ small props are reduced before the high-altitude silhouette is compromised.
 
 - `payloads/map_verIceCoast.payload.js`
   - replace the minimal weather-station cluster with the authored base scenery;
+  - place the compound on the mainland between the two sea leads and connect
+    its south gate to the retained fishing harbour by a visible supply road;
   - retain the fishing harbour, ice shelf, leads, and floe field.
 - `payloads/mission_sera_m11.payload.js`
   - register M11-specific ground types/models;
@@ -398,7 +410,7 @@ small props are reduced before the high-altitude silhouette is compromised.
 Capture and manually inspect at least these mission views, including approach
 from more than one compass direction:
 
-1. high: approximately 10,500 m altitude / 10–14 km slant range;
+1. high: approximately 12,500 m altitude / 10–14 km slant range;
 2. attack setup: approximately 9,100 m altitude / 7–9 km slant range;
 3. medium: approximately 2,000–3,000 m altitude / 3–5 km slant range;
 4. low pass: approximately 250–500 m altitude / under 1.5 km slant range.
@@ -411,6 +423,8 @@ Acceptance criteria:
 - no target is hidden by a decorative wall/building;
 - no z-fighting, snow-white washout, hard draw-distance pop, duplicate weather
   station, or visually floating road/pad appears;
+- the entire compound sits inland of the authored western coastline and the
+  harbour access road never crosses open water;
 - the base remains distinguishable from the western fishing harbour.
 
 ### Gameplay regression gates
@@ -420,13 +434,14 @@ Acceptance criteria:
 - Target cycling and locking see ten red base nodes plus the authored white Elem
   defenders, but never a visual scenery prop.
 - Destroying every red target clears M11; no white ground unit, MiG-29A, ARCA
-  observer, or pending cancelled wave blocks completion.
+  support aircraft, or pending cancelled wave blocks completion.
 - The second wave arrives as two fair MiG-29A pairs from the authored standoff,
   with warning and no immediate firing solution.
 - GRANITE and the fourth MiG-31 preserve the existing optional high-altitude
-  secondary count and do not become red.
-- ARCA POLAR WATCH is blue/support only, never attacks or steals a red TGT, and
-  withdraws without changing success, rank, or persistence.
+  secondary count, remain HALO-only hunters, and do not become red.
+- MiG-29A assignments resolve two aircraft each to RAVEN, LARK, and ARCA. ARCA
+  fights only MiG-29A and never attacks or steals a red TGT.
+- ARCA loss does not change HALO integrity, success, rank, or persistence.
 - Jamming active, warning, radar-online, radar-first shutdown, 9,000 m safety,
   HALO one-loss clear, HALO two-loss failure, rank cap, and Retry remain valid.
 - Simulate full, partial, and zero optional kills with F-16 and F/A-18F loadouts;
@@ -451,9 +466,12 @@ Acceptance criteria:
 
 - Red objective contract remains ten targets, IDs 21–30. IDs 21–25 now use the
   four authored facility models; IDs 26–30 retain the established SAM/AAA types.
-- The base now occupies its own irregular coastal ice plateau and includes the
-  2.8 km service loop, radial roads, revetments, operations wings, logistics,
-  buried portals, twelve unarmed support props, warning masts, and snow wear.
+- The base now occupies a wind-scoured graded compound on the continuous
+  western mainland shelf. Its south gate connects to the existing fishing
+  harbour by a two-leg supply road; no standalone offshore plateau remains.
+  The compound includes the 2.8 km service loop, radial roads, revetments,
+  operations wings, logistics, buried portals, twelve unarmed support props,
+  warning masts, and snow wear.
 - Repeated base detail is batched into twelve material/geometry instance groups.
   The browser preview reports 405 meshes, 13 instanced meshes, 159 visible draw
   calls for the full four-view sheet, 60.0 fps average, and 16.8 ms p95 under
@@ -463,8 +481,9 @@ Acceptance criteria:
   ordinary approximately 2,000 km/h mobile-SAM round and is browser-proven not
   to receive the 4,000 km/h/N=8 base-SAM override.
 - Air order is MiG-29A x6 plus MiG-31 x4. The second high pair is GRANITE and a
-  WARDEN wingman. ARCA POLAR WATCH is a blue, invulnerable, noncombat Typhoon
-  fly-through with PAX radio and no enemy/result identity.
+  WARDEN wingman; all four hunt HALO only. ARCA POLAR WATCH is a blue,
+  enemy-targetable Typhoon self-defence pair with PAX radio and no enemy/result
+  identity.
 - Browser E2E covers F-16 and F/A-18F starts, all/partial/zero optional routes,
   HALO HP/loss/Retry, cyclic EW, enhanced base SAM, ordinary perimeter SHORAD,
   radar-first shutdown, sanctuary, result persistence, and no page/console
@@ -496,6 +515,10 @@ Acceptance criteria:
 
 ### Checkpoint 2 — high-altitude base silhouette
 
+- [x] Relocate the weather-station/base anchor from the offshore ice field to
+  `[0, 6500]` on the western mainland shelf and re-space CAP/QRA entries.
+- [x] Replace the standalone ice plateau with an inland grading layer and add
+  the harbour supply-road connection.
 - [x] Author the outer road loop, radial roads, hardstands, and revetment macro
   shapes around the current target coordinates.
 - [x] Split/rebuild the central weather-station block around ID 23.
@@ -526,8 +549,8 @@ Acceptance criteria:
 - [x] Add `granite` and replace the second generic MiG-31 pair with WARDEN.
 - [x] Add advance warning, opposite-side callout, GRANITE dialogue, and finite
   delayed-wave cancellation after base clear.
-- [x] Prototype ARCA POLAR WATCH on the friendly support path and verify the
-  blue/noncombat/no-persistence contract; use the radio-only fallback if unsafe.
+- [x] Put ARCA POLAR WATCH on the friendly combat-support path and verify the
+  blue/MiG-29-only/no-persistence contract.
 - [x] Verify maximum simultaneous aircraft, spawn roles, HALO targeting,
   no hostile ARCA, and no F-3.
 - [x] Prepare the independently playable air/story checkpoint.
@@ -550,10 +573,12 @@ Acceptance criteria:
 
 ## Guardrails
 
-- Do not change the M11 jamming cycle, high-altitude flight envelope, enhanced
-  missile balance, HALO logic, ten-target objective, or result fields.
-- Keep the total MiG-31 count at four; only the second pair's WARDEN identity and
-  player/HALO priority may change under the authored Phase 3 contract.
+- Preserve the M11 jamming cycle, the authored 10,000 m ordinary/12,000 m
+  MiG-31 energy-ceiling split, enhanced missile balance, HALO exception logic,
+  ten-target objective, and result fields. The limit must emerge from density,
+  available speed and stall rather than a positional clamp or forced sink.
+- Keep the total MiG-31 count at four and keep all four assigned only to HALO;
+  only the second pair's WARDEN identity changes.
 - Do not add infinite/repeating enemies or spawn a new wave after base clear.
 - Do not spawn hostile ARCA before M15 and do not use F-3 in M11.
 - Do not count blue ARCA toward enemy density, score, rank, success, or failure.

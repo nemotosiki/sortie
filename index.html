@@ -2734,13 +2734,13 @@
       updateAerodynamicStallState
     } from "./src/flight/aircraft-envelope.js?v=20260813-enemy-envelope-1";
     import {
-      GAME_ABSOLUTE_CEILING_M,
       GAME_SERVICE_CEILING_M,
       HIGH_ALTITUDE_EFFECT_START_M,
       altitudeAdjustedFlightVelocity,
       altitudeAdjustedResponseK,
+      altitudeEnergyAdjustedSpeed,
       highAltitudeEnvelopeAt
-    } from "./src/flight/high-altitude-envelope.js?v=20260827-world-gravity-1";
+    } from "./src/flight/high-altitude-envelope.js?v=20260827-energy-ceiling-1";
 
     const STATE_CAMPAIGN_SELECT = "campaignSelect";
     const STATE_MISSION_SELECT = "missionSelect";
@@ -2786,6 +2786,7 @@
     // constraint. Unlike roll damping alone this also accounts for low-speed
     // stability and how much authority the aircraft retains in a stall.
     let PLAYER_STABILITY = 0.45;
+    let PLAYER_HIGH_ALTITUDE_CEILING_BONUS = 0;
     // The other two axes, driven off the same per-airframe stability figure
     // (spec.rollDamping, 8.2 on the heavy interceptor to 12.6 on the canard
     // fighter). Roll always had inertia; these two did not, so every aircraft
@@ -4005,6 +4006,10 @@ canopy: 0x8fe0ff, exhaust: 0x8cecff, scale: 1.06, variant: "tomcat"
         role: "High-Speed Interceptor",
         tag: "INTERCEPTOR",
         blurb: "全機中最速の大型迎撃機。ひとたび加速しきれば誰にも追いつかれないが、加速は緩慢で旋回半径は絶望的に大きい。格闘戦を捨て、長射程ミサイルで遠距離から仕留める機体だ。",
+        // Twin D-30F6-class thrust gives the Foxhound a two-kilometre extension
+        // above the ordinary 10 km aerodynamic ceiling. M11's near-12 km
+        // intercept is sustainable for this airframe and not for a normal jet.
+        highAltitudeCeilingBonus: 2000,
         cruiseSpeed: 400, boostSpeed: 833, brakeSpeed: 150,
         pitchRateDeg: 26, rollRateDeg: 98, yawRateDeg: 7, maxBankAngleDeg: 42,
         normalRollSpring: 26, rollRateLimitDeg: 94, turnRateDeg: 18,
@@ -4576,6 +4581,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       })
     };
 
+    // Speed contrast pass. MiG-31 keeps its authored numbers; the modern
+    // fighter/multirole field gives up a small five percent at cruise and boost
+    // so the Foxhound's straight-line role is immediately legible. F-4 is an
+    // explicit SPEED-REBALANCE exception, as are aircraft whose job is already
+    // defined by being slow (attackers, bombers, transports, EW platforms and
+    // UAVs). This grants F-4 no high-altitude advantage; only MiG-31 owns the
+    // separate `highAltitudeCeilingBonus` field.
+    const FIGHTER_SPEED_REBALANCE_SCALE = 0.95;
+    const FIGHTER_SPEED_REBALANCE_IDS = new Set([
+      "f16", "gripen", "f2a", "fa18a", "fa18", "f15c", "f15", "f14",
+      "f35c", "rafale", "typhoon", "su37", "f22", "mig21", "mig29",
+      "su33", "su35", "su57", "su47", "mig23", "f3"
+    ]);
+
+    function aircraftSpeedScale(spec) {
+      return spec && FIGHTER_SPEED_REBALANCE_IDS.has(spec.id)
+        ? FIGHTER_SPEED_REBALANCE_SCALE
+        : 1;
+    }
+
+    function effectiveAircraftCruiseSpeed(spec) {
+      return (Number(spec && spec.cruiseSpeed) || 0) * aircraftSpeedScale(spec);
+    }
+
+    function effectiveAircraftBoostSpeed(spec) {
+      return (Number(spec && spec.boostSpeed) || 0) * aircraftSpeedScale(spec);
+    }
+
     function flareCapacityForAircraft(spec) {
       const capacity = Number(spec && spec.flareCapacity);
       return Number.isFinite(capacity) && capacity >= 0
@@ -4852,6 +4885,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // of the thing it came for. Nothing else in the AI changes, so a
         // mission that names no hunt is bit-for-bit the mission it was.
         hunt: entry.hunt === "air" || entry.hunt === "ship" ? entry.hunt : null,
+        // Optional per-slot combat assignment. Unlike `hunt`, `player` keeps
+        // the ordinary player path while `wingman` and `arca` resolve to a
+        // specific friendly aircraft at runtime. The cycle is authored on the
+        // wave so a two-ship element can deliberately split its attention
+        // instead of every aircraft crowding the first friendly in the array.
+        assignedTargets: kind === "air" && Array.isArray(entry.assignedTargets)
+          ? Object.freeze(entry.assignedTargets.map((target) => (
+              target === "wingman" || target === "arca" ? target : "player"
+            )))
+          : null,
         // A high interceptor can be ordered to attack from its own ceiling
         // instead of diving down onto the escorted aircraft. Null preserves
         // every existing hunt wave.
@@ -6300,29 +6343,32 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         Object.keys(ENEMY_AI_PROFILES).map((id) => {
           const air = AIRCRAFT_TYPES[id];
           const ai = ENEMY_AI_PROFILES[id];
+          const effectiveCruise = effectiveAircraftCruiseSpeed(air);
+          const effectiveBoost = effectiveAircraftBoostSpeed(air);
           return [id, Object.freeze({
             ...ai,
             key: id,
             label: ai.label || air.label.split(" ")[0],
             role: air.role,
             hp: air.maxHealth,
-            patrolSpeed: Math.round(air.cruiseSpeed * ai.patrolSpeedScale),
+            patrolSpeed: Math.round(effectiveCruise * ai.patrolSpeedScale),
             // The two optional scales split "what the airframe can do" from
             // "how well this thing flies a chase". The UAV needs its full
             // agility for the jink and none of it for the six-o'clock camp:
             // scaling turnRateDeg itself would dull both.
              pursuitBonus: Math.round(
-               (air.boostSpeed - air.cruiseSpeed) * ENEMY_PURSUIT_THROTTLE * (ai.pursuitBonusScale ?? 1)
+               (effectiveBoost - effectiveCruise) * ENEMY_PURSUIT_THROTTLE * (ai.pursuitBonusScale ?? 1)
              ),
              // The AI chooses a flight path, but the shared airframe table owns
              // the aerodynamic envelope that can actually fly it. These are the
              // same values applyAircraftLoadout resolves for the player.
-             cruiseSpeed: air.cruiseSpeed,
-             maxSpeed: air.boostSpeed,
+             cruiseSpeed: effectiveCruise,
+             maxSpeed: effectiveBoost,
              stallEntrySpeed: air.stallEntrySpeed,
              stallAuthorityLoss: air.stallAuthorityLoss,
              structuralG: air.structuralG,
              stability: aircraftStabilityRating(air),
+             highAltitudeCeilingBonus: Math.max(0, Number(air.highAltitudeCeilingBonus) || 0),
              patrolTurn: THREE.MathUtils.degToRad(air.turnRateDeg * ENEMY_PATROL_TURN_FACTOR),
             pursuitTurn: THREE.MathUtils.degToRad(
               air.turnRateDeg * ENEMY_PURSUIT_TURN_FACTOR * (ai.pursuitTurnScale ?? 1)
@@ -42161,22 +42207,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const base = WORLD_PRESETS.glacierCanyon;
         if (!base) throw new Error("[verIceCoast] glacierCanyon base preset is missing");
 
+        // FROZEN EYE is a coastal mainland installation, not an offshore ice base.
+        // This point lies 1.2-3.0 km inland of verIceShelfWest's jagged coastline,
+        // between the two authored sea leads and clear of the fishing harbour.
+        const frozenEyeBase = Object.freeze([0, 6500]);
         const missionAnchors = Object.freeze({
           playerStart: Object.freeze([-10800, -7200]),
           strikeStart: Object.freeze([-9600, -6400]),
           strikeExit: Object.freeze([9600, 6400]),
           operationLine: Object.freeze([9000, 6000]),
+          // Keep the battle volume centred between the seaward ingress and the
+          // mainland objective. Centring it on the relocated base would put the
+          // player in the warning band at mission start.
           battleCenter: Object.freeze([0, 0]),
-          firstIntercept: Object.freeze([-1800, 4100]),
-          northIntercept: Object.freeze([3100, 8600]),
+          firstIntercept: Object.freeze([-4200, 11500]),
+          northIntercept: Object.freeze([4200, 14500]),
           southIntercept: Object.freeze([11200, -6500]),
-          baseCapEntry: Object.freeze([-3500, 1000]),
-          coastQraEntry: Object.freeze([12400, 1000]),
-          inlandQraEntry: Object.freeze([6500, -12100]),
-          arcaWatchStart: Object.freeze([-6500, 8000]),
-          arcaWatchExit: Object.freeze([8500, 6000]),
+          baseCapEntry: Object.freeze([-8500, 6500]),
+          coastQraEntry: Object.freeze([8500, 3000]),
+          inlandQraEntry: Object.freeze([2400, 15500]),
+          arcaWatchStart: Object.freeze([-6500, 12500]),
+          arcaWatchExit: Object.freeze([8500, 10500]),
           diversionEntry: Object.freeze([-2500, -8200]),
-          weatherStation: Object.freeze([4300, -2500]),
+          weatherStation: frozenEyeBase,
           fishingHarbour: Object.freeze([-3300, 3300])
         });
 
@@ -42187,7 +42240,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sectorIds: Object.freeze(["western_ice_approach", "ver_shelf", "operation_line"]),
           variant: "polar_morning_high_altitude",
           sceneryOrigin: [0, 0],
-          previewFocus: [4300, -2500],
+          previewFocus: [...frozenEyeBase],
           missionAnchors,
           clearColor: 0xa7c2d1,
           sky: [
@@ -42489,8 +42542,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             // dark road loop first makes the ten contacts read as one installation,
             // then hardened wings, portals and a logistics belt give it a plausible
             // reason to exist beyond being a row of target props.
-            const baseX = 4300;
-            const baseZ = -2500;
+            const baseX = frozenEyeBase[0];
+            const baseZ = frozenEyeBase[1];
             const road = 0x4c575c;
             const apron = 0x707d80;
             const concrete = 0x99a5a5;
@@ -42524,17 +42577,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 sideWidth, 5.2, wall, snowWear);
             };
 
-            // The weather-station anchor lies seaward of the main shelf silhouette.
-            // Give the enlarged base its own wind-cut ice plateau so buildings and
-            // roads read as a coastal installation instead of floating on the ocean.
-            flatPolygon("verFrozenEyePlateau", [
+            // The compound now sits on the continuous western mainland shelf. This
+            // nearly flush polygon is only a wind-scoured grading layer under the
+            // roads; it is not a separate island and never crosses the coastline.
+            flatPolygon("verFrozenEyeInlandGrade", [
               [baseX - 1760, baseZ - 900], [baseX - 1510, baseZ - 1370],
               [baseX - 620, baseZ - 1510], [baseX + 410, baseZ - 1420],
               [baseX + 1490, baseZ - 1210], [baseX + 1760, baseZ - 540],
               [baseX + 1660, baseZ + 430], [baseX + 1430, baseZ + 1250],
               [baseX + 610, baseZ + 1460], [baseX - 570, baseZ + 1410],
               [baseX - 1510, baseZ + 1110], [baseX - 1780, baseZ + 260]
-            ], 1.4, 0xd5e4e6, { roughness: 0.94 });
+            ], 1.39, 0xd5e4e6, { roughness: 0.94 });
 
             // Perimeter service loop (2.8 x 2.4 km) and radial access roads.
             baseBox("verBaseRoadNorth", baseX, 1.48, baseZ + 1180, 2760, 0.28, 46, road);
@@ -42545,6 +42598,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             baseBox("verBaseRoadCross", baseX, 1.5, baseZ - 210, 2500, 0.32, 42, road);
             baseBox("verBaseRoadRadar", baseX, 1.51, baseZ + 430, 1550, 0.34, 34, road);
             baseBox("verBaseRoadLogistics", baseX, 1.51, baseZ - 650, 1800, 0.34, 34, road);
+
+            // A real mainland base needs a supply route. Two restrained road legs
+            // connect the south gate to the existing fishing harbour without reading
+            // as a runway or cutting across open water.
+            const accessRoad = (name, x0, z0, x1, z1) => {
+              const dx = x1 - x0;
+              const dz = z1 - z0;
+              baseBox(
+                name,
+                (x0 + x1) * 0.5,
+                1.47,
+                (z0 + z1) * 0.5,
+                30,
+                0.24,
+                Math.hypot(dx, dz),
+                road,
+                Math.atan2(dx, dz)
+              );
+            };
+            accessRoad("verBaseAccessRoadUpper", baseX, baseZ - 1110, -1600, 4300);
+            accessRoad("verBaseAccessRoadHarbour", -1600, 4300, -3050, 3460);
 
             // A weathered central apron remains low enough for the destructible
             // control-station model to sit cleanly above it.
@@ -42877,13 +42951,15 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
         const baseMark = "m11BaseNode";
         const hunterTag = "m11HaloHunter";
-        // RAVEN enters at the authored 30,000 ft combat band. HALO remains much
-        // closer to the soft ceiling, so the MiG-31s hunting it have a visible
-        // reason to stay high instead of diving down into an ordinary dogfight.
+        // RAVEN enters at the authored 30,000 ft combat band. HALO is a latest-model
+        // stratospheric EW platform exempt from the fighter envelope and holds
+        // 12.5 km. The MiG-31's engine-specific +2 km margin lets it fight near its
+        // 12 km aerodynamic ceiling; an ordinary fighter at roughly 10 km has only
+        // a narrow horizontal margin inside a 4AAM's 2 km slant range.
         const playerStartAltitude = 9144;
-        const operationAltitude = 10500;
+        const operationAltitude = 12500;
         const safeAltitude = 9000;
-        const interceptorAltitude = 10650;
+        const interceptorAltitude = 11900;
         // Restored fire-control turns the tagged base SAMs into the mission's hard
         // altitude gate. Keep the authored requirement readable in km/h even though
         // the combat simulation stores velocity in metres per second.
@@ -42950,7 +43026,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           jp: "HALO電子支援隊の妨害窓を使い、敵基地の射撃管制網と全施設を無力化せよ。",
           act: 2,
           storyNo: 11,
-          story: "WAR DAY 121。氷海岸上空、高度一万五百メートル。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
+          story: "WAR DAY 121。氷海岸上空、成層圏下端の高度一万二千五百メートル。最新鋭電子戦機HALOは敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
           epilogue: [
             "射撃管制レーダーとベースステーションは沈黙し、氷海岸のミサイル網は目を失った。",
             "HALOの妨害記録には、基地が最後に空を見た十八秒が残されていた。",
@@ -42987,19 +43063,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
                 exit: { x: anchors.strikeExit[0], z: anchors.strikeExit[1] }
               }
             ],
-            // ARCA is still a blue observer on WAR DAY 121. POLAR WATCH crosses the
-            // northern edge, listens to civilian weather/rescue traffic, and leaves
-            // before the first radar-online interval. It has no weapons, hitbox,
-            // score value or persistence hook; the hostile split remains an M15 beat.
+            // ARCA is still politically outside the operation on WAR DAY 121, but it
+            // will defend its northern observation corridor when the base CAP turns
+            // on it. POLAR WATCH fights MiG-29A only; it is not part of HALO's guard
+            // ledger and the MiG-31 force never diverts from the jammer formation.
             supportFlights: [
               {
                 aircraft: "typhoon",
                 callsign: "ARCA POLAR WATCH",
                 count: 2,
                 vulnerable: false,
+                enemyTargetable: true,
+                combatSupport: true,
+                combatTargetTypes: ["mig29"],
+                hp: 340,
+                radioSpeaker: "pax",
+                killRadio: "POLAR WATCH、MiG-29Aを一機排除。HALOへの高高度迎撃はROOKに任せる。",
                 speed: 280,
                 altitude: 9800,
                 spacing: 320,
+                holdAtExit: true,
                 start: { x: anchors.arcaWatchStart[0], z: anchors.arcaWatchStart[1] },
                 exit: { x: anchors.arcaWatchExit[0], z: anchors.arcaWatchExit[1] }
               }
@@ -43050,6 +43133,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 18, missionTag: "m11BaseAirDefence", band: 2, idBase: 430,
               label: "FROZEN CAP", role: "line", skill: "standard",
+              assignedTargets: ["player", "wingman"],
               at: [...anchors.baseCapEntry], altitude: 6200,
               facing: [...anchors.weatherStation],
               radio: [{ speaker: "meridian", priority: "NORMAL", text: "基地西側にMiG-29A二機。低高度CAPだ。HALOではなくROOKを迎撃する。", id: "m11-cap-local" }]
@@ -43058,6 +43142,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 75, missionTag: "m11BaseAirDefence", band: 2, idBase: 440,
               label: "COAST QRA", role: "line", skill: "veteran",
+              assignedTargets: ["arca", "player"],
               at: [...anchors.coastQraEntry], altitude: 5900,
               facing: [...anchors.battleCenter],
               radio: [{ speaker: "lark", priority: "URGENT", text: "海岸側からQRA二機！ 妨害の切れ目に合わせて挟む気だ。", id: "m11-qra-coast" }]
@@ -43066,6 +43151,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 87, missionTag: "m11BaseAirDefence", band: 2, idBase: 450,
               label: "INLAND QRA", role: "line", skill: "veteran",
+              assignedTargets: ["wingman", "arca"],
               at: [...anchors.inlandQraEntry], altitude: 5700,
               facing: [...anchors.weatherStation],
               radio: [{ speaker: "meridian", priority: "URGENT", text: "第二組、内陸側から二機。敵航空戦力は合計六、基地攻撃中も後方を見ろ。", id: "m11-qra-inland" }]
@@ -43074,9 +43160,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               types: ["mig31"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 145, missionTag: hunterTag, band: 3, idBase: 420,
               label: "WARDEN 1", role: "elite", skill: "expert", ace: "granite",
+              hunt: "air", huntAltitudeFloor: interceptorAltitude,
               at: [...anchors.southIntercept], altitude: interceptorAltitude,
               facing: [...anchors.battleCenter],
-              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEはRAVENを狙っている！", id: "m11-granite-inbound" }]
+              radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEもHALOへ向かっている！", id: "m11-granite-inbound" }]
             },
             {
               types: ["mig31"], tgt: false, rankNeutral: true,
@@ -43090,11 +43177,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ],
           m11EscortContract,
           fixedRadio: [
-            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、上空一万五百のHALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
+            { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、成層圏下端、一万二千五百の最新鋭HALO電子支援隊と合流。敵射撃管制を周期妨害中。" },
             { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
             { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
-            { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間救難・気象周波数を監視中。基地北側を通過する。" },
-            { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、射撃管制網の復帰を確認。ARCA機は交戦せず監視空域を離脱する。" },
+            { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間周波数の監視を継続。接近するMiG-29Aにはこちらで対処する。" },
+            { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、基地CAPと交戦。MiG-31はHALOへ直進中——高高度迎撃はROOKが止めろ。" },
             { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
             { id: "m11-jam-pause", event: "haloJammingPause", speaker: "halo", priority: "CRITICAL", text: "HALO、再同期開始。敵射撃管制レーダー復活——低高度機は直ちに退避。" },
             { id: "m11-jam-resume", event: "haloJammingResume", speaker: "halo", priority: "CRITICAL", text: "妨害を再開。敵ミサイル誘導性能低下、攻撃窓を再設定する。" },
@@ -43110,7 +43197,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           map: { x: 0.65, y: 0.18 },
           battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
           battleRadius: 19000,
-          briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、FROZEN EYE基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。基地外周には白表示のSHORAD二両と対空砲四基がいる。\n敵航空戦力はMiG-29A六機とMiG-31四機。MiG-29Aは基地CAPと二組のQRAとして時間差でRAVEN/LARKを迎撃する。MiG-31は10,650m帯の二次目標で、開幕二機はHALOを狙う。第二のレーダー復活ではネームドGRANITEを含むWARDEN二機が到着する。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\n青表示のARCA POLAR WATCH二機は民間救難・気象周波数を監視する非交戦飛行で、最初のレーダー復活前に離脱する。HALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+          briefing: "VER ICE COAST上空。最新鋭HALO電子支援隊は通常戦闘機の飛行限界外となる成層圏下端の高度12,500m、RAVENとLARKは9,144mから侵入し、大陸上のFROZEN EYE基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。基地外周には白表示のSHORAD二両と対空砲四基がいる。\n敵航空戦力はMiG-29A六機とMiG-31四機。MiG-29Aは基地CAPと二組のQRAとして時間差でRAVEN、LARK、ARCA POLAR WATCHを分担して迎撃する。ARCA二機はMiG-29Aに限り自衛交戦する。強力なエンジンで通常機より高い上限を持つMiG-31四機は11,900m帯からHALOだけを狙い、ネームドGRANITEも任務を変えない。通常戦闘機は高度10,000m付近、MiG-31は12,000m付近で推力余裕を失い、上昇や旋回による速度低下から失速しやすくなる。4AAMのロック距離2,000mへ入れる余裕は小さく、迎撃するなら通常機の限界近くまで上昇せよ。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\n青表示のARCA POLAR WATCH二機は民間救難・気象周波数を監視しつつ基地北側を保持する。ARCAの損失は任務失敗条件ではなく、HALO三機だけが護衛HPの対象。HALOの合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
         };
 
         ctx.addMission(mission, { after: "sera-m10" });
@@ -45491,6 +45578,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             alive: friendly.alive,
             retired: friendly.retired,
             vulnerable: friendly.vulnerable,
+            enemyTargetable: Boolean(friendly.enemyTargetable),
+            combatSupport: Boolean(friendly.combatSupport),
+            combatTargetTypes: friendly.combatTargetTypes ? [...friendly.combatTargetTypes] : [],
+            combatMode: friendly.wingMode || null,
+            combatTargetId: friendly.wingTargetId ?? null,
             position: [
               Number(friendly.group.position.x.toFixed(1)),
               Number(friendly.group.position.y.toFixed(1)),
@@ -45506,6 +45598,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             tgt: isTgtEntry(enemy),
             rankNeutral: Boolean(enemy.rankNeutral),
             hunt: enemy.hunt || null,
+            assignedTarget: enemy.assignedTarget || null,
             charge: enemy.huntRef ? enemy.huntRef.label : null,
             missionTag: enemy.missionTag || null,
             missionRole: enemy.missionRole || null,
@@ -45595,7 +45688,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         const mission = m11Mission();
         if (gameState !== STATE_PLAYING || !mission) return false;
         player.position.y = Math.max(4, Number(altitude) || 4);
-        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
+          player.position.y,
+          PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
+          STALL_ENTRY_SPEED,
+          BOOST_SPEED
+        );
         updateM11MissionThreat();
         updateHud();
         return m11State.playerSafe;
@@ -45612,7 +45710,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           Math.max(4, Number(altitude) || 1500),
           sam.group.position.z
         );
-        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+        playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
+          player.position.y,
+          PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
+          STALL_ENTRY_SPEED,
+          BOOST_SPEED
+        );
         updateM11MissionThreat();
         updateHud();
         return {
@@ -45897,6 +46000,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           role: wave.role || (wave.ace ? "ace" : "line"),
           skill: wave.skill,
           hunt: wave.hunt || null,
+          assignedTargets: wave.assignedTargets ? [...wave.assignedTargets] : null,
           label: wave.label
         }))
       })),
@@ -47230,7 +47334,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           enemy.stallSeverity = 0;
           enemy.stalling = false;
            enemy.controlAuthority = 1;
-           enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(enemy.group.position.y);
+           enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(
+             enemy.group.position.y,
+             enemy.spec.highAltitudeCeilingBonus,
+             enemy.spec.stallEntrySpeed,
+             enemy.spec.maxSpeed
+           );
           enemy.turnDemand = 1;
           resetAttitudeLiftState(enemy.attitudeLift);
           enemy.fireCooldown = 999;
@@ -50293,7 +50402,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // moving the player afterwards would put the fleet somewhere else than
       // the friendly placement was chosen against.
       applyFriendlyPlayerStart(MISSIONS[currentMissionIndex]);
-      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
+        player.position.y,
+        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
+        STALL_ENTRY_SPEED,
+        BOOST_SPEED
+      );
       playerModel.group.visible = cameraMode !== "cockpit";
       timeScale = 1;
       killCam.active = false;
@@ -50958,7 +51072,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       stallTimer = 0;
       stallSeverity = 0;
       stalling = false;
-      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
+        player.position.y,
+        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
+        STALL_ENTRY_SPEED,
+        BOOST_SPEED
+      );
       resetAttitudeLiftState(playerAttitudeLift);
       syncPlayerOrientation();
     }
@@ -50984,7 +51103,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         ? THREE.MathUtils.smoothstep(Math.abs(pitchInput), 0.55, 1)
         : 0;
       const brakeTargetSpeed = BRAKE_SPEED - BRAKE_HIGH_G_SPEED_DROP * highGBrakeLoad;
-      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(player.position.y);
+      playerHighAltitudeEnvelope = highAltitudeEnvelopeAt(
+        player.position.y,
+        PLAYER_HIGH_ALTITUDE_CEILING_BONUS,
+        STALL_ENTRY_SPEED,
+        BOOST_SPEED
+      );
       const highAltitudeSpeedFactor = playerHighAltitudeEnvelope.maxSpeedFactor;
       const targetSpeed = (boost ? BOOST_SPEED : (brake ? brakeTargetSpeed : CRUISE_SPEED)) *
         highAltitudeSpeedFactor;
@@ -51002,6 +51126,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       playerSpeed = THREE.MathUtils.lerp(playerSpeed, targetSpeed, damping(speedResponse, dt));
 
       forwardOf(player, tmpV9);
+      playerSpeed = altitudeEnergyAdjustedSpeed(
+        playerSpeed,
+        tmpV9.y,
+        playerHighAltitudeEnvelope,
+        dt
+      );
       const highAltitudeStallMultiplier = playerHighAltitudeEnvelope.stallSpeedMultiplier;
       const effectiveStallEntrySpeed = STALL_ENTRY_SPEED * highAltitudeStallMultiplier;
       const effectiveDeepStallSpeed = STALL_DEEP_SPEED * highAltitudeStallMultiplier;
@@ -53394,7 +53524,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         spawnEnemy(
           position, band, i, waveTypes[i],
           i === wave.aceSlot ? wave.ace : null, idBase,
-          wave.role, wave.skill
+          wave.role, wave.skill,
+          wave.assignedTargets && wave.assignedTargets.length > 0
+            ? wave.assignedTargets[i % wave.assignedTargets.length]
+            : null
         );
       }
       spawningForward = null;
@@ -55350,7 +55483,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       return id;
     }
 
-    function spawnEnemy(position, wave, slot, typeKey, aceId = null, idBase = 0, roleId = null, skillId = null) {
+    function spawnEnemy(
+      position, wave, slot, typeKey, aceId = null, idBase = 0,
+      roleId = null, skillId = null, assignedTarget = null
+    ) {
       enemySerial += 1;
       const id = idBase + slot + 1;
       const baseSpec = ENEMY_TYPES[typeKey] || ENEMY_TYPES.f16;
@@ -55537,7 +55673,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // WINGMAN when the player is not pressing it - see the huntRef
         // resolution in updateEnemies. TGT, hunt, strike and heavy
         // airframes never do: their jobs are authored.
-        wingmanHunter: !spawningTgt && !spawningHunt && !strikeSpawn &&
+        wingmanHunter: !spawningTgt && !spawningHunt && !assignedTarget && !strikeSpawn &&
           !HEAVY_AIR_TYPES.has(spec.key) && (wingmanHunterTicker += 1) % 3 === 0,
         // "air" / "ship" / null. A hunting aircraft flies at the friendly it
         // came for and shoots at it instead of at the player - see
@@ -55547,6 +55683,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         hunt: spawningHunt,
         huntAltitudeFloor: spawningHuntAltitudeFloor,
         huntRef: null,
+        // Mission-authored split between the player and named friendly roles.
+        // Null is the historic behaviour and means the player.
+        assignedTarget: assignedTarget === "wingman" || assignedTarget === "arca"
+          ? assignedTarget
+          : (assignedTarget === "player" ? "player" : null),
         isAce,
         // The profile itself, so the engage and death calls speak in this
         // pilot's voice rather than a hard-coded one.
@@ -55574,7 +55715,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
          headingError: 0,
          turnEnvelopeGain: 1,
          turnLimit: spec.patrolTurn,
-         highAltitudeEnvelope: highAltitudeEnvelopeAt(position.y),
+         highAltitudeEnvelope: highAltitudeEnvelopeAt(
+           position.y,
+           spec.highAltitudeCeilingBonus,
+           spec.stallEntrySpeed,
+           spec.maxSpeed
+         ),
          attitudeLift: resetAttitudeLiftState({}),
          // What this pilot currently believes the player is doing. Seeded at
         // cruise so a fighter that spawns while the player is already braking
@@ -56939,8 +57085,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         wingModeTimer: WINGMAN_REJOIN_TIME,
         wingFireCooldown: 0,
         wingKillRadioTimer: 0,
-        wingCruise: spec.cruiseSpeed,
-        wingBoost: spec.boostSpeed,
+        wingCruise: effectiveAircraftCruiseSpeed(spec),
+        wingBoost: effectiveAircraftBoostSpeed(spec),
         wingAim: group.position.clone(),
         wingStationError: 0,
         wingGunDamage: spec.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
@@ -57000,6 +57146,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const airframe = config.aircraft ? AIRCRAFT_TYPES[config.aircraft] : null;
       if (config.aircraft && !airframe) {
         throw new Error(`[friendly] unknown aircraft "${config.aircraft}"`);
+      }
+      const combatSupport = Boolean(config.combatSupport);
+      if (combatSupport && !airframe) {
+        throw new Error("[friendly] combat support requires a registered aircraft");
       }
       // Allied livery even when the airframe is one the enemy also flies:
       // the exhaust and canopy tints are how the player tells sides apart
@@ -57061,6 +57211,17 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           model,
           radarSymbol: "air",
           vulnerable: config.vulnerable !== false,
+          // A combat support flight may be attacked without becoming part of
+          // the mission's guard objective. This keeps ARCA's local dogfight
+          // real while HALO alone owns the aggregate HP/failure contract.
+          enemyTargetable: Boolean(config.enemyTargetable),
+          combatSupport,
+          combatTargetTypes: combatSupport
+            ? Object.freeze([...(config.combatTargetTypes || [])])
+            : null,
+          combatAcquireRange: Math.max(1000, Number(config.combatAcquireRange) || 5200),
+          combatBreakRange: Math.max(1500, Number(config.combatBreakRange) || 7200),
+          radioSpeaker: config.radioSpeaker || "wingman",
           maxHp: hp,
           hp,
           altitude,
@@ -57073,7 +57234,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // Set when it reaches the far side: still alive, no longer a target,
           // no longer drawn. A saved transport, in one flag.
           retired: false,
-          wreckTimer: 0
+          wreckTimer: 0,
+          // Combat support uses the same flown pursuit model as a campaign
+          // wingman, but rejoins its authored exit point instead of RAVEN.
+          wingSpeed: config.speed || FRIENDLY_TRANSPORT_SPEC.speed,
+          wingBank: 0,
+          wingMode: "form",
+          wingTargetId: null,
+          wingModeTimer: combatSupport ? 0 : WINGMAN_REJOIN_TIME,
+          wingFireCooldown: 0,
+          wingKillRadioTimer: 0,
+          wingCruise: combatSupport
+            ? Math.max(config.speed || effectiveAircraftCruiseSpeed(airframe), effectiveAircraftCruiseSpeed(airframe))
+            : (config.speed || FRIENDLY_TRANSPORT_SPEC.speed),
+          wingBoost: combatSupport
+            ? effectiveAircraftBoostSpeed(airframe)
+            : (config.speed || FRIENDLY_TRANSPORT_SPEC.speed),
+          wingAim: group.position.clone(),
+          wingStationError: 0,
+          wingGunDamage: combatSupport
+            ? airframe.gunDamage * WINGMAN_GUN_DAMAGE_SCALE
+            : 0,
+          killRadio: config.killRadio || null
         };
         friendlies.push(friendly);
         spawned.push(friendly);
@@ -57249,7 +57431,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // AI weapon paths and from nowhere else, so a friendly still cannot be
     // touched by the player's gun, missiles, bombs or collateral.
     function damageFriendly(friendly, amount) {
-      if (!friendly || !friendly.alive || !friendly.vulnerable || friendly.retired) return;
+      if (
+        !friendly || !friendly.alive ||
+        (!friendly.vulnerable && !friendly.enemyTargetable) || friendly.retired
+      ) return;
       if (gameState !== STATE_PLAYING) return;
       // The same gate applyPlayerDamage has, for the same reason. A surviving
       // escort or CAP keeps fighting through the ACCOMPLISHED band by design -
@@ -57261,7 +57446,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Ledger writes only while a guard objective owns the ledger - a
       // vulnerable friendly outside any guard block must not dirty the state
       // the checkpoint banks and the debrief reads.
-      if (guardState.active) {
+      if (guardState.active && friendly.vulnerable) {
         guardState.hits += 1;
         guardState.integrity = guardIntegrity();
         guardState.worstIntegrity = Math.min(guardState.worstIntegrity ?? 1, guardState.integrity);
@@ -57269,7 +57454,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // The carrier charges per hit: the sortie is scored on how much of the
       // ship is left, so every round that gets through has to cost something
       // even though the hull survives it.
-      if (guardState.active && guardState.hitPenalty > 0) {
+      if (guardState.active && friendly.vulnerable && guardState.hitPenalty > 0) {
         guardState.penalty += guardState.hitPenalty;
         score = Math.max(0, score - guardState.hitPenalty);
         showBanner(`${guardState.label} HIT · -${guardState.hitPenalty} PTS`, 1.7, "danger");
@@ -57329,7 +57514,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // ship is simply the second kind that has one.
       if (friendly.wreckTimer <= 0) friendly.group.visible = false;
 
-      if (!guardState.active) return;
+      // Enemy-targetable support is a real aircraft and can be lost, but it is
+      // not one of the units the sortie asks RAVEN to protect. Only vulnerable
+      // friendlies are entered in the guard loss/failure ledger.
+      if (!guardState.active || !friendly.vulnerable) return;
       guardState.lost += 1;
       guardState.integrity = guardIntegrity();
       guardState.worstIntegrity = Math.min(guardState.worstIntegrity ?? 1, guardState.integrity);
@@ -57501,11 +57689,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // transit rather than a jet frozen mid-configuration.
           sweepWingPivots(friendly.model, (airspeed - 120) / 200, dt);
         }
-        if (friendly.kind === "wingman") updateFriendlyWingman(friendly, dt);
+        if (friendly.kind === "wingman" || friendly.combatSupport) {
+          updateFriendlyWingman(friendly, dt);
+        }
         else if (friendly.kind === "carrier") updateFriendlyCarrier(friendly, dt, time);
         else if (friendly.kind === "ship") updateFriendlyShip(friendly, dt, time);
         else if (friendly.kind === "transport") updateFriendlyTransport(friendly, dt, time);
-        if (friendly.vulnerable) updateFriendlyDamageState(friendly, dt);
+        if (friendly.vulnerable || friendly.enemyTargetable) updateFriendlyDamageState(friendly, dt);
       }
     }
 
@@ -57728,25 +57918,34 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // and exempt from the poach guard, so being harassed turns into a
     // dogfight instead of being ignored.
     function wingmanPreyFor(friendly) {
+      const support = Boolean(friendly.combatSupport);
+      const acquireRange = support ? friendly.combatAcquireRange : WINGMAN_ACQUIRE_RANGE;
       let best = null;
       let bestScore = Infinity;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (enemy.ground || enemy.surface || enemy.subsystem || enemy.heli) continue;
-        if (enemy.isAce) continue;
-        if (isTgtEntry(enemy)) continue;
+        if (support) {
+          if (!friendly.combatTargetTypes || !friendly.combatTargetTypes.includes(enemy.type)) continue;
+        } else {
+          if (enemy.isAce) continue;
+          if (isTgtEntry(enemy)) continue;
+        }
         const attacksMe = enemy.huntRef === friendly;
         const claimedByOther = friendlies.some(
           (other) => other !== friendly
-            && other.kind === "wingman"
+            && (support ? other.combatSupport : other.kind === "wingman")
             && other.alive
             && other.wingTargetId === enemy.id
         );
         if (!attacksMe && claimedByOther) continue;
-        if (!attacksMe && player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD) continue;
+        if (
+          !support && !attacksMe &&
+          player.position.distanceTo(enemy.group.position) < WINGMAN_POACH_GUARD
+        ) continue;
         const distance = friendly.group.position.distanceTo(enemy.group.position);
-        if (distance > WINGMAN_ACQUIRE_RANGE) continue;
-        const score = attacksMe ? distance - WINGMAN_ACQUIRE_RANGE * 2 : distance;
+        if (distance > acquireRange) continue;
+        const score = attacksMe ? distance - acquireRange * 2 : distance;
         if (score >= bestScore) continue;
         bestScore = score;
         best = enemy;
@@ -57758,6 +57957,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // wingman always returns to; `engage` is a bounded excursion after exactly
     // one piece of trash, on a clock.
     function updateWingmanMode(friendly, dt) {
+      const support = Boolean(friendly.combatSupport);
       friendly.wingModeTimer = Math.max(0, friendly.wingModeTimer - dt);
       if (friendly.wingMode === "engage") {
         const target = enemies.find((enemy) => enemy.id === friendly.wingTargetId && enemy.alive);
@@ -57769,12 +57969,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // geometry (the hater chases the station), and dropping it on the
         // guard made every such engagement last exactly one frame.
         const targetAttacksMe = Boolean(target) && target.huntRef === friendly;
+        const breakRange = support ? friendly.combatBreakRange : WINGMAN_BREAK_RANGE;
         if (
           !target ||
           friendly.wingModeTimer <= 0 ||
-          friendly.group.position.distanceTo(target.group.position) > WINGMAN_BREAK_RANGE ||
-          player.position.distanceTo(friendly.group.position) > WINGMAN_LEASH ||
-          (!targetAttacksMe && player.position.distanceTo(target.group.position) < WINGMAN_POACH_GUARD)
+          friendly.group.position.distanceTo(target.group.position) > breakRange ||
+          (!support && player.position.distanceTo(friendly.group.position) > WINGMAN_LEASH) ||
+          (!support && !targetAttacksMe && player.position.distanceTo(target.group.position) < WINGMAN_POACH_GUARD)
         ) {
           friendly.wingMode = "form";
           friendly.wingTargetId = null;
@@ -57808,6 +58009,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       if (target) {
         forwardOf(target.group, tmpV1);
         tmpV4.copy(target.group.position).addScaledVector(tmpV1, -WINGMAN_ASTERN);
+      } else if (friendly.combatSupport) {
+        // ARCA rejoins its authored northern patrol endpoint, not RAVEN's
+        // formation. At the endpoint the wanted point is its current position,
+        // which produces a wide, physical turn back rather than retirement.
+        tmpV4.copy(friendly.exit);
+        if (friendly.group.position.distanceTo(tmpV4) < FRIENDLY_TRANSPORT_SPEC.arriveRadius) {
+          tmpV4.copy(friendly.group.position);
+        }
       } else {
         const wingOffset = friendly.wingOffset || WINGMAN_OFFSET;
         forwardOf(player, tmpV1);
@@ -57850,11 +58059,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // toward straight-away-from-the-player, hard enough at contact to win
       // outright, so a crowded rejoin reads as the wingman easing off rather
       // than as two meshes intersecting.
-      tmpV6.subVectors(position, player.position);
-      const gap = tmpV6.length();
-      if (gap < WINGMAN_SEPARATION && gap > 0.001) {
-        tmpV6.multiplyScalar(1 / gap);
-        tmpV5.addScaledVector(tmpV6, 2 * (1 - gap / WINGMAN_SEPARATION)).normalize();
+      if (!friendly.combatSupport) {
+        tmpV6.subVectors(position, player.position);
+        const gap = tmpV6.length();
+        if (gap < WINGMAN_SEPARATION && gap > 0.001) {
+          tmpV6.multiplyScalar(1 / gap);
+          tmpV5.addScaledVector(tmpV6, 2 * (1 - gap / WINGMAN_SEPARATION)).normalize();
+        }
       }
 
       // The turn, and this is the whole flight model: swing the NOSE toward
@@ -57910,7 +58121,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // falls behind and catches up later, like an aircraft.
       const reference = friendly.wingMode === "engage" && target
         ? Math.max(target.speed + 60, friendly.wingCruise)
-        : playerSpeed;
+        : (friendly.combatSupport ? friendly.wingCruise : playerSpeed);
       const speedWanted = Math.min(
         reference * (1 + THREE.MathUtils.clamp(
           (error - WINGMAN_STATION_SLOP) / WINGMAN_STATION_GAIN,
@@ -57965,7 +58176,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // itself is already per-campaign (RADIO_SPEAKER_LABELS).
       triggerRadioLine(
         friendly.radioSpeaker || "wingman",
-        "こっちで1機落とした。数は減らしておく——本命は任せる。",
+        friendly.killRadio || "こっちで1機落とした。数は減らしておく——本命は任せる。",
         RADIO_PRIORITY.NORMAL,
         `wingman-kill-${target.id}`
       );
@@ -58860,6 +59071,25 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
        return best || fallback;
      }
 
+    // A mission may split an ordinary fighter element between RAVEN, the
+    // campaign wingman and a named support flight without turning any of those
+    // aircraft into the guarded objective. Returning null deliberately means
+    // the normal player pursuit/weapon path. If an assigned friendly has left
+    // or been destroyed, the fighter falls back to RAVEN instead of orbiting a
+    // dead reference.
+    function assignedFriendlyTargetFor(enemy) {
+      if (!enemy || !enemy.assignedTarget || enemy.assignedTarget === "player") return null;
+      const candidates = friendlies.filter((friendly) => (
+        friendly.alive && !friendly.retired && (
+          enemy.assignedTarget === "wingman"
+            ? friendly.kind === "wingman"
+            : Boolean(friendly.combatSupport)
+        )
+      ));
+      if (candidates.length === 0) return null;
+      return candidates[Math.abs(enemy.slot || 0) % candidates.length];
+    }
+
     function enemyEffectiveVerticalSpeed(enemy) {
       // As on the player, attitude loss and stall describe the same missing
       // lift from two directions. Taking the stronger sink prevents a slow,
@@ -58872,7 +59102,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function updateEnemyAerodynamicState(enemy, dt) {
       const spec = enemy.spec;
-      enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(enemy.group.position.y);
+      enemy.highAltitudeEnvelope = highAltitudeEnvelopeAt(
+        enemy.group.position.y,
+        enemy.spec.highAltitudeCeilingBonus,
+        enemy.spec.stallEntrySpeed,
+        enemy.spec.maxSpeed
+      );
       const stallMultiplier = enemy.highAltitudeEnvelope.stallSpeedMultiplier;
       forwardOf(enemy.group, tmpV8);
       updateAerodynamicStallState(enemy.stallState, {
@@ -58892,7 +59127,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function enemyConstrainedTurn(enemy, maximumRate) {
       const spec = enemy.spec;
-      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(enemy.group.position.y);
+      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(
+        enemy.group.position.y,
+        enemy.spec.highAltitudeCeilingBonus,
+        enemy.spec.stallEntrySpeed,
+        enemy.spec.maxSpeed
+      );
       const baseRate = Math.max(0.00001, spec.patrolTurn);
       const result = constrainedAircraftTurn({
         speed: enemy.speed,
@@ -58928,6 +59168,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         dt
       );
       forwardOf(enemy.group, tmpV8);
+      enemy.speed = altitudeEnergyAdjustedSpeed(
+        enemy.speed,
+        tmpV8.y,
+        enemy.highAltitudeEnvelope,
+        dt
+      );
       altitudeAdjustedFlightVelocity(
         tmpV8,
         enemy.speed,
@@ -58940,7 +59186,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
 
     function applyEnemyEnergyManagement(enemy, headingError) {
       const spec = enemy.spec;
-      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(enemy.group.position.y);
+      const envelope = enemy.highAltitudeEnvelope || highAltitudeEnvelopeAt(
+        enemy.group.position.y,
+        enemy.spec.highAltitudeCeilingBonus,
+        enemy.spec.stallEntrySpeed,
+        enemy.spec.maxSpeed
+      );
       const energy = managedCombatTurnSpeed({
         commandedSpeed: enemy.targetSpeed,
         headingErrorRad: headingError,
@@ -59069,13 +59320,16 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         // Resolved once per frame and read by both the aim point below and the
         // weapon paths in updateEnemyOrdnance, so an attacker cannot be flying
         // at the convoy while shooting at the player.
-        enemy.huntRef = enemy.hunt ? huntTargetFor(enemy) : null;
+        enemy.huntRef = enemy.hunt
+          ? huntTargetFor(enemy)
+          : assignedFriendlyTargetFor(enemy);
         // The wingman haters ride the same charge plumbing - flight offsets,
         // guns and missiles all included (damage no-ops on the invulnerable
         // wingman; the value is the split attention). The player takes the
         // fight back just by closing inside WINGMAN_HATER_YIELD.
         if (
           !enemy.huntRef
+          && !enemy.assignedTarget
           && enemy.wingmanHunter
           && wingmanRefs.length > 0
           && distanceToPlayer > WINGMAN_HATER_YIELD
@@ -63067,9 +63321,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       updateM07RecoveryReadout();
       updateM11EwDirective();
       // SPEED reports the motion the player actually sees across the world.
-      // During a stall gravity can add sink; near the ceiling a blocked climb
-      // can remove vertical travel. Reporting the powered forward scalar here
-      // was the old HUD/movement mismatch.
+      // During a stall gravity can add sink, while a high-altitude climb spends
+      // forward energy. Reporting the powered scalar here was the old
+      // HUD/movement mismatch.
       const speedKph = Math.round(playerKinematicVelocity(tmpV10).length() * 3.6);
       const altitudeM = Math.max(0, Math.round(player.position.y));
       ui.speed.textContent = String(speedKph);
@@ -63268,7 +63522,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       hook.flight.highAltitude = {
         onsetM: HIGH_ALTITUDE_EFFECT_START_M,
         serviceCeilingM: GAME_SERVICE_CEILING_M,
-        absoluteCeilingM: GAME_ABSOLUTE_CEILING_M,
+        absoluteCeilingM: playerHighAltitudeEnvelope.absoluteCeiling,
         densityRatio: playerHighAltitudeEnvelope.densityRatio,
         stallSpeedMultiplier: playerHighAltitudeEnvelope.stallSpeedMultiplier,
         turnAuthority: playerHighAltitudeEnvelope.turnAuthority,
@@ -67049,8 +67303,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // not looked up again while flying. An airframe with no entry keeps every
       // number the gun shipped with.
       playerGun.setAircraft(spec.id);
-      CRUISE_SPEED = spec.cruiseSpeed;
-      BOOST_SPEED = spec.boostSpeed;
+      CRUISE_SPEED = effectiveAircraftCruiseSpeed(spec);
+      BOOST_SPEED = effectiveAircraftBoostSpeed(spec);
       BRAKE_SPEED = spec.brakeSpeed;
       PITCH_RATE = THREE.MathUtils.degToRad(spec.pitchRateDeg);
       EXPERT_ROLL_RATE = THREE.MathUtils.degToRad(spec.rollRateDeg);
@@ -67093,6 +67347,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       STALL_ENTRY_SPEED = spec.stallEntrySpeed;
       STALL_AUTHORITY_LOSS = spec.stallAuthorityLoss;
       PLAYER_STABILITY = aircraftStabilityRating(spec);
+      PLAYER_HIGH_ALTITUDE_CEILING_BONUS = Math.max(
+        0, Number(spec.highAltitudeCeilingBonus) || 0
+      );
       STRUCTURAL_G = spec.structuralG;
       TIP_OFFSET_X = spec.tipSpan * spec.theme.scale;
       TIP_OFFSET_Z = spec.tipZ * spec.theme.scale;
@@ -67287,7 +67544,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const specs = AIRCRAFT_ORDER.map((id) => AIRCRAFT_TYPES[id]);
       // SPEED is pure top end now that acceleration has its own bar - folding
       // both into one number is exactly what hid the difference.
-      const speedScore = (spec) => spec.boostSpeed;
+      const speedScore = (spec) => effectiveAircraftBoostSpeed(spec);
       const speeds = specs.map(speedScore);
       // ACCEL: the engine. boostResponse is a damping base where larger is
       // slower, so -ln maps it onto "bigger is quicker" linearly in 1/tau.

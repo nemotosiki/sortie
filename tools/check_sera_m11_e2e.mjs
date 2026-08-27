@@ -113,7 +113,7 @@ try {
     assert(probe.worldKey === "verIceCoast", "M11 did not create Ver Ice Coast");
     assert(probe.halo.length === 3 && probe.halo.every((aircraft) => (
       aircraft.type === "jammer" && aircraft.alive && !aircraft.retired
-        && aircraft.position[1] >= 10470 && aircraft.position[1] <= 10530
+        && aircraft.position[1] >= 12470 && aircraft.position[1] <= 12530
     )), "HALO electronic-support formation is malformed", probe.halo);
     assert(probe.guard.active && probe.guard.total === 3 && probe.guard.lost === 0,
       "HALO guard did not arm cleanly", probe.guard);
@@ -128,13 +128,15 @@ try {
       "opening MiG-31 pair/reinforcement queue is malformed", probe);
     assert(probe.contacts.filter((contact) => contact.type === "mig31").every((contact) => (
       contact.hunt === "air" && contact.charge?.startsWith("HALO")
-        && contact.position[1] >= 10400
+        && contact.position[1] >= 11800 && contact.position[1] <= 12020
     )), "MiG-31 did not remain in HALO's high-altitude band", probe.contacts);
     assert(probe.arca.length === 2 && probe.arca.every((aircraft) => (
       aircraft.type === "typhoon" && aircraft.alive && !aircraft.retired
-        && aircraft.vulnerable === false && aircraft.label.startsWith("ARCA POLAR WATCH")
+        && aircraft.vulnerable === false && aircraft.enemyTargetable && aircraft.combatSupport
+        && aircraft.combatTargetTypes.join(",") === "mig29"
+        && aircraft.label.startsWith("ARCA POLAR WATCH")
         && aircraft.position[1] >= 9770 && aircraft.position[1] <= 9830
-    )), "blue ARCA observer flight is malformed", probe.arca);
+    )), "blue ARCA self-defence flight is malformed", probe.arca);
     assert(probe.recoveryGauge.visible && probe.recoveryGauge.label === "HALO TOTAL HP"
         && probe.recoveryGauge.value === "1176/1176"
         && probe.recoveryGauge.className.includes("formation"),
@@ -159,7 +161,8 @@ try {
     assert(Math.abs(speedParity.displacementSpeedMps - speedParity.after.kinematicSpeedMps) < 0.1
         && speedParity.after.hudSpeedKph ===
           Math.round(speedParity.after.kinematicSpeedMps * 3.6)
-        && speedParity.after.kinematicSpeedMps < speedParity.after.speedMps * 0.35,
+        && speedParity.after.kinematicSpeedMps > speedParity.after.speedMps * 0.55
+        && speedParity.after.kinematicSpeedMps < speedParity.after.speedMps * 0.65,
       "high-altitude HUD speed diverged from actual displacement speed", speedParity);
     assert(await page.evaluate(() => window.__game.forceSeraM11DamageHalo(0, 98)),
       "HALO damage probe failed");
@@ -285,6 +288,10 @@ try {
 
     assert(await page.evaluate(() => window.__game.forceSeraM11DeployPending()),
       "M11 delayed air-defence waves did not deploy");
+    // Newly deployed hunters acquire their HALO charge in updateEnemies, not
+    // in the spawner. Advance one deterministic frame before asserting the
+    // role split so a null same-frame reference is not mistaken for diversion.
+    await page.evaluate(() => window.__game.debug.forceEnemyFlightFrames(1));
     probe = await page.evaluate(() => window.__game.seraM11Probe());
     const mig29s = probe.contacts.filter((contact) => contact.type === "mig29");
     const mig31s = probe.contacts.filter((contact) => contact.type === "mig31");
@@ -292,11 +299,20 @@ try {
     assert(mig29s.length === 6 && mig29s.every((contact) => (
       !contact.tgt && contact.rankNeutral && contact.hunt === null
         && contact.missionTag === "m11BaseAirDefence"
-    )), "MiG-29A CAP/QRA deployment is malformed", mig29s);
-    assert(mig31s.length === 4 && granite && granite.hunt === null
+    )) && mig29s.map((contact) => contact.assignedTarget).sort().join(",")
+      === "arca,arca,player,player,wingman,wingman",
+    "MiG-29A RAVEN/LARK/ARCA split is malformed", mig29s);
+    assert(mig29s.every((contact) => (
+      contact.assignedTarget === "player"
+        ? contact.charge === null
+        : contact.assignedTarget === "wingman"
+          ? contact.charge === "ROOK 2 LARK"
+          : contact.charge?.startsWith("ARCA POLAR WATCH")
+    )), "MiG-29A did not resolve its authored combat assignment", mig29s);
+    assert(mig31s.length === 4 && granite && granite.hunt === "air"
         && granite.rankNeutral && granite.missionTag === "m11HaloHunter"
-        && mig31s.filter((contact) => contact.hunt === "air").length === 3,
-      "MiG-31/GRANITE role split is malformed", mig31s);
+        && mig31s.every((contact) => contact.hunt === "air" && contact.charge?.startsWith("HALO")),
+      "MiG-31 flight diverted from HALO", mig31s);
     const otherWhiteCleared = await page.evaluate(() => {
       const probe = window.__game.seraM11Probe();
       const contacts = probe.contacts.filter((contact) => (

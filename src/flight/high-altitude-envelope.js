@@ -7,11 +7,15 @@
 
 export const HIGH_ALTITUDE_EFFECT_START_M = 6500;
 export const GAME_SERVICE_CEILING_M = 9144; // 30,000 ft
-export const GAME_ABSOLUTE_CEILING_M = 11000;
+export const GAME_ABSOLUTE_CEILING_M = 10000;
 
 const ISA_SEA_LEVEL_TEMPERATURE_K = 288.15;
 const ISA_TROPOSPHERE_LAPSE_K_PER_M = 0.0065;
 const ISA_DENSITY_EXPONENT = 4.255879812716677;
+const ISA_TROPOPAUSE_M = 11000;
+const ISA_TROPOPAUSE_TEMPERATURE_K = 216.65;
+const ISA_GRAVITY_MPS2 = 9.80665;
+const ISA_AIR_GAS_CONSTANT = 287.05287;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -23,19 +27,32 @@ function smoothstep(edge0, edge1, value) {
   return x * x * (3 - 2 * x);
 }
 
-// ISA troposphere density ratio rho/rho0. Sortie's soft ceiling is below the
-// 11 km tropopause, so one continuous equation covers the whole playable band.
+// ISA density ratio rho/rho0. Specialist aircraft can cross the tropopause, so
+// the troposphere and isothermal lower-stratosphere layers meet at 11 km.
 export function isaTroposphereDensityRatio(altitudeM) {
-  const altitude = clamp(Number(altitudeM) || 0, 0, GAME_ABSOLUTE_CEILING_M);
+  // Specialist airframes may extend their own envelope above the ordinary
+  // game ceiling, so atmosphere sampling itself cannot clamp at 11 km.
+  const altitude = clamp(Number(altitudeM) || 0, 0, 20000);
+  const troposphereAltitude = Math.min(altitude, ISA_TROPOPAUSE_M);
   const temperatureRatio = 1 -
-    (ISA_TROPOSPHERE_LAPSE_K_PER_M * altitude) / ISA_SEA_LEVEL_TEMPERATURE_K;
-  return Math.pow(Math.max(0.01, temperatureRatio), ISA_DENSITY_EXPONENT);
+    (ISA_TROPOSPHERE_LAPSE_K_PER_M * troposphereAltitude) / ISA_SEA_LEVEL_TEMPERATURE_K;
+  const troposphereRatio = Math.pow(Math.max(0.01, temperatureRatio), ISA_DENSITY_EXPONENT);
+  if (altitude <= ISA_TROPOPAUSE_M) return troposphereRatio;
+  const scaleHeight =
+    (ISA_AIR_GAS_CONSTANT * ISA_TROPOPAUSE_TEMPERATURE_K) / ISA_GRAVITY_MPS2;
+  return troposphereRatio * Math.exp(-(altitude - ISA_TROPOPAUSE_M) / scaleHeight);
 }
 
-export function highAltitudeEnvelopeAt(altitudeM) {
+export function highAltitudeEnvelopeAt(
+  altitudeM,
+  absoluteCeilingBonusM = 0,
+  stallEntrySpeedMps = 84,
+  maxPoweredSpeedMps = 570
+) {
   const altitude = Math.max(0, Number(altitudeM) || 0);
-  const sampledAltitude = Math.min(altitude, GAME_ABSOLUTE_CEILING_M);
-  const densityRatio = isaTroposphereDensityRatio(sampledAltitude);
+  const absoluteCeiling = GAME_ABSOLUTE_CEILING_M +
+    Math.max(0, Number(absoluteCeilingBonusM) || 0);
+  const densityRatio = isaTroposphereDensityRatio(altitude);
   const thinAir = smoothstep(
     HIGH_ALTITUDE_EFFECT_START_M,
     GAME_SERVICE_CEILING_M,
@@ -43,7 +60,12 @@ export function highAltitudeEnvelopeAt(altitudeM) {
   );
   const ceiling = smoothstep(
     GAME_SERVICE_CEILING_M,
-    GAME_ABSOLUTE_CEILING_M,
+    absoluteCeiling,
+    altitude
+  );
+  const engineLapse = smoothstep(
+    HIGH_ALTITUDE_EFFECT_START_M,
+    absoluteCeiling,
     altitude
   );
 
@@ -51,6 +73,25 @@ export function highAltitudeEnvelopeAt(altitudeM) {
   // low/medium-altitude sortie. By 30,000 ft the real ISA ratio is fully active.
   const effectiveDensityRatio = 1 + (densityRatio - 1) * thinAir;
   const stallSpeedMultiplier = 1 / Math.sqrt(Math.max(0.01, effectiveDensityRatio));
+  const seaLevelStallSpeed = Math.max(1, Number(stallEntrySpeedMps) || 84);
+  const seaLevelMaxSpeed = Math.max(
+    seaLevelStallSpeed * 1.05,
+    Number(maxPoweredSpeedMps) || 570
+  );
+  const ceilingDensityRatio = isaTroposphereDensityRatio(absoluteCeiling);
+  const ceilingStallSpeed = seaLevelStallSpeed /
+    Math.sqrt(Math.max(0.01, ceilingDensityRatio));
+  // At the airframe's quoted ceiling, full power leaves only three percent of
+  // straight-and-level stall margin. A climb or turn spends that margin and
+  // the ordinary stall model takes over. This is an energy ceiling, not a
+  // positional wall: a fast zoom climb can cross it briefly, but cannot loiter.
+  const ceilingSustainableSpeed = ceilingStallSpeed * 1.03;
+  const ceilingSpeedFactor = clamp(
+    ceilingSustainableSpeed / seaLevelMaxSpeed,
+    0.12,
+    0.55
+  );
+  const maxSpeedFactor = 1 + (ceilingSpeedFactor - 1) * engineLapse;
 
   return Object.freeze({
     altitude,
@@ -59,15 +100,39 @@ export function highAltitudeEnvelopeAt(altitudeM) {
     thinAir,
     ceiling,
     stallSpeedMultiplier,
-    // Full penalty at 30,000 ft, then a narrower final margin to 11 km.
+    engineLapse,
+    ceilingStallSpeed,
+    ceilingSustainableSpeed,
+    // Full thin-air penalty at 30,000 ft, then a narrow energy margin to the
+    // airframe's own aerodynamic ceiling.
     turnAuthority: clamp(1 - thinAir * 0.28 - ceiling * 0.20, 0.52, 1),
-    thrustFactor: clamp(1 - thinAir * 0.30 - ceiling * 0.25, 0.45, 1),
-    maxSpeedFactor: clamp(1 - thinAir * 0.18 - ceiling * 0.10, 0.72, 1),
-    climbAuthority: clamp(1 - thinAir * 0.35 - ceiling * 0.65, 0, 1),
-    // No hard wall. Level flight begins to settle above the service ceiling;
-    // past 11 km the excess term pushes the aircraft back into the envelope.
-    ceilingSinkSpeed: -(32 * ceiling + Math.max(0, altitude - GAME_ABSOLUTE_CEILING_M) * 0.08)
+    thrustFactor: clamp(1 - engineLapse * 0.72, 0.28, 1),
+    maxSpeedFactor,
+    // Climb response weakens with available power, but never becomes a hidden
+    // altitude clamp. Speed loss and the shared stall/gravity model decide
+    // whether the aircraft can keep climbing.
+    climbAuthority: clamp(1 - thinAir * 0.25 - ceiling * 0.15, 0.60, 1),
+    ceilingSinkSpeed: 0,
+    absoluteCeiling
   });
+}
+
+// Convert nose-up flight into the corresponding loss of kinetic energy. This
+// only fades in with the high-altitude layer so existing low-level arcade
+// handling is preserved. Nose-down flight returns the same gravitational
+// energy. Combined with the density-derived stall speed and engine lapse above,
+// a zoom climb may cross the nominal ceiling but cannot remain there.
+export function altitudeEnergyAdjustedSpeed(
+  speedMps,
+  forwardVerticalComponent,
+  envelope,
+  dt
+) {
+  const speed = Math.max(0, Number(speedMps) || 0);
+  const vertical = clamp(Number(forwardVerticalComponent) || 0, -1, 1);
+  const elapsed = Math.max(0, Number(dt) || 0);
+  const coupling = clamp(Number(envelope?.thinAir) || 0, 0, 1);
+  return Math.max(0, speed - ISA_GRAVITY_MPS2 * vertical * coupling * elapsed);
 }
 
 export function altitudeAdjustedResponseK(responseK, thrustFactor) {

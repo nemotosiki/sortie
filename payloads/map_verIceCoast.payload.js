@@ -8,22 +8,29 @@ export default function register(ctx) {
   const base = WORLD_PRESETS.glacierCanyon;
   if (!base) throw new Error("[verIceCoast] glacierCanyon base preset is missing");
 
+  // FROZEN EYE is a coastal mainland installation, not an offshore ice base.
+  // This point lies 1.2-3.0 km inland of verIceShelfWest's jagged coastline,
+  // between the two authored sea leads and clear of the fishing harbour.
+  const frozenEyeBase = Object.freeze([0, 6500]);
   const missionAnchors = Object.freeze({
     playerStart: Object.freeze([-10800, -7200]),
     strikeStart: Object.freeze([-9600, -6400]),
     strikeExit: Object.freeze([9600, 6400]),
     operationLine: Object.freeze([9000, 6000]),
+    // Keep the battle volume centred between the seaward ingress and the
+    // mainland objective. Centring it on the relocated base would put the
+    // player in the warning band at mission start.
     battleCenter: Object.freeze([0, 0]),
-    firstIntercept: Object.freeze([-1800, 4100]),
-    northIntercept: Object.freeze([3100, 8600]),
+    firstIntercept: Object.freeze([-4200, 11500]),
+    northIntercept: Object.freeze([4200, 14500]),
     southIntercept: Object.freeze([11200, -6500]),
-    baseCapEntry: Object.freeze([-3500, 1000]),
-    coastQraEntry: Object.freeze([12400, 1000]),
-    inlandQraEntry: Object.freeze([6500, -12100]),
-    arcaWatchStart: Object.freeze([-6500, 8000]),
-    arcaWatchExit: Object.freeze([8500, 6000]),
+    baseCapEntry: Object.freeze([-8500, 6500]),
+    coastQraEntry: Object.freeze([8500, 3000]),
+    inlandQraEntry: Object.freeze([2400, 15500]),
+    arcaWatchStart: Object.freeze([-6500, 12500]),
+    arcaWatchExit: Object.freeze([8500, 10500]),
     diversionEntry: Object.freeze([-2500, -8200]),
-    weatherStation: Object.freeze([4300, -2500]),
+    weatherStation: frozenEyeBase,
     fishingHarbour: Object.freeze([-3300, 3300])
   });
 
@@ -34,7 +41,7 @@ export default function register(ctx) {
     sectorIds: Object.freeze(["western_ice_approach", "ver_shelf", "operation_line"]),
     variant: "polar_morning_high_altitude",
     sceneryOrigin: [0, 0],
-    previewFocus: [4300, -2500],
+    previewFocus: [...frozenEyeBase],
     missionAnchors,
     clearColor: 0xa7c2d1,
     sky: [
@@ -336,8 +343,8 @@ export default function register(ctx) {
       // dark road loop first makes the ten contacts read as one installation,
       // then hardened wings, portals and a logistics belt give it a plausible
       // reason to exist beyond being a row of target props.
-      const baseX = 4300;
-      const baseZ = -2500;
+      const baseX = frozenEyeBase[0];
+      const baseZ = frozenEyeBase[1];
       const road = 0x4c575c;
       const apron = 0x707d80;
       const concrete = 0x99a5a5;
@@ -371,17 +378,17 @@ export default function register(ctx) {
           sideWidth, 5.2, wall, snowWear);
       };
 
-      // The weather-station anchor lies seaward of the main shelf silhouette.
-      // Give the enlarged base its own wind-cut ice plateau so buildings and
-      // roads read as a coastal installation instead of floating on the ocean.
-      flatPolygon("verFrozenEyePlateau", [
+      // The compound now sits on the continuous western mainland shelf. This
+      // nearly flush polygon is only a wind-scoured grading layer under the
+      // roads; it is not a separate island and never crosses the coastline.
+      flatPolygon("verFrozenEyeInlandGrade", [
         [baseX - 1760, baseZ - 900], [baseX - 1510, baseZ - 1370],
         [baseX - 620, baseZ - 1510], [baseX + 410, baseZ - 1420],
         [baseX + 1490, baseZ - 1210], [baseX + 1760, baseZ - 540],
         [baseX + 1660, baseZ + 430], [baseX + 1430, baseZ + 1250],
         [baseX + 610, baseZ + 1460], [baseX - 570, baseZ + 1410],
         [baseX - 1510, baseZ + 1110], [baseX - 1780, baseZ + 260]
-      ], 1.4, 0xd5e4e6, { roughness: 0.94 });
+      ], 1.39, 0xd5e4e6, { roughness: 0.94 });
 
       // Perimeter service loop (2.8 x 2.4 km) and radial access roads.
       baseBox("verBaseRoadNorth", baseX, 1.48, baseZ + 1180, 2760, 0.28, 46, road);
@@ -392,6 +399,27 @@ export default function register(ctx) {
       baseBox("verBaseRoadCross", baseX, 1.5, baseZ - 210, 2500, 0.32, 42, road);
       baseBox("verBaseRoadRadar", baseX, 1.51, baseZ + 430, 1550, 0.34, 34, road);
       baseBox("verBaseRoadLogistics", baseX, 1.51, baseZ - 650, 1800, 0.34, 34, road);
+
+      // A real mainland base needs a supply route. Two restrained road legs
+      // connect the south gate to the existing fishing harbour without reading
+      // as a runway or cutting across open water.
+      const accessRoad = (name, x0, z0, x1, z1) => {
+        const dx = x1 - x0;
+        const dz = z1 - z0;
+        baseBox(
+          name,
+          (x0 + x1) * 0.5,
+          1.47,
+          (z0 + z1) * 0.5,
+          30,
+          0.24,
+          Math.hypot(dx, dz),
+          road,
+          Math.atan2(dx, dz)
+        );
+      };
+      accessRoad("verBaseAccessRoadUpper", baseX, baseZ - 1110, -1600, 4300);
+      accessRoad("verBaseAccessRoadHarbour", -1600, 4300, -3050, 3460);
 
       // A weathered central apron remains low enough for the destructible
       // control-station model to sit cleanly above it.

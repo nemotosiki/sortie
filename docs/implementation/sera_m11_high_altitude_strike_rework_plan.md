@@ -42,7 +42,8 @@ their real absolute ceiling:
 |---|---:|---|
 | thin-air onset | 6,500 m / 21,325 ft | penalties begin smoothly; existing low/medium missions remain unchanged |
 | combat/service ceiling | 9,144 m / 30,000 ft | M11 player ingress/retreat band; full density-derived stall-speed penalty, materially reduced manoeuvre/thrust margin |
-| soft absolute ceiling | 11,000 m / 36,089 ft | positive climb authority reaches zero and ceiling sink prevents sustained climb; no invisible wall |
+| ordinary energy ceiling | approximately 10,000 m / 32,808 ft | full power leaves only a few percent of straight-and-level stall margin; a climb or turn naturally spends it |
+| MiG-31 energy ceiling | approximately 12,000 m / 39,370 ft | airframe-specific engine margin; the same density, speed, stall and gravity rules still apply |
 
 At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
@@ -51,20 +52,21 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
   fully active by 9,144 m;
 - reduced turn/control authority;
 - reduced throttle response and attainable speed;
-- progressively reduced positive climb authority;
-- a soft sink term between 9,144 m and 11,000 m;
-- conserve translational speed magnitude when climb is restricted by rotating
-  the flight path back toward horizontal, so HUD speed and coordinate motion
-  cannot diverge at a steep nose-up attitude;
-- no penalty to descent and no hard altitude clamp.
+- progressively reduced positive climb response;
+- density-derived stall speed and an engine-lapse curve that leave only a three
+  percent level-flight margin at each airframe's authored energy ceiling;
+- gravitational energy exchange: a nose-up climb loses forward speed and a dive
+  regains it, so a zoom may cross the nominal ceiling but cannot loiter there;
+- no forced sink, no redirected flight path, and no hard altitude clamp.
 
 ## Mission contract
 
-- HALO 1–3 fly IL-22PP electronic-support aircraft at 10,500 m, close to the
-  11,000 m soft ceiling. RAVEN and LARK enter below them at 9,144 m. HALO's
-  altitude is what keeps its MiG-31 attackers in the difficult high-altitude
-  band instead of bringing the fight down to the player. Their story and
-  gameplay purpose is to jam the enemy base's missile fire-control radars.
+- HALO 1–3 fly latest-model electronic-support aircraft at 12,500 m as a
+  mission-specific exception to the fighter envelope. RAVEN and LARK enter
+  below them at 9,144 m. HALO's altitude is what keeps its MiG-31 attackers in
+  the difficult high-altitude band instead of bringing the fight down to the
+  player. Their story and gameplay purpose is to jam the enemy base's missile
+  fire-control radars.
 - The top-right escort panel displays one green bar for the sum of all three
   aircraft's current HP over their combined maximum HP. Destroyed aircraft
   contribute zero. A three-aircraft formation silhouette makes the aggregate
@@ -88,8 +90,9 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
   pause, hold above 9,000 m, then descend when jamming resumes.
 - Destroying every fire-control radar permanently removes the enhanced phase,
   so target order can replace repeated altitude cycles with an early radar kill.
-- The player starts at the 30,000 ft band, below HALO's 10,500 m orbit.
-- Four MiG-31s attack HALO in two delayed pairs from approximately 10,650 m.
+- The player starts at the 30,000 ft band, below HALO's 12,500 m orbit.
+- Four MiG-31s attack HALO in three staggered entries near 11,900 m, just below
+  their approximately 12,000 m energy ceiling.
 - MiG-31s are white optional contacts, because destroying them is not the
   mission objective. They retain a high-altitude attack floor and long-range
   missile pressure.
@@ -115,12 +118,12 @@ At and above the onset, the shared player/enemy fixed-wing envelope must apply:
 
 - [x] Audit current metre/km/h units, speed envelope, stall host, enemy envelope,
   and 4AAM/standard lock ranges.
-- [x] Fix the game combat ceiling at 9,144 m and soft absolute ceiling at
-  11,000 m.
+- [x] Keep the 9,144 m combat band and set natural energy ceilings near 10,000 m
+  for ordinary fighters and 12,000 m for MiG-31.
 - [x] Add a pure high-altitude envelope module and deterministic simulation.
 - [x] Apply it to both player and enemy fixed-wing flight.
 - [x] Keep HUD speed and measured displacement speed equal while high-altitude
-  climb authority redirects the flight path.
+  climbs spend forward energy without redirecting the flight path.
 - [x] Expose a browser/debug probe and high-altitude HUD caution.
 - [x] Verify no behaviour change at or below 6,500 m.
 

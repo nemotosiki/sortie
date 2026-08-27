@@ -15,8 +15,8 @@ assert(!source.includes("\r"), "payload must be LF-only");
 for (const token of [
   'key: "sera-m11"', 'title: "FROZEN EYE"', 'world: "verIceCoast"',
   'aircraft: "jammer"', 'spw: "aam4"', 'playerStartAltitude = 9144',
-  'operationAltitude = 10500',
-  'safeAltitude = 9000', 'interceptorAltitude = 10650', 'jamDuration: 60',
+  'operationAltitude = 12500',
+  'safeAltitude = 9000', 'interceptorAltitude = 11900', 'jamDuration: 60',
   'radarOnlineDuration: 18', 'warningLead: 35', 'enhancedTurnRateDeg: 75',
   'radarOnlineMissileMaxSpeed = 4000 / 3.6', 'enhancedNavigationRatio: 8',
   'enhancedMaxLateralG: 150', 'enhancedLife: 18',
@@ -109,14 +109,16 @@ try {
     "HALO electronic-support formation is malformed");
   assert(mission.friendlies.playerStart.y === 9144,
     "RAVEN/LARK must enter below the HALO/MiG-31 high-altitude fight");
-  assert(halo.altitude === 10500 && halo.hp === 392 && halo.speed === 180,
+  assert(halo.altitude === 12500 && halo.hp === 392 && halo.speed === 180,
     "HALO altitude/HP/speed changed");
   assert(mission.friendlies.guard.readout === "integrity", "HALO aggregate integrity readout missing");
   const arca = mission.friendlies.supportFlights?.[0];
   assert(mission.friendlies.supportFlights.length === 1 && arca.aircraft === "typhoon"
       && arca.callsign === "ARCA POLAR WATCH" && arca.count === 2
-      && arca.vulnerable === false && arca.altitude === 9800,
-    "blue ARCA observer flight is malformed");
+      && arca.vulnerable === false && arca.enemyTargetable && arca.combatSupport
+      && arca.combatTargetTypes.join(",") === "mig29" && arca.holdAtExit
+      && arca.altitude === 9800,
+    "blue ARCA self-defence flight is malformed");
 
   for (const id of [
     "m11FireControlRadar", "m11ControlStation", "m11PowerPlant", "m11FuelFarm", "m11Shorad"
@@ -161,21 +163,24 @@ try {
     "air-defence total must be MiG-29A x6 + MiG-31 x4");
   const mig29Waves = mission.sequence.filter((wave) => wave.types.every((type) => type === "mig29"));
   assert(mig29Waves.length === 3 && mig29Waves.map((wave) => wave.delay).join(",") === "18,75,87"
-      && mig29Waves.every((wave) => wave.types.length === 2 && !wave.hunt),
+      && mig29Waves.every((wave) => wave.types.length === 2 && !wave.hunt)
+      && mig29Waves.flatMap((wave) => wave.assignedTargets).join(",")
+        === "player,wingman,arca,player,wingman,arca",
     "CAP/QRA stagger is malformed");
   const mig31Waves = mission.sequence.filter((wave) => wave.types.every((type) => type === "mig31"));
   assert(mig31Waves.length === 3 && mig31Waves.reduce((sum, wave) => sum + wave.types.length, 0) === 4,
     "MiG-31 secondary flights are malformed");
-  assert(mig31Waves[0].hunt === "air" && mig31Waves[0].altitude === 10650
+  assert(mig31Waves[0].hunt === "air" && mig31Waves[0].altitude === 11900
       && mig31Waves[1].ace === "granite" && mig31Waves[1].delay === 145
-      && !mig31Waves[1].hunt && mig31Waves[2].hunt === "air" && mig31Waves[2].delay === 149,
+      && mig31Waves[1].hunt === "air" && mig31Waves[1].huntAltitudeFloor === 11900
+      && mig31Waves[2].hunt === "air" && mig31Waves[2].delay === 149,
     "opening hunter / GRANITE / WARDEN wing roles are malformed");
 
   const contract = mission.m11EscortContract;
   assert(contract.total === 3 && contract.requiredSaved === 2 && contract.timeLimit === 330,
     "HALO survival contract changed");
-  assert(contract.operationAltitude === 10500 && contract.safeAltitude === 9000
-      && contract.interceptorAltitude === 10650,
+  assert(contract.operationAltitude === 12500 && contract.safeAltitude === 9000
+      && contract.interceptorAltitude === 11900,
     "mission altitude geometry changed");
   assert(contract.base.total === 10 && contract.rank.secondaryKillsForS === 4,
     "base/secondary result contract changed");
@@ -187,11 +192,12 @@ try {
       && contract.electronicWarfare.enhancedMaxLateralG === 150
       && contract.electronicWarfare.enhancedLife === 18,
     "radar-online SAM near-unavoidable guidance contract changed");
-  assert(10650 - mission.friendlies.playerStart.y > 1200
-      && 10650 - mission.friendlies.playerStart.y < 2000,
-    "MiG-31 vertical separation must exceed MSL and fit 4AAM range");
-  assert(Math.abs(10650 - halo.altitude) <= 200,
-    "MiG-31 must remain in HALO's high-altitude band while hunting it");
+  assert(11900 - 10000 === 1900 && 11900 - 10000 < 2000,
+    "MiG-31 must sit just inside 4AAM range from the ordinary 10km ceiling");
+  assert(11900 - mission.friendlies.playerStart.y > 2500,
+    "MiG-31 must not be directly reachable from the 30,000ft ingress band");
+  assert(halo.altitude - 11900 === 600,
+    "HALO must remain above the MiG-31 aerodynamic ceiling as the EW exception");
 
   console.log("check_sera_m11_payload: PASS");
   console.log("  HALO x3 / red base x10 / perimeter x6 / MiG-29A x6 + MiG-31 x4 / blue ARCA x2");

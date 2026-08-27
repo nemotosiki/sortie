@@ -25,14 +25,14 @@ assert(mapLedger.includes("`ver_ice_coast`") && mapLedger.includes("`verIceCoast
 assert(oldPlan.includes("Superseded on 2026-08-27"), "old escort plan is not visibly superseded");
 
 for (const token of [
-  "cyclic-jamming anti-ground strike", "9,144 m / 30,000 ft", "soft absolute ceiling",
-  "IL-22PP electronic-support aircraft at 10,500 m", "HALO jams for 60 seconds", "9,000 m",
+  "cyclic-jamming anti-ground strike", "9,144 m / 30,000 ft", "ordinary energy ceiling",
+  "electronic-support aircraft at 12,500 m", "HALO jams for 60 seconds", "9,000 m",
   "white NON-TGT secondary objective", "global 75 deg/s", "4,000 km/h maximum speed",
   "N=8 PN guidance"
 ]) assert(plan.includes(token), `rework plan contract missing: ${token}`);
 
 for (const token of [
-  'from "./src/flight/high-altitude-envelope.js?v=20260827-world-gravity-1"',
+  'from "./src/flight/high-altitude-envelope.js?v=20260827-energy-ceiling-1"',
   'ctx.addAircraft("jammer"', 'label: "IL-22PP JAMMER"',
   'id="m11EwDirective"', "function updateM11ElectronicWarfare(mission)",
   "function m11EnhancedSamTuning(enemy)", "// @payload:map_verIceCoast",

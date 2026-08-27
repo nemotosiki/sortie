@@ -237,13 +237,15 @@ export default function register(ctx) {
 
   const baseMark = "m11BaseNode";
   const hunterTag = "m11HaloHunter";
-  // RAVEN enters at the authored 30,000 ft combat band. HALO remains much
-  // closer to the soft ceiling, so the MiG-31s hunting it have a visible
-  // reason to stay high instead of diving down into an ordinary dogfight.
+  // RAVEN enters at the authored 30,000 ft combat band. HALO is a latest-model
+  // stratospheric EW platform exempt from the fighter envelope and holds
+  // 12.5 km. The MiG-31's engine-specific +2 km margin lets it fight near its
+  // 12 km aerodynamic ceiling; an ordinary fighter at roughly 10 km has only
+  // a narrow horizontal margin inside a 4AAM's 2 km slant range.
   const playerStartAltitude = 9144;
-  const operationAltitude = 10500;
+  const operationAltitude = 12500;
   const safeAltitude = 9000;
-  const interceptorAltitude = 10650;
+  const interceptorAltitude = 11900;
   // Restored fire-control turns the tagged base SAMs into the mission's hard
   // altitude gate. Keep the authored requirement readable in km/h even though
   // the combat simulation stores velocity in metres per second.
@@ -310,7 +312,7 @@ export default function register(ctx) {
     jp: "HALO電子支援隊の妨害窓を使い、敵基地の射撃管制網と全施設を無力化せよ。",
     act: 2,
     storyNo: 11,
-    story: "WAR DAY 121。氷海岸上空、高度一万五百メートル。HALO電子支援隊は敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
+    story: "WAR DAY 121。氷海岸上空、成層圏下端の高度一万二千五百メートル。最新鋭電子戦機HALOは敵基地の射撃管制レーダーへ周期妨害を開始した。\nROOKはその下、高度三万フィートから侵入する。妨害の切れ目には基地SAMの誘導網が復活する。白い海岸へ降り、次の切れ目までにFROZEN EYEを潰せ。",
     epilogue: [
       "射撃管制レーダーとベースステーションは沈黙し、氷海岸のミサイル網は目を失った。",
       "HALOの妨害記録には、基地が最後に空を見た十八秒が残されていた。",
@@ -347,19 +349,26 @@ export default function register(ctx) {
           exit: { x: anchors.strikeExit[0], z: anchors.strikeExit[1] }
         }
       ],
-      // ARCA is still a blue observer on WAR DAY 121. POLAR WATCH crosses the
-      // northern edge, listens to civilian weather/rescue traffic, and leaves
-      // before the first radar-online interval. It has no weapons, hitbox,
-      // score value or persistence hook; the hostile split remains an M15 beat.
+      // ARCA is still politically outside the operation on WAR DAY 121, but it
+      // will defend its northern observation corridor when the base CAP turns
+      // on it. POLAR WATCH fights MiG-29A only; it is not part of HALO's guard
+      // ledger and the MiG-31 force never diverts from the jammer formation.
       supportFlights: [
         {
           aircraft: "typhoon",
           callsign: "ARCA POLAR WATCH",
           count: 2,
           vulnerable: false,
+          enemyTargetable: true,
+          combatSupport: true,
+          combatTargetTypes: ["mig29"],
+          hp: 340,
+          radioSpeaker: "pax",
+          killRadio: "POLAR WATCH、MiG-29Aを一機排除。HALOへの高高度迎撃はROOKに任せる。",
           speed: 280,
           altitude: 9800,
           spacing: 320,
+          holdAtExit: true,
           start: { x: anchors.arcaWatchStart[0], z: anchors.arcaWatchStart[1] },
           exit: { x: anchors.arcaWatchExit[0], z: anchors.arcaWatchExit[1] }
         }
@@ -410,6 +419,7 @@ export default function register(ctx) {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 18, missionTag: "m11BaseAirDefence", band: 2, idBase: 430,
         label: "FROZEN CAP", role: "line", skill: "standard",
+        assignedTargets: ["player", "wingman"],
         at: [...anchors.baseCapEntry], altitude: 6200,
         facing: [...anchors.weatherStation],
         radio: [{ speaker: "meridian", priority: "NORMAL", text: "基地西側にMiG-29A二機。低高度CAPだ。HALOではなくROOKを迎撃する。", id: "m11-cap-local" }]
@@ -418,6 +428,7 @@ export default function register(ctx) {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 75, missionTag: "m11BaseAirDefence", band: 2, idBase: 440,
         label: "COAST QRA", role: "line", skill: "veteran",
+        assignedTargets: ["arca", "player"],
         at: [...anchors.coastQraEntry], altitude: 5900,
         facing: [...anchors.battleCenter],
         radio: [{ speaker: "lark", priority: "URGENT", text: "海岸側からQRA二機！ 妨害の切れ目に合わせて挟む気だ。", id: "m11-qra-coast" }]
@@ -426,6 +437,7 @@ export default function register(ctx) {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 87, missionTag: "m11BaseAirDefence", band: 2, idBase: 450,
         label: "INLAND QRA", role: "line", skill: "veteran",
+        assignedTargets: ["wingman", "arca"],
         at: [...anchors.inlandQraEntry], altitude: 5700,
         facing: [...anchors.weatherStation],
         radio: [{ speaker: "meridian", priority: "URGENT", text: "第二組、内陸側から二機。敵航空戦力は合計六、基地攻撃中も後方を見ろ。", id: "m11-qra-inland" }]
@@ -434,9 +446,10 @@ export default function register(ctx) {
         types: ["mig31"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 145, missionTag: hunterTag, band: 3, idBase: 420,
         label: "WARDEN 1", role: "elite", skill: "expert", ace: "granite",
+        hunt: "air", huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.southIntercept], altitude: interceptorAltitude,
         facing: [...anchors.battleCenter],
-        radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEはRAVENを狙っている！", id: "m11-granite-inbound" }]
+        radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEもHALOへ向かっている！", id: "m11-granite-inbound" }]
       },
       {
         types: ["mig31"], tgt: false, rankNeutral: true,
@@ -450,11 +463,11 @@ export default function register(ctx) {
     ],
     m11EscortContract,
     fixedRadio: [
-      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、上空一万五百のHALO電子支援隊と合流。敵基地の射撃管制レーダーを周期妨害中。" },
+      { id: "m11-intro-1", at: 2, speaker: "meridian", priority: "NORMAL", text: "ROOK、成層圏下端、一万二千五百の最新鋭HALO電子支援隊と合流。敵射撃管制を周期妨害中。" },
       { id: "m11-intro-2", at: 8, speaker: "lark", priority: "NORMAL", text: "緑表示中に降りて基地を叩く。妨害停止前に高度九千へ戻る、HUDを見て！" },
       { id: "m11-intro-3", at: 14, speaker: "meridian", priority: "URGENT", text: "赤TGTはレーダー、ベースステーション、SAM、基地設備。MiG-31は白の二次目標だ。" },
-      { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間救難・気象周波数を監視中。基地北側を通過する。" },
-      { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、射撃管制網の復帰を確認。ARCA機は交戦せず監視空域を離脱する。" },
+      { id: "m11-arca-watch", at: 24, speaker: "pax", priority: "NORMAL", text: "POLAR WATCHよりROOK。民間周波数の監視を継続。接近するMiG-29Aにはこちらで対処する。" },
+      { id: "m11-arca-withdraw", at: 52, speaker: "pax", priority: "URGENT", text: "POLAR WATCH、基地CAPと交戦。MiG-31はHALOへ直進中——高高度迎撃はROOKが止めろ。" },
       { id: "m11-jam-warning", event: "haloJammingWarning", speaker: "meridian", priority: "URGENT", text: "HALO妨害停止まで三十五秒。攻撃を切り上げ、高度九千以上へ上がれ。" },
       { id: "m11-jam-pause", event: "haloJammingPause", speaker: "halo", priority: "CRITICAL", text: "HALO、再同期開始。敵射撃管制レーダー復活——低高度機は直ちに退避。" },
       { id: "m11-jam-resume", event: "haloJammingResume", speaker: "halo", priority: "CRITICAL", text: "妨害を再開。敵ミサイル誘導性能低下、攻撃窓を再設定する。" },
@@ -470,7 +483,7 @@ export default function register(ctx) {
     map: { x: 0.65, y: 0.18 },
     battleCenter: { x: anchors.battleCenter[0], z: anchors.battleCenter[1] },
     battleRadius: 19000,
-    briefing: "VER ICE COAST上空。HALO電子支援隊は高度10,500m、RAVENとLARKは9,144mから侵入し、FROZEN EYE基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。基地外周には白表示のSHORAD二両と対空砲四基がいる。\n敵航空戦力はMiG-29A六機とMiG-31四機。MiG-29Aは基地CAPと二組のQRAとして時間差でRAVEN/LARKを迎撃する。MiG-31は10,650m帯の二次目標で、開幕二機はHALOを狙う。第二のレーダー復活ではネームドGRANITEを含むWARDEN二機が到着する。通常ミサイルでは高度差が大きい。迎撃するなら上昇し、4AAMの射程を使え。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\n青表示のARCA POLAR WATCH二機は民間救難・気象周波数を監視する非交戦飛行で、最初のレーダー復活前に離脱する。HALO三機の合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
+    briefing: "VER ICE COAST上空。最新鋭HALO電子支援隊は通常戦闘機の飛行限界外となる成層圏下端の高度12,500m、RAVENとLARKは9,144mから侵入し、大陸上のFROZEN EYE基地を無力化する。赤TGTは射撃管制レーダー二基、ベースステーション、電源・燃料設備、SAM三基、対空砲二基の計十目標。全赤TGT破壊で任務達成。基地外周には白表示のSHORAD二両と対空砲四基がいる。\n敵航空戦力はMiG-29A六機とMiG-31四機。MiG-29Aは基地CAPと二組のQRAとして時間差でRAVEN、LARK、ARCA POLAR WATCHを分担して迎撃する。ARCA二機はMiG-29Aに限り自衛交戦する。強力なエンジンで通常機より高い上限を持つMiG-31四機は11,900m帯からHALOだけを狙い、ネームドGRANITEも任務を変えない。通常戦闘機は高度10,000m付近、MiG-31は12,000m付近で推力余裕を失い、上昇や旋回による速度低下から失速しやすくなる。4AAMのロック距離2,000mへ入れる余裕は小さく、迎撃するなら通常機の限界近くまで上昇せよ。\nHALOの妨害は60秒継続した後、18秒だけ再同期のため停止する。停止35秒前からHUDに上昇指示が出る。射撃管制レーダーが生きている停止中は基地SAMの射程・ロック・誘導性能が飛躍的に上がるため、高度9,000m以上へ退避して誘導圏外へ出ろ。妨害再開後に再降下するか、レーダー二基を先に破壊して強化を永久に止めろ。\n青表示のARCA POLAR WATCH二機は民間救難・気象周波数を監視しつつ基地北側を保持する。ARCAの損失は任務失敗条件ではなく、HALO三機だけが護衛HPの対象。HALOの合算HPと妨害状態は右上、現在の攻撃・退避指示は中央上部に表示される。HALOを二機失うと任務失敗。一機損失またはMiG-31未掃討ではSランクを得られない。"
   };
 
   ctx.addMission(mission, { after: "sera-m10" });

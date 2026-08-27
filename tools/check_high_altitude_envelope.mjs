@@ -6,6 +6,7 @@ import {
   altitudeAdjustedFlightVelocity,
   altitudeAdjustedResponseK,
   altitudeAdjustedVerticalSpeed,
+  altitudeEnergyAdjustedSpeed,
   highAltitudeEnvelopeAt,
   isaTroposphereDensityRatio
 } from "../src/flight/high-altitude-envelope.js";
@@ -40,18 +41,23 @@ near(service.stallSpeedMultiplier, 1 / Math.sqrt(service.densityRatio), 1e-12,
 assert(service.stallSpeedMultiplier > 1.62 && service.stallSpeedMultiplier < 1.65,
   `30,000 ft stall multiplier out of band: ${service.stallSpeedMultiplier}`);
 near(service.turnAuthority, 0.72, 1e-12, "service-ceiling turn authority");
-near(service.thrustFactor, 0.70, 1e-12, "service-ceiling thrust factor");
-near(service.maxSpeedFactor, 0.82, 1e-12, "service-ceiling speed factor");
-near(service.climbAuthority, 0.65, 1e-12, "service-ceiling climb authority");
-near(service.ceilingSinkSpeed, 0, 1e-12, "service-ceiling sink onset");
+assert(service.thrustFactor > 0.36 && service.thrustFactor < 0.42,
+  `service-ceiling thrust factor out of band: ${service.thrustFactor}`);
+assert(service.maxSpeedFactor > 0.34 && service.maxSpeedFactor < 0.40,
+  `service-ceiling speed factor out of band: ${service.maxSpeedFactor}`);
+near(service.climbAuthority, 0.75, 1e-12, "service-ceiling climb authority");
+near(service.ceilingSinkSpeed, 0, 1e-12, "service-ceiling forced sink disabled");
 
 near(absolute.turnAuthority, 0.52, 1e-12, "absolute-ceiling turn authority");
-near(absolute.thrustFactor, 0.45, 1e-12, "absolute-ceiling thrust factor");
-near(absolute.maxSpeedFactor, 0.72, 1e-12, "absolute-ceiling speed factor");
-near(absolute.climbAuthority, 0, 1e-12, "absolute-ceiling climb authority");
-near(absolute.ceilingSinkSpeed, -32, 1e-12, "absolute-ceiling sink");
-near(altitudeAdjustedVerticalSpeed(200, absolute), -32, 1e-12,
-  "positive climb cannot cross the soft absolute ceiling");
+near(absolute.thrustFactor, 0.28, 1e-12, "absolute-ceiling thrust factor");
+near(absolute.maxSpeedFactor * 570, absolute.ceilingSustainableSpeed, 1e-9,
+  "absolute-ceiling sustainable speed");
+near(absolute.ceilingSustainableSpeed / (84 * absolute.stallSpeedMultiplier), 1.03, 1e-12,
+  "absolute-ceiling stall margin");
+near(absolute.climbAuthority, 0.60, 1e-12, "absolute-ceiling climb authority");
+near(absolute.ceilingSinkSpeed, 0, 1e-12, "absolute-ceiling forced sink disabled");
+near(altitudeAdjustedVerticalSpeed(200, absolute), 120, 1e-12,
+  "ceiling weakens climb without applying a positional wall");
 const verticalNose = altitudeAdjustedFlightVelocity(
   { x: 0, y: 1, z: 0 },
   500,
@@ -59,9 +65,13 @@ const verticalNose = altitudeAdjustedFlightVelocity(
   0,
   {}
 );
-near(verticalNose.y, -32, 1e-12, "absolute-ceiling vertical flight-path speed");
+near(verticalNose.y, 300, 1e-12, "absolute-ceiling vertical flight-path speed");
 assert(verticalNose.x === 0 && verticalNose.z === 0,
-  `blocked vertical climb invented horizontal motion: ${JSON.stringify(verticalNose)}`);
+  `vertical climb invented horizontal motion: ${JSON.stringify(verticalNose)}`);
+near(altitudeEnergyAdjustedSpeed(200, 1, absolute, 1), 200 - 9.80665, 1e-9,
+  "vertical zoom climb spends gravitational energy");
+near(altitudeEnergyAdjustedSpeed(200, -1, absolute, 1), 200 + 9.80665, 1e-9,
+  "vertical dive returns gravitational energy");
 
 const steepAngle = 87 * Math.PI / 180;
 const steepHigh = altitudeAdjustedFlightVelocity(
@@ -102,12 +112,25 @@ near(altitudeAdjustedResponseK(0.6, 1), 0.6, 1e-12,
 assert(altitudeAdjustedResponseK(0.6, service.thrustFactor) > 0.6,
   "thin air must slow Sortie's inverted-K throttle response");
 
-const high = highAltitudeEnvelopeAt(10650);
-assert(high.climbAuthority > 0 && high.climbAuthority < 0.12,
-  `MiG-31 attack band should retain only a narrow climb margin: ${high.climbAuthority}`);
-assert(high.ceilingSinkSpeed < -27,
-  `MiG-31 attack band should require a climb attitude to hold height: ${high.ceilingSinkSpeed}`);
+const specialistBonus = 2000;
+const high = highAltitudeEnvelopeAt(11900, specialistBonus, 96, 833);
+assert(high.climbAuthority >= 0.6 && high.climbAuthority < 0.62,
+  `MiG-31 attack band should retain weak but non-zero climb response: ${high.climbAuthority}`);
+assert(high.ceilingSinkSpeed === 0,
+  `MiG-31 attack band received an artificial sink: ${high.ceilingSinkSpeed}`);
+assert(high.maxSpeedFactor * 833 > high.stallSpeedMultiplier * 96,
+  "MiG-31 must retain a narrow level-flight margin at 11.9km");
+assert(high.absoluteCeiling === GAME_ABSOLUTE_CEILING_M + specialistBonus,
+  `specialist ceiling bonus was not applied: ${high.absoluteCeiling}`);
+const ordinaryAtInterceptorBand = highAltitudeEnvelopeAt(11900, 0, 84, 570);
+assert(ordinaryAtInterceptorBand.maxSpeedFactor * 570
+    < ordinaryAtInterceptorBand.stallSpeedMultiplier * 84,
+  `ordinary fighter can sustain powered flight in the MiG-31 band: ${JSON.stringify(ordinaryAtInterceptorBand)}`);
+const foxhoundAboveCeiling = highAltitudeEnvelopeAt(12500, specialistBonus, 96, 833);
+assert(foxhoundAboveCeiling.maxSpeedFactor * 833
+    < foxhoundAboveCeiling.stallSpeedMultiplier * 96,
+  "MiG-31 can loiter with HALO above its own 12km energy ceiling");
 
 console.log("check_high_altitude_envelope: PASS");
 console.log(`  30,000 ft density ${service.densityRatio.toFixed(3)} / stall x${service.stallSpeedMultiplier.toFixed(3)}`);
-console.log(`  combat ceiling ${GAME_SERVICE_CEILING_M}m / soft absolute ${GAME_ABSOLUTE_CEILING_M}m`);
+console.log(`  combat ceiling ${GAME_SERVICE_CEILING_M}m / ordinary energy ceiling ${GAME_ABSOLUTE_CEILING_M}m`);
