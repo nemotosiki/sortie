@@ -35,7 +35,12 @@ export default function register(ctx) {
     at: options.at,
     altitude: options.altitude,
     facing: options.facing,
-    radio: options.radio
+    radio: options.radio,
+    purpose: options.purpose,
+    protectTag: options.protectTag,
+    commitRange: options.commitRange,
+    leashRange: options.leashRange,
+    purposeAltitudeFloor: options.purposeAltitudeFloor
   });
 
   const m15CityContract = Object.freeze({
@@ -128,24 +133,27 @@ export default function register(ctx) {
       wave(["jammer"], {
         concurrent: false, band: 1, idBase: 1500, label: "BLACK COUNT",
         missionTag: "m15Jammer", at: [0, -4300], altitude: 4100, facing: [0, -9000],
+        purpose: "support",
         radio: [
           { speaker: "meridian", priority: "CRITICAL", text: "妨害中継機を赤TGT指定。表示の分裂を止めてから爆撃航路を読む。", id: "m15-jammer-contact" }
         ]
       }),
       wave(["tu22m3", "tu22m3"], {
         concurrent: false, idBase: 1510, label: "ROOT LANE", facilityIndex: 0,
+        purpose: "strike",
         at: anchors.northernLane, altitude: 2600, facing: anchors.militaryRoot,
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "三航路を確認。中央二機は軍事ROOT、西は発電区、東は中央病院へ向かう。", id: "m15-three-lanes" }]
       }),
-      wave(["su35", "su35"], { tgt: false, rankNeutral: false, idBase: 1520, label: "ROOT ESCORT", at: [1600, -900], altitude: 3000, facing: anchors.militaryRoot }),
-      wave(["tu22m3", "tu22m3"], { delay: 5, idBase: 1530, label: "POWER LANE", facilityIndex: 1, at: anchors.westernLane, altitude: 2300, facing: anchors.powerDistrict }),
-      wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 5, idBase: 1540, label: "POWER ESCORT", at: [-9400, -6600], altitude: 2850, facing: anchors.powerDistrict }),
-      wave(["tu22m3", "tu22m3"], { delay: 10, idBase: 1550, label: "HOSPITAL LANE", facilityIndex: 2, at: anchors.easternLane, altitude: 2250, facing: anchors.hospitalDistrict }),
-      wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 10, idBase: 1560, label: "HOSPITAL ESCORT", at: [9500, -6100], altitude: 2850, facing: anchors.hospitalDistrict }),
+      wave(["su35", "su35"], { tgt: false, rankNeutral: false, idBase: 1520, label: "ROOT ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [1600, -900], altitude: 3000, facing: anchors.militaryRoot }),
+      wave(["tu22m3", "tu22m3"], { delay: 5, idBase: 1530, label: "POWER LANE", purpose: "strike", facilityIndex: 1, at: anchors.westernLane, altitude: 2300, facing: anchors.powerDistrict }),
+      wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 5, idBase: 1540, label: "POWER ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [-9400, -6600], altitude: 2850, facing: anchors.powerDistrict }),
+      wave(["tu22m3", "tu22m3"], { delay: 10, idBase: 1550, label: "HOSPITAL LANE", purpose: "strike", facilityIndex: 2, at: anchors.easternLane, altitude: 2250, facing: anchors.hospitalDistrict }),
+      wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 10, idBase: 1560, label: "HOSPITAL ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [9500, -6100], altitude: 2850, facing: anchors.hospitalDistrict }),
       // Held by the M15 runtime until every blue ARCA object has retired.
       wave(["typhoon", "typhoon"], {
         tgt: false, rankNeutral: true, delay: 999, idBase: 1570,
         label: "ARCA ENFORCEMENT", missionTag: "arcaWhiteM15",
+        purpose: "intercept",
         at: [-7200, -11100], altitude: 3600, facing: [0, -9000], skill: "expert",
         radio: [
           { speaker: "pax", priority: "URGENT", text: "ARCA執行機よりROOK。国際管理空域への武装進入を警告する。離脱しない場合は交戦する。", id: "m15-arca-white" },

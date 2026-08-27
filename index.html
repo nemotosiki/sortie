@@ -3127,6 +3127,32 @@
 
     const DEFAULT_ENEMY_ROLE = "line";
 
+    // Why a flight is in the battle. `role` and `skill` describe the pilot;
+    // neither can answer whether that pilot is intercepting RAVEN, screening a
+    // bomber or holding CAP over a fleet. Mission doctrine authors this field
+    // separately and the normalizer rejects unknown prose by reducing it to
+    // null, which preserves the historic range-gated AI for legacy missions.
+    const ENEMY_PURPOSES = Object.freeze(new Set([
+      "intercept", "qra", "relief", "pinning", "interceptor",
+      "screen", "escort", "cap", "top-cover",
+      "support", "strike", "hunt", "withdraw", "cas"
+    ]));
+    const AGGRESSIVE_ENEMY_PURPOSES = Object.freeze(new Set([
+      "intercept", "qra", "relief", "pinning", "interceptor"
+    ]));
+    const DEFENSIVE_ENEMY_PURPOSES = Object.freeze(new Set([
+      "screen", "escort", "cap", "top-cover"
+    ]));
+    const STATION_ENEMY_PURPOSES = Object.freeze(new Set([
+      "support", "withdraw", "cas"
+    ]));
+    const PURPOSE_DEFAULTS = Object.freeze({
+      screen: Object.freeze({ commitRange: 2600, leashRange: 4200 }),
+      escort: Object.freeze({ commitRange: 2600, leashRange: 4200 }),
+      cap: Object.freeze({ commitRange: 3000, leashRange: 4600 }),
+      "top-cover": Object.freeze({ commitRange: 4200, leashRange: 5600 })
+    });
+
     // Skill is judgement, not performance. Two aircraft with the same role
     // multipliers and different tiers fly the same airframe at the same rate and
     // still are not equally dangerous, because one of them breaks when a missile
@@ -4834,6 +4860,26 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         rankNeutral: Boolean(entry.rankNeutral),
         label: entry.label || null,
         missionTag: typeof entry.missionTag === "string" ? entry.missionTag : null,
+        // Tactical objective, independent from pilot quality. Null deliberately
+        // preserves the old one-kilometre engage/disengage switch for legacy
+        // missions; Sera payloads author one of the finite values above.
+        purpose: kind === "air" && ENEMY_PURPOSES.has(entry.purpose)
+          ? entry.purpose
+          : null,
+        // SCREEN/ESCORT/CAP can name the package or fleet they protect. When
+        // omitted, the nearest compatible live asset is used.
+        protectTag: kind === "air" && typeof entry.protectTag === "string"
+          ? entry.protectTag
+          : null,
+        commitRange: kind === "air" && Number.isFinite(Number(entry.commitRange))
+          ? Math.max(200, Number(entry.commitRange))
+          : null,
+        leashRange: kind === "air" && Number.isFinite(Number(entry.leashRange))
+          ? Math.max(300, Number(entry.leashRange))
+          : null,
+        purposeAltitudeFloor: kind === "air" && Number.isFinite(Number(entry.purposeAltitudeFloor))
+          ? Math.max(0, Number(entry.purposeAltitudeFloor))
+          : null,
         // Spawns together with the wave before it instead of waiting for that
         // wave to be cleared. Escorts and CAP have to be on the board while
         // their charges are, or they are not escorting anything.
@@ -35572,6 +35618,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "SCOUT",
               role: "trash",
               skill: "rookie",
+              purpose: "intercept",
               gate: { mode: "clearOrTimeout", timeout: 75 },
               at: [8200, -2600],
               altitude: 2500,
@@ -35596,6 +35643,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 1,
               idBase: 0,
               label: "BACKFIRE",
+              missionTag: "m01Bomber",
+              purpose: "strike",
               at: [-1200, -11000],
               altitude: 3200,
               facing: [-2450, 5000],
@@ -35618,6 +35667,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               concurrent: true,
               role: "trash",
               skill: "rookie",
+              purpose: "screen",
+              protectTag: "m01Bomber",
+              commitRange: 2500,
+              leashRange: 3900,
               delay: 45,
               at: [-900, -10600],
               altitude: 3500,
@@ -35636,6 +35689,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 2,
               label: "BACKFIRE",
+              missionTag: "m01Bomber",
+              purpose: "strike",
               at: [12000, 700],
               altitude: 2800,
               facing: [-2450, 5000],
@@ -35659,6 +35714,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 4,
               label: "BACKFIRE",
+              missionTag: "m01Bomber",
+              purpose: "strike",
               at: [9000, -9000],
               altitude: 3500,
               facing: [-2450, 5000],
@@ -36119,6 +36176,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "HIGH INTERCEPT",
               role: "line",
               skill: "regular",
+              purpose: "interceptor",
               gate: { mode: "clearOrTimeout", timeout: 60 },
               at: [2400, -5200],
               altitude: 2600,
@@ -36145,6 +36203,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 4,
               label: "FENCER",
+              missionTag: "m02StrikeA",
+              purpose: "strike",
               facilityIndex: 0,
               at: [9300, -2600],
               altitude: 1550,
@@ -36174,6 +36234,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ESCORT",
               role: "trash",
               skill: "rookie",
+              purpose: "escort",
+              protectTag: "m02StrikeA",
+              commitRange: 2300,
+              leashRange: 3600,
               at: [8800, -2200],
               altitude: 2150,
               facing: [2450, -1280]
@@ -36185,6 +36249,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 6,
               label: "FENCER",
+              missionTag: "m02StrikeB",
+              purpose: "strike",
               facilityIndex: 1,
               at: [9800, 3600],
               altitude: 1750,
@@ -36208,6 +36274,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ESCORT",
               role: "trash",
               skill: "rookie",
+              purpose: "escort",
+              protectTag: "m02StrikeB",
+              commitRange: 2300,
+              leashRange: 3600,
               at: [9300, 3200],
               altitude: 2350,
               facing: [3350, 2080]
@@ -36510,6 +36580,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ALLIGATOR",
               role: "trash",
               skill: "rookie",
+              purpose: "cas",
               at: [4200, -200],
               altitude: 360,
               facing: [-850, -2400],
@@ -36538,6 +36609,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "TOP COVER",
               role: "trash",
               skill: "rookie",
+              purpose: "top-cover",
+              purposeAltitudeFloor: 900,
+              commitRange: 3000,
+              leashRange: 4300,
               at: [3200, -400],
               altitude: 1500,
               facing: [0, -3000]
@@ -36551,6 +36626,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "LANDING FLIGHT",
               role: "trash",
               skill: "rookie",
+              purpose: "strike",
               at: [5000, -3800],
               altitude: 180,
               facing: [-300, -4250],
@@ -36572,6 +36648,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ALLIGATOR",
               role: "trash",
               skill: "rookie",
+              purpose: "cas",
               at: [4600, -650],
               altitude: 320,
               facing: [-650, -2650]
@@ -36585,6 +36662,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "LANDING FLIGHT",
               role: "trash",
               skill: "rookie",
+              purpose: "strike",
               at: [5200, -3500],
               altitude: 180,
               facing: [500, -4100],
@@ -36605,6 +36683,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 40,
               label: "FROGFOOT",
+              purpose: "cas",
               facilityIndex: 1,
               at: [4700, -500],
               altitude: 950,
@@ -36625,6 +36704,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 2,
               idBase: 41,
               label: "FROGFOOT",
+              purpose: "cas",
               facilityIndex: 2,
               at: [5000, 250],
               altitude: 1050,
@@ -36641,6 +36721,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "RELIEF",
               role: "trash",
               skill: "rookie",
+              purpose: "relief",
               at: [3800, -800],
               altitude: 1350,
               facing: [0, -3000],
@@ -38309,6 +38390,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               kind: "naval",
+              missionTag: "m04RedFleet",
               fleet: ["cruiser", "aegis", "aegis", "aegis"],
               band: 1,
               idBase: 0,
@@ -38346,6 +38428,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "FLEET CAP",
               role: "line",
               skill: "regular",
+              purpose: "cap",
+              protectTag: "m04RedFleet",
+              commitRange: 2000,
+              leashRange: 3000,
               at: [8500, 7000],
               altitude: 1800,
               facing: [0, 0]
@@ -38361,6 +38447,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "SHORE RELIEF",
               role: "trash",
               skill: "rookie",
+              purpose: "cap",
+              protectTag: "m04RedFleet",
+              commitRange: 2300,
+              leashRange: 3400,
               at: [8500, 7000],
               altitude: 1900,
               facing: [0, 0]
@@ -38371,6 +38461,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 30,
               label: "ANTI-SHIP STRIKE",
               hunt: "ship",
+              purpose: "hunt",
               role: "line",
               skill: "regular",
               at: [9500, -7500],
@@ -38970,6 +39061,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "LOCAL DEFENSE",
               role: "trash",
               skill: "rookie",
+              purpose: "cap",
+              commitRange: 2200,
+              leashRange: 3500,
               at: [-900, -1800],
               altitude: 950,
               facing: [0, -3000]
@@ -39001,6 +39095,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "QRA",
               role: "line",
               skill: "regular",
+              purpose: "pinning",
               at: [5200, -5600],
               altitude: 1550,
               facing: [0, -3000],
@@ -39043,6 +39138,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ALLIGATOR",
               role: "trash",
               skill: "regular",
+              purpose: "cas",
               at: [4500, -5500],
               altitude: 320,
               facing: [0, -3000],
@@ -39066,6 +39162,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "LOCAL RELIEF",
               role: "trash",
               skill: "rookie",
+              purpose: "cap",
+              commitRange: 2400,
+              leashRange: 3700,
               at: [4500, -5500],
               altitude: 1150,
               facing: [0, -3000]
@@ -39286,6 +39385,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "VALLEY CAP",
               role: "line",
               skill: "regular",
+              purpose: "cap",
+              commitRange: 2300,
+              leashRange: 3500,
               at: [0, 2550],
               altitude: 1450,
               facing: [0, -900]
@@ -39314,6 +39416,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 80,
               label: "REEM 1",
               ace: "polka",
+              purpose: "interceptor",
+              purposeAltitudeFloor: 2200,
               missionTag: "m06-reem",
               at: [0, 3600],
               altitude: 2650,
@@ -39330,6 +39434,10 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "WARDEN HIGH COVER",
               role: "elite",
               skill: "veteran",
+              purpose: "top-cover",
+              purposeAltitudeFloor: 2800,
+              commitRange: 4000,
+              leashRange: 5400,
               missionTag: "m06-high-cover",
               at: [900, 4300],
               altitude: 3400,
@@ -39350,6 +39458,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "RETURN INTERCEPT",
               role: "line",
               skill: "regular",
+              purpose: "intercept",
               missionTag: "m06-return",
               at: [0, 3300],
               altitude: 1850,
@@ -39374,6 +39483,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "REAR GUARD",
               role: "trash",
               skill: "rookie",
+              purpose: "screen",
+              commitRange: 2500,
+              leashRange: 3800,
               at: [-900, 2850],
               altitude: 1250,
               facing: [0, 0]
@@ -39904,6 +40016,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             label: "FULCRUM INTERCEPT",
             role: "line",
             skill: "regular",
+            purpose: "intercept",
             band: 1,
             missionTag: "m07-interference"
           }),
@@ -39913,6 +40026,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             label: "FULCRUM HIGH COVER",
             role: "line",
             skill: "veteran",
+            purpose: "intercept",
             band: 2,
             at: Object.freeze([4300, 3400]),
             facing: Object.freeze([0, 0]),
@@ -40027,6 +40141,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "line",
               skill: "regular",
               hunt: "air",
+              purpose: "hunt",
               at: [...redCapEntry],
               altitude: 1450,
               facing: [0, 0],
@@ -40067,6 +40182,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "line",
               skill: "regular",
               hunt: "air",
+              purpose: "hunt",
               concurrent: true,
               delay: 30,
               at: [...redCapEntry],
@@ -40089,6 +40205,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               role: "line",
               skill: "regular",
               hunt: "air",
+              purpose: "hunt",
               concurrent: true,
               delay: 60,
               at: [...redCapEntry],
@@ -40640,6 +40757,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               band: 1,
               idBase: 840,
               label: "NIGHTJAR LEAD",
+              purpose: "cap",
+              commitRange: 3000,
+              leashRange: 4400,
               at: [-800, 3400],
               altitude: 1150,
               facing: [-1650, -900]
@@ -40654,6 +40774,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "BASE CAP",
               role: "line",
               skill: "regular",
+              purpose: "cap",
+              commitRange: 2800,
+              leashRange: 4200,
               at: [2200, 3000],
               altitude: 1250,
               facing: [1450, 250]
@@ -40669,6 +40792,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "EVAC FLIGHT ONE",
               role: "trash",
               skill: "rookie",
+              purpose: "support",
               at: [3000, 400],
               altitude: 360,
               facing: [7200, 2800]
@@ -40684,6 +40808,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "NIGHTJAR QRA",
               role: "line",
               skill: "regular",
+              purpose: "qra",
               at: [5200, 2500],
               altitude: 1450,
               facing: [0, 0],
@@ -40707,6 +40832,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "EVAC FLIGHT TWO",
               role: "trash",
               skill: "rookie",
+              purpose: "support",
               at: [3300, -200],
               altitude: 420,
               facing: [7600, 2600]
@@ -41542,6 +41668,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "ALLIGATOR",
               role: "line",
               skill: "regular",
+              purpose: "cas",
               at: [3800, 2500],
               altitude: 360,
               facing: [0, -600],
@@ -41564,6 +41691,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "FROGFOOT",
               role: "line",
               skill: "regular",
+              purpose: "cas",
               at: [5600, 5200],
               altitude: 900,
               facing: [0, 600]
@@ -41579,6 +41707,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "FRONTLINE CAP",
               role: "line",
               skill: "regular",
+              purpose: "intercept",
               at: [-6200, 5600],
               altitude: 1700,
               facing: [0, 1400],
@@ -42282,6 +42411,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "FULLBACK STRIKE 1",
               role: "line",
               skill: "regular",
+              purpose: "intercept",
               at: [8600, -6200],
               altitude: 1500,
               facing: [2300, -1000],
@@ -42306,6 +42436,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "FULLBACK STRIKE 2",
               role: "line",
               skill: "regular",
+              purpose: "intercept",
               at: [-7600, 7800],
               altitude: 1650,
               facing: [-900, 2400]
@@ -42322,6 +42453,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               label: "NOR CAP",
               role: "line",
               skill: "veteran",
+              purpose: "pinning",
               at: [8100, 7200],
               altitude: 2100,
               facing: [1800, 1800],
@@ -43295,7 +43427,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig31", "mig31"], tgt: false, rankNeutral: true,
               missionTag: hunterTag, band: 3, idBase: 410,
-              label: "FOXHOUND HIGH 1", role: "line", skill: "veteran", hunt: "air",
+              label: "FOXHOUND HIGH 1", role: "line", skill: "veteran", hunt: "air", purpose: "hunt",
               huntAltitudeFloor: interceptorAltitude,
               at: [...anchors.northIntercept], altitude: interceptorAltitude,
               facing: [...anchors.strikeStart],
@@ -43304,7 +43436,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 18, missionTag: "m11BaseAirDefence", band: 2, idBase: 430,
-              label: "FROZEN CAP", role: "line", skill: "standard",
+              label: "FROZEN CAP", role: "line", skill: "regular", purpose: "intercept",
               assignedTargets: ["player", "wingman"],
               at: [...anchors.baseCapEntry], altitude: 6200,
               facing: [...anchors.weatherStation],
@@ -43313,7 +43445,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 75, missionTag: "m11BaseAirDefence", band: 2, idBase: 440,
-              label: "COAST QRA", role: "line", skill: "veteran",
+              label: "COAST QRA", role: "line", skill: "veteran", purpose: "qra",
               assignedTargets: ["arca", "player"],
               at: [...anchors.coastQraEntry], altitude: 5900,
               facing: [...anchors.battleCenter],
@@ -43322,7 +43454,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 87, missionTag: "m11BaseAirDefence", band: 2, idBase: 450,
-              label: "INLAND QRA", role: "line", skill: "veteran",
+              label: "INLAND QRA", role: "line", skill: "veteran", purpose: "qra",
               assignedTargets: ["wingman", "arca"],
               at: [...anchors.inlandQraEntry], altitude: 5700,
               facing: [...anchors.weatherStation],
@@ -43332,7 +43464,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               types: ["mig31"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 145, missionTag: hunterTag, band: 3, idBase: 420,
               label: "WARDEN 1", role: "elite", skill: "expert", ace: "granite",
-              hunt: "air", huntAltitudeFloor: interceptorAltitude,
+              hunt: "air", purpose: "hunt", huntAltitudeFloor: interceptorAltitude,
               at: [...anchors.southIntercept], altitude: interceptorAltitude,
               facing: [...anchors.battleCenter],
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEもHALOへ向かっている！", id: "m11-granite-inbound" }]
@@ -43340,7 +43472,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig31"], tgt: false, rankNeutral: true,
               concurrent: true, delay: 149, missionTag: hunterTag, band: 3, idBase: 421,
-              label: "WARDEN 2", role: "line", skill: "veteran", hunt: "air",
+              label: "WARDEN 2", role: "line", skill: "veteran", hunt: "air", purpose: "hunt",
               huntAltitudeFloor: interceptorAltitude,
               at: [...anchors.southIntercept], altitude: interceptorAltitude,
               facing: [...anchors.battleCenter],
@@ -43428,7 +43560,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           altitude: options.altitude,
           facing: options.facing,
           radio: options.radio,
-          missionRole: options.missionRole
+          missionRole: options.missionRole,
+          purpose: options.purpose,
+          protectTag: options.protectTag,
+          commitRange: options.commitRange,
+          leashRange: options.leashRange,
+          purposeAltitudeFloor: options.purposeAltitudeFloor
         });
 
         const mission = {
@@ -43495,6 +43632,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               idBase: 1210,
               label: "GLASS RELAY",
               missionRole: "m12Jammer",
+              purpose: "support",
               at: [6200, 5200],
               altitude: 4100,
               facing: [-900, -620],
@@ -43504,15 +43642,18 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             }),
             wave(["s70", "s70"], {
               delay: 10, idBase: 1220, label: "GLASS HEAVY 1", band: 1,
+              purpose: "intercept",
               at: [7100, -4800], altitude: 2500, facing: [-700, -300]
             }),
             wave(["uav", "uav", "uav", "uav"], {
               delay: 18, idBase: 1230, label: "GLASS LIGHT 1", band: 1,
+              purpose: "intercept",
               at: [-5600, 7200], altitude: 2100, facing: [-300, 200]
             }),
             wave(["mig29", "mig29"], {
               tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 36,
               idBase: 1240, label: "NOR CAP 1", band: 2, skill: "regular",
+              purpose: "intercept",
               at: [8400, 6800], altitude: 2800, facing: [800, 600],
               radio: [
                 { speaker: "lark", priority: "URGENT", text: "有人機も来る、MiG-29A二！ 相手をしても補充は止まらない、無人機を優先して！", id: "m12-mig29-first" }
@@ -43520,20 +43661,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             }),
             wave(["s70", "s70"], {
               delay: 58, idBase: 1250, label: "GLASS HEAVY 2", band: 2,
+              purpose: "intercept",
               at: [-7600, -5000], altitude: 2700, facing: [-500, -400]
             }),
             wave(["uav", "uav", "uav"], {
               delay: 72, idBase: 1260, label: "GLASS LIGHT 2", band: 2,
+              purpose: "intercept",
               at: [7600, -1200], altitude: 2300, facing: [200, 100]
             }),
             wave(["mig29", "mig29"], {
               tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 82,
               idBase: 1270, label: "NOR CAP 2", band: 2, skill: "veteran",
+              purpose: "intercept",
               at: [-8200, 3000], altitude: 3000, facing: [-200, 400]
             }),
             wave(["s70", "s70"], {
               missionTag: "m12Replenishment", delay: 118, idBase: 1280,
               label: "GLASS REPLENISH HEAVY", band: 3,
+              purpose: "relief",
               at: [8800, 500], altitude: 2900, facing: [400, 400],
               radio: [
                 { speaker: "meridian", priority: "URGENT", text: "工場から重UCAVの補充。送電所が生きている限り、予定された増援は上がる。", id: "m12-replenishment-heavy" }
@@ -43542,16 +43687,19 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             wave(["uav", "uav", "uav"], {
               missionTag: "m12Replenishment", delay: 140, idBase: 1290,
               label: "GLASS REPLENISH LIGHT", band: 3,
+              purpose: "relief",
               at: [-6400, 8200], altitude: 2400, facing: [0, 500]
             }),
             wave(["mig29", "mig29"], {
               tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 126,
               idBase: 1300, label: "NOR CAP 3", band: 3, skill: "veteran",
+              purpose: "intercept",
               at: [5200, 8600], altitude: 3200, facing: [600, 1000]
             }),
             wave(["su35", "su35"], {
               tgt: false, rankNeutral: true, missionTag: "m12EliteCover", delay: 168,
               idBase: 1310, label: "FLANKER E", band: 3, skill: "ace",
+              purpose: "interceptor",
               at: [-9000, -1200], altitude: 3500, facing: [-800, -200],
               radio: [
                 { speaker: "meridian", priority: "URGENT", text: "北西からSu-35二。有人援護だ。交戦は任意、無人戦闘群の掃討を継続せよ。", id: "m12-su35-optional" }
@@ -43860,21 +44008,21 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               types: ["mig29", "mig29"], band: 1, idBase: 1320, label: "FULCRUM HUNTER 1",
-              role: "line", skill: "regular", hunt: "air", missionTag: "m13Interceptor",
+              role: "line", skill: "regular", hunt: "air", purpose: "hunt", missionTag: "m13Interceptor",
               at: [...anchors.eastIntercept], altitude: 1900, facing: [...anchors.convoyStart],
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "MiG-29A二、LIFELINEへ直進。赤TGT指定、輸送隊へ到達する前に落とせ。", id: "m13-first-hunters" }]
             },
             {
               types: ["a100"], tgt: false, rankNeutral: true, concurrent: true,
               missionTag: "m13Awacs", delay: 0, band: 3, idBase: 1330, label: "MAINSTAY",
-              role: "trash", skill: "regular", at: [...anchors.awacsStation], altitude: 7200,
+              role: "trash", skill: "regular", purpose: "support", at: [...anchors.awacsStation], altitude: 7200,
               facing: [11800, -2600],
               radio: [{ speaker: "meridian", priority: "URGENT", text: "東九千、敵A-100。白の任意目標だ。撃墜すれば増援管制を遅らせられるが、輸送隊から離れる。", id: "m13-awacs-choice" }]
             },
             {
               types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
               delay: 48, band: 2, idBase: 1340, label: "FULCRUM HUNTER 2", role: "line",
-              skill: "regular", hunt: "air", at: [...anchors.westIntercept], altitude: 2100,
+              skill: "regular", hunt: "air", purpose: "hunt", at: [...anchors.westIntercept], altitude: 2100,
               facing: [0, -1000]
             },
             {
@@ -43886,20 +44034,20 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
               delay: 96, band: 2, idBase: 1360, label: "FULCRUM HUNTER 3", role: "line",
-              skill: "veteran", hunt: "air", at: [...anchors.northIntercept], altitude: 2400,
+              skill: "veteran", hunt: "air", purpose: "hunt", at: [...anchors.northIntercept], altitude: 2400,
               facing: [0, -3200]
             },
             {
               types: ["mig31", "mig31"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
               delay: 132, band: 3, idBase: 1370, label: "FOXHOUND LONG SHOT", role: "line",
-              skill: "veteran", hunt: "air", at: [...anchors.southIntercept], altitude: 8600,
+              skill: "veteran", hunt: "air", purpose: "hunt", purposeAltitudeFloor: 7600, at: [...anchors.southIntercept], altitude: 8600,
               facing: [0, -5400],
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "高高度MiG-31二、長距離攻撃態勢。輸送隊を射程へ入れるな。", id: "m13-foxhound" }]
             },
             {
               types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
               delay: 168, band: 3, idBase: 1380, label: "FULCRUM HUNTER 4", role: "line",
-              skill: "veteran", hunt: "air", at: [7600, -11000], altitude: 2300,
+              skill: "veteran", hunt: "air", purpose: "hunt", at: [7600, -11000], altitude: 2300,
               facing: [...anchors.convoyExit]
             }
           ],
@@ -44152,26 +44300,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             {
               types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
               delay: 22, band: 1, idBase: 1430, label: "SEA FLANKER 1", role: "line", skill: "regular",
+              purpose: "cap", protectTag: "m14LandingFleet", commitRange: 5800, leashRange: 9800,
               at: [...anchors.northCapEntry], altitude: 2100, facing: [...anchors.battleCenter]
             },
             {
               types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
               delay: 54, band: 2, idBase: 1440, label: "ALLIGATOR 1", role: "line", skill: "regular",
+              purpose: "intercept",
               at: [2200, -3800], altitude: 420, facing: [...anchors.beachhead]
             },
             {
               types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
               delay: 78, band: 2, idBase: 1450, label: "SEA FLANKER 2", role: "line", skill: "veteran",
+              purpose: "cap", protectTag: "m14LandingFleet", commitRange: 6000, leashRange: 10200,
               at: [...anchors.southCapEntry], altitude: 2400, facing: [...anchors.battleCenter]
             },
             {
               types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
               delay: 112, band: 2, idBase: 1460, label: "ALLIGATOR 2", role: "line", skill: "veteran",
+              purpose: "intercept",
               at: [-1200, 3600], altitude: 460, facing: [...anchors.beachhead]
             },
             {
               types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
               delay: 138, band: 3, idBase: 1470, label: "SEA FLANKER 3", role: "line", skill: "veteran",
+              purpose: "relief",
               at: [9800, 500], altitude: 2600, facing: [...anchors.battleCenter],
               radio: [{ speaker: "lark", priority: "URGENT", text: "Su-33最終隊！ 艦載機を片付けて、砂浜へ上がった装甲を潰す！", id: "m14-final-cap" }]
             }
@@ -44403,7 +44556,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           at: options.at,
           altitude: options.altitude,
           facing: options.facing,
-          radio: options.radio
+          radio: options.radio,
+          purpose: options.purpose,
+          protectTag: options.protectTag,
+          commitRange: options.commitRange,
+          leashRange: options.leashRange,
+          purposeAltitudeFloor: options.purposeAltitudeFloor
         });
 
         const m15CityContract = Object.freeze({
@@ -44496,24 +44654,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             wave(["jammer"], {
               concurrent: false, band: 1, idBase: 1500, label: "BLACK COUNT",
               missionTag: "m15Jammer", at: [0, -4300], altitude: 4100, facing: [0, -9000],
+              purpose: "support",
               radio: [
                 { speaker: "meridian", priority: "CRITICAL", text: "妨害中継機を赤TGT指定。表示の分裂を止めてから爆撃航路を読む。", id: "m15-jammer-contact" }
               ]
             }),
             wave(["tu22m3", "tu22m3"], {
               concurrent: false, idBase: 1510, label: "ROOT LANE", facilityIndex: 0,
+              purpose: "strike",
               at: anchors.northernLane, altitude: 2600, facing: anchors.militaryRoot,
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "三航路を確認。中央二機は軍事ROOT、西は発電区、東は中央病院へ向かう。", id: "m15-three-lanes" }]
             }),
-            wave(["su35", "su35"], { tgt: false, rankNeutral: false, idBase: 1520, label: "ROOT ESCORT", at: [1600, -900], altitude: 3000, facing: anchors.militaryRoot }),
-            wave(["tu22m3", "tu22m3"], { delay: 5, idBase: 1530, label: "POWER LANE", facilityIndex: 1, at: anchors.westernLane, altitude: 2300, facing: anchors.powerDistrict }),
-            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 5, idBase: 1540, label: "POWER ESCORT", at: [-9400, -6600], altitude: 2850, facing: anchors.powerDistrict }),
-            wave(["tu22m3", "tu22m3"], { delay: 10, idBase: 1550, label: "HOSPITAL LANE", facilityIndex: 2, at: anchors.easternLane, altitude: 2250, facing: anchors.hospitalDistrict }),
-            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 10, idBase: 1560, label: "HOSPITAL ESCORT", at: [9500, -6100], altitude: 2850, facing: anchors.hospitalDistrict }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, idBase: 1520, label: "ROOT ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [1600, -900], altitude: 3000, facing: anchors.militaryRoot }),
+            wave(["tu22m3", "tu22m3"], { delay: 5, idBase: 1530, label: "POWER LANE", purpose: "strike", facilityIndex: 1, at: anchors.westernLane, altitude: 2300, facing: anchors.powerDistrict }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 5, idBase: 1540, label: "POWER ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [-9400, -6600], altitude: 2850, facing: anchors.powerDistrict }),
+            wave(["tu22m3", "tu22m3"], { delay: 10, idBase: 1550, label: "HOSPITAL LANE", purpose: "strike", facilityIndex: 2, at: anchors.easternLane, altitude: 2250, facing: anchors.hospitalDistrict }),
+            wave(["su35", "su35"], { tgt: false, rankNeutral: false, delay: 10, idBase: 1560, label: "HOSPITAL ESCORT", purpose: "escort", protectTag: "m15RedPackage", commitRange: 5800, leashRange: 9400, at: [9500, -6100], altitude: 2850, facing: anchors.hospitalDistrict }),
             // Held by the M15 runtime until every blue ARCA object has retired.
             wave(["typhoon", "typhoon"], {
               tgt: false, rankNeutral: true, delay: 999, idBase: 1570,
               label: "ARCA ENFORCEMENT", missionTag: "arcaWhiteM15",
+              purpose: "intercept",
               at: [-7200, -11100], altitude: 3600, facing: [0, -9000], skill: "expert",
               radio: [
                 { speaker: "pax", priority: "URGENT", text: "ARCA執行機よりROOK。国際管理空域への武装進入を警告する。離脱しない場合は交戦する。", id: "m15-arca-white" },
@@ -44758,28 +44919,28 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, band: 1, idBase: 1610,
-              label: "BACKFIRE SEA STRIKE", missionTag: "m16Bomber", hunt: "ship", role: "line", skill: "regular",
+              label: "BACKFIRE SEA STRIKE", missionTag: "m16Bomber", hunt: "ship", purpose: "hunt", role: "line", skill: "regular",
               at: [...anchors.bomberEntry], altitude: 680, facing: [...anchors.fleetCenter],
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "低空にTu-22M3四。SSGNと挟撃する対艦打撃隊だ。HOME FLEETへ到達させるな。", id: "m16-bomber-contact" }]
             },
             {
               types: ["awacs"], tgt: false, concurrent: true, delay: 0, rankNeutral: false, band: 1, idBase: 1630,
-              label: "OCEAN EYE", missionTag: "m16Recon", role: "support", skill: "regular",
+              label: "OCEAN EYE", missionTag: "m16Recon", role: "support", skill: "regular", purpose: "support",
               at: [...anchors.reconStation], altitude: 5200, facing: [...anchors.fleetCenter]
             },
             {
               types: ["su33", "su33"], tgt: false, concurrent: true, delay: 18, band: 1, idBase: 1640,
-              label: "SEA FLANKER 1", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+              label: "SEA FLANKER 1", missionTag: "m16SeaFlanker", role: "line", skill: "regular", purpose: "screen", protectTag: "m16Bomber", commitRange: 6000, leashRange: 10400,
               at: [...anchors.northCap], altitude: 2300, facing: [...anchors.fleetCenter]
             },
             {
               types: ["su33", "su33"], tgt: false, concurrent: true, delay: 48, band: 2, idBase: 1650,
-              label: "SEA FLANKER 2", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+              label: "SEA FLANKER 2", missionTag: "m16SeaFlanker", role: "line", skill: "regular", purpose: "screen", protectTag: "m16Bomber", commitRange: 6000, leashRange: 10400,
               at: [...anchors.southCap], altitude: 2500, facing: [...anchors.fleetCenter]
             },
             {
               types: ["su33", "su33"], tgt: false, concurrent: true, delay: 86, band: 3, idBase: 1660,
-              label: "SEA FLANKER 3", missionTag: "m16SeaFlanker", role: "line", skill: "veteran",
+              label: "SEA FLANKER 3", missionTag: "m16SeaFlanker", role: "line", skill: "veteran", purpose: "screen", protectTag: "m16Bomber", commitRange: 6400, leashRange: 11000,
               at: [-9800, -7600], altitude: 2800, facing: [...anchors.fleetCenter]
             }
           ],
@@ -45335,43 +45496,43 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           sequence: [
             {
               types: ["tu95", "tu95", "tu95", "tu95"], tgt: true, band: 1, idBase: 1710,
-              label: "BEAR MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular",
+              label: "BEAR MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular", purpose: "strike",
               at: [...anchors.bomberNorth], altitude: 6800, facing: [...anchors.cityEdge],
               radio: [{ speaker: "meridian", priority: "CRITICAL", text: "Tu-95四、Tu-22M3四。赤TGT八機、すべてミガル外環へ進行中。", id: "m17-main-contact" }]
             },
             {
               types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 2, band: 1, idBase: 1720,
-              label: "BACKFIRE MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular",
+              label: "BACKFIRE MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular", purpose: "strike",
               at: [...anchors.bomberSouth], altitude: 6100, facing: [...anchors.cityEdge]
             },
             {
               types: ["awacs"], tgt: true, concurrent: true, delay: 0, band: 1, idBase: 1730,
-              label: "RED AIR CONTROL", missionTag: "m17RedAwacs", role: "support", skill: "regular",
+              label: "RED AIR CONTROL", missionTag: "m17RedAwacs", role: "support", skill: "regular", purpose: "support",
               at: [...anchors.awacsStation], altitude: 7800, facing: [...anchors.cityEdge]
             },
             {
               types: ["jammer"], tgt: true, concurrent: true, delay: 0, band: 1, idBase: 1740,
-              label: "RED JAMMER", missionTag: "m17RedJammer", role: "support", skill: "regular",
+              label: "RED JAMMER", missionTag: "m17RedJammer", role: "support", skill: "regular", purpose: "support",
               at: [...anchors.jammerStation], altitude: 7600, facing: [...anchors.cityEdge]
             },
             {
               types: ["mig31", "mig31"], tgt: false, concurrent: true, delay: 18, band: 1, idBase: 1750,
-              label: "HIGH COVER", missionTag: "m17HighCover", role: "line", skill: "veteran",
+              label: "HIGH COVER", missionTag: "m17HighCover", role: "line", skill: "veteran", purpose: "escort", protectTag: "m17BomberMain", commitRange: 7200, leashRange: 12200, purposeAltitudeFloor: 7800,
               at: [...anchors.highCover], altitude: 9400, facing: [...anchors.battleCenter]
             },
             {
               types: ["f3"], ace: "helixForge", tgt: false, rankNeutral: true, concurrent: true, delay: 34, band: 2, idBase: 1760,
-              label: "HELIX 1", missionTag: "arcaHelixM17", role: "evasive", skill: "ace",
+              label: "HELIX 1", missionTag: "arcaHelixM17", role: "evasive", skill: "ace", purpose: "intercept",
               at: [...anchors.helixEntry], altitude: 8200, facing: [...anchors.battleCenter]
             },
             {
               types: ["f3"], ace: "helixSwift", tgt: false, rankNeutral: true, concurrent: true, delay: 40, band: 2, idBase: 1770,
-              label: "HELIX 2", missionTag: "arcaHelixM17", role: "evasive", skill: "ace",
+              label: "HELIX 2", missionTag: "arcaHelixM17", role: "evasive", skill: "ace", purpose: "intercept",
               at: [-9800, 800], altitude: 8500, facing: [...anchors.battleCenter]
             },
             {
               types: ["su57"], tgt: false, concurrent: true, delay: 112, band: 3, idBase: 1780,
-              label: "PROTOTYPE COVER", missionTag: "m17Prototype", role: "evasive", skill: "ace",
+              label: "PROTOTYPE COVER", missionTag: "m17Prototype", role: "evasive", skill: "ace", purpose: "interceptor",
               at: [...anchors.prototypeEntry], altitude: 7200, facing: [...anchors.battleCenter]
             }
           ],
@@ -45652,11 +45813,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ],
           groundUnits,
           sequence: [
-            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, band: 1, idBase: 1870, label: "ALLIGATOR CANYON 1", missionTag: "m18AirDefence", role: "line", skill: "regular", at: [...anchors.airNorth], altitude: 620, facing: [...anchors.battleCenter] },
-            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 18, band: 1, idBase: 1880, label: "FULCRUM VALLEY 1", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [...anchors.airSouth], altitude: 1800, facing: [...anchors.battleCenter] },
-            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true, delay: 54, band: 2, idBase: 1900, label: "ALLIGATOR CANYON 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [4500, -5000], altitude: 680, facing: [...anchors.battleCenter] },
-            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 84, band: 2, idBase: 1910, label: "FULCRUM VALLEY 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [-5200, -5600], altitude: 2200, facing: [...anchors.battleCenter] },
-            { types: ["su57"], tgt: false, rankNeutral: true, concurrent: true, delay: 126, band: 3, idBase: 1920, label: "KEREN PROTOTYPE GUARD", missionTag: "m18Prototype", role: "evasive", skill: "ace", at: [...anchors.prototype], altitude: 3100, facing: [...anchors.battleCenter] }
+            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, band: 1, idBase: 1870, label: "ALLIGATOR CANYON 1", missionTag: "m18AirDefence", role: "line", skill: "regular", purpose: "intercept", at: [...anchors.airNorth], altitude: 620, facing: [...anchors.battleCenter] },
+            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 18, band: 1, idBase: 1880, label: "FULCRUM VALLEY 1", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "cap", commitRange: 5200, leashRange: 9000, at: [...anchors.airSouth], altitude: 1800, facing: [...anchors.battleCenter] },
+            { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true, delay: 54, band: 2, idBase: 1900, label: "ALLIGATOR CANYON 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "intercept", at: [4500, -5000], altitude: 680, facing: [...anchors.battleCenter] },
+            { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 84, band: 2, idBase: 1910, label: "FULCRUM VALLEY 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "cap", commitRange: 5600, leashRange: 9400, at: [-5200, -5600], altitude: 2200, facing: [...anchors.battleCenter] },
+            { types: ["su57"], tgt: false, rankNeutral: true, concurrent: true, delay: 126, band: 3, idBase: 1920, label: "KEREN PROTOTYPE GUARD", missionTag: "m18Prototype", role: "evasive", skill: "ace", purpose: "interceptor", at: [...anchors.prototype], altitude: 3100, facing: [...anchors.battleCenter] }
           ],
           m18KerenContract,
           fixedRadio: [
@@ -45771,14 +45932,14 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             }
           },
           sequence: [
-            { types: ["jammer"], tgt: true, band: 1, idBase: 1930, label: "CEASEFIRE JAMMER", missionTag: "m19Attackers", role: "support", skill: "regular", at: [...anchors.northIntercept], altitude: 5600, facing: [...anchors.convoyStart] },
-            { types: ["mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 2, band: 1, idBase: 1940, label: "FULCRUM RAID 1", missionTag: "m19Attackers", role: "line", skill: "regular", hunt: "air", at: [...anchors.westIntercept], altitude: 2300, facing: [...anchors.convoyStart] },
-            { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 28, band: 1, idBase: 1950, label: "HUNTER UCAV", missionTag: "m19Attackers", role: "evasive", skill: "regular", hunt: "air", at: [...anchors.eastIntercept], altitude: 2800, facing: [...anchors.convoyStart] },
-            { types: ["su35", "su35"], tgt: true, concurrent: true, delay: 58, band: 2, idBase: 1960, label: "FLANKER RAID 1", missionTag: "m19Attackers", role: "line", skill: "veteran", hunt: "air", at: [9000, -2500], altitude: 3300, facing: [...anchors.battleCenter] },
-            { types: ["mig29", "mig29"], tgt: true, concurrent: true, delay: 84, band: 2, idBase: 1970, label: "FULCRUM RAID 2", missionTag: "m19Attackers", role: "line", skill: "veteran", hunt: "air", at: [...anchors.lowIntercept], altitude: 1900, facing: [...anchors.battleCenter] },
-            { types: ["su35", "su35"], tgt: true, concurrent: true, delay: 112, band: 2, idBase: 1980, label: "FLANKER RAID 2", missionTag: "m19Attackers", role: "evasive", skill: "veteran", hunt: "air", at: [-9200, -5600], altitude: 3600, facing: [...anchors.battleCenter] },
-            { types: ["su57"], tgt: true, concurrent: true, delay: 142, band: 3, idBase: 1990, label: "CEASEFIRE BREAKER", missionTag: "m19Attackers", role: "evasive", skill: "ace", hunt: "air", at: [0, -14600], altitude: 4300, facing: [...anchors.battleCenter] },
-            { types: ["f3", "f3", "f3", "f3"], tgt: false, rankNeutral: true, concurrent: true, delay: 168, band: 3, idBase: 2000, label: "ARCA WITHDRAWAL", missionTag: "m19ArcaRetreat", role: "evasive", skill: "veteran", at: [...anchors.arcaEntry], altitude: 4100, facing: [...anchors.arcaExit] }
+            { types: ["jammer"], tgt: true, band: 1, idBase: 1930, label: "CEASEFIRE JAMMER", missionTag: "m19Attackers", role: "support", skill: "regular", purpose: "support", at: [...anchors.northIntercept], altitude: 5600, facing: [...anchors.convoyStart] },
+            { types: ["mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 2, band: 1, idBase: 1940, label: "FULCRUM RAID 1", missionTag: "m19Attackers", role: "line", skill: "regular", hunt: "air", purpose: "hunt", at: [...anchors.westIntercept], altitude: 2300, facing: [...anchors.convoyStart] },
+            { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 28, band: 1, idBase: 1950, label: "HUNTER UCAV", missionTag: "m19Attackers", role: "evasive", skill: "regular", hunt: "air", purpose: "hunt", at: [...anchors.eastIntercept], altitude: 2800, facing: [...anchors.convoyStart] },
+            { types: ["su35", "su35"], tgt: true, concurrent: true, delay: 58, band: 2, idBase: 1960, label: "FLANKER RAID 1", missionTag: "m19Attackers", role: "line", skill: "veteran", hunt: "air", purpose: "hunt", at: [9000, -2500], altitude: 3300, facing: [...anchors.battleCenter] },
+            { types: ["mig29", "mig29"], tgt: true, concurrent: true, delay: 84, band: 2, idBase: 1970, label: "FULCRUM RAID 2", missionTag: "m19Attackers", role: "line", skill: "veteran", hunt: "air", purpose: "hunt", at: [...anchors.lowIntercept], altitude: 1900, facing: [...anchors.battleCenter] },
+            { types: ["su35", "su35"], tgt: true, concurrent: true, delay: 112, band: 2, idBase: 1980, label: "FLANKER RAID 2", missionTag: "m19Attackers", role: "evasive", skill: "veteran", hunt: "air", purpose: "hunt", at: [-9200, -5600], altitude: 3600, facing: [...anchors.battleCenter] },
+            { types: ["su57"], tgt: true, concurrent: true, delay: 142, band: 3, idBase: 1990, label: "CEASEFIRE BREAKER", missionTag: "m19Attackers", role: "evasive", skill: "ace", hunt: "air", purpose: "hunt", at: [0, -14600], altitude: 4300, facing: [...anchors.battleCenter] },
+            { types: ["f3", "f3", "f3", "f3"], tgt: false, rankNeutral: true, concurrent: true, delay: 168, band: 3, idBase: 2000, label: "ARCA WITHDRAWAL", missionTag: "m19ArcaRetreat", role: "evasive", skill: "veteran", purpose: "withdraw", at: [...anchors.arcaEntry], altitude: 4100, facing: [...anchors.arcaExit] }
           ],
           m19TrustContract,
           fixedRadio: [
@@ -46072,13 +46233,27 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
               { type: "f15", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "4aam", offset: { back: 122, side: 165, up: -12 } }
             ]
           },
+          // The capital already exists in the map scenery. This hidden defence point
+          // gives the bomber AI a real destination and breach contract without
+          // drawing a second city landmark on top of it.
+          friendlyBase: {
+            x: anchors.councilRing[0], z: anchors.councilRing[1], heading: 0,
+            label: "MIGAL COUNCIL RING", style: "city", failRadius: 680, hidden: true
+          },
+          bomberBreach: {
+            failAt: 3,
+            failBanner: "MIGAL CENTRAL DEFENCE COLLAPSED",
+            hitRadio: { speaker: "meridian", priority: "CRITICAL", text: "爆撃が評議会区へ着弾。あと二編隊を通せば停戦保証は崩壊する。", id: "m20-capital-hit" },
+            farRadio: { speaker: "crown", priority: "URGENT", text: "爆撃隊は中央区へ直進している。護衛ではなくTu-22M3を先に切れ。", id: "m20-capital-far" },
+            closeRadio: { speaker: "meridian", priority: "CRITICAL", text: "爆撃隊、最終投弾線へ進入。ROOK、直ちに阻止せよ。", id: "m20-capital-close" }
+          },
           sequence: [
-            { types: ["jammer", "jammer"], tgt: true, band: 1, idBase: 2010, label: "FINAL EW SCREEN", missionTag: "m20FinalDefence", role: "support", skill: "veteran", at: [...anchors.northLane], altitude: 6100, facing: [...anchors.battleCenter] },
-            { types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 3, band: 2, idBase: 2020, label: "CAPITAL STRIKE", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [0, 16400], altitude: 5200, facing: [...anchors.councilRing] },
-            { types: ["mig29", "mig29", "mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 18, band: 1, idBase: 2030, label: "FULCRUM WALL", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [...anchors.westLane], altitude: 3300, facing: [...anchors.battleCenter] },
-            { types: ["su35", "su35", "su35", "su35", "su35", "su35"], tgt: true, concurrent: true, delay: 44, band: 2, idBase: 2040, label: "FLANKER PINCER", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.eastLane], altitude: 4100, facing: [...anchors.battleCenter] },
-            { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 72, band: 1, idBase: 2050, label: "HUNTER SCREEN", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.southLane], altitude: 2900, facing: [...anchors.councilRing] },
-            { types: ["su57", "su57"], tgt: true, concurrent: true, delay: 104, band: 2, idBase: 2060, label: "LAST GUARANTORS", missionTag: "m20FinalDefence", role: "evasive", skill: "ace", at: [...anchors.highLane], altitude: 5600, facing: [...anchors.battleCenter] }
+            { types: ["jammer", "jammer"], tgt: true, band: 1, idBase: 2010, label: "FINAL EW SCREEN", missionTag: "m20FinalDefence", role: "support", skill: "veteran", purpose: "support", at: [...anchors.northLane], altitude: 6100, facing: [...anchors.battleCenter] },
+            { types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 3, band: 2, idBase: 2020, label: "CAPITAL STRIKE", missionTag: "m20FinalDefence", role: "line", skill: "veteran", purpose: "strike", at: [0, 16400], altitude: 5200, facing: [...anchors.councilRing] },
+            { types: ["mig29", "mig29", "mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 18, band: 1, idBase: 2030, label: "FULCRUM WALL", missionTag: "m20FinalDefence", role: "line", skill: "veteran", purpose: "pinning", at: [...anchors.westLane], altitude: 3300, facing: [...anchors.battleCenter] },
+            { types: ["su35", "su35", "su35", "su35", "su35", "su35"], tgt: true, concurrent: true, delay: 44, band: 2, idBase: 2040, label: "FLANKER PINCER", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", purpose: "intercept", at: [...anchors.eastLane], altitude: 4100, facing: [...anchors.battleCenter] },
+            { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 72, band: 1, idBase: 2050, label: "HUNTER SCREEN", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", purpose: "intercept", at: [...anchors.southLane], altitude: 2900, facing: [...anchors.councilRing] },
+            { types: ["su57", "su57"], tgt: true, concurrent: true, delay: 104, band: 2, idBase: 2060, label: "LAST GUARANTORS", missionTag: "m20FinalDefence", role: "evasive", skill: "ace", purpose: "interceptor", at: [...anchors.highLane], altitude: 5600, facing: [...anchors.battleCenter] }
           ],
           m20FinalContract,
           fixedRadio: [
@@ -46146,6 +46321,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
     // flying at the player, which is every wave outside the two guard sorties.
     let spawningHunt = null;
     let spawningHuntAltitudeFloor = null;
+    let spawningPurpose = null;
+    let spawningProtectTag = null;
+    let spawningCommitRange = null;
+    let spawningLeashRange = null;
+    let spawningPurposeAltitudeFloor = null;
     // Story missions may attach a passive identifier to every contact in one
     // wave. It has no combat meaning; mission-specific runtime contracts use it
     // to find a named pass, escort or interception without relying on target ids.
@@ -49925,6 +50105,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       // Static: MISSIONS is frozen at boot, so this never needs syncing.
       missionTable: MISSIONS.map((mission) => ({
         key: mission.key,
+        campaign: mission.campaign || "usa",
         title: mission.title,
         // C3 story fields, so a probe can check act assignment, the briefing
         // epigraph and the aftermath without opening any screen.
@@ -49944,6 +50125,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           size: waveSizeOf(wave),
           types: wave.kind === "naval" ? [...wave.fleet] : [...wave.types],
           tgt: isTgtEntry(wave),
+          rankNeutral: Boolean(wave.rankNeutral),
           concurrent: wave.concurrent,
           delay: wave.delay || 0,
           band: wave.band,
@@ -49951,6 +50133,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           role: wave.role || (wave.ace ? "ace" : "line"),
           skill: wave.skill,
           hunt: wave.hunt || null,
+          purpose: wave.purpose || null,
+          protectTag: wave.protectTag || null,
+          commitRange: wave.commitRange,
+          leashRange: wave.leashRange,
+          purposeAltitudeFloor: wave.purposeAltitudeFloor,
+          missionTag: wave.missionTag || null,
           assignedTargets: wave.assignedTargets ? [...wave.assignedTargets] : null,
           label: wave.label
         }))
@@ -50737,6 +50925,8 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           ),
           strike: Boolean(enemy.strikeTarget),
           hunt: Boolean(enemy.hunt),
+          purpose: enemy.purpose || null,
+          protectTag: enemy.protectTag || null,
           hater: Boolean(enemy.wingmanHunter),
           chasingWingman: Boolean(enemy.huntRef && enemy.huntRef.kind === "wingman"),
           aimKind: enemy.aimKind || null,
@@ -50752,6 +50942,36 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           // a bound on stationRange has to know which claim it is testing.
           formation: Boolean(enemy.formationActive)
         })),
+        enemyObjectiveProbe: () => enemies.filter((enemy) => (
+          enemy.alive && !enemy.surface && !enemy.heli && !enemy.subsystem
+        )).map((enemy) => {
+          const defence = DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)
+            ? enemyPurposeDefencePoint(enemy, new THREE.Vector3())
+            : null;
+          return {
+            id: enemy.id,
+            type: enemy.type,
+            label: enemy.label,
+            missionTag: enemy.missionTag || null,
+            tgt: isTgtEntry(enemy),
+            rankNeutral: Boolean(enemy.rankNeutral),
+            purpose: enemy.purpose || null,
+            protectTag: enemy.protectTag || null,
+            assignedTarget: enemy.assignedTarget || "player",
+            mode: enemy.mode,
+            aimKind: enemy.aimKind || null,
+            target: enemy.huntRef ? (enemy.huntRef.label || enemy.huntRef.kind) : "RAVEN",
+            commitRange: enemy.purposeCommitRange,
+            leashRange: enemy.purposeLeashRange,
+            altitudeFloor: enemy.purposeAltitudeFloor,
+            playerRange: Number(enemy.group.position.distanceTo(player.position).toFixed(1)),
+            defendedRange: defence ? Number(Math.hypot(
+              player.position.x - defence.x,
+              player.position.z - defence.z
+            ).toFixed(1)) : null,
+            protectedLabel: enemy.purposeRef ? (enemy.purposeRef.label || enemy.purposeRef.type) : null
+          };
+        }),
         stabilityProbe: () => ({
           pitchRate: THREE.MathUtils.radToDeg(playerPitchRate),
           yawRate: THREE.MathUtils.radToDeg(playerYawRate),
@@ -54452,6 +54672,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningRankNeutral = false;
       spawningHunt = null;
       spawningHuntAltitudeFloor = null;
+      spawningPurpose = null;
+      spawningProtectTag = null;
+      spawningCommitRange = null;
+      spawningLeashRange = null;
+      spawningPurposeAltitudeFloor = null;
       spawningMissionTag = null;
       // Invalidated here and re-taken by captureMissionAnchor at the bottom of
       // this function, so a wave can never be laid out around the LAST
@@ -61038,6 +61263,7 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.hunt = null;
         enemy.huntRef = null;
         enemy.wingmanHunter = false;
+        enemy.purpose = ENEMY_PURPOSES.has(config.purpose) ? config.purpose : "intercept";
         enemy.m07TargetsPlayer = true;
       }
       return types.length;
@@ -61437,6 +61663,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         spawnAltitudeEnvelope.availableMaxSpeed,
         Math.max(spec.patrolSpeed * 0.92, spawnMinimumSpeed)
       );
+      const resolvedPurpose = spawningPurpose
+        || (spawningHunt ? "hunt" : (strikeSpawn ? "strike" : null));
+      const purposeDefaults = PURPOSE_DEFAULTS[resolvedPurpose] || {};
       enemies.push({
         id,
         serial: enemySerial,
@@ -61453,12 +61682,23 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         tgt: spawningTgt,
         rankNeutral: spawningRankNeutral,
         missionTag: spawningMissionTag,
-        // Every third eligible spawn of the non-TGT screen flies at the
-        // WINGMAN when the player is not pressing it - see the huntRef
-        // resolution in updateEnemies. TGT, hunt, strike and heavy
-        // airframes never do: their jobs are authored.
-        wingmanHunter: !spawningTgt && !spawningHunt && !assignedTarget && !strikeSpawn &&
-          !HEAVY_AIR_TYPES.has(spec.key) && (wingmanHunterTicker += 1) % 3 === 0,
+        // Spawn order and IFF no longer decide whom this aircraft attacks.
+        // Missions that want LARK/ARCA pressure author assignedTargets; every
+        // other fighter follows its own purpose.
+        wingmanHunter: false,
+        purpose: resolvedPurpose,
+        protectTag: spawningProtectTag,
+        purposeCommitRange: Number.isFinite(spawningCommitRange)
+          ? spawningCommitRange
+          : (purposeDefaults.commitRange || null),
+        purposeLeashRange: Number.isFinite(spawningLeashRange)
+          ? Math.max(spawningLeashRange, spawningCommitRange || 0)
+          : (purposeDefaults.leashRange || null),
+        purposeAltitudeFloor: Number.isFinite(spawningPurposeAltitudeFloor)
+          ? spawningPurposeAltitudeFloor
+          : null,
+        purposeRef: null,
+        purposePoint: new THREE.Vector3(),
         // "air" / "ship" / null. A hunting aircraft flies at the friendly it
         // came for and shoots at it instead of at the player - see
         // huntTargetFor() and the hunt branch in updateEnemies. null is every
@@ -62122,6 +62362,31 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       const deckY = baseY - 1.5;
       group.position.set(config.x, deckY, config.z);
       group.rotation.y = heading;
+
+      // Some missions defend a district that is already drawn by the world
+      // preset. They still need the shared strike destination, HUD marker and
+      // bomber-breach bookkeeping, but drawing a second airfield/tower at the
+      // same coordinate would duplicate the scenery.
+      if (config.hidden) {
+        scene.add(group);
+        missionProps.push({ node: group, geometries: [], materials: [] });
+        friendlyBase = {
+          x: config.x,
+          z: config.z,
+          y: deckY,
+          terrainMin: baseY,
+          terrainMax: highest,
+          label: config.label || "ALLIED POSITION",
+          style: config.style || "position",
+          failRadius: config.failRadius || 400,
+          group,
+          breached: false,
+          hits: 0,
+          warnedFar: false,
+          warnedClose: false
+        };
+        return friendlyBase;
+      }
 
       const geometries = [];
       const materials = [];
@@ -64592,6 +64857,13 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningHuntAltitudeFloor = Number.isFinite(wave.huntAltitudeFloor)
         ? wave.huntAltitudeFloor
         : null;
+      spawningPurpose = wave.purpose || null;
+      spawningProtectTag = wave.protectTag || null;
+      spawningCommitRange = Number.isFinite(wave.commitRange) ? wave.commitRange : null;
+      spawningLeashRange = Number.isFinite(wave.leashRange) ? wave.leashRange : null;
+      spawningPurposeAltitudeFloor = Number.isFinite(wave.purposeAltitudeFloor)
+        ? wave.purposeAltitudeFloor
+        : null;
       spawningMissionTag = wave.missionTag || null;
       spawningFacilityIndex = Number.isInteger(wave.facilityIndex) ? wave.facilityIndex : null;
       // Presets keep their historic id block; an inline wave takes the next
@@ -64731,6 +65003,11 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       spawningRankNeutral = false;
       spawningHunt = null;
       spawningHuntAltitudeFloor = null;
+      spawningPurpose = null;
+      spawningProtectTag = null;
+      spawningCommitRange = null;
+      spawningLeashRange = null;
+      spawningPurposeAltitudeFloor = null;
       spawningMissionTag = null;
       spawningFacilityIndex = null;
     }
@@ -64871,6 +65148,84 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       ));
       if (candidates.length === 0) return null;
       return candidates[Math.abs(enemy.slot || 0) % candidates.length];
+    }
+
+    function purposeProtectedAssetFor(enemy) {
+      if (!enemy || !DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) return null;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const candidate of enemies) {
+        if (!candidate.alive || candidate === enemy || candidate.subsystem) continue;
+        if (enemy.protectTag && candidate.missionTag !== enemy.protectTag) continue;
+        const airPackage = !candidate.surface && !candidate.heli
+          && (candidate.strikeTarget || candidate.hunt);
+        const fleetAsset = candidate.surface && !candidate.ground;
+        const compatible = enemy.purpose === "cap"
+          ? fleetAsset
+          : (enemy.purpose === "screen" || enemy.purpose === "escort")
+            ? airPackage
+            : (airPackage || fleetAsset);
+        if (!compatible) continue;
+        const distance = candidate.group.position.distanceToSquared(enemy.group.position);
+        if (distance >= bestDistance) continue;
+        bestDistance = distance;
+        best = candidate;
+      }
+      return best;
+    }
+
+    function enemyPurposeDefencePoint(enemy, out) {
+      enemy.purposeRef = purposeProtectedAssetFor(enemy);
+      if (enemy.purposeRef) {
+        out.copy(enemy.purposeRef.group.position);
+        if (enemy.purposeRef.surface) out.y = Math.max(out.y + 500, 500);
+        else out.y += 120;
+        return out;
+      }
+      if (enemy.patrolCenter) return out.copy(enemy.patrolCenter);
+      return out.copy(enemy.group.position);
+    }
+
+    function updateEnemyPurposeMode(enemy, distanceToPlayer) {
+      // Authored attacks do not wait for a one-kilometre merge. Weapons retain
+      // their own range, aspect and lock dwell, so this changes navigation and
+      // intent rather than granting an instant shot.
+      if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
+        if (enemy.mode !== "break") enemy.mode = "pursuit";
+        return;
+      }
+
+      if (DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
+        const point = enemyPurposeDefencePoint(enemy, enemy.purposePoint);
+        const threatRange = Math.hypot(
+          player.position.x - point.x,
+          player.position.z - point.z
+        );
+        // A two-ship CAP does not abandon the defended asset as one blob. The
+        // lead commits at the full perimeter; the second ship holds until the
+        // attacker is closer, then joins. SCREEN/ESCORT elements use the same
+        // readable contact/cover rhythm.
+        const slotCommitScale = Math.abs(enemy.slot || 0) % 2 === 0 ? 1 : 0.72;
+        const commitRange = Math.max(200, enemy.purposeCommitRange || 2400) * slotCommitScale;
+        const leashRange = Math.max(commitRange + 300, enemy.purposeLeashRange || 4000);
+        if (enemy.mode === "patrol" && threatRange <= commitRange) enemy.mode = "pursuit";
+        if (enemy.mode === "pursuit" && threatRange > leashRange) enemy.mode = "patrol";
+        return;
+      }
+
+      if (STATION_ENEMY_PURPOSES.has(enemy.purpose)) {
+        if (enemy.mode !== "break") enemy.mode = "patrol";
+        return;
+      }
+
+      // Hunt/strike own the aim branch below. Null is the legacy contract.
+      if (enemy.purpose === "hunt" || enemy.purpose === "strike") return;
+      if (enemy.mode === "patrol" && distanceToPlayer < enemy.spec.engageRange) {
+        enemy.mode = "pursuit";
+      }
+      if (enemy.mode === "pursuit" && distanceToPlayer > enemy.spec.disengageRange) {
+        enemy.mode = "patrol";
+      }
     }
 
     function enemyEffectiveVerticalSpeed(enemy) {
@@ -65014,11 +65369,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
       forwardOf(player, tmpV5);
       rightOf(player, tmpV6);
       upOf(player, tmpV7);
-      // All live wingmen, resolved once per pass. Hater flights are
-      // distributed deterministically so CROWN and LARK both draw pressure.
-      const wingmanRefs = friendlies.filter(
-        (friendly) => friendly.kind === "wingman" && friendly.alive
-      );
 
       for (let i = enemies.length - 1; i >= 0; i -= 1) {
         const enemy = enemies[i];
@@ -65131,22 +65481,9 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
         enemy.huntRef = enemy.hunt
           ? huntTargetFor(enemy)
           : assignedFriendlyTargetFor(enemy);
-        // The wingman haters ride the same charge plumbing - flight offsets,
-        // guns and missiles all included (damage no-ops on the invulnerable
-        // wingman; the value is the split attention). The player takes the
-        // fight back just by closing inside WINGMAN_HATER_YIELD.
-        if (
-          !enemy.huntRef
-          && !enemy.assignedTarget
-          && enemy.wingmanHunter
-          && wingmanRefs.length > 0
-          && distanceToPlayer > WINGMAN_HATER_YIELD
-        ) {
-          enemy.huntRef = wingmanRefs[Math.abs(enemy.serial || 0) % wingmanRefs.length];
-        }
-
-        if (enemy.mode === "patrol" && distanceToPlayer < spec.engageRange) {
-          enemy.mode = "pursuit";
+        const priorPurposeMode = enemy.mode;
+        updateEnemyPurposeMode(enemy, distanceToPlayer);
+        if (priorPurposeMode !== "pursuit" && enemy.mode === "pursuit") {
           if (enemy.acePilot && !enemy.aceEngageLineFired) {
             enemy.aceEngageLineFired = true;
             // Keyed by callsign: RADIO_LINE_COOLDOWN is per id, and a sortie
@@ -65159,7 +65496,6 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             );
           }
         }
-        if (enemy.mode === "pursuit" && distanceToPlayer > spec.disengageRange) enemy.mode = "patrol";
 
         // Post-stall owns the frame outright when it is running: `mode` is left
         // exactly as the manoeuvre found it, so the ace music cue keeps reading
@@ -65269,6 +65605,24 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
             .addScaledVector(tmpV5, -spec.pursuitBack)
             .addScaledVector(WORLD_UP, spec.verticalBias + Math.sin(time * spec.verticalFrequency + enemy.seed) * spec.verticalAmplitude);
 
+          if (AGGRESSIVE_ENEMY_PURPOSES.has(enemy.purpose)) {
+            // Elements bracket instead of stacking on one shortest-path point.
+            // The offset grows only to a few hundred metres and collapses at
+            // the merge, so the player sees a pincer without aircraft flying
+            // parallel forever on opposite sides of the arena.
+            const side = Math.abs(enemy.slot || 0) % 2 === 0 ? -1 : 1;
+            const bracket = Math.min(260, 70 + distanceToPlayer * 0.055);
+            targetPoint
+              .addScaledVector(tmpV6, side * bracket)
+              .addScaledVector(WORLD_UP, ((Math.abs(enemy.slot || 0) % 3) - 1) * 42);
+          }
+          const purposeFloor = Number.isFinite(enemy.purposeAltitudeFloor)
+            ? enemy.purposeAltitudeFloor
+            : (enemy.purpose === "top-cover" && enemy.patrolCenter
+              ? Math.max(120, enemy.patrolCenter.y - 900)
+              : null);
+          if (Number.isFinite(purposeFloor)) targetPoint.y = Math.max(targetPoint.y, purposeFloor);
+
           if (spec.behavior === "evasive") {
             const phase = time * spec.evadeFrequency + enemy.seed;
             targetPoint
@@ -65359,19 +65713,29 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           let escortD2 = Infinity;
           let fleetRef = null;
           let fleetD2 = Infinity;
+          const purposeRef = DEFENSIVE_ENEMY_PURPOSES.has(enemy.purpose)
+            ? purposeProtectedAssetFor(enemy)
+            : null;
+          enemy.purposeRef = purposeRef;
+          if (purposeRef) {
+            if (purposeRef.surface) fleetRef = purposeRef;
+            else escortRef = purposeRef;
+          }
           // Escort duty is a fighter's job. A patrolling heavy chasing a
           // strike package it can never catch is a tail chase across the
           // whole map, not an escort.
           const fighterPatroller = !HEAVY_AIR_TYPES.has(enemy.type);
-          for (const mate of enemies) {
-            if (!mate.alive || mate === enemy || mate.subsystem) continue;
-            if (mate.surface) {
-              if (mate.ground) continue;
-              const d2 = mate.group.position.distanceToSquared(enemy.group.position);
-              if (d2 < fleetD2) { fleetD2 = d2; fleetRef = mate; }
-            } else if (fighterPatroller && !mate.heli && (mate.strikeTarget || mate.hunt)) {
-              const d2 = mate.group.position.distanceToSquared(enemy.group.position);
-              if (d2 < escortD2) { escortD2 = d2; escortRef = mate; }
+          if (!enemy.purpose) {
+            for (const mate of enemies) {
+              if (!mate.alive || mate === enemy || mate.subsystem) continue;
+              if (mate.surface) {
+                if (mate.ground) continue;
+                const d2 = mate.group.position.distanceToSquared(enemy.group.position);
+                if (d2 < fleetD2) { fleetD2 = d2; fleetRef = mate; }
+              } else if (fighterPatroller && !mate.heli && (mate.strikeTarget || mate.hunt)) {
+                const d2 = mate.group.position.distanceToSquared(enemy.group.position);
+                if (d2 < escortD2) { escortD2 = d2; escortRef = mate; }
+              }
             }
           }
           const stationRef = escortRef || fleetRef;
@@ -65379,9 +65743,12 @@ canopy: 0x9fe6ff, exhaust: 0xffd9a0, scale: 1.09, variant: "flankere"
           const stationZ = stationRef ? stationRef.group.position.z : enemy.patrolCenter.z;
           // A package is escorted at its own altitude plus separation; ships
           // are capped from proper CAP height rather than mast height.
-          const stationY = escortRef
+          let stationY = escortRef
             ? escortRef.group.position.y + 120
             : (fleetRef ? Math.max(fleetRef.group.position.y + 500, 500) : enemy.patrolCenter.y);
+          if (Number.isFinite(enemy.purposeAltitudeFloor)) {
+            stationY = Math.max(stationY, enemy.purposeAltitudeFloor);
+          }
           enemy.aimKind = escortRef ? "loiter-escort" : (fleetRef ? "loiter-fleet" : "loiter");
           enemy.loiterX = stationX;
           enemy.loiterZ = stationZ;

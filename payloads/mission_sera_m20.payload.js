@@ -97,13 +97,27 @@ ROOKはRAVEN、CROWN、LARKの三機で最後の防空線へ上がる。ここ�
         { type: "f15", label: "ROOK 2 LARK", radioSpeaker: "lark", spw: "4aam", offset: { back: 122, side: 165, up: -12 } }
       ]
     },
+    // The capital already exists in the map scenery. This hidden defence point
+    // gives the bomber AI a real destination and breach contract without
+    // drawing a second city landmark on top of it.
+    friendlyBase: {
+      x: anchors.councilRing[0], z: anchors.councilRing[1], heading: 0,
+      label: "MIGAL COUNCIL RING", style: "city", failRadius: 680, hidden: true
+    },
+    bomberBreach: {
+      failAt: 3,
+      failBanner: "MIGAL CENTRAL DEFENCE COLLAPSED",
+      hitRadio: { speaker: "meridian", priority: "CRITICAL", text: "爆撃が評議会区へ着弾。あと二編隊を通せば停戦保証は崩壊する。", id: "m20-capital-hit" },
+      farRadio: { speaker: "crown", priority: "URGENT", text: "爆撃隊は中央区へ直進している。護衛ではなくTu-22M3を先に切れ。", id: "m20-capital-far" },
+      closeRadio: { speaker: "meridian", priority: "CRITICAL", text: "爆撃隊、最終投弾線へ進入。ROOK、直ちに阻止せよ。", id: "m20-capital-close" }
+    },
     sequence: [
-      { types: ["jammer", "jammer"], tgt: true, band: 1, idBase: 2010, label: "FINAL EW SCREEN", missionTag: "m20FinalDefence", role: "support", skill: "veteran", at: [...anchors.northLane], altitude: 6100, facing: [...anchors.battleCenter] },
-      { types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 3, band: 2, idBase: 2020, label: "CAPITAL STRIKE", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [0, 16400], altitude: 5200, facing: [...anchors.councilRing] },
-      { types: ["mig29", "mig29", "mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 18, band: 1, idBase: 2030, label: "FULCRUM WALL", missionTag: "m20FinalDefence", role: "line", skill: "veteran", at: [...anchors.westLane], altitude: 3300, facing: [...anchors.battleCenter] },
-      { types: ["su35", "su35", "su35", "su35", "su35", "su35"], tgt: true, concurrent: true, delay: 44, band: 2, idBase: 2040, label: "FLANKER PINCER", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.eastLane], altitude: 4100, facing: [...anchors.battleCenter] },
-      { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 72, band: 1, idBase: 2050, label: "HUNTER SCREEN", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", at: [...anchors.southLane], altitude: 2900, facing: [...anchors.councilRing] },
-      { types: ["su57", "su57"], tgt: true, concurrent: true, delay: 104, band: 2, idBase: 2060, label: "LAST GUARANTORS", missionTag: "m20FinalDefence", role: "evasive", skill: "ace", at: [...anchors.highLane], altitude: 5600, facing: [...anchors.battleCenter] }
+      { types: ["jammer", "jammer"], tgt: true, band: 1, idBase: 2010, label: "FINAL EW SCREEN", missionTag: "m20FinalDefence", role: "support", skill: "veteran", purpose: "support", at: [...anchors.northLane], altitude: 6100, facing: [...anchors.battleCenter] },
+      { types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 3, band: 2, idBase: 2020, label: "CAPITAL STRIKE", missionTag: "m20FinalDefence", role: "line", skill: "veteran", purpose: "strike", at: [0, 16400], altitude: 5200, facing: [...anchors.councilRing] },
+      { types: ["mig29", "mig29", "mig29", "mig29", "mig29", "mig29"], tgt: true, concurrent: true, delay: 18, band: 1, idBase: 2030, label: "FULCRUM WALL", missionTag: "m20FinalDefence", role: "line", skill: "veteran", purpose: "pinning", at: [...anchors.westLane], altitude: 3300, facing: [...anchors.battleCenter] },
+      { types: ["su35", "su35", "su35", "su35", "su35", "su35"], tgt: true, concurrent: true, delay: 44, band: 2, idBase: 2040, label: "FLANKER PINCER", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", purpose: "intercept", at: [...anchors.eastLane], altitude: 4100, facing: [...anchors.battleCenter] },
+      { types: ["s70", "s70", "s70", "s70"], tgt: true, concurrent: true, delay: 72, band: 1, idBase: 2050, label: "HUNTER SCREEN", missionTag: "m20FinalDefence", role: "evasive", skill: "veteran", purpose: "intercept", at: [...anchors.southLane], altitude: 2900, facing: [...anchors.councilRing] },
+      { types: ["su57", "su57"], tgt: true, concurrent: true, delay: 104, band: 2, idBase: 2060, label: "LAST GUARANTORS", missionTag: "m20FinalDefence", role: "evasive", skill: "ace", purpose: "interceptor", at: [...anchors.highLane], altitude: 5600, facing: [...anchors.battleCenter] }
     ],
     m20FinalContract,
     fixedRadio: [

@@ -84,26 +84,31 @@ export default function register(ctx) {
       {
         types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
         delay: 22, band: 1, idBase: 1430, label: "SEA FLANKER 1", role: "line", skill: "regular",
+        purpose: "cap", protectTag: "m14LandingFleet", commitRange: 5800, leashRange: 9800,
         at: [...anchors.northCapEntry], altitude: 2100, facing: [...anchors.battleCenter]
       },
       {
         types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
         delay: 54, band: 2, idBase: 1440, label: "ALLIGATOR 1", role: "line", skill: "regular",
+        purpose: "intercept",
         at: [2200, -3800], altitude: 420, facing: [...anchors.beachhead]
       },
       {
         types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
         delay: 78, band: 2, idBase: 1450, label: "SEA FLANKER 2", role: "line", skill: "veteran",
+        purpose: "cap", protectTag: "m14LandingFleet", commitRange: 6000, leashRange: 10200,
         at: [...anchors.southCapEntry], altitude: 2400, facing: [...anchors.battleCenter]
       },
       {
         types: ["ka52", "ka52"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
         delay: 112, band: 2, idBase: 1460, label: "ALLIGATOR 2", role: "line", skill: "veteran",
+        purpose: "intercept",
         at: [-1200, 3600], altitude: 460, facing: [...anchors.beachhead]
       },
       {
         types: ["su33", "su33"], tgt: true, concurrent: true, missionTag: "m14CarrierAir",
         delay: 138, band: 3, idBase: 1470, label: "SEA FLANKER 3", role: "line", skill: "veteran",
+        purpose: "relief",
         at: [9800, 500], altitude: 2600, facing: [...anchors.battleCenter],
         radio: [{ speaker: "lark", priority: "URGENT", text: "Su-33最終隊！ 艦載機を片付けて、砂浜へ上がった装甲を潰す！", id: "m14-final-cap" }]
       }

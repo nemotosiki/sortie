@@ -107,11 +107,11 @@ export default function register(ctx) {
     ],
     groundUnits,
     sequence: [
-      { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, band: 1, idBase: 1870, label: "ALLIGATOR CANYON 1", missionTag: "m18AirDefence", role: "line", skill: "regular", at: [...anchors.airNorth], altitude: 620, facing: [...anchors.battleCenter] },
-      { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 18, band: 1, idBase: 1880, label: "FULCRUM VALLEY 1", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [...anchors.airSouth], altitude: 1800, facing: [...anchors.battleCenter] },
-      { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true, delay: 54, band: 2, idBase: 1900, label: "ALLIGATOR CANYON 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [4500, -5000], altitude: 680, facing: [...anchors.battleCenter] },
-      { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 84, band: 2, idBase: 1910, label: "FULCRUM VALLEY 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", at: [-5200, -5600], altitude: 2200, facing: [...anchors.battleCenter] },
-      { types: ["su57"], tgt: false, rankNeutral: true, concurrent: true, delay: 126, band: 3, idBase: 1920, label: "KEREN PROTOTYPE GUARD", missionTag: "m18Prototype", role: "evasive", skill: "ace", at: [...anchors.prototype], altitude: 3100, facing: [...anchors.battleCenter] }
+      { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, band: 1, idBase: 1870, label: "ALLIGATOR CANYON 1", missionTag: "m18AirDefence", role: "line", skill: "regular", purpose: "intercept", at: [...anchors.airNorth], altitude: 620, facing: [...anchors.battleCenter] },
+      { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 18, band: 1, idBase: 1880, label: "FULCRUM VALLEY 1", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "cap", commitRange: 5200, leashRange: 9000, at: [...anchors.airSouth], altitude: 1800, facing: [...anchors.battleCenter] },
+      { types: ["ka52", "ka52"], tgt: false, rankNeutral: true, concurrent: true, delay: 54, band: 2, idBase: 1900, label: "ALLIGATOR CANYON 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "intercept", at: [4500, -5000], altitude: 680, facing: [...anchors.battleCenter] },
+      { types: ["mig29", "mig29"], tgt: false, rankNeutral: true, concurrent: true, delay: 84, band: 2, idBase: 1910, label: "FULCRUM VALLEY 2", missionTag: "m18AirDefence", role: "line", skill: "veteran", purpose: "cap", commitRange: 5600, leashRange: 9400, at: [-5200, -5600], altitude: 2200, facing: [...anchors.battleCenter] },
+      { types: ["su57"], tgt: false, rankNeutral: true, concurrent: true, delay: 126, band: 3, idBase: 1920, label: "KEREN PROTOTYPE GUARD", missionTag: "m18Prototype", role: "evasive", skill: "ace", purpose: "interceptor", at: [...anchors.prototype], altitude: 3100, facing: [...anchors.battleCenter] }
     ],
     m18KerenContract,
     fixedRadio: [

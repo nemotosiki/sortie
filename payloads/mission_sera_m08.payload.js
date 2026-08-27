@@ -167,6 +167,9 @@ export default function register(ctx) {
         band: 1,
         idBase: 840,
         label: "NIGHTJAR LEAD",
+        purpose: "cap",
+        commitRange: 3000,
+        leashRange: 4400,
         at: [-800, 3400],
         altitude: 1150,
         facing: [-1650, -900]
@@ -181,6 +184,9 @@ export default function register(ctx) {
         label: "BASE CAP",
         role: "line",
         skill: "regular",
+        purpose: "cap",
+        commitRange: 2800,
+        leashRange: 4200,
         at: [2200, 3000],
         altitude: 1250,
         facing: [1450, 250]
@@ -196,6 +202,7 @@ export default function register(ctx) {
         label: "EVAC FLIGHT ONE",
         role: "trash",
         skill: "rookie",
+        purpose: "support",
         at: [3000, 400],
         altitude: 360,
         facing: [7200, 2800]
@@ -211,6 +218,7 @@ export default function register(ctx) {
         label: "NIGHTJAR QRA",
         role: "line",
         skill: "regular",
+        purpose: "qra",
         at: [5200, 2500],
         altitude: 1450,
         facing: [0, 0],
@@ -234,6 +242,7 @@ export default function register(ctx) {
         label: "EVAC FLIGHT TWO",
         role: "trash",
         skill: "rookie",
+        purpose: "support",
         at: [3300, -200],
         altitude: 420,
         facing: [7600, 2600]

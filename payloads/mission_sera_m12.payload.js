@@ -55,7 +55,12 @@ export default function register(ctx) {
     altitude: options.altitude,
     facing: options.facing,
     radio: options.radio,
-    missionRole: options.missionRole
+    missionRole: options.missionRole,
+    purpose: options.purpose,
+    protectTag: options.protectTag,
+    commitRange: options.commitRange,
+    leashRange: options.leashRange,
+    purposeAltitudeFloor: options.purposeAltitudeFloor
   });
 
   const mission = {
@@ -122,6 +127,7 @@ export default function register(ctx) {
         idBase: 1210,
         label: "GLASS RELAY",
         missionRole: "m12Jammer",
+        purpose: "support",
         at: [6200, 5200],
         altitude: 4100,
         facing: [-900, -620],
@@ -131,15 +137,18 @@ export default function register(ctx) {
       }),
       wave(["s70", "s70"], {
         delay: 10, idBase: 1220, label: "GLASS HEAVY 1", band: 1,
+        purpose: "intercept",
         at: [7100, -4800], altitude: 2500, facing: [-700, -300]
       }),
       wave(["uav", "uav", "uav", "uav"], {
         delay: 18, idBase: 1230, label: "GLASS LIGHT 1", band: 1,
+        purpose: "intercept",
         at: [-5600, 7200], altitude: 2100, facing: [-300, 200]
       }),
       wave(["mig29", "mig29"], {
         tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 36,
         idBase: 1240, label: "NOR CAP 1", band: 2, skill: "regular",
+        purpose: "intercept",
         at: [8400, 6800], altitude: 2800, facing: [800, 600],
         radio: [
           { speaker: "lark", priority: "URGENT", text: "有人機も来る、MiG-29A二！ 相手をしても補充は止まらない、無人機を優先して！", id: "m12-mig29-first" }
@@ -147,20 +156,24 @@ export default function register(ctx) {
       }),
       wave(["s70", "s70"], {
         delay: 58, idBase: 1250, label: "GLASS HEAVY 2", band: 2,
+        purpose: "intercept",
         at: [-7600, -5000], altitude: 2700, facing: [-500, -400]
       }),
       wave(["uav", "uav", "uav"], {
         delay: 72, idBase: 1260, label: "GLASS LIGHT 2", band: 2,
+        purpose: "intercept",
         at: [7600, -1200], altitude: 2300, facing: [200, 100]
       }),
       wave(["mig29", "mig29"], {
         tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 82,
         idBase: 1270, label: "NOR CAP 2", band: 2, skill: "veteran",
+        purpose: "intercept",
         at: [-8200, 3000], altitude: 3000, facing: [-200, 400]
       }),
       wave(["s70", "s70"], {
         missionTag: "m12Replenishment", delay: 118, idBase: 1280,
         label: "GLASS REPLENISH HEAVY", band: 3,
+        purpose: "relief",
         at: [8800, 500], altitude: 2900, facing: [400, 400],
         radio: [
           { speaker: "meridian", priority: "URGENT", text: "工場から重UCAVの補充。送電所が生きている限り、予定された増援は上がる。", id: "m12-replenishment-heavy" }
@@ -169,16 +182,19 @@ export default function register(ctx) {
       wave(["uav", "uav", "uav"], {
         missionTag: "m12Replenishment", delay: 140, idBase: 1290,
         label: "GLASS REPLENISH LIGHT", band: 3,
+        purpose: "relief",
         at: [-6400, 8200], altitude: 2400, facing: [0, 500]
       }),
       wave(["mig29", "mig29"], {
         tgt: false, rankNeutral: true, missionTag: "m12CrewedCover", delay: 126,
         idBase: 1300, label: "NOR CAP 3", band: 3, skill: "veteran",
+        purpose: "intercept",
         at: [5200, 8600], altitude: 3200, facing: [600, 1000]
       }),
       wave(["su35", "su35"], {
         tgt: false, rankNeutral: true, missionTag: "m12EliteCover", delay: 168,
         idBase: 1310, label: "FLANKER E", band: 3, skill: "ace",
+        purpose: "interceptor",
         at: [-9000, -1200], altitude: 3500, facing: [-800, -200],
         radio: [
           { speaker: "meridian", priority: "URGENT", text: "北西からSu-35二。有人援護だ。交戦は任意、無人戦闘群の掃討を継続せよ。", id: "m12-su35-optional" }

@@ -410,7 +410,7 @@ export default function register(ctx) {
       {
         types: ["mig31", "mig31"], tgt: false, rankNeutral: true,
         missionTag: hunterTag, band: 3, idBase: 410,
-        label: "FOXHOUND HIGH 1", role: "line", skill: "veteran", hunt: "air",
+        label: "FOXHOUND HIGH 1", role: "line", skill: "veteran", hunt: "air", purpose: "hunt",
         huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.northIntercept], altitude: interceptorAltitude,
         facing: [...anchors.strikeStart],
@@ -419,7 +419,7 @@ export default function register(ctx) {
       {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 18, missionTag: "m11BaseAirDefence", band: 2, idBase: 430,
-        label: "FROZEN CAP", role: "line", skill: "standard",
+        label: "FROZEN CAP", role: "line", skill: "regular", purpose: "intercept",
         assignedTargets: ["player", "wingman"],
         at: [...anchors.baseCapEntry], altitude: 6200,
         facing: [...anchors.weatherStation],
@@ -428,7 +428,7 @@ export default function register(ctx) {
       {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 75, missionTag: "m11BaseAirDefence", band: 2, idBase: 440,
-        label: "COAST QRA", role: "line", skill: "veteran",
+        label: "COAST QRA", role: "line", skill: "veteran", purpose: "qra",
         assignedTargets: ["arca", "player"],
         at: [...anchors.coastQraEntry], altitude: 5900,
         facing: [...anchors.battleCenter],
@@ -437,7 +437,7 @@ export default function register(ctx) {
       {
         types: ["mig29", "mig29"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 87, missionTag: "m11BaseAirDefence", band: 2, idBase: 450,
-        label: "INLAND QRA", role: "line", skill: "veteran",
+        label: "INLAND QRA", role: "line", skill: "veteran", purpose: "qra",
         assignedTargets: ["wingman", "arca"],
         at: [...anchors.inlandQraEntry], altitude: 5700,
         facing: [...anchors.weatherStation],
@@ -447,7 +447,7 @@ export default function register(ctx) {
         types: ["mig31"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 145, missionTag: hunterTag, band: 3, idBase: 420,
         label: "WARDEN 1", role: "elite", skill: "expert", ace: "granite",
-        hunt: "air", huntAltitudeFloor: interceptorAltitude,
+        hunt: "air", purpose: "hunt", huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.southIntercept], altitude: interceptorAltitude,
         facing: [...anchors.battleCenter],
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "第二のレーダー復活に同期してWARDEN 1進入。GRANITEもHALOへ向かっている！", id: "m11-granite-inbound" }]
@@ -455,7 +455,7 @@ export default function register(ctx) {
       {
         types: ["mig31"], tgt: false, rankNeutral: true,
         concurrent: true, delay: 149, missionTag: hunterTag, band: 3, idBase: 421,
-        label: "WARDEN 2", role: "line", skill: "veteran", hunt: "air",
+        label: "WARDEN 2", role: "line", skill: "veteran", hunt: "air", purpose: "hunt",
         huntAltitudeFloor: interceptorAltitude,
         at: [...anchors.southIntercept], altitude: interceptorAltitude,
         facing: [...anchors.battleCenter],

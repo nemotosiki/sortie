@@ -230,6 +230,7 @@ export default function register(ctx) {
         label: "ALLIGATOR",
         role: "line",
         skill: "regular",
+        purpose: "cas",
         at: [3800, 2500],
         altitude: 360,
         facing: [0, -600],
@@ -252,6 +253,7 @@ export default function register(ctx) {
         label: "FROGFOOT",
         role: "line",
         skill: "regular",
+        purpose: "cas",
         at: [5600, 5200],
         altitude: 900,
         facing: [0, 600]
@@ -267,6 +269,7 @@ export default function register(ctx) {
         label: "FRONTLINE CAP",
         role: "line",
         skill: "regular",
+        purpose: "intercept",
         at: [-6200, 5600],
         altitude: 1700,
         facing: [0, 1400],

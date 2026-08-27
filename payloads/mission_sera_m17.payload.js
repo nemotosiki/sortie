@@ -110,43 +110,43 @@ export default function register(ctx) {
     sequence: [
       {
         types: ["tu95", "tu95", "tu95", "tu95"], tgt: true, band: 1, idBase: 1710,
-        label: "BEAR MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular",
+        label: "BEAR MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular", purpose: "strike",
         at: [...anchors.bomberNorth], altitude: 6800, facing: [...anchors.cityEdge],
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "Tu-95四、Tu-22M3四。赤TGT八機、すべてミガル外環へ進行中。", id: "m17-main-contact" }]
       },
       {
         types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, concurrent: true, delay: 2, band: 1, idBase: 1720,
-        label: "BACKFIRE MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular",
+        label: "BACKFIRE MAIN", missionTag: "m17BomberMain", role: "line", skill: "regular", purpose: "strike",
         at: [...anchors.bomberSouth], altitude: 6100, facing: [...anchors.cityEdge]
       },
       {
         types: ["awacs"], tgt: true, concurrent: true, delay: 0, band: 1, idBase: 1730,
-        label: "RED AIR CONTROL", missionTag: "m17RedAwacs", role: "support", skill: "regular",
+        label: "RED AIR CONTROL", missionTag: "m17RedAwacs", role: "support", skill: "regular", purpose: "support",
         at: [...anchors.awacsStation], altitude: 7800, facing: [...anchors.cityEdge]
       },
       {
         types: ["jammer"], tgt: true, concurrent: true, delay: 0, band: 1, idBase: 1740,
-        label: "RED JAMMER", missionTag: "m17RedJammer", role: "support", skill: "regular",
+        label: "RED JAMMER", missionTag: "m17RedJammer", role: "support", skill: "regular", purpose: "support",
         at: [...anchors.jammerStation], altitude: 7600, facing: [...anchors.cityEdge]
       },
       {
         types: ["mig31", "mig31"], tgt: false, concurrent: true, delay: 18, band: 1, idBase: 1750,
-        label: "HIGH COVER", missionTag: "m17HighCover", role: "line", skill: "veteran",
+        label: "HIGH COVER", missionTag: "m17HighCover", role: "line", skill: "veteran", purpose: "escort", protectTag: "m17BomberMain", commitRange: 7200, leashRange: 12200, purposeAltitudeFloor: 7800,
         at: [...anchors.highCover], altitude: 9400, facing: [...anchors.battleCenter]
       },
       {
         types: ["f3"], ace: "helixForge", tgt: false, rankNeutral: true, concurrent: true, delay: 34, band: 2, idBase: 1760,
-        label: "HELIX 1", missionTag: "arcaHelixM17", role: "evasive", skill: "ace",
+        label: "HELIX 1", missionTag: "arcaHelixM17", role: "evasive", skill: "ace", purpose: "intercept",
         at: [...anchors.helixEntry], altitude: 8200, facing: [...anchors.battleCenter]
       },
       {
         types: ["f3"], ace: "helixSwift", tgt: false, rankNeutral: true, concurrent: true, delay: 40, band: 2, idBase: 1770,
-        label: "HELIX 2", missionTag: "arcaHelixM17", role: "evasive", skill: "ace",
+        label: "HELIX 2", missionTag: "arcaHelixM17", role: "evasive", skill: "ace", purpose: "intercept",
         at: [-9800, 800], altitude: 8500, facing: [...anchors.battleCenter]
       },
       {
         types: ["su57"], tgt: false, concurrent: true, delay: 112, band: 3, idBase: 1780,
-        label: "PROTOTYPE COVER", missionTag: "m17Prototype", role: "evasive", skill: "ace",
+        label: "PROTOTYPE COVER", missionTag: "m17Prototype", role: "evasive", skill: "ace", purpose: "interceptor",
         at: [...anchors.prototypeEntry], altitude: 7200, facing: [...anchors.battleCenter]
       }
     ],

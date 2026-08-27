@@ -83,21 +83,21 @@ export default function register(ctx) {
     sequence: [
       {
         types: ["mig29", "mig29"], band: 1, idBase: 1320, label: "FULCRUM HUNTER 1",
-        role: "line", skill: "regular", hunt: "air", missionTag: "m13Interceptor",
+        role: "line", skill: "regular", hunt: "air", purpose: "hunt", missionTag: "m13Interceptor",
         at: [...anchors.eastIntercept], altitude: 1900, facing: [...anchors.convoyStart],
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "MiG-29A二、LIFELINEへ直進。赤TGT指定、輸送隊へ到達する前に落とせ。", id: "m13-first-hunters" }]
       },
       {
         types: ["a100"], tgt: false, rankNeutral: true, concurrent: true,
         missionTag: "m13Awacs", delay: 0, band: 3, idBase: 1330, label: "MAINSTAY",
-        role: "trash", skill: "regular", at: [...anchors.awacsStation], altitude: 7200,
+        role: "trash", skill: "regular", purpose: "support", at: [...anchors.awacsStation], altitude: 7200,
         facing: [11800, -2600],
         radio: [{ speaker: "meridian", priority: "URGENT", text: "東九千、敵A-100。白の任意目標だ。撃墜すれば増援管制を遅らせられるが、輸送隊から離れる。", id: "m13-awacs-choice" }]
       },
       {
         types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
         delay: 48, band: 2, idBase: 1340, label: "FULCRUM HUNTER 2", role: "line",
-        skill: "regular", hunt: "air", at: [...anchors.westIntercept], altitude: 2100,
+        skill: "regular", hunt: "air", purpose: "hunt", at: [...anchors.westIntercept], altitude: 2100,
         facing: [0, -1000]
       },
       {
@@ -109,20 +109,20 @@ export default function register(ctx) {
       {
         types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
         delay: 96, band: 2, idBase: 1360, label: "FULCRUM HUNTER 3", role: "line",
-        skill: "veteran", hunt: "air", at: [...anchors.northIntercept], altitude: 2400,
+        skill: "veteran", hunt: "air", purpose: "hunt", at: [...anchors.northIntercept], altitude: 2400,
         facing: [0, -3200]
       },
       {
         types: ["mig31", "mig31"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
         delay: 132, band: 3, idBase: 1370, label: "FOXHOUND LONG SHOT", role: "line",
-        skill: "veteran", hunt: "air", at: [...anchors.southIntercept], altitude: 8600,
+        skill: "veteran", hunt: "air", purpose: "hunt", purposeAltitudeFloor: 7600, at: [...anchors.southIntercept], altitude: 8600,
         facing: [0, -5400],
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "高高度MiG-31二、長距離攻撃態勢。輸送隊を射程へ入れるな。", id: "m13-foxhound" }]
       },
       {
         types: ["mig29", "mig29"], tgt: true, concurrent: true, missionTag: "m13Reinforcement",
         delay: 168, band: 3, idBase: 1380, label: "FULCRUM HUNTER 4", role: "line",
-        skill: "veteran", hunt: "air", at: [7600, -11000], altitude: 2300,
+        skill: "veteran", hunt: "air", purpose: "hunt", at: [7600, -11000], altitude: 2300,
         facing: [...anchors.convoyExit]
       }
     ],

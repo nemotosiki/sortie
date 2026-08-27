@@ -140,6 +140,7 @@ export default function register(ctx) {
     sequence: [
       {
         kind: "naval",
+        missionTag: "m04RedFleet",
         fleet: ["cruiser", "aegis", "aegis", "aegis"],
         band: 1,
         idBase: 0,
@@ -177,6 +178,10 @@ export default function register(ctx) {
         label: "FLEET CAP",
         role: "line",
         skill: "regular",
+        purpose: "cap",
+        protectTag: "m04RedFleet",
+        commitRange: 2000,
+        leashRange: 3000,
         at: [8500, 7000],
         altitude: 1800,
         facing: [0, 0]
@@ -192,6 +197,10 @@ export default function register(ctx) {
         label: "SHORE RELIEF",
         role: "trash",
         skill: "rookie",
+        purpose: "cap",
+        protectTag: "m04RedFleet",
+        commitRange: 2300,
+        leashRange: 3400,
         at: [8500, 7000],
         altitude: 1900,
         facing: [0, 0]
@@ -202,6 +211,7 @@ export default function register(ctx) {
         idBase: 30,
         label: "ANTI-SHIP STRIKE",
         hunt: "ship",
+        purpose: "hunt",
         role: "line",
         skill: "regular",
         at: [9500, -7500],

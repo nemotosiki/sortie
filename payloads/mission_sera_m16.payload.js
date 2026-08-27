@@ -92,28 +92,28 @@ export default function register(ctx) {
     sequence: [
       {
         types: ["tu22m3", "tu22m3", "tu22m3", "tu22m3"], tgt: true, band: 1, idBase: 1610,
-        label: "BACKFIRE SEA STRIKE", missionTag: "m16Bomber", hunt: "ship", role: "line", skill: "regular",
+        label: "BACKFIRE SEA STRIKE", missionTag: "m16Bomber", hunt: "ship", purpose: "hunt", role: "line", skill: "regular",
         at: [...anchors.bomberEntry], altitude: 680, facing: [...anchors.fleetCenter],
         radio: [{ speaker: "meridian", priority: "CRITICAL", text: "低空にTu-22M3四。SSGNと挟撃する対艦打撃隊だ。HOME FLEETへ到達させるな。", id: "m16-bomber-contact" }]
       },
       {
         types: ["awacs"], tgt: false, concurrent: true, delay: 0, rankNeutral: false, band: 1, idBase: 1630,
-        label: "OCEAN EYE", missionTag: "m16Recon", role: "support", skill: "regular",
+        label: "OCEAN EYE", missionTag: "m16Recon", role: "support", skill: "regular", purpose: "support",
         at: [...anchors.reconStation], altitude: 5200, facing: [...anchors.fleetCenter]
       },
       {
         types: ["su33", "su33"], tgt: false, concurrent: true, delay: 18, band: 1, idBase: 1640,
-        label: "SEA FLANKER 1", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+        label: "SEA FLANKER 1", missionTag: "m16SeaFlanker", role: "line", skill: "regular", purpose: "screen", protectTag: "m16Bomber", commitRange: 6000, leashRange: 10400,
         at: [...anchors.northCap], altitude: 2300, facing: [...anchors.fleetCenter]
       },
       {
         types: ["su33", "su33"], tgt: false, concurrent: true, delay: 48, band: 2, idBase: 1650,
-        label: "SEA FLANKER 2", missionTag: "m16SeaFlanker", role: "line", skill: "regular",
+        label: "SEA FLANKER 2", missionTag: "m16SeaFlanker", role: "line", skill: "regular", purpose: "screen", protectTag: "m16Bomber", commitRange: 6000, leashRange: 10400,
         at: [...anchors.southCap], altitude: 2500, facing: [...anchors.fleetCenter]
       },
       {
         types: ["su33", "su33"], tgt: false, concurrent: true, delay: 86, band: 3, idBase: 1660,
-        label: "SEA FLANKER 3", missionTag: "m16SeaFlanker", role: "line", skill: "veteran",
+        label: "SEA FLANKER 3", missionTag: "m16SeaFlanker", role: "line", skill: "veteran", purpose: "screen", protectTag: "m16Bomber", commitRange: 6400, leashRange: 11000,
         at: [-9800, -7600], altitude: 2800, facing: [...anchors.fleetCenter]
       }
     ],

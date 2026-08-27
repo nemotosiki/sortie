@@ -243,6 +243,7 @@ export default function register(ctx) {
         label: "FULLBACK STRIKE 1",
         role: "line",
         skill: "regular",
+        purpose: "intercept",
         at: [8600, -6200],
         altitude: 1500,
         facing: [2300, -1000],
@@ -267,6 +268,7 @@ export default function register(ctx) {
         label: "FULLBACK STRIKE 2",
         role: "line",
         skill: "regular",
+        purpose: "intercept",
         at: [-7600, 7800],
         altitude: 1650,
         facing: [-900, 2400]
@@ -283,6 +285,7 @@ export default function register(ctx) {
         label: "NOR CAP",
         role: "line",
         skill: "veteran",
+        purpose: "pinning",
         at: [8100, 7200],
         altitude: 2100,
         facing: [1800, 1800],
