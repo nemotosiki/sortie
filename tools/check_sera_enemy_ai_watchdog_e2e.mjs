@@ -51,6 +51,7 @@ const aggressive = new Set(["intercept", "qra", "relief", "pinning", "intercepto
 const defensive = new Set(["screen", "escort", "cap", "top-cover"]);
 const station = new Set(["support", "withdraw"]);
 const summaries = [];
+let worstSimulation = { key: null, milliseconds: 0, aircraft: 0 };
 
 try {
   for (let missionNumber = 1; missionNumber <= 20; missionNumber += 1) {
@@ -76,9 +77,11 @@ try {
     assert(await page.evaluate((missionKey) => window.__game.forceStartMissionByKey(missionKey, "f16"), key),
       `${key} could not start`);
     await page.waitForFunction(() => window.__game.state === "playing", null, { timeout: 20_000 });
-    await page.evaluate(() => {
+    const simulationMs = await page.evaluate(() => {
       window.__game.debug.forceDeployAllPendingWaves();
+      const startedAt = performance.now();
       window.__game.debug.forceEnemyFlightFrames(180);
+      return performance.now() - startedAt;
     });
     const snapshot = await page.evaluate(() => ({
       state: window.__game.state,
@@ -87,6 +90,8 @@ try {
     }));
 
     assert(snapshot.state === "playing", `${key} left play during the AI watchdog`, snapshot.state);
+    assert(Number.isFinite(simulationMs) && simulationMs < 5000,
+      `${key} AI simulation exceeded the watchdog budget`, simulationMs);
     assert(snapshot.objectives.length > 0, `${key} exposed no fixed-wing objective state`);
     for (const enemy of snapshot.objectives) {
       assert(enemy.purpose, `${key} has a fixed-wing aircraft without purpose`, enemy);
@@ -125,12 +130,20 @@ try {
         `${key} produced non-finite flight state`, enemy);
     }
     assert(errors.length === 0, `${key} browser errors`, errors);
-    summaries.push(`${key}:${snapshot.objectives.length}`);
+    if (simulationMs > worstSimulation.milliseconds) {
+      worstSimulation = {
+        key,
+        milliseconds: simulationMs,
+        aircraft: snapshot.objectives.length
+      };
+    }
+    summaries.push(`${key}:${snapshot.objectives.length}/${simulationMs.toFixed(0)}ms`);
     await context.close();
   }
 
   console.log("check_sera_enemy_ai_watchdog_e2e: PASS");
   console.log(`  ${summaries.join(" ")}`);
+  console.log(`  worst=${worstSimulation.key} ${worstSimulation.aircraft} aircraft ${worstSimulation.milliseconds.toFixed(1)}ms/180frames`);
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

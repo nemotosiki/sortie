@@ -165,3 +165,7 @@ payload検査、`registry_gate`（19 tables、loss 0）、20 payloadのinline同
 radio canon（20 missions／311 strings）、`git diff --check`もPASSした。
 8340番の配信ファイルとローカル`index.html`は4,082,620 bytes、SHA-256
 `92048d3838ce496b0cdf0daf77cd7b8374798009958c1d41e79f6c262a671825`で一致した。
+
+watchdogへAI更新時間も追加した。headless Chrome／SwiftShaderで各ミッション
+180フレームを同期実行した最悪値はM12の固定翼25機で61.1ms（1フレーム平均
+約0.34ms）だった。広域索敵・目標選択によるフリーズ級の計算量増加はない。
